@@ -1,4 +1,5 @@
 import { MapPin, MessageCircle } from "lucide-react"
+import { useNavigate } from "react-router-dom"
 import type { SearchResult } from "@/types/search"
 import {
   Dialog,
@@ -16,6 +17,7 @@ import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
 import { useToast } from "@/hooks/useToast"
 import { SIMULATED_MESSAGES } from "@/lib/simulatedActions"
+import { providerProfilePath } from "@/config/routes"
 
 interface ResultPreviewDialogProps {
   result: SearchResult | null
@@ -23,11 +25,33 @@ interface ResultPreviewDialogProps {
 }
 
 /**
- * Lightweight "Provider/Business Preview" — the end of the Home/Search
- * discovery journey for this phase. A full routed profile page is Phase 3.
+ * Lightweight "Provider/Business Preview" for the Home/Search discovery
+ * journey. Provider results now route through to the real Provider Profile
+ * (Phase 3A); other kinds keep this dialog until their own profile pages exist.
  */
 function ResultPreviewDialog({ result, onOpenChange }: ResultPreviewDialogProps) {
   const { show } = useToast()
+  const navigate = useNavigate()
+
+  function handlePrimaryAction() {
+    if (!result) return
+    if (result.kind === "provider") {
+      onOpenChange(false)
+      navigate(providerProfilePath(result.id))
+      return
+    }
+    show(SIMULATED_MESSAGES.contact)
+  }
+
+  const primaryLabel = result
+    ? result.kind === "provider"
+      ? "View Profile"
+      : result.kind === "property"
+        ? "Contact Agent"
+        : result.kind === "news"
+          ? "Read More"
+          : "Request / Contact"
+    : ""
 
   return (
     <Dialog open={!!result} onOpenChange={onOpenChange}>
@@ -60,9 +84,11 @@ function ResultPreviewDialog({ result, onOpenChange }: ResultPreviewDialogProps)
                   </Badge>
                 ))}
               </Stack>
-              <Typography variant="caption" className="text-muted-foreground">
-                A full profile page is available in a later phase of the prototype.
-              </Typography>
+              {result.kind !== "provider" && (
+                <Typography variant="caption" className="text-muted-foreground">
+                  A full profile page is available in a later phase of the prototype.
+                </Typography>
+              )}
             </Stack>
 
             <DialogFooter className="gap-2 sm:gap-2">
@@ -72,12 +98,8 @@ function ResultPreviewDialog({ result, onOpenChange }: ResultPreviewDialogProps)
                   WhatsApp
                 </Button>
               )}
-              <Button className="flex-1" onClick={() => show(SIMULATED_MESSAGES.contact)}>
-                {result.kind === "property"
-                  ? "Contact Agent"
-                  : result.kind === "news"
-                    ? "Read More"
-                    : "Request / Contact"}
+              <Button className="flex-1" onClick={handlePrimaryAction}>
+                {primaryLabel}
               </Button>
             </DialogFooter>
           </>

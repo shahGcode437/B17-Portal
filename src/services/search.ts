@@ -1,4 +1,5 @@
 import type { SearchHit, SearchResultKind } from "@/types/search"
+import type { Provider } from "@/types/provider"
 import { providers } from "@/data/providers"
 import { businesses } from "@/data/businesses"
 import { tutors } from "@/data/tutors"
@@ -53,6 +54,10 @@ export function searchAll(query: string, type: SearchResultKind | "all" = "all")
     if (!q) return true
     return searchableText(hit).includes(q)
   })
+}
+
+export function getProviderById(id: string): Provider | undefined {
+  return providers.find((p) => p.id === id)
 }
 
 export function getFeaturedProviders(limit = 4) {

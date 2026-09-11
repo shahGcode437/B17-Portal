@@ -1,5 +1,6 @@
 import { MapPin, MessageCircle, Wrench } from "lucide-react"
 import { motion } from "motion/react"
+import { useNavigate } from "react-router-dom"
 import type { Provider } from "@/types/provider"
 import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
@@ -9,6 +10,7 @@ import { Button } from "@/components/ui/button"
 import { useToast } from "@/hooks/useToast"
 import { SIMULATED_MESSAGES } from "@/lib/simulatedActions"
 import { cardHover } from "@/lib/motion"
+import { providerProfilePath } from "@/config/routes"
 
 interface ProviderCardProps {
   provider: Provider
@@ -18,6 +20,7 @@ interface ProviderCardProps {
 /** Provider card (Master Spec §11): name, category, area, trust info, CTA. */
 function ProviderCard({ provider, onSelect }: ProviderCardProps) {
   const { show } = useToast()
+  const navigate = useNavigate()
 
   return (
     <motion.div
@@ -71,7 +74,7 @@ function ProviderCard({ provider, onSelect }: ProviderCardProps) {
           className="flex-1"
           onClick={(e) => {
             e.stopPropagation()
-            show(SIMULATED_MESSAGES.contact)
+            navigate(providerProfilePath(provider.id))
           }}
         >
           Request

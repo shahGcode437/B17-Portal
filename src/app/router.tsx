@@ -4,6 +4,8 @@ import { ProviderLayout } from "@/app/ProviderLayout"
 import { AdminLayout } from "@/app/AdminLayout"
 import { HomePage } from "@/features/home/HomePage"
 import { SearchPage } from "@/features/search/SearchPage"
+import { ServicesPage } from "@/features/services/ServicesPage"
+import { ProviderProfilePage } from "@/features/services/ProviderProfilePage"
 import { ComingSoonPage } from "@/features/future-modules/ComingSoonPage"
 import { routes } from "@/config/routes"
 
@@ -18,11 +20,12 @@ export const router = createBrowserRouter([
     children: [
       { path: routes.home, element: <HomePage /> },
       { path: routes.search, element: <SearchPage /> },
-      { path: routes.services, element: <ComingSoonPage title="Services" /> },
+      { path: routes.services, element: <ServicesPage /> },
       {
         path: routes.servicesConstruction,
         element: <ComingSoonPage title="Home & Construction Services" />,
       },
+      { path: routes.providerProfile, element: <ProviderProfilePage /> },
       { path: routes.directory, element: <ComingSoonPage title="Business Directory" /> },
       { path: routes.education, element: <ComingSoonPage title="Education" /> },
       { path: routes.property, element: <ComingSoonPage title="Property" /> },

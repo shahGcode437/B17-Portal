@@ -16,6 +16,8 @@ export const routes = {
   register: "/register",
   profile: "/profile",
 
+  providerProfile: "/providers/:id",
+
   providerDashboard: "/provider",
   createListing: "/provider/listings/new",
   listingPending: "/provider/listings/pending",
@@ -28,3 +30,8 @@ export const routes = {
 } as const
 
 export type AppRoute = (typeof routes)[keyof typeof routes]
+
+/** Builds a concrete link to a provider's public profile (e.g. "/providers/provider-solar-01"). */
+export function providerProfilePath(id: string): string {
+  return `/providers/${id}`
+}
