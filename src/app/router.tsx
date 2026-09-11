@@ -6,6 +6,7 @@ import { HomePage } from "@/features/home/HomePage"
 import { SearchPage } from "@/features/search/SearchPage"
 import { ServicesPage } from "@/features/services/ServicesPage"
 import { ProviderProfilePage } from "@/features/services/ProviderProfilePage"
+import { LoginRegisterPage } from "@/features/auth/LoginRegisterPage"
 import { ComingSoonPage } from "@/features/future-modules/ComingSoonPage"
 import { routes } from "@/config/routes"
 
@@ -30,8 +31,8 @@ export const router = createBrowserRouter([
       { path: routes.education, element: <ComingSoonPage title="Education" /> },
       { path: routes.property, element: <ComingSoonPage title="Property" /> },
       { path: routes.news, element: <ComingSoonPage title="News & Daily Updates" /> },
-      { path: routes.login, element: <ComingSoonPage title="Login / Register" /> },
-      { path: routes.register, element: <ComingSoonPage title="Login / Register" /> },
+      { path: routes.login, element: <LoginRegisterPage /> },
+      { path: routes.register, element: <LoginRegisterPage /> },
       { path: routes.profile, element: <ComingSoonPage title="Profile" /> },
       { path: routes.comingSoon, element: <ComingSoonPage /> },
     ],

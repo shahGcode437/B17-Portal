@@ -1,4 +1,5 @@
-import { useParams, useNavigate } from "react-router-dom"
+import { useEffect, useState } from "react"
+import { useParams, useNavigate, useLocation } from "react-router-dom"
 import { motion } from "motion/react"
 import { ArrowLeft, MapPin, MessageCircle, Wrench } from "lucide-react"
 import { Container } from "@/components/foundation/Container"
@@ -11,21 +12,52 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { getProviderById } from "@/services/search"
 import { useToast } from "@/hooks/useToast"
+import { useAuth } from "@/hooks/useAuth"
 import { SIMULATED_MESSAGES } from "@/lib/simulatedActions"
 import { routes } from "@/config/routes"
 import { fadeUp } from "@/lib/motion"
+import { RequestServiceDialog } from "@/features/services/RequestServiceDialog"
+
+interface ProviderLocationState {
+  openRequestFor?: string
+}
 
 /**
  * Public Provider Profile (UI/UX Spec §11). Trust/experience/verification
  * rows are intentionally omitted — nothing here is backed by a real process
- * (Master Spec §9, §19). Request Service and WhatsApp are both simulated;
- * the real request flow arrives with Auth in Phase 4.
+ * (Master Spec §9, §19). WhatsApp is simulated for every visitor; Request
+ * Service is gated behind the simulated auth session (Phase 3B).
  */
 function ProviderProfilePage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const location = useLocation()
   const { show } = useToast()
+  const { user } = useAuth()
+  const [isRequestOpen, setIsRequestOpen] = useState(false)
   const provider = id ? getProviderById(id) : undefined
+
+  // Resume an interrupted Request Service intent after returning from login.
+  // Clearing the location state below makes this effect's second run a
+  // no-op, so it's safe to depend on the full, real set of values it reads.
+  useEffect(() => {
+    const state = location.state as ProviderLocationState | null
+    if (provider && state?.openRequestFor === provider.id) {
+      setIsRequestOpen(true)
+      navigate(location.pathname, { replace: true, state: null })
+    }
+  }, [provider, location.pathname, location.state, navigate])
+
+  function handleRequestService() {
+    if (!provider) return
+    if (!user) {
+      navigate(routes.login, {
+        state: { from: location.pathname, providerId: provider.id },
+      })
+      return
+    }
+    setIsRequestOpen(true)
+  }
 
   if (!provider) {
     return (
@@ -108,12 +140,21 @@ function ProviderProfilePage() {
               <MessageCircle />
               Contact on WhatsApp
             </Button>
-            <Button size="lg" className="flex-1" onClick={() => show(SIMULATED_MESSAGES.requestService)}>
+            <Button size="lg" className="flex-1" onClick={handleRequestService}>
               Request Service
             </Button>
           </Stack>
         </Stack>
       </motion.div>
+
+      {user && (
+        <RequestServiceDialog
+          provider={provider}
+          requesterName={user.name}
+          open={isRequestOpen}
+          onOpenChange={setIsRequestOpen}
+        />
+      )}
     </Container>
   )
 }
