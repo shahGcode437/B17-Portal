@@ -39,7 +39,19 @@ export const cardHover = {
 }
 
 export const staggerContainer = {
+  initial: {},
   animate: {
     transition: { staggerChildren: stagger.item },
   },
+}
+
+/**
+ * Per-item fade-up shaped for Motion's `variants` API (state-labeled, with
+ * the transition nested inside the "animate" state). Pair with a parent
+ * using `staggerContainer` — children inherit the "initial"/"animate"
+ * labels automatically and stagger based on the parent's transition.
+ */
+export const staggerItem = {
+  initial: { opacity: 0, y: 12 },
+  animate: { opacity: 1, y: 0, transition: { duration: duration.route, ease: easing.standard } },
 }

@@ -1,48 +1,41 @@
-import { Wrench, Building2, GraduationCap, KeyRound } from "lucide-react"
-import { Container } from "@/components/foundation/Container"
-import { Stack } from "@/components/foundation/Stack"
-import { Grid } from "@/components/foundation/Grid"
-import { Typography } from "@/components/foundation/Typography"
-import { site } from "@/data/site"
-
-const quickLinks = [
-  { label: "Services", icon: Wrench },
-  { label: "Business Directory", icon: Building2 },
-  { label: "Education", icon: GraduationCap },
-  { label: "Property", icon: KeyRound },
-]
+import { Hero } from "@/features/home/sections/Hero"
+import { QuickCategories } from "@/features/home/sections/QuickCategories"
+import { ConstructionServices } from "@/features/home/sections/ConstructionServices"
+import { FeaturedProviders } from "@/features/home/sections/FeaturedProviders"
+import { BusinessPreview } from "@/features/home/sections/BusinessPreview"
+import { EducationPreview } from "@/features/home/sections/EducationPreview"
+import { PropertyPreview } from "@/features/home/sections/PropertyPreview"
+import { NewsPreview } from "@/features/home/sections/NewsPreview"
+import { SponsoredSection } from "@/features/home/sections/SponsoredSection"
+import { FutureModules } from "@/features/home/sections/FutureModules"
+import { FinalCta } from "@/features/home/sections/FinalCta"
+import { ResultPreviewDialog } from "@/components/overlay/ResultPreviewDialog"
+import { useResultPreview } from "@/hooks/useResultPreview"
 
 /**
- * Phase 1 placeholder Home — proves the shell/layout/token system renders
- * correctly end to end. The full search-first Homepage (Prototype Scope §7,
- * UI/UX Spec §7) is built in Phase 2.
+ * B-17 Portal Home (Prototype Scope §7, UI/UX Spec §7). Section order
+ * follows the documented homepage hierarchy: Hero → Quick Categories →
+ * Construction Services → Featured Providers → Directory → Education →
+ * Property → News → Sponsored → Future Modules → Final CTA.
  */
 function HomePage() {
-  return (
-    <Container className="py-16 sm:py-24">
-      <Stack align="center" gap={4} className="mx-auto max-w-2xl text-center">
-        <Typography variant="display">{site.name}</Typography>
-        <Typography variant="body-lg" className="text-muted-foreground">
-          {site.tagline}
-        </Typography>
-      </Stack>
+  const preview = useResultPreview()
 
-      <Grid cols={4} gap={4} className="mx-auto mt-12 max-w-3xl">
-        {quickLinks.map(({ label, icon: Icon }) => (
-          <Stack
-            key={label}
-            align="center"
-            gap={2}
-            className="rounded-xl border border-border bg-card p-6 text-center shadow-subtle"
-          >
-            <span className="flex size-10 items-center justify-center rounded-lg bg-accent text-accent-foreground">
-              <Icon className="size-5" aria-hidden="true" />
-            </span>
-            <Typography variant="label">{label}</Typography>
-          </Stack>
-        ))}
-      </Grid>
-    </Container>
+  return (
+    <>
+      <Hero />
+      <QuickCategories />
+      <ConstructionServices />
+      <FeaturedProviders onSelect={preview.open} />
+      <BusinessPreview onSelect={preview.open} />
+      <EducationPreview onSelect={preview.open} />
+      <PropertyPreview onSelect={preview.open} />
+      <NewsPreview onSelect={preview.open} />
+      <SponsoredSection />
+      <FutureModules />
+      <FinalCta />
+      <ResultPreviewDialog result={preview.selected} onOpenChange={preview.onOpenChange} />
+    </>
   )
 }
 

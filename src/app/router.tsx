@@ -3,6 +3,7 @@ import { ConsumerLayout } from "@/app/ConsumerLayout"
 import { ProviderLayout } from "@/app/ProviderLayout"
 import { AdminLayout } from "@/app/AdminLayout"
 import { HomePage } from "@/features/home/HomePage"
+import { SearchPage } from "@/features/search/SearchPage"
 import { ComingSoonPage } from "@/features/future-modules/ComingSoonPage"
 import { routes } from "@/config/routes"
 
@@ -16,7 +17,7 @@ export const router = createBrowserRouter([
     element: <ConsumerLayout />,
     children: [
       { path: routes.home, element: <HomePage /> },
-      { path: routes.search, element: <ComingSoonPage title="Search / Explore" /> },
+      { path: routes.search, element: <SearchPage /> },
       { path: routes.services, element: <ComingSoonPage title="Services" /> },
       {
         path: routes.servicesConstruction,

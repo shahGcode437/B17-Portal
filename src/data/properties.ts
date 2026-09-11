@@ -1,0 +1,77 @@
+import type { Property } from "@/types/property"
+
+/**
+ * Demo property listings (Prototype Data Contract: 6–10). Fictional
+ * prototype data — prices and details are illustrative, not real offers.
+ */
+export const properties: Property[] = [
+  {
+    id: "property-01",
+    title: "5 Marla House — B-17 Block C",
+    listingType: "sale",
+    propertyType: "House",
+    price: "PKR 2.2 Cr",
+    area: "B-17, Block C (Demo Area)",
+    bedrooms: 3,
+    furnished: "Unfurnished",
+    image: "/images/properties/house-sale-01.jpg",
+    tags: ["house", "sale", "5 marla"],
+  },
+  {
+    id: "property-02",
+    title: "2-Bed Flat for Rent — B-17 Block A",
+    listingType: "rent",
+    propertyType: "Flat",
+    price: "PKR 55,000 / month",
+    area: "B-17, Block A (Demo Area)",
+    bedrooms: 2,
+    furnished: "Semi-Furnished",
+    image: "/images/properties/apartment-rent-01.jpg",
+    tags: ["flat", "rent", "apartment"],
+  },
+  {
+    id: "property-03",
+    title: "10 Marla Plot — B-17 Block D",
+    listingType: "sale",
+    propertyType: "Plot",
+    price: "PKR 1.8 Cr",
+    area: "B-17, Block D (Demo Area)",
+    tags: ["plot", "sale", "10 marla"],
+  },
+  {
+    id: "property-04",
+    title: "1-Kanal House for Rent — B-17 Block B",
+    listingType: "rent",
+    propertyType: "House",
+    price: "PKR 180,000 / month",
+    area: "B-17, Block B (Demo Area)",
+    bedrooms: 5,
+    furnished: "Furnished",
+    image: "/images/properties/house-rent-01.jpg",
+    tags: ["house", "rent", "1 kanal"],
+  },
+  {
+    id: "property-05",
+    title: "3-Bed Flat — B-17 Block E",
+    listingType: "sale",
+    propertyType: "Flat",
+    price: "PKR 1.1 Cr",
+    area: "B-17, Block E (Demo Area)",
+    bedrooms: 3,
+    furnished: "Unfurnished",
+    image: "/images/properties/apartment-sale-01.jpg",
+    tags: ["flat", "sale", "apartment"],
+  },
+  {
+    id: "property-06",
+    title: "7 Marla House for Rent — B-17 Block C",
+    listingType: "rent",
+    propertyType: "House",
+    price: "PKR 95,000 / month",
+    area: "B-17, Block C (Demo Area)",
+    bedrooms: 4,
+    furnished: "Semi-Furnished",
+    image: "/images/properties/family-home.jpg",
+    tags: ["house", "rent", "7 marla"],
+  },
+]
