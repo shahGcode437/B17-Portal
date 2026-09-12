@@ -1,6 +1,7 @@
 import type { SearchHit, SearchResultKind } from "@/types/search"
 import type { Provider } from "@/types/provider"
 import type { Tutor } from "@/types/tutor"
+import type { Property } from "@/types/property"
 import type { NewsArticle } from "@/types/news"
 import { providers } from "@/data/providers"
 import { businesses } from "@/data/businesses"
@@ -110,6 +111,10 @@ export function getTutorById(id: string): Tutor | undefined {
 
 export function getFeaturedProperties(limit = 3) {
   return properties.slice(0, limit)
+}
+
+export function getPropertyById(id: string): Property | undefined {
+  return properties.find((p) => p.id === id)
 }
 
 /** Sorted newest-first; omit `limit` to get every published item (used by the /news listing page). */

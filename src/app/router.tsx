@@ -8,6 +8,8 @@ import { ServicesPage } from "@/features/services/ServicesPage"
 import { ProviderProfilePage } from "@/features/services/ProviderProfilePage"
 import { EducationPage } from "@/features/education/EducationPage"
 import { TutorProfilePage } from "@/features/education/TutorProfilePage"
+import { PropertyPage } from "@/features/property/PropertyPage"
+import { PropertyDetailsPage } from "@/features/property/PropertyDetailsPage"
 import { NewsListPage } from "@/features/news/NewsListPage"
 import { NewsArticlePage } from "@/features/news/NewsArticlePage"
 import { LoginRegisterPage } from "@/features/auth/LoginRegisterPage"
@@ -42,7 +44,8 @@ export const router = createBrowserRouter([
       { path: routes.directory, element: <ComingSoonPage title="Business Directory" /> },
       { path: routes.education, element: <EducationPage /> },
       { path: routes.tutorProfile, element: <TutorProfilePage /> },
-      { path: routes.property, element: <ComingSoonPage title="Property" /> },
+      { path: routes.property, element: <PropertyPage /> },
+      { path: routes.propertyDetails, element: <PropertyDetailsPage /> },
       { path: routes.news, element: <NewsListPage /> },
       { path: routes.newsArticle, element: <NewsArticlePage /> },
       { path: routes.login, element: <LoginRegisterPage /> },

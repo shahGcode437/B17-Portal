@@ -17,7 +17,7 @@ import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
 import { useToast } from "@/hooks/useToast"
 import { SIMULATED_MESSAGES } from "@/lib/simulatedActions"
-import { providerProfilePath, newsArticlePath, tutorProfilePath } from "@/config/routes"
+import { providerProfilePath, newsArticlePath, tutorProfilePath, propertyDetailsPath } from "@/config/routes"
 
 interface ResultPreviewDialogProps {
   result: SearchResult | null
@@ -48,6 +48,11 @@ function ResultPreviewDialog({ result, onOpenChange }: ResultPreviewDialogProps)
     if (result.kind === "tutor") {
       onOpenChange(false)
       navigate(tutorProfilePath(result.id))
+      return
+    }
+    if (result.kind === "property") {
+      onOpenChange(false)
+      navigate(propertyDetailsPath(result.id))
       return
     }
     show(SIMULATED_MESSAGES.contact)
@@ -94,7 +99,10 @@ function ResultPreviewDialog({ result, onOpenChange }: ResultPreviewDialogProps)
                   </Badge>
                 ))}
               </Stack>
-              {result.kind !== "provider" && result.kind !== "news" && result.kind !== "tutor" && (
+              {result.kind !== "provider" &&
+                result.kind !== "news" &&
+                result.kind !== "tutor" &&
+                result.kind !== "property" && (
                 <Typography variant="caption" className="text-muted-foreground">
                   A full profile page is available in a later phase of the prototype.
                 </Typography>
