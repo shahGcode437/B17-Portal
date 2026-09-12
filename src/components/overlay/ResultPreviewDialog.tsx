@@ -17,7 +17,13 @@ import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
 import { useToast } from "@/hooks/useToast"
 import { SIMULATED_MESSAGES } from "@/lib/simulatedActions"
-import { providerProfilePath, newsArticlePath, tutorProfilePath, propertyDetailsPath } from "@/config/routes"
+import {
+  providerProfilePath,
+  businessProfilePath,
+  newsArticlePath,
+  tutorProfilePath,
+  propertyDetailsPath,
+} from "@/config/routes"
 
 interface ResultPreviewDialogProps {
   result: SearchResult | null
@@ -40,6 +46,11 @@ function ResultPreviewDialog({ result, onOpenChange }: ResultPreviewDialogProps)
       navigate(providerProfilePath(result.id))
       return
     }
+    if (result.kind === "business") {
+      onOpenChange(false)
+      navigate(businessProfilePath(result.id))
+      return
+    }
     if (result.kind === "news") {
       onOpenChange(false)
       navigate(newsArticlePath(result.id))
@@ -59,7 +70,7 @@ function ResultPreviewDialog({ result, onOpenChange }: ResultPreviewDialogProps)
   }
 
   const primaryLabel = result
-    ? result.kind === "provider" || result.kind === "tutor"
+    ? result.kind === "provider" || result.kind === "tutor" || result.kind === "business"
       ? "View Profile"
       : result.kind === "property"
         ? "Contact Agent"
@@ -100,6 +111,7 @@ function ResultPreviewDialog({ result, onOpenChange }: ResultPreviewDialogProps)
                 ))}
               </Stack>
               {result.kind !== "provider" &&
+                result.kind !== "business" &&
                 result.kind !== "news" &&
                 result.kind !== "tutor" &&
                 result.kind !== "property" && (

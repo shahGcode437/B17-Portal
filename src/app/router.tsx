@@ -6,6 +6,8 @@ import { HomePage } from "@/features/home/HomePage"
 import { SearchPage } from "@/features/search/SearchPage"
 import { ServicesPage } from "@/features/services/ServicesPage"
 import { ProviderProfilePage } from "@/features/services/ProviderProfilePage"
+import { DirectoryPage } from "@/features/directory/DirectoryPage"
+import { BusinessProfilePage } from "@/features/directory/BusinessProfilePage"
 import { EducationPage } from "@/features/education/EducationPage"
 import { TutorProfilePage } from "@/features/education/TutorProfilePage"
 import { PropertyPage } from "@/features/property/PropertyPage"
@@ -41,7 +43,8 @@ export const router = createBrowserRouter([
         element: <ComingSoonPage title="Home & Construction Services" />,
       },
       { path: routes.providerProfile, element: <ProviderProfilePage /> },
-      { path: routes.directory, element: <ComingSoonPage title="Business Directory" /> },
+      { path: routes.directory, element: <DirectoryPage /> },
+      { path: routes.businessProfile, element: <BusinessProfilePage /> },
       { path: routes.education, element: <EducationPage /> },
       { path: routes.tutorProfile, element: <TutorProfilePage /> },
       { path: routes.property, element: <PropertyPage /> },

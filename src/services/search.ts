@@ -1,5 +1,6 @@
 import type { SearchHit, SearchResultKind } from "@/types/search"
 import type { Provider } from "@/types/provider"
+import type { Business } from "@/types/business"
 import type { Tutor } from "@/types/tutor"
 import type { Property } from "@/types/property"
 import type { NewsArticle } from "@/types/news"
@@ -24,21 +25,34 @@ import {
  */
 
 /**
- * Approved provider/business listings from the moderation store (Phase 4B),
- * mapped into the exact same SearchHit shape as the static seed data. Only
- * `status === "approved"` listings are eligible — pending and rejected
- * listings must never become publicly searchable. `search.ts` is a plain
- * module (not a component), so it reads the Zustand store via `getState()`.
+ * Approved provider/business listings from the moderation store (Phase 4B).
+ * Only `status === "approved"` listings are eligible — pending and rejected
+ * listings must never become publicly searchable or resolvable. `search.ts`
+ * is a plain module (not a component), so it reads the Zustand store via
+ * `getState()`. Shared by both the Search merge below and the by-id lookups
+ * further down, so the "approved only" filter lives in exactly one place.
  */
+function approvedListings() {
+  return useListingsStore.getState().listings.filter((listing) => listing.status === "approved")
+}
+
 function approvedListingHits(): SearchHit[] {
-  return useListingsStore
-    .getState()
-    .listings.filter((listing) => listing.status === "approved")
-    .map((listing): SearchHit =>
-      listing.kind === "provider"
-        ? { kind: "provider", item: listing.data }
-        : { kind: "business", item: listing.data }
-    )
+  return approvedListings().map((listing): SearchHit =>
+    listing.kind === "provider"
+      ? { kind: "provider", item: listing.data }
+      : { kind: "business", item: listing.data }
+  )
+}
+
+/** A provider found via the moderation store — caller is trusted to have filtered by `kind`. */
+function getApprovedProviderById(id: string): Provider | undefined {
+  const listing = approvedListings().find((l) => l.kind === "provider" && l.id === id)
+  return listing ? (listing.data as Provider) : undefined
+}
+
+function getApprovedBusinessById(id: string): Business | undefined {
+  const listing = approvedListings().find((l) => l.kind === "business" && l.id === id)
+  return listing ? (listing.data as Business) : undefined
 }
 
 /**
@@ -89,8 +103,13 @@ export function searchAll(query: string, type: SearchResultKind | "all" = "all")
   })
 }
 
+/**
+ * A provider can come from the static seed data or from an approved listing
+ * submitted through the provider onboarding flow (Phase 4A/4B) — check the
+ * static array first, then fall back to the moderation store.
+ */
 export function getProviderById(id: string): Provider | undefined {
-  return providers.find((p) => p.id === id)
+  return providers.find((p) => p.id === id) ?? getApprovedProviderById(id)
 }
 
 export function getFeaturedProviders(limit = 4) {
@@ -99,6 +118,11 @@ export function getFeaturedProviders(limit = 4) {
 
 export function getFeaturedBusinesses(limit = 4) {
   return [...businesses].sort((a, b) => Number(b.featured) - Number(a.featured)).slice(0, limit)
+}
+
+/** Same static-then-approved-listing resolution as getProviderById, for the same reason. */
+export function getBusinessById(id: string): Business | undefined {
+  return businesses.find((b) => b.id === id) ?? getApprovedBusinessById(id)
 }
 
 export function getFeaturedTutors(limit = 3) {

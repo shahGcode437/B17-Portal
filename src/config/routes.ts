@@ -18,6 +18,7 @@ export const routes = {
   profile: "/profile",
 
   providerProfile: "/providers/:id",
+  businessProfile: "/businesses/:id",
   tutorProfile: "/tutors/:id",
   propertyDetails: "/properties/:id",
 
@@ -45,6 +46,11 @@ export function providerProfilePath(id: string): string {
 /** Builds a concrete link to a news article/update detail page (e.g. "/news/news-01"). */
 export function newsArticlePath(id: string): string {
   return `/news/${id}`
+}
+
+/** Builds a concrete link to a business's public profile (e.g. "/businesses/business-01"). */
+export function businessProfilePath(id: string): string {
+  return `/businesses/${id}`
 }
 
 /** Builds a concrete link to a tutor's public profile (e.g. "/tutors/tutor-physics-01"). */
