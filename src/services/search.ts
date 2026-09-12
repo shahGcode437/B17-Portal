@@ -1,11 +1,12 @@
 import type { SearchHit, SearchResultKind } from "@/types/search"
 import type { Provider } from "@/types/provider"
+import type { NewsArticle } from "@/types/news"
 import { providers } from "@/data/providers"
 import { businesses } from "@/data/businesses"
 import { tutors } from "@/data/tutors"
 import { properties } from "@/data/properties"
-import { newsItems } from "@/data/news"
 import { useListingsStore } from "@/state/listingsStore"
+import { useNewsStore } from "@/state/newsStore"
 import {
   mapProviderToResult,
   mapBusinessToResult,
@@ -38,13 +39,23 @@ function approvedListingHits(): SearchHit[] {
     )
 }
 
+/**
+ * Published news articles and daily updates (Phase 5A) — one unified list,
+ * `kind` distinguishes editorial News from operational Daily Updates.
+ * Only `status === "published"` items are eligible for public Search or the
+ * public /news pages; drafts must never be publicly visible.
+ */
+function publishedNews(): NewsArticle[] {
+  return useNewsStore.getState().items.filter((item) => item.status === "published")
+}
+
 function allHits(): SearchHit[] {
   return [
     ...providers.map((item): SearchHit => ({ kind: "provider", item })),
     ...businesses.map((item): SearchHit => ({ kind: "business", item })),
     ...tutors.map((item): SearchHit => ({ kind: "tutor", item })),
     ...properties.map((item): SearchHit => ({ kind: "property", item })),
-    ...newsItems.map((item): SearchHit => ({ kind: "news", item })),
+    ...publishedNews().map((item): SearchHit => ({ kind: "news", item })),
     ...approvedListingHits(),
   ]
 }
@@ -96,6 +107,13 @@ export function getFeaturedProperties(limit = 3) {
   return properties.slice(0, limit)
 }
 
-export function getLatestNews(limit = 3) {
-  return [...newsItems].sort((a, b) => b.publishedAt.localeCompare(a.publishedAt)).slice(0, limit)
+/** Sorted newest-first; omit `limit` to get every published item (used by the /news listing page). */
+export function getLatestNews(limit?: number) {
+  const sorted = [...publishedNews()].sort((a, b) => b.publishedAt.localeCompare(a.publishedAt))
+  return limit === undefined ? sorted : sorted.slice(0, limit)
+}
+
+/** Only published items are resolvable — a draft's direct URL must not reveal it publicly. */
+export function getNewsById(id: string): NewsArticle | undefined {
+  return publishedNews().find((item) => item.id === id)
 }

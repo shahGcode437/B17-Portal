@@ -22,7 +22,7 @@ function NewsPreview({ onSelect }: NewsPreviewProps) {
       <SectionHeader
         title="News & Daily Updates"
         description="Local development, infrastructure and community updates."
-        viewAllPath={`${routes.search}?type=news`}
+        viewAllPath={routes.news}
       />
       <motion.div
         initial="initial"

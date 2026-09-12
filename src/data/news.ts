@@ -1,13 +1,14 @@
 import type { NewsArticle } from "@/types/news"
 
 /**
- * Demo news articles and daily updates (Prototype Data Contract: 3–5 each,
- * combined here for the Phase 2 preview scope). Fictional prototype content.
+ * Seed news articles and daily updates (Prototype Data Contract: 3–5 each).
+ * Consumed by useNewsStore as its initial state. Fictional prototype content.
  */
-export const newsItems: NewsArticle[] = [
+export const newsSeed: NewsArticle[] = [
   {
     id: "news-01",
     kind: "news",
+    status: "published",
     title: "B-17 Community Park Cleanup Drive This Weekend",
     category: "Community",
     summary:
@@ -19,6 +20,7 @@ export const newsItems: NewsArticle[] = [
   {
     id: "news-02",
     kind: "update",
+    status: "published",
     title: "Scheduled Water Supply Maintenance — Block C",
     category: "Utilities",
     summary:
@@ -30,6 +32,7 @@ export const newsItems: NewsArticle[] = [
   {
     id: "news-03",
     kind: "update",
+    status: "published",
     title: "Road Resurfacing Update — Main Boulevard",
     category: "Infrastructure",
     summary:
@@ -41,6 +44,7 @@ export const newsItems: NewsArticle[] = [
   {
     id: "news-04",
     kind: "news",
+    status: "published",
     title: "New Local Market Stalls Open in B-17",
     category: "Local Business",
     summary:
@@ -52,6 +56,7 @@ export const newsItems: NewsArticle[] = [
   {
     id: "news-05",
     kind: "update",
+    status: "published",
     title: "Evening Power Load Management Notice",
     category: "Utilities",
     summary:

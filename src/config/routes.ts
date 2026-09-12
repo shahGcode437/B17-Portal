@@ -11,6 +11,7 @@ export const routes = {
   education: "/education",
   property: "/property",
   news: "/news",
+  newsArticle: "/news/:id",
 
   login: "/login",
   register: "/register",
@@ -34,4 +35,9 @@ export type AppRoute = (typeof routes)[keyof typeof routes]
 /** Builds a concrete link to a provider's public profile (e.g. "/providers/provider-solar-01"). */
 export function providerProfilePath(id: string): string {
   return `/providers/${id}`
+}
+
+/** Builds a concrete link to a news article/update detail page (e.g. "/news/news-01"). */
+export function newsArticlePath(id: string): string {
+  return `/news/${id}`
 }
