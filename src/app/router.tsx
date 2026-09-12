@@ -7,6 +7,9 @@ import { SearchPage } from "@/features/search/SearchPage"
 import { ServicesPage } from "@/features/services/ServicesPage"
 import { ProviderProfilePage } from "@/features/services/ProviderProfilePage"
 import { LoginRegisterPage } from "@/features/auth/LoginRegisterPage"
+import { ProviderDashboardPage } from "@/features/provider/ProviderDashboardPage"
+import { ListingFormPage } from "@/features/provider/ListingFormPage"
+import { ListingPendingPage } from "@/features/provider/ListingPendingPage"
 import { ComingSoonPage } from "@/features/future-modules/ComingSoonPage"
 import { routes } from "@/config/routes"
 
@@ -41,9 +44,9 @@ export const router = createBrowserRouter([
     path: routes.providerDashboard,
     element: <ProviderLayout />,
     children: [
-      { index: true, element: <ComingSoonPage title="Provider Dashboard" /> },
-      { path: "listings/new", element: <ComingSoonPage title="Create Listing" /> },
-      { path: "listings/pending", element: <ComingSoonPage title="Listing Pending" /> },
+      { index: true, element: <ProviderDashboardPage /> },
+      { path: "listings/new", element: <ListingFormPage /> },
+      { path: "listings/pending", element: <ListingPendingPage /> },
     ],
   },
   {

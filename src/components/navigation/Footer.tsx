@@ -45,6 +45,20 @@ function Footer() {
           </Stack>
 
           <Stack gap={3}>
+            <Typography variant="label">For Providers</Typography>
+            <Stack as="ul" gap={2}>
+              <li>
+                <Link
+                  to={routes.providerDashboard}
+                  className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  List Your Business / Service
+                </Link>
+              </li>
+            </Stack>
+          </Stack>
+
+          <Stack gap={3}>
             <Typography variant="label">Coming Soon</Typography>
             <Stack as="ul" gap={2}>
               {footerFutureModules.map((item) => (

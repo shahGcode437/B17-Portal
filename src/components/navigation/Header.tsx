@@ -1,4 +1,4 @@
-import { MapPin, Search, User } from "lucide-react"
+import { MapPin, Search, Store, User } from "lucide-react"
 import { Link } from "react-router-dom"
 import { Container } from "@/components/foundation/Container"
 import { Stack } from "@/components/foundation/Stack"
@@ -29,6 +29,12 @@ function Header() {
             <Button asChild variant="ghost" size="icon" aria-label="Search">
               <Link to={routes.search}>
                 <Search />
+              </Link>
+            </Button>
+            <Button asChild variant="ghost" size="sm" className="hidden sm:inline-flex">
+              <Link to={routes.providerDashboard}>
+                <Store />
+                List Your Business
               </Link>
             </Button>
             <Button asChild variant="outline" size="sm" className="hidden sm:inline-flex">
