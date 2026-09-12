@@ -10,6 +10,9 @@ import { LoginRegisterPage } from "@/features/auth/LoginRegisterPage"
 import { ProviderDashboardPage } from "@/features/provider/ProviderDashboardPage"
 import { ListingFormPage } from "@/features/provider/ListingFormPage"
 import { ListingPendingPage } from "@/features/provider/ListingPendingPage"
+import { AdminLoginPage } from "@/features/admin/AdminLoginPage"
+import { AdminDashboardPage } from "@/features/admin/AdminDashboardPage"
+import { ModerationQueuePage } from "@/features/admin/ModerationQueuePage"
 import { ComingSoonPage } from "@/features/future-modules/ComingSoonPage"
 import { routes } from "@/config/routes"
 
@@ -53,9 +56,9 @@ export const router = createBrowserRouter([
     path: routes.adminDashboard,
     element: <AdminLayout />,
     children: [
-      { index: true, element: <ComingSoonPage title="Admin Dashboard" /> },
-      { path: "login", element: <ComingSoonPage title="Admin Login" /> },
-      { path: "moderation", element: <ComingSoonPage title="Listing Review" /> },
+      { index: true, element: <AdminDashboardPage /> },
+      { path: "login", element: <AdminLoginPage /> },
+      { path: "moderation", element: <ModerationQueuePage /> },
     ],
   },
   {

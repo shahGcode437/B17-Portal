@@ -5,6 +5,7 @@ import { businesses } from "@/data/businesses"
 import { tutors } from "@/data/tutors"
 import { properties } from "@/data/properties"
 import { newsItems } from "@/data/news"
+import { useListingsStore } from "@/state/listingsStore"
 import {
   mapProviderToResult,
   mapBusinessToResult,
@@ -19,6 +20,24 @@ import {
  * components must never import from `@/data/*` directly.
  */
 
+/**
+ * Approved provider/business listings from the moderation store (Phase 4B),
+ * mapped into the exact same SearchHit shape as the static seed data. Only
+ * `status === "approved"` listings are eligible — pending and rejected
+ * listings must never become publicly searchable. `search.ts` is a plain
+ * module (not a component), so it reads the Zustand store via `getState()`.
+ */
+function approvedListingHits(): SearchHit[] {
+  return useListingsStore
+    .getState()
+    .listings.filter((listing) => listing.status === "approved")
+    .map((listing): SearchHit =>
+      listing.kind === "provider"
+        ? { kind: "provider", item: listing.data }
+        : { kind: "business", item: listing.data }
+    )
+}
+
 function allHits(): SearchHit[] {
   return [
     ...providers.map((item): SearchHit => ({ kind: "provider", item })),
@@ -26,6 +45,7 @@ function allHits(): SearchHit[] {
     ...tutors.map((item): SearchHit => ({ kind: "tutor", item })),
     ...properties.map((item): SearchHit => ({ kind: "property", item })),
     ...newsItems.map((item): SearchHit => ({ kind: "news", item })),
+    ...approvedListingHits(),
   ]
 }
 

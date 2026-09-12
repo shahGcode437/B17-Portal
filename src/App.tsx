@@ -3,13 +3,16 @@ import { RouterProvider } from "react-router-dom"
 import { router } from "@/app/router"
 import { ToastProvider } from "@/components/feedback/ToastProvider"
 import { AuthProvider } from "@/features/auth/AuthProvider"
+import { AdminAuthProvider } from "@/features/admin/AdminAuthProvider"
 
 function App() {
   return (
     <MotionConfig reducedMotion="user">
       <ToastProvider>
         <AuthProvider>
-          <RouterProvider router={router} />
+          <AdminAuthProvider>
+            <RouterProvider router={router} />
+          </AdminAuthProvider>
         </AuthProvider>
       </ToastProvider>
     </MotionConfig>
