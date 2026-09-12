@@ -18,6 +18,7 @@ export const routes = {
   profile: "/profile",
 
   providerProfile: "/providers/:id",
+  tutorProfile: "/tutors/:id",
 
   providerDashboard: "/provider",
   createListing: "/provider/listings/new",
@@ -43,6 +44,11 @@ export function providerProfilePath(id: string): string {
 /** Builds a concrete link to a news article/update detail page (e.g. "/news/news-01"). */
 export function newsArticlePath(id: string): string {
   return `/news/${id}`
+}
+
+/** Builds a concrete link to a tutor's public profile (e.g. "/tutors/tutor-physics-01"). */
+export function tutorProfilePath(id: string): string {
+  return `/tutors/${id}`
 }
 
 /** Builds a concrete link to the Admin edit form for a news item (e.g. "/admin/content/news-01/edit"). */

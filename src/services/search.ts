@@ -1,5 +1,6 @@
 import type { SearchHit, SearchResultKind } from "@/types/search"
 import type { Provider } from "@/types/provider"
+import type { Tutor } from "@/types/tutor"
 import type { NewsArticle } from "@/types/news"
 import { providers } from "@/data/providers"
 import { businesses } from "@/data/businesses"
@@ -101,6 +102,10 @@ export function getFeaturedBusinesses(limit = 4) {
 
 export function getFeaturedTutors(limit = 3) {
   return tutors.slice(0, limit)
+}
+
+export function getTutorById(id: string): Tutor | undefined {
+  return tutors.find((t) => t.id === id)
 }
 
 export function getFeaturedProperties(limit = 3) {
