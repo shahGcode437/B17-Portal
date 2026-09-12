@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { ProviderCard } from "@/components/cards/ProviderCard"
 import { BusinessCard } from "@/components/cards/BusinessCard"
+import { PropertyCard } from "@/components/cards/PropertyCard"
 import { useListingsStore } from "@/state/listingsStore"
 import { useToast } from "@/hooks/useToast"
 
@@ -58,10 +59,12 @@ function ReviewPanel({ listing, open, onOpenChange }: ReviewPanelProps) {
 
   if (!listing) return null
 
+  const displayName = listing.kind === "property" ? listing.data.title : listing.data.name
+
   function handleApprove() {
     if (!listing) return
     setStatus(listing.id, "approved")
-    show(`${listing.data.name} approved (demo)`)
+    show(`${displayName} approved (demo)`)
     handleOpenChange(false)
   }
 
@@ -73,7 +76,7 @@ function ReviewPanel({ listing, open, onOpenChange }: ReviewPanelProps) {
       return
     }
     setStatus(listing.id, "rejected", trimmed)
-    show(`${listing.data.name} rejected (demo)`)
+    show(`${displayName} rejected (demo)`)
     handleOpenChange(false)
   }
 
@@ -88,11 +91,9 @@ function ReviewPanel({ listing, open, onOpenChange }: ReviewPanelProps) {
         </DialogHeader>
 
         <Stack gap={4}>
-          {listing.kind === "provider" ? (
-            <ProviderCard provider={listing.data} />
-          ) : (
-            <BusinessCard business={listing.data} />
-          )}
+          {listing.kind === "provider" && <ProviderCard provider={listing.data} />}
+          {listing.kind === "business" && <BusinessCard business={listing.data} />}
+          {listing.kind === "property" && <PropertyCard property={listing.data} />}
 
           <Stack gap={1} className="rounded-lg bg-muted p-3">
             <Typography variant="body-sm">

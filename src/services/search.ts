@@ -37,11 +37,11 @@ function approvedListings() {
 }
 
 function approvedListingHits(): SearchHit[] {
-  return approvedListings().map((listing): SearchHit =>
-    listing.kind === "provider"
-      ? { kind: "provider", item: listing.data }
-      : { kind: "business", item: listing.data }
-  )
+  return approvedListings().map((listing): SearchHit => {
+    if (listing.kind === "provider") return { kind: "provider", item: listing.data }
+    if (listing.kind === "business") return { kind: "business", item: listing.data }
+    return { kind: "property", item: listing.data }
+  })
 }
 
 /** A provider found via the moderation store — caller is trusted to have filtered by `kind`. */
@@ -53,6 +53,11 @@ function getApprovedProviderById(id: string): Provider | undefined {
 function getApprovedBusinessById(id: string): Business | undefined {
   const listing = approvedListings().find((l) => l.kind === "business" && l.id === id)
   return listing ? (listing.data as Business) : undefined
+}
+
+function getApprovedPropertyById(id: string): Property | undefined {
+  const listing = approvedListings().find((l) => l.kind === "property" && l.id === id)
+  return listing ? (listing.data as Property) : undefined
 }
 
 /**
@@ -137,8 +142,9 @@ export function getFeaturedProperties(limit = 3) {
   return properties.slice(0, limit)
 }
 
+/** Same static-then-approved-listing resolution as getProviderById/getBusinessById, for the same reason. */
 export function getPropertyById(id: string): Property | undefined {
-  return properties.find((p) => p.id === id)
+  return properties.find((p) => p.id === id) ?? getApprovedPropertyById(id)
 }
 
 /** Sorted newest-first; omit `limit` to get every published item (used by the /news listing page). */

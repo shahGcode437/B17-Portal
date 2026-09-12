@@ -1,10 +1,11 @@
 import { useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { motion } from "motion/react"
-import { ArrowLeft, Wrench, Building2 } from "lucide-react"
+import { ArrowLeft, Wrench, Building2, KeyRound } from "lucide-react"
 import type { ListingKind } from "@/types/listing"
 import type { Provider } from "@/types/provider"
 import type { Business } from "@/types/business"
+import type { Property, ListingType, FurnishingStatus } from "@/types/property"
 import type { ServiceCategorySlug } from "@/types/category"
 import { Container } from "@/components/foundation/Container"
 import { Stack } from "@/components/foundation/Stack"
@@ -13,8 +14,10 @@ import { Button } from "@/components/ui/button"
 import { DemoBadge } from "@/components/feedback/DemoBadge"
 import { ProviderCard } from "@/components/cards/ProviderCard"
 import { BusinessCard } from "@/components/cards/BusinessCard"
+import { PropertyCard } from "@/components/cards/PropertyCard"
 import { ListingForm } from "@/features/provider/ListingForm"
-import { parseTags, type ListingFormValues } from "@/features/provider/listingSchema"
+import { PropertyListingForm } from "@/features/provider/PropertyListingForm"
+import { parseTags, type ListingFormValues, type PropertyFormValues } from "@/features/provider/listingSchema"
 import { serviceCategories } from "@/data/serviceCategories"
 import { useListingsStore } from "@/state/listingsStore"
 import { useRequireAuth } from "@/hooks/useRequireAuth"
@@ -22,6 +25,7 @@ import { routes } from "@/config/routes"
 import { fadeUp } from "@/lib/motion"
 
 type Step = "type" | "form" | "preview"
+type FormValues = ListingFormValues | PropertyFormValues
 
 function buildProvider(values: ListingFormValues, id: string): Provider {
   const category = serviceCategories.find((c) => c.slug === values.category)
@@ -33,6 +37,7 @@ function buildProvider(values: ListingFormValues, id: string): Provider {
     description: values.description,
     area: values.area,
     tags: parseTags(values.tagsInput),
+    image: values.image,
   }
 }
 
@@ -44,6 +49,24 @@ function buildBusiness(values: ListingFormValues, id: string): Business {
     description: values.description,
     area: values.area,
     tags: parseTags(values.tagsInput),
+    image: values.image,
+  }
+}
+
+function buildProperty(values: PropertyFormValues, id: string): Property {
+  const bedrooms = values.bedrooms?.trim() ? Number(values.bedrooms) : undefined
+  return {
+    id,
+    title: values.title,
+    listingType: values.listingType as ListingType,
+    propertyType: values.propertyType,
+    price: values.price,
+    area: values.area,
+    description: values.description,
+    bedrooms: bedrooms !== undefined && !Number.isNaN(bedrooms) ? bedrooms : undefined,
+    furnished: values.furnished ? (values.furnished as FurnishingStatus) : undefined,
+    tags: values.tagsInput ? parseTags(values.tagsInput) : [],
+    image: values.image,
   }
 }
 
@@ -60,6 +83,12 @@ const typeChoices: { kind: ListingKind; icon: typeof Wrench; title: string; desc
     title: "Business / Shop",
     description: "Pharmacies, salons, grocery stores and other local businesses.",
   },
+  {
+    kind: "property",
+    icon: KeyRound,
+    title: "Property",
+    description: "Houses, flats and plots for sale or rent.",
+  },
 ]
 
 /** Create Listing (UI/UX Spec §18) — Choose Type → Form → Preview → Submit, one screen. */
@@ -71,7 +100,7 @@ function ListingFormPage() {
 
   const [step, setStep] = useState<Step>("type")
   const [kind, setKind] = useState<ListingKind | null>(null)
-  const [values, setValues] = useState<ListingFormValues | null>(null)
+  const [values, setValues] = useState<FormValues | null>(null)
 
   if (!user) return null
 
@@ -80,7 +109,7 @@ function ListingFormPage() {
     setStep("form")
   }
 
-  function handleFormSubmit(nextValues: ListingFormValues) {
+  function handleFormSubmit(nextValues: FormValues) {
     setValues(nextValues)
     setStep("preview")
   }
@@ -94,19 +123,24 @@ function ListingFormPage() {
       submittedBy: user.name,
     }
     if (kind === "provider") {
-      submitListing({ ...base, kind: "provider", data: buildProvider(values, draftId) })
+      submitListing({ ...base, kind: "provider", data: buildProvider(values as ListingFormValues, draftId) })
+    } else if (kind === "business") {
+      submitListing({ ...base, kind: "business", data: buildBusiness(values as ListingFormValues, draftId) })
     } else {
-      submitListing({ ...base, kind: "business", data: buildBusiness(values, draftId) })
+      submitListing({ ...base, kind: "property", data: buildProperty(values as PropertyFormValues, draftId) })
     }
     navigate(routes.listingPending)
   }
+
+  const previewProperty =
+    step === "preview" && kind === "property" && values ? buildProperty(values as PropertyFormValues, draftId) : null
 
   return (
     <Container className="py-8 sm:py-12">
       <motion.div {...fadeUp} className="mx-auto max-w-xl">
         <Stack gap={6}>
           <Stack gap={1}>
-            <Typography variant="h1">List Your Business / Service</Typography>
+            <Typography variant="h1">List Your Business / Service / Property</Typography>
             <Typography variant="body-sm" className="text-muted-foreground">
               A few quick details, then submit for review.
             </Typography>
@@ -135,10 +169,18 @@ function ListingFormPage() {
             </Stack>
           )}
 
-          {step === "form" && kind && (
+          {step === "form" && kind === "property" && (
+            <PropertyListingForm
+              defaultValues={(values as PropertyFormValues) ?? undefined}
+              onBack={() => setStep("type")}
+              onSubmit={handleFormSubmit}
+            />
+          )}
+
+          {step === "form" && (kind === "provider" || kind === "business") && (
             <ListingForm
               kind={kind}
-              defaultValues={values ?? undefined}
+              defaultValues={(values as ListingFormValues) ?? undefined}
               onBack={() => setStep("type")}
               onSubmit={handleFormSubmit}
             />
@@ -152,12 +194,17 @@ function ListingFormPage() {
               </Stack>
 
               <div aria-hidden={false}>
-                {kind === "provider" ? (
-                  <ProviderCard provider={buildProvider(values, draftId)} />
-                ) : (
-                  <BusinessCard business={buildBusiness(values, draftId)} />
-                )}
+                {kind === "provider" && <ProviderCard provider={buildProvider(values as ListingFormValues, draftId)} />}
+                {kind === "business" && <BusinessCard business={buildBusiness(values as ListingFormValues, draftId)} />}
+                {kind === "property" && previewProperty && <PropertyCard property={previewProperty} />}
               </div>
+
+              {previewProperty && (previewProperty.propertyType || previewProperty.furnished) && (
+                <Typography variant="body-sm" className="text-muted-foreground">
+                  {previewProperty.propertyType}
+                  {previewProperty.furnished ? ` · ${previewProperty.furnished}` : ""}
+                </Typography>
+              )}
 
               <Typography variant="caption" className="text-muted-foreground">
                 This is how your listing will appear once approved. It is not yet published or

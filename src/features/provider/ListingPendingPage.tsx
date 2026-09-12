@@ -8,8 +8,9 @@ import { Button } from "@/components/ui/button"
 import { EmptyState } from "@/components/feedback/EmptyState"
 import { ProviderCard } from "@/components/cards/ProviderCard"
 import { BusinessCard } from "@/components/cards/BusinessCard"
+import { PropertyCard } from "@/components/cards/PropertyCard"
 import { ListingStatusBadge } from "@/features/provider/ListingStatusBadge"
-import { useListingsStore } from "@/state/listingsStore"
+import { useListingsStore, selectListingsBySubmitter } from "@/state/listingsStore"
 import { useRequireAuth } from "@/hooks/useRequireAuth"
 import { routes } from "@/config/routes"
 import { fadeUp } from "@/lib/motion"
@@ -29,22 +30,31 @@ const statusCopy = {
   },
 } as const
 
-/** Listing Pending/Status (Master Spec Screen 22) — reads the session's own listing from the store. */
+/**
+ * Listing Pending/Status (Master Spec Screen 22) — shows the current user's
+ * most recently submitted listing. A user can have several listings now
+ * (Onboarding Fix §9), so this page also links to the full "My Listings"
+ * view on the Dashboard rather than assuming there is only one.
+ */
 function ListingPendingPage() {
   const user = useRequireAuth()
   const navigate = useNavigate()
-  const { listings, mySubmittedListingId } = useListingsStore()
-  const myListing = listings.find((listing) => listing.id === mySubmittedListingId)
+  const { listings } = useListingsStore()
 
   if (!user) return null
+
+  const myListings = selectListingsBySubmitter(listings, user.name)
+    .slice()
+    .sort((a, b) => b.submittedAt.localeCompare(a.submittedAt))
+  const myListing = myListings[0]
 
   if (!myListing) {
     return (
       <Container className="py-16">
         <EmptyState
           title="No listing submitted yet"
-          description="You haven't submitted a business or service listing in this session."
-          actionLabel="List Your Business / Service"
+          description="You haven't submitted a listing in this session."
+          actionLabel="List Your Business / Service / Property"
           onAction={() => navigate(routes.createListing)}
         />
       </Container>
@@ -76,24 +86,26 @@ function ListingPendingPage() {
             </Stack>
           )}
 
-          {myListing.kind === "provider" ? (
-            <ProviderCard provider={myListing.data} />
-          ) : (
-            <BusinessCard business={myListing.data} />
+          {myListing.kind === "provider" && <ProviderCard provider={myListing.data} />}
+          {myListing.kind === "business" && <BusinessCard business={myListing.data} />}
+          {myListing.kind === "property" && <PropertyCard property={myListing.data} />}
+
+          {myListings.length > 1 && (
+            <Typography variant="caption" className="text-muted-foreground">
+              You have {myListings.length} listings submitted in this session.
+            </Typography>
           )}
 
           <Stack gap={2} className="flex-col-reverse sm:flex-row">
             <Button asChild variant="outline" className="flex-1">
-              <Link to={routes.providerDashboard}>Back to Dashboard</Link>
+              <Link to={routes.providerDashboard}>View My Listings</Link>
             </Button>
-            {myListing.status === "rejected" && (
-              <Button asChild className="flex-1">
-                <Link to={routes.createListing}>
-                  <PlusCircle />
-                  Resubmit
-                </Link>
-              </Button>
-            )}
+            <Button asChild className="flex-1">
+              <Link to={routes.createListing}>
+                <PlusCircle />
+                {myListing.status === "rejected" ? "Resubmit" : "List Another"}
+              </Link>
+            </Button>
           </Stack>
         </Stack>
       </motion.div>

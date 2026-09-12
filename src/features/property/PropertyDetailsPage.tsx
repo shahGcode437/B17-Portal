@@ -98,6 +98,12 @@ function PropertyDetailsPage() {
               {property.furnished && <Typography variant="body-sm">{property.furnished}</Typography>}
             </Stack>
 
+            {property.description && (
+              <Typography variant="body" className="text-muted-foreground">
+                {property.description}
+              </Typography>
+            )}
+
             {property.tags.length > 0 && (
               <Stack gap={2}>
                 <Typography variant="label">Details</Typography>

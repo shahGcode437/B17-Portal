@@ -10,6 +10,8 @@ export interface Property {
   /** Formatted demo price string, e.g. "PKR 4.5 Cr" — not a real offer. */
   price: string
   area: string
+  /** Optional free-text detail — static seed listings don't have one, user-submitted listings do. */
+  description?: string
   bedrooms?: number
   furnished?: FurnishingStatus
   image?: string

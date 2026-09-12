@@ -1,3 +1,4 @@
+import { useState } from "react"
 import { useForm } from "react-hook-form"
 import type { ListingKind } from "@/types/listing"
 import { Stack } from "@/components/foundation/Stack"
@@ -6,9 +7,10 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
-import { cn } from "@/lib/utils"
 import { zodResolver } from "@/lib/zodResolver"
 import { listingSchema, type ListingFormValues } from "@/features/provider/listingSchema"
+import { ListingImageInput } from "@/features/provider/ListingImageInput"
+import { selectClassName } from "@/features/provider/formStyles"
 import { serviceCategories } from "@/data/serviceCategories"
 
 interface ListingFormProps {
@@ -17,13 +19,6 @@ interface ListingFormProps {
   onSubmit: (values: ListingFormValues) => void
   onBack: () => void
 }
-
-const selectClassName = cn(
-  "h-8 w-full min-w-0 rounded-lg border border-input bg-transparent px-2.5 py-1 text-base transition-colors outline-none",
-  "focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
-  "aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20",
-  "md:text-sm dark:bg-input/30"
-)
 
 /** Unified listing form (UI/UX Spec §18) — same fields for both onboarding types, category input differs. */
 function ListingForm({ kind, defaultValues, onSubmit, onBack }: ListingFormProps) {
@@ -43,12 +38,21 @@ function ListingForm({ kind, defaultValues, onSubmit, onBack }: ListingFormProps
     },
   })
 
+  // Kept outside react-hook-form: the value is a browser-local object URL,
+  // not something a native input can hold via register(), and the image
+  // only needs to be merged in at submit time.
+  const [image, setImage] = useState<string | undefined>(defaultValues?.image)
+
   const nameLabel = kind === "provider" ? "Name" : "Business Name"
   const categoryLabel = kind === "provider" ? "Service Category" : "Category"
   const tagsLabel = kind === "provider" ? "Services Offered" : "Services / Tags"
 
+  function submit(values: ListingFormValues) {
+    onSubmit({ ...values, image })
+  }
+
   return (
-    <form onSubmit={handleSubmit(onSubmit)} noValidate>
+    <form onSubmit={handleSubmit(submit)} noValidate>
       <Stack gap={4}>
         <Stack gap={2}>
           <Label htmlFor="listing-name">{nameLabel}</Label>
@@ -154,6 +158,8 @@ function ListingForm({ kind, defaultValues, onSubmit, onBack }: ListingFormProps
             </Typography>
           )}
         </Stack>
+
+        <ListingImageInput id="listing-image" value={image} onChange={setImage} />
 
         <Stack gap={2} className="flex-col-reverse sm:flex-row sm:justify-end">
           <Button type="button" variant="outline" onClick={onBack}>

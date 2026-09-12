@@ -2,12 +2,11 @@ import { create } from "zustand"
 import type { PendingListing, ListingStatus } from "@/types/listing"
 import type { Provider } from "@/types/provider"
 import type { Business } from "@/types/business"
+import type { Property } from "@/types/property"
 import { pendingListingsSeed } from "@/data/pendingListings"
 
 interface ListingsState {
   listings: PendingListing[]
-  /** The current demo session's own submitted listing, if any. */
-  mySubmittedListingId: string | null
   submitListing: (listing: PendingListing) => void
   resubmitListing: (id: string, data: PendingListing["data"]) => void
   setStatus: (id: string, status: ListingStatus, rejectionReason?: string) => void
@@ -19,15 +18,18 @@ interface ListingsState {
  * piece of state genuinely shared across unrelated routes (Provider
  * Dashboard, and Admin moderation in Phase 4B), which is why it's the first
  * real use of Zustand rather than React Context.
+ *
+ * `listings` is the single source of truth for a user's own submissions too —
+ * there is no separate "my listing id" field. A user can submit any number
+ * of listings; callers derive "my listings" by filtering this array on
+ * `submittedBy` (see `selectListingsBySubmitter` below).
  */
 export const useListingsStore = create<ListingsState>((set) => ({
   listings: pendingListingsSeed,
-  mySubmittedListingId: null,
 
   submitListing: (listing) =>
     set((state) => ({
       listings: [...state.listings, listing],
-      mySubmittedListingId: listing.id,
     })),
 
   resubmitListing: (id, data) =>
@@ -41,9 +43,9 @@ export const useListingsStore = create<ListingsState>((set) => ({
         }
         // Caller is expected to pass data matching this listing's own kind —
         // the branch below just satisfies the discriminated union's shape.
-        return listing.kind === "provider"
-          ? { ...listing, ...resubmitted, data: data as Provider }
-          : { ...listing, ...resubmitted, data: data as Business }
+        if (listing.kind === "provider") return { ...listing, ...resubmitted, data: data as Provider }
+        if (listing.kind === "business") return { ...listing, ...resubmitted, data: data as Business }
+        return { ...listing, ...resubmitted, data: data as Property }
       }),
     })),
 
@@ -54,3 +56,8 @@ export const useListingsStore = create<ListingsState>((set) => ({
       ),
     })),
 }))
+
+/** Derives one user's own submitted listings from the canonical `listings` array — no second source of truth. */
+export function selectListingsBySubmitter(listings: PendingListing[], submittedBy: string): PendingListing[] {
+  return listings.filter((listing) => listing.submittedBy === submittedBy)
+}

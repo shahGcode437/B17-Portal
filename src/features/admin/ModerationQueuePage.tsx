@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react"
 import { motion } from "motion/react"
-import { Wrench, Building2 } from "lucide-react"
+import { Wrench, Building2, KeyRound } from "lucide-react"
 import { Container } from "@/components/foundation/Container"
 import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
@@ -29,8 +29,26 @@ const filterOptions: { value: ListingStatus | "all"; label: string }[] = [
   { value: "rejected", label: "Rejected" },
 ]
 
-function listingCategory(listing: PendingListing) {
-  return listing.kind === "provider" ? listing.data.categoryLabel : listing.data.category
+const kindLabel: Record<PendingListing["kind"], string> = {
+  provider: "Service / Professional",
+  business: "Business / Shop",
+  property: "Property",
+}
+
+const kindIcon: Record<PendingListing["kind"], typeof Wrench> = {
+  provider: Wrench,
+  business: Building2,
+  property: KeyRound,
+}
+
+function listingTitle(listing: PendingListing): string {
+  return listing.kind === "property" ? listing.data.title : listing.data.name
+}
+
+function listingCategory(listing: PendingListing): string {
+  if (listing.kind === "provider") return listing.data.categoryLabel
+  if (listing.kind === "business") return listing.data.category
+  return `${listing.data.propertyType} · ${listing.data.listingType === "sale" ? "For Sale" : "For Rent"}`
 }
 
 /** Moderation Queue (Master Spec §17) — pending-first list of submitted listings, with Review action. */
@@ -92,7 +110,7 @@ function ModerationQueuePage() {
             <motion.div initial="initial" animate="animate" variants={staggerContainer}>
               <Stack gap={3}>
                 {visible.map((listing) => {
-                  const Icon = listing.kind === "provider" ? Wrench : Building2
+                  const Icon = kindIcon[listing.kind]
                   return (
                     <motion.div
                       key={listing.id}
@@ -104,9 +122,9 @@ function ModerationQueuePage() {
                           <Icon className="size-4" aria-hidden="true" />
                         </span>
                         <Stack gap={1}>
-                          <Typography variant="label">{listing.data.name}</Typography>
+                          <Typography variant="label">{listingTitle(listing)}</Typography>
                           <Typography variant="body-sm" className="text-muted-foreground">
-                            {listing.kind === "provider" ? "Service / Professional" : "Business / Shop"}
+                            {kindLabel[listing.kind]}
                             {" · "}
                             {listingCategory(listing)}
                           </Typography>
