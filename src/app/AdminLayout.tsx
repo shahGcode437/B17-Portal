@@ -1,14 +1,21 @@
-import { MapPin } from "lucide-react"
-import { Link, Outlet } from "react-router-dom"
+import { MapPin, LayoutDashboard, ClipboardList, Newspaper } from "lucide-react"
+import { Link, NavLink, Outlet } from "react-router-dom"
 import { Container } from "@/components/foundation/Container"
 import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
+import { cn } from "@/lib/utils"
 import { routes } from "@/config/routes"
+
+const adminNav = [
+  { label: "Dashboard", path: routes.adminDashboard, icon: LayoutDashboard, end: true },
+  { label: "Listings", path: routes.adminModeration, icon: ClipboardList, end: false },
+  { label: "News & Updates", path: routes.adminContent, icon: Newspaper, end: false },
+]
 
 /**
  * Shell for the administration experience (moderation, content management).
  * Prioritizes information density over marketing polish, per UI/UX Spec §19.
- * A Sidebar/KPI layout is added when Admin screens are built (later phase).
+ * A compact nav row (not a sidebar) links the two management areas.
  */
 function AdminLayout() {
   return (
@@ -16,14 +23,32 @@ function AdminLayout() {
       <header className="border-b border-border bg-foreground text-background">
         <Container>
           <Stack direction="row" align="center" justify="between" gap={4} className="h-14">
-            <Link to={routes.home} className="flex items-center gap-2" aria-label="Back to B-17 Portal">
+            <Link to={routes.home} className="flex items-center gap-2 shrink-0" aria-label="Back to B-17 Portal">
               <span className="flex size-6 items-center justify-center rounded-md bg-primary text-primary-foreground">
                 <MapPin className="size-3.5" aria-hidden="true" />
               </span>
-              <Typography as="span" variant="label" className="text-background">
+              <Typography as="span" variant="label" className="hidden text-background sm:inline">
                 B-17 Portal · Admin
               </Typography>
             </Link>
+            <nav aria-label="Admin" className="flex items-center gap-1">
+              {adminNav.map((item) => (
+                <NavLink
+                  key={item.path}
+                  to={item.path}
+                  end={item.end}
+                  className={({ isActive }) =>
+                    cn(
+                      "flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium text-background/70 transition-colors hover:bg-background/10 hover:text-background",
+                      isActive && "bg-background/15 text-background"
+                    )
+                  }
+                >
+                  <item.icon className="size-4" aria-hidden="true" />
+                  <span className="hidden sm:inline">{item.label}</span>
+                </NavLink>
+              ))}
+            </nav>
           </Stack>
         </Container>
       </header>

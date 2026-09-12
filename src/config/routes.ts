@@ -26,6 +26,9 @@ export const routes = {
   adminLogin: "/admin/login",
   adminDashboard: "/admin",
   adminModeration: "/admin/moderation",
+  adminContent: "/admin/content",
+  adminContentNew: "/admin/content/new",
+  adminContentEdit: "/admin/content/:id/edit",
 
   comingSoon: "/coming-soon",
 } as const
@@ -40,4 +43,9 @@ export function providerProfilePath(id: string): string {
 /** Builds a concrete link to a news article/update detail page (e.g. "/news/news-01"). */
 export function newsArticlePath(id: string): string {
   return `/news/${id}`
+}
+
+/** Builds a concrete link to the Admin edit form for a news item (e.g. "/admin/content/news-01/edit"). */
+export function adminContentEditPath(id: string): string {
+  return `/admin/content/${id}/edit`
 }

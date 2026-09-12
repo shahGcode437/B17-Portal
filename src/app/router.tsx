@@ -15,6 +15,8 @@ import { ListingPendingPage } from "@/features/provider/ListingPendingPage"
 import { AdminLoginPage } from "@/features/admin/AdminLoginPage"
 import { AdminDashboardPage } from "@/features/admin/AdminDashboardPage"
 import { ModerationQueuePage } from "@/features/admin/ModerationQueuePage"
+import { ContentListPage } from "@/features/admin/ContentListPage"
+import { ContentFormPage } from "@/features/admin/ContentFormPage"
 import { ComingSoonPage } from "@/features/future-modules/ComingSoonPage"
 import { routes } from "@/config/routes"
 
@@ -62,6 +64,9 @@ export const router = createBrowserRouter([
       { index: true, element: <AdminDashboardPage /> },
       { path: "login", element: <AdminLoginPage /> },
       { path: "moderation", element: <ModerationQueuePage /> },
+      { path: "content", element: <ContentListPage /> },
+      { path: "content/new", element: <ContentFormPage /> },
+      { path: "content/:id/edit", element: <ContentFormPage /> },
     ],
   },
   {
