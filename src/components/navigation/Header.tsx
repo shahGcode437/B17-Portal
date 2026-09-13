@@ -23,7 +23,7 @@ function Header() {
             </Typography>
           </Link>
 
-          <DesktopNav className="hidden md:flex" />
+          <DesktopNav className="hidden lg:flex" />
 
           <Stack direction="row" align="center" gap={2} className="shrink-0">
             <Button asChild variant="ghost" size="icon" aria-label="Search">

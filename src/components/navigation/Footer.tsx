@@ -11,7 +11,7 @@ import { site } from "@/data/site"
 /** Global footer: brand recap, section links, future-module teaser. */
 function Footer() {
   return (
-    <footer className="border-t border-border bg-secondary/40 pb-20 md:pb-0">
+    <footer className="border-t border-border bg-secondary/40 pb-20 lg:pb-0">
       <Container className="py-12">
         <Stack direction="row" wrap justify="between" gap={8}>
           <Stack gap={3} className="max-w-sm">
