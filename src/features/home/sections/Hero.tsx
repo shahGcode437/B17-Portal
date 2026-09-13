@@ -31,8 +31,8 @@ function Hero() {
         loading="eager"
         className="absolute inset-0 h-full w-full object-cover object-[center_60%]"
       />
-      <div className="absolute inset-0 bg-background/80" />
-      <div className="absolute inset-0 bg-gradient-to-b from-accent/30 to-background/60" />
+      <div className="absolute inset-0 bg-background/35" />
+      <div className="absolute inset-0 bg-gradient-to-b from-background/10 via-background/25 to-background/55" />
       <Container className="relative py-16 sm:py-24">
         <motion.div {...fadeUp} className="mx-auto max-w-2xl text-center">
           <Stack align="center" gap={2} className="mb-4">
