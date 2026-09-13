@@ -24,6 +24,7 @@ import { ModerationQueuePage } from "@/features/admin/ModerationQueuePage"
 import { ContentListPage } from "@/features/admin/ContentListPage"
 import { ContentFormPage } from "@/features/admin/ContentFormPage"
 import { ComingSoonPage } from "@/features/future-modules/ComingSoonPage"
+import { NotFoundPage } from "@/features/future-modules/NotFoundPage"
 import { routes } from "@/config/routes"
 
 /**
@@ -55,6 +56,7 @@ export const router = createBrowserRouter([
       { path: routes.register, element: <LoginRegisterPage /> },
       { path: routes.profile, element: <ComingSoonPage title="Profile" /> },
       { path: routes.comingSoon, element: <ComingSoonPage /> },
+      { path: "*", element: <NotFoundPage /> },
     ],
   },
   {
@@ -77,9 +79,5 @@ export const router = createBrowserRouter([
       { path: "content/new", element: <ContentFormPage /> },
       { path: "content/:id/edit", element: <ContentFormPage /> },
     ],
-  },
-  {
-    path: "*",
-    element: <ComingSoonPage title="Page Not Found" />,
   },
 ])
