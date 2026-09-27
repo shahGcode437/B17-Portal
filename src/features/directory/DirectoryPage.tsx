@@ -6,7 +6,7 @@ import { Grid } from "@/components/foundation/Grid"
 import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
 import { CategoryCard } from "@/components/cards/CategoryCard"
-import { businesses } from "@/data/businesses"
+import { getBusinessCategories } from "@/services/search"
 import { routes } from "@/config/routes"
 import { staggerContainer, staggerItem, fadeUp } from "@/lib/motion"
 
@@ -21,16 +21,12 @@ const categoryIcons: Record<string, LucideIcon> = {
   Fitness: Dumbbell,
 }
 
-/** Derives one tile per unique category from the real business data, in seed order. */
+/** Pairs each real business category with its display icon, in seed order. */
 function getCategoryTiles() {
-  const seen = new Set<string>()
-  const tiles: { category: string; icon: LucideIcon }[] = []
-  for (const business of businesses) {
-    if (seen.has(business.category)) continue
-    seen.add(business.category)
-    tiles.push({ category: business.category, icon: categoryIcons[business.category] ?? Building2 })
-  }
-  return tiles
+  return getBusinessCategories().map((category) => ({
+    category,
+    icon: categoryIcons[category] ?? Building2,
+  }))
 }
 
 /**

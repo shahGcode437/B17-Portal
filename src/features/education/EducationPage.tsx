@@ -6,7 +6,7 @@ import { Grid } from "@/components/foundation/Grid"
 import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
 import { CategoryCard } from "@/components/cards/CategoryCard"
-import { tutors } from "@/data/tutors"
+import { getTutorSubjects } from "@/services/search"
 import { routes } from "@/config/routes"
 import { staggerContainer, staggerItem, fadeUp } from "@/lib/motion"
 
@@ -18,23 +18,6 @@ const subjectIcons: Record<string, LucideIcon> = {
   Chemistry: FlaskConical,
 }
 
-interface SubjectTile {
-  subject: string
-  grade: string
-}
-
-/** Derives one tile per unique subject from the real tutor data, in seed order. */
-function getSubjectTiles(): SubjectTile[] {
-  const seen = new Set<string>()
-  const tiles: SubjectTile[] = []
-  for (const tutor of tutors) {
-    if (seen.has(tutor.subject)) continue
-    seen.add(tutor.subject)
-    tiles.push({ subject: tutor.subject, grade: tutor.grade })
-  }
-  return tiles
-}
-
 /**
  * Education landing (Master Spec Screen 12) — subject discovery into Tutor
  * Results, which reuses the existing Search page (Phase 6 audit §5) rather
@@ -42,7 +25,7 @@ function getSubjectTiles(): SubjectTile[] {
  * listings here; no schools/academies are invented (Prototype Scope §10).
  */
 function EducationPage() {
-  const subjects = getSubjectTiles()
+  const subjects = getTutorSubjects()
 
   return (
     <Container className="py-10 sm:py-16">

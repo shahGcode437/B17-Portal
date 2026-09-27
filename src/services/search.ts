@@ -2,12 +2,14 @@ import type { SearchHit, SearchResultKind } from "@/types/search"
 import type { Provider } from "@/types/provider"
 import type { Business } from "@/types/business"
 import type { Tutor } from "@/types/tutor"
-import type { Property } from "@/types/property"
+import type { Property, ListingType } from "@/types/property"
 import type { NewsArticle } from "@/types/news"
+import type { SponsoredCard } from "@/types/sponsored"
 import { providers } from "@/data/providers"
 import { businesses } from "@/data/businesses"
 import { tutors } from "@/data/tutors"
 import { properties } from "@/data/properties"
+import { sponsoredCards } from "@/data/sponsored"
 import { useListingsStore } from "@/state/listingsStore"
 import { useNewsStore } from "@/state/newsStore"
 import {
@@ -125,6 +127,18 @@ export function getFeaturedBusinesses(limit = 4) {
   return [...businesses].sort((a, b) => Number(b.featured) - Number(a.featured)).slice(0, limit)
 }
 
+/** Unique business categories in seed order — feeds the Business Directory landing page's tiles. */
+export function getBusinessCategories(): string[] {
+  const seen = new Set<string>()
+  const result: string[] = []
+  for (const business of businesses) {
+    if (seen.has(business.category)) continue
+    seen.add(business.category)
+    result.push(business.category)
+  }
+  return result
+}
+
 /** Same static-then-approved-listing resolution as getProviderById, for the same reason. */
 export function getBusinessById(id: string): Business | undefined {
   return businesses.find((b) => b.id === id) ?? getApprovedBusinessById(id)
@@ -138,8 +152,44 @@ export function getTutorById(id: string): Tutor | undefined {
   return tutors.find((t) => t.id === id)
 }
 
+/** Unique subjects (paired with their first-seen grade) in seed order — feeds the Education landing page's tiles. */
+export function getTutorSubjects(): { subject: string; grade: string }[] {
+  const seen = new Set<string>()
+  const result: { subject: string; grade: string }[] = []
+  for (const tutor of tutors) {
+    if (seen.has(tutor.subject)) continue
+    seen.add(tutor.subject)
+    result.push({ subject: tutor.subject, grade: tutor.grade })
+  }
+  return result
+}
+
 export function getFeaturedProperties(limit = 3) {
   return properties.slice(0, limit)
+}
+
+/** Unique listing types (Sale/Rent) in seed order — feeds the Property landing page's tiles. */
+export function getPropertyListingTypes(): ListingType[] {
+  const seen = new Set<ListingType>()
+  const result: ListingType[] = []
+  for (const property of properties) {
+    if (seen.has(property.listingType)) continue
+    seen.add(property.listingType)
+    result.push(property.listingType)
+  }
+  return result
+}
+
+/** Unique property types (House/Flat/Plot/...) in seed order — feeds the Property landing page's tiles. */
+export function getPropertyTypes(): string[] {
+  const seen = new Set<string>()
+  const result: string[] = []
+  for (const property of properties) {
+    if (seen.has(property.propertyType)) continue
+    seen.add(property.propertyType)
+    result.push(property.propertyType)
+  }
+  return result
 }
 
 /** Same static-then-approved-listing resolution as getProviderById/getBusinessById, for the same reason. */
@@ -156,4 +206,9 @@ export function getLatestNews(limit?: number) {
 /** Only published items are resolvable — a draft's direct URL must not reveal it publicly. */
 export function getNewsById(id: string): NewsArticle | undefined {
   return publishedNews().find((item) => item.id === id)
+}
+
+/** Sponsored/featured placements (Master Spec §7) — static demo cards, not a real advertiser. */
+export function getSponsoredCards(): SponsoredCard[] {
+  return sponsoredCards
 }

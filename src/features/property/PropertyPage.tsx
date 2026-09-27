@@ -6,7 +6,7 @@ import { Grid } from "@/components/foundation/Grid"
 import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
 import { CategoryCard } from "@/components/cards/CategoryCard"
-import { properties } from "@/data/properties"
+import { getPropertyListingTypes, getPropertyTypes } from "@/services/search"
 import { routes } from "@/config/routes"
 import { staggerContainer, staggerItem, fadeUp } from "@/lib/motion"
 import type { ListingType } from "@/types/property"
@@ -22,28 +22,14 @@ const propertyTypeIcons: Record<string, LucideIcon> = {
   Plot: LandPlot,
 }
 
-/** Derives one tile per unique listing type (Sale/Rent) from the real property data, in seed order. */
+/** Pairs each real listing type (Sale/Rent) with its display label/icon, in seed order. */
 function getListingTypeTiles() {
-  const seen = new Set<ListingType>()
-  const tiles: { value: ListingType; label: string; icon: LucideIcon }[] = []
-  for (const property of properties) {
-    if (seen.has(property.listingType)) continue
-    seen.add(property.listingType)
-    tiles.push({ value: property.listingType, ...listingTypeMeta[property.listingType] })
-  }
-  return tiles
+  return getPropertyListingTypes().map((value) => ({ value, ...listingTypeMeta[value] }))
 }
 
-/** Derives one tile per unique property type (House/Flat/Plot) from the real property data. */
+/** Pairs each real property type (House/Flat/Plot) with its display icon, in seed order. */
 function getPropertyTypeTiles() {
-  const seen = new Set<string>()
-  const tiles: { value: string; icon: LucideIcon }[] = []
-  for (const property of properties) {
-    if (seen.has(property.propertyType)) continue
-    seen.add(property.propertyType)
-    tiles.push({ value: property.propertyType, icon: propertyTypeIcons[property.propertyType] ?? Home })
-  }
-  return tiles
+  return getPropertyTypes().map((value) => ({ value, icon: propertyTypeIcons[value] ?? Home }))
 }
 
 /**
