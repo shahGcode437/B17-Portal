@@ -7,6 +7,7 @@ import { CardImage } from "@/components/media/CardImage"
 import { DemoBadge } from "@/components/feedback/DemoBadge"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { SaveButton } from "@/components/inputs/SaveButton"
 import { useToast } from "@/hooks/useToast"
 import { SIMULATED_MESSAGES } from "@/lib/simulatedActions"
 import { cardHover } from "@/lib/motion"
@@ -43,6 +44,7 @@ function BusinessCard({ business, onSelect }: BusinessCardProps) {
             Featured
           </Badge>
         )}
+        <SaveButton kind="business" id={business.id} name={business.name} className="absolute right-2 top-2" />
       </div>
       <Stack gap={2} className="px-1">
         <Stack direction="row" justify="between" align="start" gap={2}>

@@ -5,11 +5,14 @@ import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
 import { Button } from "@/components/ui/button"
 import { DesktopNav } from "@/components/navigation/DesktopNav"
+import { useAuth } from "@/hooks/useAuth"
 import { routes } from "@/config/routes"
 import { site } from "@/data/site"
 
 /** Sticky global header: brand, desktop nav, search entry, auth entry. */
 function Header() {
+  const { user } = useAuth()
+
   return (
     <header className="sticky top-0 z-sticky border-b border-border bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/80">
       <Container>
@@ -38,9 +41,9 @@ function Header() {
               </Link>
             </Button>
             <Button asChild variant="outline" size="sm" className="hidden sm:inline-flex">
-              <Link to={routes.login}>
+              <Link to={user ? routes.profile : routes.login}>
                 <User />
-                Log in
+                {user ? user.name : "Log in"}
               </Link>
             </Button>
           </Stack>

@@ -15,6 +15,7 @@ import { ServiceRequestForm } from "@/features/services/ServiceRequestForm"
 import type { ServiceRequestValues } from "@/features/services/serviceRequestSchema"
 import { useToast } from "@/hooks/useToast"
 import { SIMULATED_MESSAGES } from "@/lib/simulatedActions"
+import { useResidentStore } from "@/state/residentStore"
 
 interface RequestServiceDialogProps {
   provider: Provider
@@ -27,12 +28,33 @@ const dateFormatter = new Intl.DateTimeFormat("en-US", { weekday: "short", month
 
 /**
  * In-page Request Service flow (Provider Profile → form → confirmation).
- * Submission is ephemeral demo state only — nothing is persisted, no
- * "My Requests" list, no backend (Master Spec §19, Prototype Scope §12).
+ * On submit, a resident request-history record is created in `residentStore`
+ * (Phase 9C — see "My Requests") and persisted locally via that store. There
+ * is still no backend/server persistence and no provider-side status
+ * transitions (Master Spec §19, Prototype Scope §12).
  */
 function RequestServiceDialog({ provider, requesterName, open, onOpenChange }: RequestServiceDialogProps) {
   const [submitted, setSubmitted] = useState<ServiceRequestValues | null>(null)
   const { show } = useToast()
+  const addRequest = useResidentStore((state) => state.addRequest)
+
+  function handleSubmit(values: ServiceRequestValues) {
+    setSubmitted(values)
+    addRequest({
+      id: crypto.randomUUID(),
+      providerId: provider.id,
+      providerName: provider.name,
+      service: values.service,
+      details: values.details,
+      area: values.area,
+      preferredDate: values.preferredDate,
+      preferredTime: values.preferredTime,
+      notes: values.notes,
+      requestedBy: requesterName,
+      submittedAt: new Date().toISOString(),
+      status: "submitted",
+    })
+  }
 
   function handleOpenChange(next: boolean) {
     onOpenChange(next)
@@ -104,7 +126,7 @@ function RequestServiceDialog({ provider, requesterName, open, onOpenChange }: R
               provider={provider}
               requesterName={requesterName}
               onCancel={() => handleOpenChange(false)}
-              onSubmit={(values) => setSubmitted(values)}
+              onSubmit={handleSubmit}
             />
           </>
         )}

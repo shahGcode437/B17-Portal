@@ -6,6 +6,7 @@ import { Typography } from "@/components/foundation/Typography"
 import { CardImage } from "@/components/media/CardImage"
 import { DemoBadge } from "@/components/feedback/DemoBadge"
 import { Button } from "@/components/ui/button"
+import { SaveButton } from "@/components/inputs/SaveButton"
 import { useToast } from "@/hooks/useToast"
 import { SIMULATED_MESSAGES } from "@/lib/simulatedActions"
 import { cardHover } from "@/lib/motion"
@@ -34,7 +35,10 @@ function TutorCard({ tutor, onSelect }: TutorCardProps) {
       className="flex cursor-pointer flex-col gap-3 rounded-xl border border-border bg-card p-3 text-left shadow-subtle transition-colors hover:border-primary/30 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
       aria-label={`Preview ${tutor.name}`}
     >
-      <CardImage src={tutor.image} icon={GraduationCap} label={tutor.name} />
+      <div className="relative">
+        <CardImage src={tutor.image} icon={GraduationCap} label={tutor.name} />
+        <SaveButton kind="tutor" id={tutor.id} name={tutor.name} className="absolute right-2 top-2" />
+      </div>
       <Stack gap={2} className="px-1">
         <Stack direction="row" justify="between" align="start" gap={2}>
           <Typography variant="label" className="text-base">

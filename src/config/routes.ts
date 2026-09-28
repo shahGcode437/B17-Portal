@@ -16,6 +16,8 @@ export const routes = {
   login: "/login",
   register: "/register",
   profile: "/profile",
+  profileSaved: "/profile/saved",
+  profileRequests: "/profile/requests",
 
   providerProfile: "/providers/:id",
   businessProfile: "/businesses/:id",

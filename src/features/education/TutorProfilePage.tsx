@@ -9,6 +9,7 @@ import { DemoBadge } from "@/components/feedback/DemoBadge"
 import { EmptyState } from "@/components/feedback/EmptyState"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { SaveButton } from "@/components/inputs/SaveButton"
 import { getTutorById } from "@/services/search"
 import { useToast } from "@/hooks/useToast"
 import { SIMULATED_MESSAGES } from "@/lib/simulatedActions"
@@ -54,7 +55,10 @@ function TutorProfilePage() {
             Back
           </button>
 
-          <CardImage src={tutor.image} icon={GraduationCap} label={tutor.name} className="shadow-medium" />
+          <div className="relative">
+            <CardImage src={tutor.image} icon={GraduationCap} label={tutor.name} className="shadow-medium" />
+            <SaveButton kind="tutor" id={tutor.id} name={tutor.name} className="absolute right-3 top-3" />
+          </div>
 
           <Stack gap={4}>
             <Stack direction="row" justify="between" align="start" gap={3}>

@@ -9,6 +9,7 @@ import { DemoBadge } from "@/components/feedback/DemoBadge"
 import { EmptyState } from "@/components/feedback/EmptyState"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { SaveButton } from "@/components/inputs/SaveButton"
 import { getBusinessById } from "@/services/search"
 import { useToast } from "@/hooks/useToast"
 import { SIMULATED_MESSAGES } from "@/lib/simulatedActions"
@@ -69,6 +70,7 @@ function BusinessProfilePage() {
                 Featured
               </Badge>
             )}
+            <SaveButton kind="business" id={business.id} name={business.name} className="absolute right-3 top-3" />
           </div>
 
           <Stack gap={4}>

@@ -1,5 +1,6 @@
 import * as React from "react"
 import { AuthContext, type DemoUser } from "@/hooks/useAuth"
+import { useResidentStore } from "@/state/residentStore"
 
 /**
  * Simulated authentication (Master Spec §19, §9 — no real backend,
@@ -15,6 +16,11 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = React.useCallback(() => {
     setUser(null)
+    // Explicit Log Out is this demo's privacy boundary (Phase 9C) — the
+    // resident store has no real per-account scoping, so an explicit
+    // sign-out clears it rather than leaving one resident's saved items
+    // and request history visible to the next person on this browser.
+    useResidentStore.getState().clearResidentData()
   }, [])
 
   const value = React.useMemo(() => ({ user, login, logout }), [user, login, logout])

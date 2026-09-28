@@ -15,6 +15,9 @@ import { PropertyDetailsPage } from "@/features/property/PropertyDetailsPage"
 import { NewsListPage } from "@/features/news/NewsListPage"
 import { NewsArticlePage } from "@/features/news/NewsArticlePage"
 import { LoginRegisterPage } from "@/features/auth/LoginRegisterPage"
+import { ResidentOverviewPage } from "@/features/resident/ResidentOverviewPage"
+import { SavedPage } from "@/features/resident/SavedPage"
+import { MyRequestsPage } from "@/features/resident/MyRequestsPage"
 import { ProviderDashboardPage } from "@/features/provider/ProviderDashboardPage"
 import { ListingFormPage } from "@/features/provider/ListingFormPage"
 import { ListingPendingPage } from "@/features/provider/ListingPendingPage"
@@ -54,7 +57,9 @@ export const router = createBrowserRouter([
       { path: routes.newsArticle, element: <NewsArticlePage /> },
       { path: routes.login, element: <LoginRegisterPage /> },
       { path: routes.register, element: <LoginRegisterPage /> },
-      { path: routes.profile, element: <ComingSoonPage title="Profile" /> },
+      { path: routes.profile, element: <ResidentOverviewPage /> },
+      { path: routes.profileSaved, element: <SavedPage /> },
+      { path: routes.profileRequests, element: <MyRequestsPage /> },
       { path: routes.comingSoon, element: <ComingSoonPage /> },
       { path: "*", element: <NotFoundPage /> },
     ],

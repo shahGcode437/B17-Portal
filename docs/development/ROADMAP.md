@@ -23,15 +23,16 @@ High-level only — implementation details for each phase are worked out when th
 - Verification: build passes, TypeScript strict passes, lint at existing baseline, no regressions to existing Search behavior or other routes, reviewed via `review-phase` (READY FOR COMMIT).
 
 ## Phase 9C — Resident Experience
-**STATUS: NEXT**
+**STATUS: COMPLETE** (commit: pending — implementation done, reviewed READY FOR COMMIT)
 
 - Objective: give registered residents a real account experience.
-- Major scope: Profile page (replacing the current stub), saved/favorite listings, request history/status ("My Requests").
-- Out of scope: real notifications delivery, real reviews/ratings, real backend persistence (mock/local first).
-- Dependencies: Phase 9B's data patterns if reused; otherwise independent.
-- Completion/verification: new screens reachable from nav, no change to existing auth behavior, no fabricated ratings/reviews.
+- Delivered: resident Overview/Saved/My Requests workspace (replacing the `ComingSoonPage` stub) via the existing `useRequireAuth()`; Saved/Favorites across Provider/Business/Tutor/Property (stable `{kind, id}` references, not deep copies); My Requests history/detail/status UI, one local record created per submitted service request; new `residentStore` (Zustand + `localStorage` persistence, no new dependency); explicit resident Log Out clears saved items + request history (reload alone does not).
+- Deliberately not implemented: real backend persistence, stable user ids/account scoping, provider-side status transitions, real notifications delivery, real reviews/ratings.
+- Dependencies: none new (builds on Phase 9A's `search.ts` seam and existing `useAuth`/`useRequireAuth`).
+- Verification: build passes, TypeScript strict passes, lint at existing baseline, no regressions to existing flows, reviewed via `review-phase` across three passes (2 blocking fixes resolved) — final verdict READY FOR COMMIT.
 
 ## Phase 9D — Professional Workspace
+**STATUS: NEXT**
 
 - Objective: consolidate Provider Dashboard into a shared "Professional Workspace" shell (Overview / Listings / Leads / Profile) usable by every listing kind.
 - Major scope: workspace shell restructuring, a "Leads" view (the provider-side counterpart of Phase 9C's request history).

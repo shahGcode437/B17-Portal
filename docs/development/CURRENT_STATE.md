@@ -10,13 +10,13 @@ master
 
 ## Current Verified Commit
 
-aa2ef76 Phase 9A: strengthen frontend data boundaries and strict typing
-Phase 9B commit: pending (implementation complete, review passed, not yet committed)
+51293d6 Phase 9B: upgrade advanced search and discovery
+Phase 9C commit: pending (implementation complete, review passed, not yet committed)
 
 ## Current Phase
 
-Phase 9B — Advanced Search & Discovery: implementation complete, reviewed (READY FOR COMMIT), commit pending approval.
-Next: Phase 9C — Resident Experience.
+Phase 9C — Resident Experience: implementation complete, reviewed (READY FOR COMMIT), commit pending approval.
+Next: Phase 9D — Professional Workspace.
 
 ## Completed Product Work
 
@@ -33,6 +33,7 @@ Next: Phase 9C — Resident Experience.
 - Production V1 frontend audit (full 20-section audit + Phase 9 roadmap)
 - Phase 9A — Frontend Architecture Foundation (see below)
 - Phase 9B — Advanced Search & Discovery (see below)
+- Phase 9C — Resident Experience (see below)
 
 Full history is in `git log`; this file summarizes outcomes, not the blow-by-blow.
 
@@ -41,8 +42,8 @@ Full history is in `git log`; this file summarizes outcomes, not the blow-by-blo
 - React 19 + TypeScript (strict) + Vite 8 SPA, no SSR.
 - Three route trees under `createBrowserRouter`: `ConsumerLayout` (Header/Footer/MobileNav), `ProviderLayout`, `AdminLayout`. All routes are statically imported — no code splitting yet.
 - `src/services/search.ts` is the single public read-data seam for all domain content (providers, businesses, tutors, properties, news, sponsored cards, plus category/subject/type tile enumeration). Components must not import `@/data/*` domain arrays directly — confirmed and enforced as of Phase 9A.
-- Two Zustand stores: `listingsStore` (provider/business/property listing lifecycle: pending → approved/rejected) and `newsStore` (draft/published). Both in-memory only, no persistence, reset on reload.
-- Demo-only auth: `useAuth()`/`useAdminAuth()`, name-only sessions, no password, no backend. Already consumed only through their public hooks everywhere (verified in Phase 9A).
+- Three Zustand stores: `listingsStore` (provider/business/property listing lifecycle: pending → approved/rejected) and `newsStore` (draft/published) are in-memory only, reset on reload. `residentStore` (Phase 9C — saved items + request history) additionally persists to `localStorage` via Zustand's own `persist` middleware; it is cleared on explicit resident Log Out (see Phase 9C Result).
+- Demo-only auth: `useAuth()`/`useAdminAuth()`, name-only sessions, no password, no backend. Already consumed only through their public hooks everywhere (verified in Phase 9A). `AuthProvider.logout()` also clears `residentStore` — see Phase 9C Result.
 - Static seed data lives in `src/data/*.ts`, typed via `src/types/*.ts`.
 - TypeScript strict mode enabled (Phase 9A) — zero errors, no `any`, no suppressions needed.
 - No PWA (no manifest, no service worker, no install prompt).
@@ -68,7 +69,19 @@ Full history is in `git log`; this file summarizes outcomes, not the blow-by-blo
 - Client-side "Load More" pagination added to `useSearchResults` (`PAGE_SIZE = 12`), an explicit stand-in for a future real paged API, not an imitation of one.
 - Price filtering/sorting intentionally NOT implemented — `Property.price` is a formatted string ("PKR 2.2 Cr"), not numeric; faking it was rejected per the data-honesty requirement.
 - No dependency added. Build passes. TypeScript strict passes with zero errors. Lint stays at the existing 8-warning baseline (no new warnings). No test suite exists to run.
-- Reviewed via `review-phase`: verdict READY FOR COMMIT. Not yet committed — see "Current Verified Commit" above.
+- Reviewed via `review-phase`: verdict READY FOR COMMIT.
+
+## Phase 9C Result
+
+- Replaced the `/profile` stub with a real resident workspace: Overview / Saved / My Requests, auth-gated via the existing `useRequireAuth()`.
+- Saved/Favorites added across all 4 public listing types (Provider/Business/Tutor/Property — News excluded, no product reason to bookmark an article) via one shared `SaveButton` component.
+- Saved items are stored as stable `{kind, id}` references, never deep copies — always resolved live through `search.ts` at render time.
+- My Requests history/detail/status UI added; submitting a service request now creates exactly one local `ServiceRequestRecord` in `residentStore` (status always `"submitted"` — no fake transitions; the type supports future provider-side statuses for Phase 9D).
+- `residentStore` (new Zustand store) persists saved items + request history to `localStorage` via Zustand's own `persist` middleware — no new dependency.
+- Explicit resident Log Out clears `residentStore` (saved items + request history) — the actual privacy boundary for this demo, since demo auth has no stable user id to scope by. An ordinary reload (not a Log Out) still leaves the data in place to reappear after logging back in.
+- Demo auth itself remains unchanged: in-memory only, not persisted, no real backend, no real account.
+- No dependency added. Build passes. TypeScript strict passes with zero errors. Lint stays at the existing 8-warning baseline (no new warnings). No test suite exists to run.
+- Reviewed via `review-phase` across three passes (initial → 2 blocking fixes → final): verdict READY FOR COMMIT.
 
 ## Production V1 Direction
 
@@ -87,10 +100,11 @@ Full history is in `git log`; this file summarizes outcomes, not the blow-by-blo
 
 - One large, eagerly-loaded JS bundle (~783 KB) — no route-level code splitting yet.
 - No PWA (manifest/service worker/icons all absent).
-- Resident Profile page is still a `ComingSoonPage` stub.
-- No favorites/saved listings, no request history, no notifications UI yet.
+- No notifications UI yet.
+- Resident state (`residentStore`) has no stable user id to scope by — demo auth is name-only, so per-account scoping is not real; explicit Log Out (not reload) is the only privacy boundary today. Real account scoping belongs to the backend/API phase (Phase 12).
+- No provider-side request status transitions yet (Phase 9D) — every resident request stays `"submitted"`.
 - Auth is demo-only (name string, no password, no persistence) — by design, not yet a gap to "fix," but must become real before any production launch.
-- No backend, no database — all state is static seed data + in-memory Zustand.
+- No backend, no database — all state is static seed data + in-memory or `localStorage`-persisted Zustand.
 - No test suite of any kind.
 - Lint baseline: 8 pre-existing warnings (6× `only-export-components` in shadcn-pattern files, 2× `set-state-in-effect`) — known, unchanged across many phases.
 - 19 orphaned images (~46 MB) in `public/images` awaiting a keep/wire/remove decision.
@@ -112,7 +126,7 @@ Full history is in `git log`; this file summarizes outcomes, not the blow-by-blo
 
 ## Next Step
 
-Phase 9C — Resident Experience.
+Phase 9D — Professional Workspace.
 
 ## Resume Instructions
 

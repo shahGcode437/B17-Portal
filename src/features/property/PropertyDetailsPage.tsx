@@ -9,6 +9,7 @@ import { DemoBadge } from "@/components/feedback/DemoBadge"
 import { EmptyState } from "@/components/feedback/EmptyState"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { SaveButton } from "@/components/inputs/SaveButton"
 import { getPropertyById } from "@/services/search"
 import { useToast } from "@/hooks/useToast"
 import { SIMULATED_MESSAGES } from "@/lib/simulatedActions"
@@ -68,6 +69,7 @@ function PropertyDetailsPage() {
             >
               {property.listingType === "sale" ? "For Sale" : "For Rent"}
             </Badge>
+            <SaveButton kind="property" id={property.id} name={property.title} className="absolute right-3 top-3" />
           </div>
 
           <Stack gap={4}>

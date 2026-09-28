@@ -10,6 +10,7 @@ import { DemoBadge } from "@/components/feedback/DemoBadge"
 import { EmptyState } from "@/components/feedback/EmptyState"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { SaveButton } from "@/components/inputs/SaveButton"
 import { getProviderById } from "@/services/search"
 import { useToast } from "@/hooks/useToast"
 import { useAuth } from "@/hooks/useAuth"
@@ -86,7 +87,10 @@ function ProviderProfilePage() {
             Back
           </button>
 
-          <CardImage src={provider.image} icon={Wrench} label={provider.name} className="shadow-medium" />
+          <div className="relative">
+            <CardImage src={provider.image} icon={Wrench} label={provider.name} className="shadow-medium" />
+            <SaveButton kind="provider" id={provider.id} name={provider.name} className="absolute right-3 top-3" />
+          </div>
 
           <Stack gap={4}>
             <Stack direction="row" justify="between" align="start" gap={3}>

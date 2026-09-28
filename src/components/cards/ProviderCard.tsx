@@ -7,6 +7,7 @@ import { Typography } from "@/components/foundation/Typography"
 import { CardImage } from "@/components/media/CardImage"
 import { DemoBadge } from "@/components/feedback/DemoBadge"
 import { Button } from "@/components/ui/button"
+import { SaveButton } from "@/components/inputs/SaveButton"
 import { useToast } from "@/hooks/useToast"
 import { SIMULATED_MESSAGES } from "@/lib/simulatedActions"
 import { cardHover } from "@/lib/motion"
@@ -37,7 +38,10 @@ function ProviderCard({ provider, onSelect }: ProviderCardProps) {
       className="flex cursor-pointer flex-col gap-3 rounded-xl border border-border bg-card p-3 text-left shadow-subtle transition-colors hover:border-primary/30 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
       aria-label={`Preview ${provider.name}`}
     >
-      <CardImage src={provider.image} icon={Wrench} label={provider.name} />
+      <div className="relative">
+        <CardImage src={provider.image} icon={Wrench} label={provider.name} />
+        <SaveButton kind="provider" id={provider.id} name={provider.name} className="absolute right-2 top-2" />
+      </div>
       <Stack gap={2} className="px-1">
         <Stack direction="row" justify="between" align="start" gap={2}>
           <Typography variant="label" className="text-base">
