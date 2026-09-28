@@ -1,8 +1,8 @@
-import type { SearchHit, SearchResultKind } from "@/types/search"
+import type { SearchHit, SearchResultKind, SearchFilters, SortOption } from "@/types/search"
 import type { Provider } from "@/types/provider"
 import type { Business } from "@/types/business"
 import type { Tutor } from "@/types/tutor"
-import type { Property, ListingType } from "@/types/property"
+import type { Property, ListingType, FurnishingStatus } from "@/types/property"
 import type { NewsArticle } from "@/types/news"
 import type { SponsoredCard } from "@/types/sponsored"
 import { providers } from "@/data/providers"
@@ -101,13 +101,83 @@ function searchableText(hit: SearchHit): string {
     .toLowerCase()
 }
 
-export function searchAll(query: string, type: SearchResultKind | "all" = "all"): SearchHit[] {
+/** Collects unique values (by `keyFn`) from `items`, in first-seen order. Shared by every filter-option enumerator below. */
+function uniqueInOrder<T, K>(items: T[], keyFn: (item: T) => K): K[] {
+  const seen = new Set<K>()
+  const result: K[] = []
+  for (const item of items) {
+    const key = keyFn(item)
+    if (seen.has(key)) continue
+    seen.add(key)
+    result.push(key)
+  }
+  return result
+}
+
+/**
+ * Applies only the filter fields that genuinely exist on a hit's own kind —
+ * an empty `filters` object always matches everything, so callers that don't
+ * pass filters get identical behavior to before Phase 9B. No field here is
+ * invented: each check reads a real property already present on the domain
+ * type (see the honesty notes on `SearchFilters` in types/search.ts).
+ */
+function matchesFilters(hit: SearchHit, filters: SearchFilters): boolean {
+  switch (hit.kind) {
+    case "provider":
+      if (filters.area && hit.item.area !== filters.area) return false
+      if (filters.category && hit.item.category !== filters.category) return false
+      return true
+    case "business":
+      if (filters.area && hit.item.area !== filters.area) return false
+      if (filters.category && hit.item.category !== filters.category) return false
+      return true
+    case "tutor":
+      if (filters.area && hit.item.area !== filters.area) return false
+      if (filters.subject && hit.item.subject !== filters.subject) return false
+      if (filters.grade && hit.item.grade !== filters.grade) return false
+      return true
+    case "property":
+      if (filters.area && hit.item.area !== filters.area) return false
+      if (filters.listingType && hit.item.listingType !== filters.listingType) return false
+      if (filters.propertyType && hit.item.propertyType !== filters.propertyType) return false
+      if (filters.minBedrooms && (!hit.item.bedrooms || hit.item.bedrooms < filters.minBedrooms)) return false
+      if (filters.furnished && hit.item.furnished !== filters.furnished) return false
+      return true
+    case "news":
+      if (filters.category && hit.item.category !== filters.category) return false
+      return true
+  }
+}
+
+/**
+ * "newest" only has a genuine timestamp to sort by on News (`publishedAt`);
+ * every other kind has no date field today, so this only reorders when the
+ * hit is news — everything else keeps its existing relative order. "default"
+ * is a no-op (the pre-Phase-9B natural/insertion order).
+ */
+function sortHits(hits: SearchHit[], sort: SortOption): SearchHit[] {
+  if (sort !== "newest") return hits
+  return [...hits].sort((a, b) => {
+    const aDate = a.kind === "news" ? a.item.publishedAt : ""
+    const bDate = b.kind === "news" ? b.item.publishedAt : ""
+    return bDate.localeCompare(aDate)
+  })
+}
+
+export function searchAll(
+  query: string,
+  type: SearchResultKind | "all" = "all",
+  filters: SearchFilters = {},
+  sort: SortOption = "default"
+): SearchHit[] {
   const q = query.trim().toLowerCase()
-  return allHits().filter((hit) => {
+  const matched = allHits().filter((hit) => {
     if (type !== "all" && hit.kind !== type) return false
+    if (!matchesFilters(hit, filters)) return false
     if (!q) return true
     return searchableText(hit).includes(q)
   })
+  return sortHits(matched, sort)
 }
 
 /**
@@ -123,20 +193,23 @@ export function getFeaturedProviders(limit = 4) {
   return [...providers].sort((a, b) => Number(b.featured) - Number(a.featured)).slice(0, limit)
 }
 
+/** Unique provider areas in seed order — feeds the Search "Area" filter for Services. */
+export function getProviderAreas(): string[] {
+  return uniqueInOrder(providers, (p) => p.area)
+}
+
 export function getFeaturedBusinesses(limit = 4) {
   return [...businesses].sort((a, b) => Number(b.featured) - Number(a.featured)).slice(0, limit)
 }
 
 /** Unique business categories in seed order — feeds the Business Directory landing page's tiles. */
 export function getBusinessCategories(): string[] {
-  const seen = new Set<string>()
-  const result: string[] = []
-  for (const business of businesses) {
-    if (seen.has(business.category)) continue
-    seen.add(business.category)
-    result.push(business.category)
-  }
-  return result
+  return uniqueInOrder(businesses, (b) => b.category)
+}
+
+/** Unique business areas in seed order — feeds the Search "Area" filter for the Directory. */
+export function getBusinessAreas(): string[] {
+  return uniqueInOrder(businesses, (b) => b.area)
 }
 
 /** Same static-then-approved-listing resolution as getProviderById, for the same reason. */
@@ -164,33 +237,49 @@ export function getTutorSubjects(): { subject: string; grade: string }[] {
   return result
 }
 
+/** Unique grades in seed order — feeds the Search "Grade" filter for Education, independent of subject. */
+export function getTutorGrades(): string[] {
+  return uniqueInOrder(tutors, (t) => t.grade)
+}
+
+/** Unique tutor areas in seed order — feeds the Search "Area" filter for Education. */
+export function getTutorAreas(): string[] {
+  return uniqueInOrder(tutors, (t) => t.area)
+}
+
 export function getFeaturedProperties(limit = 3) {
   return properties.slice(0, limit)
 }
 
 /** Unique listing types (Sale/Rent) in seed order — feeds the Property landing page's tiles. */
 export function getPropertyListingTypes(): ListingType[] {
-  const seen = new Set<ListingType>()
-  const result: ListingType[] = []
-  for (const property of properties) {
-    if (seen.has(property.listingType)) continue
-    seen.add(property.listingType)
-    result.push(property.listingType)
-  }
-  return result
+  return uniqueInOrder(properties, (p) => p.listingType)
 }
 
 /** Unique property types (House/Flat/Plot/...) in seed order — feeds the Property landing page's tiles. */
 export function getPropertyTypes(): string[] {
-  const seen = new Set<string>()
-  const result: string[] = []
-  for (const property of properties) {
-    if (seen.has(property.propertyType)) continue
-    seen.add(property.propertyType)
-    result.push(property.propertyType)
-  }
-  return result
+  return uniqueInOrder(properties, (p) => p.propertyType)
 }
+
+/** Unique property areas in seed order — feeds the Search "Area" filter for Property. */
+export function getPropertyAreas(): string[] {
+  return uniqueInOrder(properties, (p) => p.area)
+}
+
+/**
+ * Minimum-bedroom filter options, honestly derived from the real range of
+ * `bedrooms` values present in the data (1 up to the highest value found) —
+ * not an arbitrary constant. Properties without a `bedrooms` field (e.g.
+ * plots) are excluded from the range but still correctly excluded by the
+ * filter itself in `matchesFilters`.
+ */
+export function getPropertyBedroomOptions(): number[] {
+  const max = properties.reduce((highest, p) => (p.bedrooms && p.bedrooms > highest ? p.bedrooms : highest), 0)
+  return Array.from({ length: max }, (_, i) => i + 1)
+}
+
+/** The full set of furnishing statuses the `Property` type supports — a closed enum, not seed-derived. */
+export const FURNISHED_OPTIONS: FurnishingStatus[] = ["Furnished", "Semi-Furnished", "Unfurnished"]
 
 /** Same static-then-approved-listing resolution as getProviderById/getBusinessById, for the same reason. */
 export function getPropertyById(id: string): Property | undefined {
@@ -206,6 +295,11 @@ export function getLatestNews(limit?: number) {
 /** Only published items are resolvable — a draft's direct URL must not reveal it publicly. */
 export function getNewsById(id: string): NewsArticle | undefined {
   return publishedNews().find((item) => item.id === id)
+}
+
+/** Unique published-news categories in seed order — feeds the Search "Category" filter for News. */
+export function getNewsCategories(): string[] {
+  return uniqueInOrder(publishedNews(), (item) => item.category)
 }
 
 /** Sponsored/featured placements (Master Spec §7) — static demo cards, not a real advertiser. */

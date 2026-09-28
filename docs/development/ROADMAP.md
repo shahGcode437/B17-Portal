@@ -14,15 +14,16 @@ High-level only — implementation details for each phase are worked out when th
 - Verification: build/lint clean, zero visible behavior change, confirmed live across all major routes.
 
 ## Phase 9B — Advanced Search & Discovery
-**STATUS: NEXT**
+**STATUS: COMPLETE** (commit: pending — implementation done, reviewed READY FOR COMMIT)
 
 - Objective: real per-domain filters, sort, and a scalable result-loading strategy.
-- Major scope: price/bedroom/furnishing filters (Property), subject/grade filters (Education), a sort control, a pagination/infinite-scroll contract against current mock data, richer loading/empty/error states.
-- Out of scope: real backend pagination, ranking/relevance algorithms, "recently viewed."
-- Dependencies: none (builds on the Phase 9A `search.ts` seam).
-- Completion/verification: filters and sort work against seed data with no regressions to existing Search behavior; URL state persists as it does today.
+- Delivered: contextual filters per type (Provider/Business/Tutor/Property/News), URL as single source of truth, active-filter chips, News-only "Newest" sort, client-side "Load More" pagination (`PAGE_SIZE = 12`).
+- Deliberately not implemented: Property price filter/sort (`Property.price` is a formatted string, not numeric — would have required fabricating a numeric field); "recently viewed"; real backend pagination or ranking.
+- Dependencies: none (builds on the Phase 9A `search.ts` seam). No new dependency added.
+- Verification: build passes, TypeScript strict passes, lint at existing baseline, no regressions to existing Search behavior or other routes, reviewed via `review-phase` (READY FOR COMMIT).
 
 ## Phase 9C — Resident Experience
+**STATUS: NEXT**
 
 - Objective: give registered residents a real account experience.
 - Major scope: Profile page (replacing the current stub), saved/favorite listings, request history/status ("My Requests").

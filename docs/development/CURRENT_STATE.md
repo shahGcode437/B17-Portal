@@ -11,11 +11,12 @@ master
 ## Current Verified Commit
 
 aa2ef76 Phase 9A: strengthen frontend data boundaries and strict typing
+Phase 9B commit: pending (implementation complete, review passed, not yet committed)
 
 ## Current Phase
 
-Phase 9A complete.
-Next: Phase 9B — Advanced Search & Discovery.
+Phase 9B — Advanced Search & Discovery: implementation complete, reviewed (READY FOR COMMIT), commit pending approval.
+Next: Phase 9C — Resident Experience.
 
 ## Completed Product Work
 
@@ -31,6 +32,7 @@ Next: Phase 9B — Advanced Search & Discovery.
 - Production-polish audit (Phase 8A) and fixes: tablet header overflow (8B), image asset optimization (8C), 404/Not Found page (8D), hero image visibility (8D)
 - Production V1 frontend audit (full 20-section audit + Phase 9 roadmap)
 - Phase 9A — Frontend Architecture Foundation (see below)
+- Phase 9B — Advanced Search & Discovery (see below)
 
 Full history is in `git log`; this file summarizes outcomes, not the blow-by-blow.
 
@@ -56,6 +58,17 @@ Full history is in `git log`; this file summarizes outcomes, not the blow-by-blo
 - No visible behavior change (verified live across Home, Directory, Education, Property, Services, a provider profile, a business profile, News, Login, 404, Coming Soon, Admin Moderation).
 - Build passes, lint warning baseline unchanged (8 pre-existing warnings), no test suite exists to run.
 - Static app configuration (`site.ts`, `serviceCategories.ts`, `discoveryCategories.ts`) intentionally still direct-imported — documented distinction from dynamic listing data, not an oversight.
+
+## Phase 9B Result
+
+- Contextual per-type filters added to Search/Explore (Provider: Category/Area; Business: Category/Area; Tutor: Subject/Grade/Area; Property: Listing Type/Property Type/Bedrooms/Furnishing/Area; News: Category) — each field backed by a real, existing seed-data property, verified by reading all 5 seed files directly.
+- URL remains the single source of truth for type/filters/sort/q — all mutations go through `setSearchParams`'s functional updater form; no parallel local state.
+- Active-filter chips render for every applied filter/type/sort, each individually removable.
+- Sort is scoped to News only ("Newest", by `publishedAt`) — the only domain type with a real timestamp field.
+- Client-side "Load More" pagination added to `useSearchResults` (`PAGE_SIZE = 12`), an explicit stand-in for a future real paged API, not an imitation of one.
+- Price filtering/sorting intentionally NOT implemented — `Property.price` is a formatted string ("PKR 2.2 Cr"), not numeric; faking it was rejected per the data-honesty requirement.
+- No dependency added. Build passes. TypeScript strict passes with zero errors. Lint stays at the existing 8-warning baseline (no new warnings). No test suite exists to run.
+- Reviewed via `review-phase`: verdict READY FOR COMMIT. Not yet committed — see "Current Verified Commit" above.
 
 ## Production V1 Direction
 
@@ -99,7 +112,7 @@ Full history is in `git log`; this file summarizes outcomes, not the blow-by-blo
 
 ## Next Step
 
-Phase 9B — Advanced Search & Discovery.
+Phase 9C — Resident Experience.
 
 ## Resume Instructions
 
