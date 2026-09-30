@@ -2,7 +2,7 @@
 
 ## Last Updated
 
-2026-09-28
+2026-09-30
 
 ## Current Branch
 
@@ -10,13 +10,13 @@ master
 
 ## Current Verified Commit
 
-51293d6 Phase 9B: upgrade advanced search and discovery
-Phase 9C commit: pending (implementation complete, review passed, not yet committed)
+19a8d8e Phase 9D: build professional workspace with listings, leads, and status management
+(preceded by e781a34 Phase 9C, 51293d6 Phase 9B — both corrected here from a stale "pending" note in an earlier version of this file)
 
 ## Current Phase
 
-Phase 9C — Resident Experience: implementation complete, reviewed (READY FOR COMMIT), commit pending approval.
-Next: Phase 9D — Professional Workspace.
+Phase 9D — Professional Workspace: COMPLETE and committed.
+Next: Phase 9E — Free/Premium Foundation.
 
 ## Completed Product Work
 
@@ -34,15 +34,16 @@ Next: Phase 9D — Professional Workspace.
 - Phase 9A — Frontend Architecture Foundation (see below)
 - Phase 9B — Advanced Search & Discovery (see below)
 - Phase 9C — Resident Experience (see below)
+- Phase 9D — Professional Workspace (see below)
 
 Full history is in `git log`; this file summarizes outcomes, not the blow-by-blow.
 
 ## Current Architecture
 
 - React 19 + TypeScript (strict) + Vite 8 SPA, no SSR.
-- Three route trees under `createBrowserRouter`: `ConsumerLayout` (Header/Footer/MobileNav), `ProviderLayout`, `AdminLayout`. All routes are statically imported — no code splitting yet.
+- Three route trees under `createBrowserRouter`: `ConsumerLayout` (Header/Footer/MobileNav), `ProviderLayout` (now a full Professional Workspace shell — Overview/Listings/Leads/Profile nav, Phase 9D), `AdminLayout`. All routes are statically imported — no code splitting yet.
 - `src/services/search.ts` is the single public read-data seam for all domain content (providers, businesses, tutors, properties, news, sponsored cards, plus category/subject/type tile enumeration). Components must not import `@/data/*` domain arrays directly — confirmed and enforced as of Phase 9A.
-- Three Zustand stores: `listingsStore` (provider/business/property listing lifecycle: pending → approved/rejected) and `newsStore` (draft/published) are in-memory only, reset on reload. `residentStore` (Phase 9C — saved items + request history) additionally persists to `localStorage` via Zustand's own `persist` middleware; it is cleared on explicit resident Log Out (see Phase 9C Result).
+- Three Zustand stores: `listingsStore` (provider/business/property listing lifecycle: pending → approved/rejected, plus `archived` as of Phase 9D) and `newsStore` (draft/published) are in-memory only, reset on reload. `residentStore` (Phase 9C — saved items + request history; Phase 9D added `updateRequestStatus`) additionally persists to `localStorage` via Zustand's own `persist` middleware; it is cleared on explicit resident Log Out (see Phase 9C Result).
 - Demo-only auth: `useAuth()`/`useAdminAuth()`, name-only sessions, no password, no backend. Already consumed only through their public hooks everywhere (verified in Phase 9A). `AuthProvider.logout()` also clears `residentStore` — see Phase 9C Result.
 - Static seed data lives in `src/data/*.ts`, typed via `src/types/*.ts`.
 - TypeScript strict mode enabled (Phase 9A) — zero errors, no `any`, no suppressions needed.
@@ -83,6 +84,16 @@ Full history is in `git log`; this file summarizes outcomes, not the blow-by-blo
 - No dependency added. Build passes. TypeScript strict passes with zero errors. Lint stays at the existing 8-warning baseline (no new warnings). No test suite exists to run.
 - Reviewed via `review-phase` across three passes (initial → 2 blocking fixes → final): verdict READY FOR COMMIT.
 
+## Phase 9D Result
+
+- `ProviderLayout` is now a shared Professional Workspace shell — Overview / Listings / Leads / Profile, one shell for every listing kind (no separate app per profession).
+- Listings: edit (reuses the onboarding forms, resubmits and resets status to `pending` regardless of prior status — an edit always goes back through moderation) and archive (one-way; `archived` added to `ListingStatus`, so an archived listing simply stops matching `search.ts`'s `status === "approved"` checks — no new filtering logic needed).
+- Leads: derived from real ownership — a request only appears for a professional if its `providerId` matches a Provider-kind listing they themselves submitted (`submittedBy === user.name`). Leads are not filtered by the listing's current status, so archiving/rejecting a listing later doesn't erase its real lead history.
+- Resident (`My Requests`) and professional (`Leads`) views read the exact same `residentStore.requests` record — no duplicate "providerRequests" store. Manual status transitions (submitted → accepted → in-progress → completed, cancel from any non-terminal state) go through one new `updateRequestStatus` action; no timers, no automatic transitions.
+- Professional Profile/Settings uses only what demo auth and `listingsStore` already contain (name, listing-type summary, links to approved public listings) — no invented verification/billing/team/analytics fields.
+- No dependency added. No backend/fake network calls. No premium/entitlement code (that's Phase 9E). Build passes. TypeScript strict passes with zero errors. Lint stays at the existing 8-warning baseline. No test suite exists to run.
+- Reviewed via `review-phase`: verdict READY FOR COMMIT. Committed as `19a8d8e`.
+
 ## Production V1 Direction
 
 - Complete the frontend before the backend.
@@ -102,7 +113,11 @@ Full history is in `git log`; this file summarizes outcomes, not the blow-by-blo
 - No PWA (manifest/service worker/icons all absent).
 - No notifications UI yet.
 - Resident state (`residentStore`) has no stable user id to scope by — demo auth is name-only, so per-account scoping is not real; explicit Log Out (not reload) is the only privacy boundary today. Real account scoping belongs to the backend/API phase (Phase 12).
-- No provider-side request status transitions yet (Phase 9D) — every resident request stays `"submitted"`.
+- Professional/listing ownership (Phase 9D) is also name-based (`submittedBy === user.name`) — same demo-auth limitation, not a new one. Real auth/ownership belongs to the backend phase.
+- Archived listings have no unarchive action yet (one-way in Phase 9D).
+- Business/Property listings don't produce service leads — no request-capture flow exists for those kinds yet, only Provider's Request Service does.
+- `listingsStore` is still in-memory only (reset on reload) — unaffected by Phase 9D; `residentStore` remains the one `localStorage`-persisted store.
+- Minor cleanup noted in Phase 9D review, not yet actioned: an unused `routes.editListing` path constant, and `resubmitListing` has no store-level status guard (archived-listing protection lives only in `EditListingPage`'s UI).
 - Auth is demo-only (name string, no password, no persistence) — by design, not yet a gap to "fix," but must become real before any production launch.
 - No backend, no database — all state is static seed data + in-memory or `localStorage`-persisted Zustand.
 - No test suite of any kind.
@@ -126,7 +141,7 @@ Full history is in `git log`; this file summarizes outcomes, not the blow-by-blo
 
 ## Next Step
 
-Phase 9D — Professional Workspace.
+Phase 9E — Free/Premium Foundation.
 
 ## Resume Instructions
 
