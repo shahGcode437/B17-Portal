@@ -1,4 +1,4 @@
-import { Clock, CheckCircle2, XCircle } from "lucide-react"
+import { Clock, CheckCircle2, XCircle, Archive } from "lucide-react"
 import type { ListingStatus } from "@/types/listing"
 import { Badge } from "@/components/ui/badge"
 
@@ -6,6 +6,7 @@ const statusConfig: Record<ListingStatus, { label: string; icon: typeof Clock; c
   pending: { label: "Pending Review", icon: Clock, className: "bg-warning/15 text-warning" },
   approved: { label: "Approved", icon: CheckCircle2, className: "bg-success/15 text-success" },
   rejected: { label: "Rejected", icon: XCircle, className: "bg-destructive/10 text-destructive" },
+  archived: { label: "Archived", icon: Archive, className: "bg-muted text-muted-foreground" },
 }
 
 /** Consistent status indicator for a listing's moderation lifecycle (Master Spec §17). */

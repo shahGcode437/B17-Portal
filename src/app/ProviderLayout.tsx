@@ -3,13 +3,15 @@ import { Link, Outlet } from "react-router-dom"
 import { Container } from "@/components/foundation/Container"
 import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
+import { ProfessionalNav } from "@/features/provider/ProfessionalNav"
 import { routes } from "@/config/routes"
 
 /**
- * Shell for the provider/business experience (dashboard, listing creation).
- * Deliberately distinct from ConsumerLayout — no marketing chrome, no
- * bottom tab bar — per Master Spec §15 "keep consumer, provider and admin
- * layouts logically separated." Content built in a later phase.
+ * Shell for the Professional Workspace (Phase 9D: Overview/Listings/Leads/
+ * Profile, plus listing creation/edit/pending flows). Deliberately distinct
+ * from ConsumerLayout — no marketing chrome, no bottom tab bar — per Master
+ * Spec §15 "keep consumer, provider and admin layouts logically separated."
+ * One shared shell for every listing kind, not a separate app per profession.
  */
 function ProviderLayout() {
   return (
@@ -28,6 +30,9 @@ function ProviderLayout() {
           </Stack>
         </Container>
       </header>
+      <Container className="pt-3">
+        <ProfessionalNav />
+      </Container>
       <main className="flex-1">
         <Outlet />
       </main>

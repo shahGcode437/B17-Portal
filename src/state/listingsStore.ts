@@ -10,6 +10,7 @@ interface ListingsState {
   submitListing: (listing: PendingListing) => void
   resubmitListing: (id: string, data: PendingListing["data"]) => void
   setStatus: (id: string, status: ListingStatus, rejectionReason?: string) => void
+  archiveListing: (id: string) => void
 }
 
 /**
@@ -53,6 +54,14 @@ export const useListingsStore = create<ListingsState>((set) => ({
     set((state) => ({
       listings: state.listings.map((listing) =>
         listing.id === id ? { ...listing, status, rejectionReason } : listing
+      ),
+    })),
+
+  /** Professional-initiated removal (Phase 9D) — one-way; see `ListingStatus`'s doc comment. */
+  archiveListing: (id) =>
+    set((state) => ({
+      listings: state.listings.map((listing) =>
+        listing.id === id ? { ...listing, status: "archived" as const } : listing
       ),
     })),
 }))

@@ -1,3 +1,4 @@
+import type { ReactNode } from "react"
 import { Wrench, Building2, KeyRound } from "lucide-react"
 import type { PendingListing } from "@/types/listing"
 import { Stack } from "@/components/foundation/Stack"
@@ -29,6 +30,8 @@ function listingSubcategory(listing: PendingListing): string {
 
 interface ListingSummaryCardProps {
   listing: PendingListing
+  /** Optional action buttons (Edit/Archive/View — Phase 9D) rendered below the summary. Omitted where not needed (e.g. Listing Pending). */
+  actions?: ReactNode
 }
 
 /**
@@ -37,7 +40,7 @@ interface ListingSummaryCardProps {
  * image, title, type/category, status, submitted date and rejection reason
  * (when applicable) for a single submitted listing.
  */
-function ListingSummaryCard({ listing }: ListingSummaryCardProps) {
+function ListingSummaryCard({ listing, actions }: ListingSummaryCardProps) {
   const { label, icon: Icon } = kindMeta[listing.kind]
   const title = listingTitle(listing)
 
@@ -64,6 +67,7 @@ function ListingSummaryCard({ listing }: ListingSummaryCardProps) {
             Reason: {listing.rejectionReason}
           </Typography>
         )}
+        {actions}
       </Stack>
     </Stack>
   )

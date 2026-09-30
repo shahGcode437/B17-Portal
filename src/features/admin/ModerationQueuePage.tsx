@@ -14,7 +14,7 @@ import { useRequireAdminAuth } from "@/hooks/useRequireAdminAuth"
 import type { ListingStatus, PendingListing } from "@/types/listing"
 import { fadeUp, staggerContainer, staggerItem } from "@/lib/motion"
 
-const statusOrder: Record<ListingStatus, number> = { pending: 0, approved: 1, rejected: 2 }
+const statusOrder: Record<ListingStatus, number> = { pending: 0, approved: 1, rejected: 2, archived: 3 }
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", {
   month: "short",
@@ -27,6 +27,7 @@ const filterOptions: { value: ListingStatus | "all"; label: string }[] = [
   { value: "pending", label: "Pending" },
   { value: "approved", label: "Approved" },
   { value: "rejected", label: "Rejected" },
+  { value: "archived", label: "Archived" },
 ]
 
 const kindLabel: Record<PendingListing["kind"], string> = {

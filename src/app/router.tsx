@@ -18,9 +18,13 @@ import { LoginRegisterPage } from "@/features/auth/LoginRegisterPage"
 import { ResidentOverviewPage } from "@/features/resident/ResidentOverviewPage"
 import { SavedPage } from "@/features/resident/SavedPage"
 import { MyRequestsPage } from "@/features/resident/MyRequestsPage"
-import { ProviderDashboardPage } from "@/features/provider/ProviderDashboardPage"
+import { ProfessionalOverviewPage } from "@/features/provider/ProfessionalOverviewPage"
+import { ProfessionalListingsPage } from "@/features/provider/ProfessionalListingsPage"
+import { ProfessionalLeadsPage } from "@/features/provider/ProfessionalLeadsPage"
+import { ProfessionalProfilePage } from "@/features/provider/ProfessionalProfilePage"
 import { ListingFormPage } from "@/features/provider/ListingFormPage"
 import { ListingPendingPage } from "@/features/provider/ListingPendingPage"
+import { EditListingPage } from "@/features/provider/EditListingPage"
 import { AdminLoginPage } from "@/features/admin/AdminLoginPage"
 import { AdminDashboardPage } from "@/features/admin/AdminDashboardPage"
 import { ModerationQueuePage } from "@/features/admin/ModerationQueuePage"
@@ -68,9 +72,13 @@ export const router = createBrowserRouter([
     path: routes.providerDashboard,
     element: <ProviderLayout />,
     children: [
-      { index: true, element: <ProviderDashboardPage /> },
+      { index: true, element: <ProfessionalOverviewPage /> },
+      { path: "listings", element: <ProfessionalListingsPage /> },
       { path: "listings/new", element: <ListingFormPage /> },
       { path: "listings/pending", element: <ListingPendingPage /> },
+      { path: "listings/:id/edit", element: <EditListingPage /> },
+      { path: "leads", element: <ProfessionalLeadsPage /> },
+      { path: "profile", element: <ProfessionalProfilePage /> },
     ],
   },
   {

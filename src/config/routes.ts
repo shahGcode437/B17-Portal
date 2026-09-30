@@ -25,8 +25,12 @@ export const routes = {
   propertyDetails: "/properties/:id",
 
   providerDashboard: "/provider",
+  providerListings: "/provider/listings",
+  providerLeads: "/provider/leads",
+  professionalProfile: "/provider/profile",
   createListing: "/provider/listings/new",
   listingPending: "/provider/listings/pending",
+  editListing: "/provider/listings/:id/edit",
 
   adminLogin: "/admin/login",
   adminDashboard: "/admin",
@@ -68,4 +72,9 @@ export function propertyDetailsPath(id: string): string {
 /** Builds a concrete link to the Admin edit form for a news item (e.g. "/admin/content/news-01/edit"). */
 export function adminContentEditPath(id: string): string {
   return `/admin/content/${id}/edit`
+}
+
+/** Builds a concrete link to a professional's own listing edit form (e.g. "/provider/listings/provider-01/edit"). */
+export function editListingPath(id: string): string {
+  return `/provider/listings/${id}/edit`
 }

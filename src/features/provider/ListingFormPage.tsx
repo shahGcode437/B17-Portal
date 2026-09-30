@@ -3,10 +3,6 @@ import { useNavigate } from "react-router-dom"
 import { motion } from "motion/react"
 import { ArrowLeft, Wrench, Building2, KeyRound } from "lucide-react"
 import type { ListingKind } from "@/types/listing"
-import type { Provider } from "@/types/provider"
-import type { Business } from "@/types/business"
-import type { Property, ListingType, FurnishingStatus } from "@/types/property"
-import type { ServiceCategorySlug } from "@/types/category"
 import { Container } from "@/components/foundation/Container"
 import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
@@ -17,8 +13,8 @@ import { BusinessCard } from "@/components/cards/BusinessCard"
 import { PropertyCard } from "@/components/cards/PropertyCard"
 import { ListingForm } from "@/features/provider/ListingForm"
 import { PropertyListingForm } from "@/features/provider/PropertyListingForm"
-import { parseTags, type ListingFormValues, type PropertyFormValues } from "@/features/provider/listingSchema"
-import { serviceCategories } from "@/data/serviceCategories"
+import type { ListingFormValues, PropertyFormValues } from "@/features/provider/listingSchema"
+import { buildProvider, buildBusiness, buildProperty } from "@/features/provider/listingBuilders"
 import { useListingsStore } from "@/state/listingsStore"
 import { useRequireAuth } from "@/hooks/useRequireAuth"
 import { routes } from "@/config/routes"
@@ -26,49 +22,6 @@ import { fadeUp } from "@/lib/motion"
 
 type Step = "type" | "form" | "preview"
 type FormValues = ListingFormValues | PropertyFormValues
-
-function buildProvider(values: ListingFormValues, id: string): Provider {
-  const category = serviceCategories.find((c) => c.slug === values.category)
-  return {
-    id,
-    name: values.name,
-    category: (category?.slug ?? values.category) as ServiceCategorySlug,
-    categoryLabel: category?.label ?? values.category,
-    description: values.description,
-    area: values.area,
-    tags: parseTags(values.tagsInput),
-    image: values.image,
-  }
-}
-
-function buildBusiness(values: ListingFormValues, id: string): Business {
-  return {
-    id,
-    name: values.name,
-    category: values.category,
-    description: values.description,
-    area: values.area,
-    tags: parseTags(values.tagsInput),
-    image: values.image,
-  }
-}
-
-function buildProperty(values: PropertyFormValues, id: string): Property {
-  const bedrooms = values.bedrooms?.trim() ? Number(values.bedrooms) : undefined
-  return {
-    id,
-    title: values.title,
-    listingType: values.listingType as ListingType,
-    propertyType: values.propertyType,
-    price: values.price,
-    area: values.area,
-    description: values.description,
-    bedrooms: bedrooms !== undefined && !Number.isNaN(bedrooms) ? bedrooms : undefined,
-    furnished: values.furnished ? (values.furnished as FurnishingStatus) : undefined,
-    tags: values.tagsInput ? parseTags(values.tagsInput) : [],
-    image: values.image,
-  }
-}
 
 const typeChoices: { kind: ListingKind; icon: typeof Wrench; title: string; description: string }[] = [
   {

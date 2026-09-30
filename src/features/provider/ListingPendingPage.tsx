@@ -28,6 +28,10 @@ const statusCopy = {
     title: "Your listing needs changes",
     description: "This demo listing wasn't approved. Review the reason below and resubmit.",
   },
+  archived: {
+    title: "Your listing is archived",
+    description: "You archived this listing — it's no longer visible to residents.",
+  },
 } as const
 
 /**
@@ -98,7 +102,7 @@ function ListingPendingPage() {
 
           <Stack gap={2} className="flex-col-reverse sm:flex-row">
             <Button asChild variant="outline" className="flex-1">
-              <Link to={routes.providerDashboard}>View My Listings</Link>
+              <Link to={routes.providerListings}>View My Listings</Link>
             </Button>
             <Button asChild className="flex-1">
               <Link to={routes.createListing}>

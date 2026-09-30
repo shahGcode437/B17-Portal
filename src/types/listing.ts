@@ -2,7 +2,14 @@ import type { Provider } from "@/types/provider"
 import type { Business } from "@/types/business"
 import type { Property } from "@/types/property"
 
-export type ListingStatus = "pending" | "approved" | "rejected"
+/**
+ * "archived" (Phase 9D) is a professional-initiated removal — the listing
+ * stops being publicly resolvable (same `status === "approved"` checks in
+ * `search.ts` simply no longer match) without deleting the record or
+ * inventing backend moderation behavior. One-way in this phase: no
+ * unarchive UI yet.
+ */
+export type ListingStatus = "pending" | "approved" | "rejected" | "archived"
 
 interface PendingListingBase {
   id: string

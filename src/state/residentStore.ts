@@ -1,12 +1,18 @@
 import { create } from "zustand"
 import { persist } from "zustand/middleware"
-import type { SavedItem, SavedItemKind, ServiceRequestRecord } from "@/types/resident"
+import type { SavedItem, SavedItemKind, ServiceRequestRecord, RequestStatus } from "@/types/resident"
 
 interface ResidentState {
   savedItems: SavedItem[]
   requests: ServiceRequestRecord[]
   toggleSaved: (kind: SavedItemKind, id: string) => void
   addRequest: (request: ServiceRequestRecord) => void
+  /**
+   * Professional-side status transition (Phase 9D). Lives here, not a
+   * separate "providerRequests" store, so the resident's My Requests and the
+   * professional's Leads read the exact same record — one source of truth.
+   */
+  updateRequestStatus: (id: string, status: RequestStatus) => void
   clearResidentData: () => void
 }
 
@@ -48,6 +54,11 @@ export const useResidentStore = create<ResidentState>()(
       addRequest: (request) =>
         set((state) => ({
           requests: [request, ...state.requests],
+        })),
+
+      updateRequestStatus: (id, status) =>
+        set((state) => ({
+          requests: state.requests.map((request) => (request.id === id ? { ...request, status } : request)),
         })),
 
       clearResidentData: () => set({ savedItems: [], requests: [] }),
