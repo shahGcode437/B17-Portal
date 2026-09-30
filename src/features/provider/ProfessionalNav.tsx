@@ -6,13 +6,17 @@ const items = [
   { label: "Overview", path: routes.providerDashboard },
   { label: "Listings", path: routes.providerListings },
   { label: "Leads", path: routes.providerLeads },
+  { label: "Analytics", path: routes.providerAnalytics },
   { label: "Profile", path: routes.professionalProfile },
 ]
 
 /**
- * Professional Workspace navigation (Phase 9D) — Overview/Listings/Leads/
- * Profile. Lives only inside `ProviderLayout`, entirely separate from the
- * consumer Header/MobileNav (Master Spec §15 — keep layouts separated).
+ * Professional Workspace navigation (Phase 9D; Analytics added Phase 9E) —
+ * Overview/Listings/Leads/Analytics/Profile. Lives only inside
+ * `ProviderLayout`, entirely separate from the consumer Header/MobileNav
+ * (Master Spec §15 — keep layouts separated). The Analytics tab stays
+ * visible to Free professionals too (it shows a locked-feature preview) so
+ * Premium is discoverable, rather than hidden entirely.
  */
 function ProfessionalNav() {
   return (

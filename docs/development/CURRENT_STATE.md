@@ -11,12 +11,12 @@ master
 ## Current Verified Commit
 
 19a8d8e Phase 9D: build professional workspace with listings, leads, and status management
-(preceded by e781a34 Phase 9C, 51293d6 Phase 9B — both corrected here from a stale "pending" note in an earlier version of this file)
+Phase 9E commit: pending (implementation complete, review passed, not yet committed)
 
 ## Current Phase
 
-Phase 9D — Professional Workspace: COMPLETE and committed.
-Next: Phase 9E — Free/Premium Foundation.
+Phase 9E — Free/Premium Foundation: COMPLETE, reviewed (READY FOR COMMIT), commit pending approval.
+Next frontend step: Visual/UI Refresh Planning — `docs/development/DESIGN_SYSTEM.md` will be created before any visual/theme changes begin.
 
 ## Completed Product Work
 
@@ -35,6 +35,7 @@ Next: Phase 9E — Free/Premium Foundation.
 - Phase 9B — Advanced Search & Discovery (see below)
 - Phase 9C — Resident Experience (see below)
 - Phase 9D — Professional Workspace (see below)
+- Phase 9E — Free/Premium Foundation (see below)
 
 Full history is in `git log`; this file summarizes outcomes, not the blow-by-blow.
 
@@ -43,8 +44,9 @@ Full history is in `git log`; this file summarizes outcomes, not the blow-by-blo
 - React 19 + TypeScript (strict) + Vite 8 SPA, no SSR.
 - Three route trees under `createBrowserRouter`: `ConsumerLayout` (Header/Footer/MobileNav), `ProviderLayout` (now a full Professional Workspace shell — Overview/Listings/Leads/Profile nav, Phase 9D), `AdminLayout`. All routes are statically imported — no code splitting yet.
 - `src/services/search.ts` is the single public read-data seam for all domain content (providers, businesses, tutors, properties, news, sponsored cards, plus category/subject/type tile enumeration). Components must not import `@/data/*` domain arrays directly — confirmed and enforced as of Phase 9A.
-- Three Zustand stores: `listingsStore` (provider/business/property listing lifecycle: pending → approved/rejected, plus `archived` as of Phase 9D) and `newsStore` (draft/published) are in-memory only, reset on reload. `residentStore` (Phase 9C — saved items + request history; Phase 9D added `updateRequestStatus`) additionally persists to `localStorage` via Zustand's own `persist` middleware; it is cleared on explicit resident Log Out (see Phase 9C Result).
-- Demo-only auth: `useAuth()`/`useAdminAuth()`, name-only sessions, no password, no backend. Already consumed only through their public hooks everywhere (verified in Phase 9A). `AuthProvider.logout()` also clears `residentStore` — see Phase 9C Result.
+- Four Zustand stores: `listingsStore` (provider/business/property listing lifecycle: pending → approved/rejected, plus `archived` as of Phase 9D; `selectActiveListingsBySubmitter`/`isListingCountedTowardPlanLimit` added Phase 9E for the Free listing-limit check) and `newsStore` (draft/published) are in-memory only, reset on reload. `residentStore` (Phase 9C — saved items + request history; Phase 9D added `updateRequestStatus`) and `planStore` (Phase 9E — the mocked local Free/Premium plan) both persist to `localStorage` via Zustand's own `persist` middleware; both are cleared/reset on explicit resident Log Out (see Phase 9C/9E Results).
+- Demo-only auth: `useAuth()`/`useAdminAuth()`, name-only sessions, no password, no backend. Already consumed only through their public hooks everywhere (verified in Phase 9A). `AuthProvider.logout()` also clears `residentStore` and resets `planStore` — see Phase 9C/9E Results.
+- Free/Premium capability model (Phase 9E): `Plan → PlanEntitlements → Capability`, centralized in `types/entitlements.ts`/`config/plans.ts`, consumed only via `useCapability`/`usePlanEntitlements`/`<RequireCapability>` — never a scattered `plan === "premium"` check. Frontend-only UX gating, explicitly not a security boundary.
 - Static seed data lives in `src/data/*.ts`, typed via `src/types/*.ts`.
 - TypeScript strict mode enabled (Phase 9A) — zero errors, no `any`, no suppressions needed.
 - No PWA (no manifest, no service worker, no install prompt).
@@ -94,6 +96,18 @@ Full history is in `git log`; this file summarizes outcomes, not the blow-by-blo
 - No dependency added. No backend/fake network calls. No premium/entitlement code (that's Phase 9E). Build passes. TypeScript strict passes with zero errors. Lint stays at the existing 8-warning baseline. No test suite exists to run.
 - Reviewed via `review-phase`: verdict READY FOR COMMIT. Committed as `19a8d8e`.
 
+## Phase 9E Result
+
+- Centralized, typed `Plan → PlanEntitlements → Capability` architecture (`types/entitlements.ts`, `config/plans.ts`, `state/planStore.ts`, `hooks/useCapability.ts`, `components/access/RequireCapability.tsx`) — the only vocabulary feature code uses to decide what a professional can do.
+- Two plans only: `free`/`premium`. `planStore` is a mocked, local, `localStorage`-persisted plan source (no backend, no fake HTTP) — explicitly documented as a UX control only, not a security boundary; real authorization will live in the backend once it exists.
+- **Analytics** is the one real gated Premium example (`analytics.basic` capability): a genuine listings/leads status breakdown derived from existing store data, locked behind a real preview (not a blank page) for Free professionals.
+- **Upgrade page** (`/provider/upgrade`): Free vs. Premium comparison, no pricing, no payment button, no checkout — the only interactive control is a demo-labeled plan toggle ("no real payment or subscription"), matching this prototype's existing "(demo)" affordance convention.
+- **Free active-listing limit = 3.** Only `pending` and `approved` listings count toward it (`isListingCountedTowardPlanLimit`/`selectActiveListingsBySubmitter` in `listingsStore.ts`); `rejected` and `archived` listings do not consume the quota, and archiving a listing genuinely frees a slot immediately — fixed after an initial review caught the opposite (lifetime-cap) behavior. Premium has no numeric cap in the current frontend model (`maxListings: null`).
+- `maxListings` (on `PlanEntitlements`) is the single value every limit check reads; `listings.extended` is a separate, reserved/display-oriented capability (shown in the Upgrade comparison table) that does **not** control the numeric quota — both files' doc comments cross-reference this explicitly to avoid future confusion.
+- Explicit resident Log Out resets the demo plan to Free (`AuthProvider.logout()` → `planStore.resetPlan()`), mirroring the same privacy-boundary pattern established for `residentStore` in Phase 9C.
+- No dependency added. No billing/payment/backend implementation of any kind. Build passes. TypeScript strict passes with zero errors. Lint stays at the existing 8-warning baseline. No test suite exists to run.
+- Reviewed via `review-phase` across three passes (initial → 1 blocking fix [listing-limit counting semantics] → final): verdict READY FOR COMMIT.
+
 ## Production V1 Direction
 
 - Complete the frontend before the backend.
@@ -116,8 +130,11 @@ Full history is in `git log`; this file summarizes outcomes, not the blow-by-blo
 - Professional/listing ownership (Phase 9D) is also name-based (`submittedBy === user.name`) — same demo-auth limitation, not a new one. Real auth/ownership belongs to the backend phase.
 - Archived listings have no unarchive action yet (one-way in Phase 9D).
 - Business/Property listings don't produce service leads — no request-capture flow exists for those kinds yet, only Provider's Request Service does.
-- `listingsStore` is still in-memory only (reset on reload) — unaffected by Phase 9D; `residentStore` remains the one `localStorage`-persisted store.
+- `listingsStore` is still in-memory only (reset on reload) — unaffected by Phase 9D/9E; `residentStore` and `planStore` (Phase 9E) are the two `localStorage`-persisted stores.
 - Minor cleanup noted in Phase 9D review, not yet actioned: an unused `routes.editListing` path constant, and `resubmitListing` has no store-level status guard (archived-listing protection lives only in `EditListingPage`'s UI).
+- Plan (Phase 9E) is demo/local only, not tied to any real account — same name-based limitation as everything else in this prototype; a determined user can switch their own plan, which is the explicit point of the demo Upgrade toggle. Real plan/subscription state belongs to the backend phase.
+- Frontend capability checks (Phase 9E) are UX only, not authorization/security — explicitly documented in `types/entitlements.ts`; the backend will be authoritative once it exists.
+- No profession-specific Premium modules built yet (Tutor/Property/Salon, etc.) — `professional.modules` capability exists, reserved and unconsumed, for exactly this future use.
 - Auth is demo-only (name string, no password, no persistence) — by design, not yet a gap to "fix," but must become real before any production launch.
 - No backend, no database — all state is static seed data + in-memory or `localStorage`-persisted Zustand.
 - No test suite of any kind.
@@ -141,7 +158,7 @@ Full history is in `git log`; this file summarizes outcomes, not the blow-by-blo
 
 ## Next Step
 
-Phase 9E — Free/Premium Foundation.
+Visual/UI Refresh Planning. `docs/development/DESIGN_SYSTEM.md` will be created before any visual/theme changes begin.
 
 ## Resume Instructions
 

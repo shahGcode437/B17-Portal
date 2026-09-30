@@ -22,6 +22,8 @@ import { ProfessionalOverviewPage } from "@/features/provider/ProfessionalOvervi
 import { ProfessionalListingsPage } from "@/features/provider/ProfessionalListingsPage"
 import { ProfessionalLeadsPage } from "@/features/provider/ProfessionalLeadsPage"
 import { ProfessionalProfilePage } from "@/features/provider/ProfessionalProfilePage"
+import { ProfessionalAnalyticsPage } from "@/features/provider/ProfessionalAnalyticsPage"
+import { UpgradePage } from "@/features/provider/UpgradePage"
 import { ListingFormPage } from "@/features/provider/ListingFormPage"
 import { ListingPendingPage } from "@/features/provider/ListingPendingPage"
 import { EditListingPage } from "@/features/provider/EditListingPage"
@@ -79,6 +81,8 @@ export const router = createBrowserRouter([
       { path: "listings/:id/edit", element: <EditListingPage /> },
       { path: "leads", element: <ProfessionalLeadsPage /> },
       { path: "profile", element: <ProfessionalProfilePage /> },
+      { path: "analytics", element: <ProfessionalAnalyticsPage /> },
+      { path: "upgrade", element: <UpgradePage /> },
     ],
   },
   {

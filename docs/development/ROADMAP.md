@@ -41,13 +41,24 @@ High-level only — implementation details for each phase are worked out when th
 - Verification: build passes, TypeScript strict passes, lint at existing baseline, no regressions to existing listing creation/moderation flows, reviewed via `review-phase` — final verdict READY FOR COMMIT. Non-blocking cleanup noted, not yet actioned: unused `routes.editListing` constant; `resubmitListing` has no store-level status guard (enforced only in `EditListingPage`'s UI).
 
 ## Phase 9E — Free/Premium Foundation
-**STATUS: NEXT**
+**STATUS: COMPLETE** (commit: pending — implementation done, reviewed READY FOR COMMIT)
 
 - Objective: introduce a capability/entitlement model (frontend only, no billing).
-- Major scope: `useCapability()`/`<RequireCapability>`-style gating mechanism, a mocked capability source, one real example profession module gated behind it (recommended: Education first, since it's the simplest data shape) — subject to client confirmation.
-- Out of scope: billing, payment, real entitlement backend, generalizing to every profession at once.
-- Dependencies: Phase 9D (workspace shell to plug the module into).
-- Completion/verification: gating mechanism proven on one module; no premium UI appears for free users.
+- Delivered: centralized typed `Plan → PlanEntitlements → Capability` architecture (`useCapability`/`usePlanEntitlements`/`<RequireCapability>`), a mocked local `planStore` (Free/Premium, `localStorage`-persisted, reset on explicit logout); Analytics as the one real gated Premium example; an Upgrade/plan-comparison page with no pricing or payment flow; a Free active-listing limit of 3 where only `pending`/`approved` listings count (`rejected`/`archived` don't consume the quota — archiving genuinely frees a slot); Premium has no numeric listing cap.
+- Deliberately not implemented: billing/payment/subscription backend, real plan persistence, any full profession-specific Premium module (`professional.modules` capability is reserved, unconsumed).
+- Dependencies: none new (builds on Phase 9D's workspace shell and Phase 9C's `persist`-store pattern).
+- Verification: build passes, TypeScript strict passes, lint at existing baseline, no regressions to existing flows, reviewed via `review-phase` across three passes (1 blocking fix: listing-limit counting semantics) — final verdict READY FOR COMMIT. `maxListings` controls the numeric quota; `listings.extended` is reserved/display-oriented and does not control it — documented explicitly in both `types/entitlements.ts` and `config/plans.ts` to avoid future confusion.
+
+---
+
+## Visual/UI Refresh Planning
+**STATUS: NEXT**
+
+- Objective: plan a visual/theme refresh for the frontend before making any styling changes.
+- Major scope: create `docs/development/DESIGN_SYSTEM.md` first (tokens, typography, color, spacing conventions currently in use) before any visual/theme work begins.
+- Out of scope: implementing the refresh itself — this entry covers planning only until scoped further.
+- Dependencies: none.
+- Completion/verification: `DESIGN_SYSTEM.md` exists and accurately reflects the current design system before any visual change is made.
 
 ## Phase 9F — Admin Production UX
 

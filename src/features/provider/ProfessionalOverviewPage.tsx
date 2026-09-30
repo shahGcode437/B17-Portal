@@ -8,9 +8,11 @@ import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
 import { RequestStatusBadge } from "@/features/resident/RequestStatusBadge"
 import { ListingStatusBadge } from "@/features/provider/ListingStatusBadge"
+import { PlanBadge } from "@/features/provider/PlanBadge"
 import { useListingsStore, selectListingsBySubmitter } from "@/state/listingsStore"
 import { useResidentStore } from "@/state/residentStore"
 import { useRequireAuth } from "@/hooks/useRequireAuth"
+import { usePlanEntitlements } from "@/hooks/useCapability"
 import { routes } from "@/config/routes"
 import { fadeUp } from "@/lib/motion"
 
@@ -42,6 +44,7 @@ function ProfessionalOverviewPage() {
   const user = useRequireAuth()
   const { listings } = useListingsStore()
   const requests = useResidentStore((state) => state.requests)
+  const { plan } = usePlanEntitlements()
 
   const { myListings, myLeads, counts } = useMemo(() => {
     if (!user) return { myListings: [], myLeads: [], counts: null }
@@ -76,12 +79,33 @@ function ProfessionalOverviewPage() {
     <Container className="py-8 sm:py-12">
       <motion.div {...fadeUp} className="mx-auto max-w-2xl">
         <Stack gap={6}>
-          <Stack gap={1}>
-            <Typography variant="h1">Overview</Typography>
-            <Typography variant="body-sm" className="text-muted-foreground">
-              Signed in as {user.name} (demo).
-            </Typography>
+          <Stack direction="row" align="start" justify="between" gap={3} wrap>
+            <Stack gap={1}>
+              <Typography variant="h1">Overview</Typography>
+              <Typography variant="body-sm" className="text-muted-foreground">
+                Signed in as {user.name} (demo).
+              </Typography>
+            </Stack>
+            <PlanBadge />
           </Stack>
+
+          {plan === "free" && (
+            <Stack
+              direction="row"
+              align="center"
+              justify="between"
+              gap={3}
+              wrap
+              className="rounded-xl border border-dashed border-border bg-muted/30 px-4 py-3"
+            >
+              <Typography variant="body-sm" className="text-muted-foreground">
+                You're on the Free plan — Premium adds Analytics and a higher listing limit.
+              </Typography>
+              <Link to={routes.providerUpgrade} className="text-sm font-medium text-primary hover:underline">
+                See Premium
+              </Link>
+            </Stack>
+          )}
 
           <Grid cols={3} gap={3}>
             <StatCard label="Total Listings" value={counts.total} />

@@ -7,6 +7,7 @@ import { Container } from "@/components/foundation/Container"
 import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
 import { Button } from "@/components/ui/button"
+import { EmptyState } from "@/components/feedback/EmptyState"
 import { DemoBadge } from "@/components/feedback/DemoBadge"
 import { ProviderCard } from "@/components/cards/ProviderCard"
 import { BusinessCard } from "@/components/cards/BusinessCard"
@@ -15,8 +16,9 @@ import { ListingForm } from "@/features/provider/ListingForm"
 import { PropertyListingForm } from "@/features/provider/PropertyListingForm"
 import type { ListingFormValues, PropertyFormValues } from "@/features/provider/listingSchema"
 import { buildProvider, buildBusiness, buildProperty } from "@/features/provider/listingBuilders"
-import { useListingsStore } from "@/state/listingsStore"
+import { useListingsStore, selectActiveListingsBySubmitter } from "@/state/listingsStore"
 import { useRequireAuth } from "@/hooks/useRequireAuth"
+import { usePlanEntitlements } from "@/hooks/useCapability"
 import { routes } from "@/config/routes"
 import { fadeUp } from "@/lib/motion"
 
@@ -48,7 +50,8 @@ const typeChoices: { kind: ListingKind; icon: typeof Wrench; title: string; desc
 function ListingFormPage() {
   const user = useRequireAuth()
   const navigate = useNavigate()
-  const { submitListing } = useListingsStore()
+  const { listings, submitListing } = useListingsStore()
+  const { plan, entitlements } = usePlanEntitlements()
   const [draftId] = useState(() => crypto.randomUUID())
 
   const [step, setStep] = useState<Step>("type")
@@ -56,6 +59,22 @@ function ListingFormPage() {
   const [values, setValues] = useState<FormValues | null>(null)
 
   if (!user) return null
+
+  const activeListingCount = selectActiveListingsBySubmitter(listings, user.name).length
+  const atLimit = entitlements.maxListings !== null && activeListingCount >= entitlements.maxListings
+
+  if (atLimit) {
+    return (
+      <Container className="py-16">
+        <EmptyState
+          title="You've reached your active listing limit"
+          description={`The ${plan} plan allows up to ${entitlements.maxListings} active (pending or approved) listings. Upgrade to Premium for a higher limit, or archive an existing listing first.`}
+          actionLabel="See Premium"
+          onAction={() => navigate(routes.providerUpgrade)}
+        />
+      </Container>
+    )
+  }
 
   function handleChooseType(nextKind: ListingKind) {
     setKind(nextKind)

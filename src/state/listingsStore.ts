@@ -70,3 +70,29 @@ export const useListingsStore = create<ListingsState>((set) => ({
 export function selectListingsBySubmitter(listings: PendingListing[], submittedBy: string): PendingListing[] {
   return listings.filter((listing) => listing.submittedBy === submittedBy)
 }
+
+/**
+ * Statuses that count toward a plan's active-listing quota (Phase 9E). The
+ * quota represents concurrently active/in-review listings, not a lifetime
+ * creation cap — a rejected or archived listing isn't "using" anything, so
+ * it must not permanently consume a Free professional's slot.
+ */
+const ACTIVE_LISTING_STATUSES: ReadonlySet<ListingStatus> = new Set(["pending", "approved"])
+
+/** Whether a listing in this status counts toward a plan's active-listing quota — the single rule every limit check must share. */
+export function isListingCountedTowardPlanLimit(status: ListingStatus): boolean {
+  return ACTIVE_LISTING_STATUSES.has(status)
+}
+
+/**
+ * Same as `selectListingsBySubmitter`, restricted to statuses that count
+ * toward a plan's active-listing quota (Phase 9E) — use this, not
+ * `selectListingsBySubmitter(...).length`, for any listing-limit check.
+ * Listing *management* views should keep using the unfiltered
+ * `selectListingsBySubmitter` so archived/rejected listings stay visible.
+ */
+export function selectActiveListingsBySubmitter(listings: PendingListing[], submittedBy: string): PendingListing[] {
+  return selectListingsBySubmitter(listings, submittedBy).filter((listing) =>
+    isListingCountedTowardPlanLimit(listing.status)
+  )
+}

@@ -1,6 +1,7 @@
 import * as React from "react"
 import { AuthContext, type DemoUser } from "@/hooks/useAuth"
 import { useResidentStore } from "@/state/residentStore"
+import { usePlanStore } from "@/state/planStore"
 
 /**
  * Simulated authentication (Master Spec §19, §9 — no real backend,
@@ -21,6 +22,9 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
     // sign-out clears it rather than leaving one resident's saved items
     // and request history visible to the next person on this browser.
     useResidentStore.getState().clearResidentData()
+    // Same reason, for the mocked plan (Phase 9E): a demo professional's
+    // chosen plan must not carry over to the next person on this browser.
+    usePlanStore.getState().resetPlan()
   }, [])
 
   const value = React.useMemo(() => ({ user, login, logout }), [user, login, logout])

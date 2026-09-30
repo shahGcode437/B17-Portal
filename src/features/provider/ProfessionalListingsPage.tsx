@@ -8,9 +8,10 @@ import { Typography } from "@/components/foundation/Typography"
 import { Button } from "@/components/ui/button"
 import { ListingSummaryCard } from "@/features/provider/ListingSummaryCard"
 import { ListingPreviewDialog } from "@/features/provider/ListingPreviewDialog"
-import { useListingsStore, selectListingsBySubmitter } from "@/state/listingsStore"
+import { useListingsStore, selectListingsBySubmitter, selectActiveListingsBySubmitter } from "@/state/listingsStore"
 import { useRequireAuth } from "@/hooks/useRequireAuth"
 import { useToast } from "@/hooks/useToast"
+import { usePlanEntitlements } from "@/hooks/useCapability"
 import { routes, editListingPath } from "@/config/routes"
 import { fadeUp, staggerContainer, staggerItem } from "@/lib/motion"
 import type { PendingListing } from "@/types/listing"
@@ -83,12 +84,19 @@ function ProfessionalListingsPage() {
   const user = useRequireAuth()
   const { listings } = useListingsStore()
   const [previewing, setPreviewing] = useState<PendingListing | null>(null)
+  const { plan, entitlements } = usePlanEntitlements()
 
   if (!user) return null
 
   const myListings = selectListingsBySubmitter(listings, user.name)
     .slice()
     .sort((a, b) => b.submittedAt.localeCompare(a.submittedAt))
+
+  // Archived/rejected listings stay visible above, but don't consume the
+  // active-listing quota — only pending/approved do (Phase 9E fix).
+  const activeListingCount = selectActiveListingsBySubmitter(listings, user.name).length
+  const maxListings = entitlements.maxListings
+  const atLimit = maxListings !== null && activeListingCount >= maxListings
 
   return (
     <Container className="py-8 sm:py-12">
@@ -99,9 +107,11 @@ function ProfessionalListingsPage() {
               <Typography variant="h1">Listings</Typography>
               <Typography variant="body-sm" className="text-muted-foreground">
                 Everything you've submitted, and its current moderation status.
+                {maxListings !== null &&
+                  ` ${activeListingCount} of ${maxListings} active listings used (${plan} plan) — archived/rejected don't count.`}
               </Typography>
             </Stack>
-            {myListings.length > 0 && (
+            {myListings.length > 0 && !atLimit && (
               <Button asChild size="sm">
                 <Link to={routes.createListing}>
                   <PlusCircle />
@@ -110,6 +120,25 @@ function ProfessionalListingsPage() {
               </Button>
             )}
           </Stack>
+
+          {atLimit && (
+            <Stack
+              direction="row"
+              align="center"
+              justify="between"
+              gap={3}
+              wrap
+              className="rounded-xl border border-dashed border-border bg-muted/30 px-4 py-3"
+            >
+              <Typography variant="body-sm" className="text-muted-foreground">
+                You've reached the Free plan's limit of {maxListings} active (pending or approved)
+                listings. Archive one to free a slot, or upgrade for a higher limit.
+              </Typography>
+              <Link to={routes.providerUpgrade} className="text-sm font-medium text-primary hover:underline">
+                See Premium
+              </Link>
+            </Stack>
+          )}
 
           {myListings.length === 0 ? (
             <Stack align="center" gap={4} className="rounded-xl border border-dashed border-border bg-muted/30 py-12 text-center">
