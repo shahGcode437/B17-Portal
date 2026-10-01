@@ -1,5 +1,4 @@
 import { MapPin, MessageCircle, Building2, Star } from "lucide-react"
-import { motion } from "motion/react"
 import type { Business } from "@/types/business"
 import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
@@ -7,10 +6,10 @@ import { CardImage } from "@/components/media/CardImage"
 import { DemoBadge } from "@/components/feedback/DemoBadge"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Card } from "@/components/ui/card"
 import { SaveButton } from "@/components/inputs/SaveButton"
 import { useToast } from "@/hooks/useToast"
 import { SIMULATED_MESSAGES } from "@/lib/simulatedActions"
-import { cardHover } from "@/lib/motion"
 
 interface BusinessCardProps {
   business: Business
@@ -22,8 +21,8 @@ function BusinessCard({ business, onSelect }: BusinessCardProps) {
   const { show } = useToast()
 
   return (
-    <motion.div
-      {...cardHover}
+    <Card
+      variant="interactive"
       role="button"
       tabIndex={0}
       onClick={onSelect}
@@ -33,7 +32,6 @@ function BusinessCard({ business, onSelect }: BusinessCardProps) {
           onSelect?.()
         }
       }}
-      className="flex cursor-pointer flex-col gap-3 rounded-xl border border-border bg-card p-3 text-left shadow-subtle transition-colors hover:border-primary/30 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
       aria-label={`Preview ${business.name}`}
     >
       <div className="relative">
@@ -88,7 +86,7 @@ function BusinessCard({ business, onSelect }: BusinessCardProps) {
           Contact
         </Button>
       </Stack>
-    </motion.div>
+    </Card>
   )
 }
 

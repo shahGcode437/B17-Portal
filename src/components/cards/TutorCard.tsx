@@ -1,15 +1,14 @@
 import { MapPin, MessageCircle, GraduationCap } from "lucide-react"
-import { motion } from "motion/react"
 import type { Tutor } from "@/types/tutor"
 import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
 import { CardImage } from "@/components/media/CardImage"
 import { DemoBadge } from "@/components/feedback/DemoBadge"
 import { Button } from "@/components/ui/button"
+import { Card } from "@/components/ui/card"
 import { SaveButton } from "@/components/inputs/SaveButton"
 import { useToast } from "@/hooks/useToast"
 import { SIMULATED_MESSAGES } from "@/lib/simulatedActions"
-import { cardHover } from "@/lib/motion"
 
 interface TutorCardProps {
   tutor: Tutor
@@ -21,8 +20,8 @@ function TutorCard({ tutor, onSelect }: TutorCardProps) {
   const { show } = useToast()
 
   return (
-    <motion.div
-      {...cardHover}
+    <Card
+      variant="interactive"
       role="button"
       tabIndex={0}
       onClick={onSelect}
@@ -32,7 +31,6 @@ function TutorCard({ tutor, onSelect }: TutorCardProps) {
           onSelect?.()
         }
       }}
-      className="flex cursor-pointer flex-col gap-3 rounded-xl border border-border bg-card p-3 text-left shadow-subtle transition-colors hover:border-primary/30 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
       aria-label={`Preview ${tutor.name}`}
     >
       <div className="relative">
@@ -70,7 +68,7 @@ function TutorCard({ tutor, onSelect }: TutorCardProps) {
           Chat on WhatsApp
         </Button>
       </div>
-    </motion.div>
+    </Card>
   )
 }
 

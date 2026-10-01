@@ -1,5 +1,4 @@
 import { MapPin, MessageCircle, Wrench } from "lucide-react"
-import { motion } from "motion/react"
 import { useNavigate } from "react-router-dom"
 import type { Provider } from "@/types/provider"
 import { Stack } from "@/components/foundation/Stack"
@@ -7,10 +6,10 @@ import { Typography } from "@/components/foundation/Typography"
 import { CardImage } from "@/components/media/CardImage"
 import { DemoBadge } from "@/components/feedback/DemoBadge"
 import { Button } from "@/components/ui/button"
+import { Card } from "@/components/ui/card"
 import { SaveButton } from "@/components/inputs/SaveButton"
 import { useToast } from "@/hooks/useToast"
 import { SIMULATED_MESSAGES } from "@/lib/simulatedActions"
-import { cardHover } from "@/lib/motion"
 import { providerProfilePath } from "@/config/routes"
 
 interface ProviderCardProps {
@@ -24,8 +23,8 @@ function ProviderCard({ provider, onSelect }: ProviderCardProps) {
   const navigate = useNavigate()
 
   return (
-    <motion.div
-      {...cardHover}
+    <Card
+      variant="interactive"
       role="button"
       tabIndex={0}
       onClick={onSelect}
@@ -35,7 +34,6 @@ function ProviderCard({ provider, onSelect }: ProviderCardProps) {
           onSelect?.()
         }
       }}
-      className="flex cursor-pointer flex-col gap-3 rounded-xl border border-border bg-card p-3 text-left shadow-subtle transition-colors hover:border-primary/30 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
       aria-label={`Preview ${provider.name}`}
     >
       <div className="relative">
@@ -84,7 +82,7 @@ function ProviderCard({ provider, onSelect }: ProviderCardProps) {
           Request
         </Button>
       </Stack>
-    </motion.div>
+    </Card>
   )
 }
 

@@ -2,7 +2,7 @@
 
 ## Last Updated
 
-2026-09-30
+2026-10-01
 
 ## Current Branch
 
@@ -10,13 +10,13 @@ master
 
 ## Current Verified Commit
 
-19a8d8e Phase 9D: build professional workspace with listings, leads, and status management
-Phase 9E commit: pending (implementation complete, review passed, not yet committed)
+d61ee8f Add B-17 Portal design system specification
+Visual V1 commit: pending (implementation complete, review passed, not yet committed)
 
 ## Current Phase
 
-Phase 9E — Free/Premium Foundation: COMPLETE, reviewed (READY FOR COMMIT), commit pending approval.
-Next frontend step: Visual/UI Refresh Planning — `docs/development/DESIGN_SYSTEM.md` will be created before any visual/theme changes begin.
+Visual Phase V1 — Shared Card Primitive + Surface Foundation: COMPLETE, reviewed (READY FOR COMMIT), commit pending approval.
+Next frontend step: Visual Phase V2 — Consumer Discovery/Card Refresh.
 
 ## Completed Product Work
 
@@ -36,6 +36,8 @@ Next frontend step: Visual/UI Refresh Planning — `docs/development/DESIGN_SYST
 - Phase 9C — Resident Experience (see below)
 - Phase 9D — Professional Workspace (see below)
 - Phase 9E — Free/Premium Foundation (see below)
+- Visual/UI Refresh audit + `docs/design/DESIGN_SYSTEM.md` (single visual-design source of truth)
+- Visual Phase V1 — Shared Card Primitive + Surface Foundation (see below)
 
 Full history is in `git log`; this file summarizes outcomes, not the blow-by-blow.
 
@@ -47,6 +49,7 @@ Full history is in `git log`; this file summarizes outcomes, not the blow-by-blo
 - Four Zustand stores: `listingsStore` (provider/business/property listing lifecycle: pending → approved/rejected, plus `archived` as of Phase 9D; `selectActiveListingsBySubmitter`/`isListingCountedTowardPlanLimit` added Phase 9E for the Free listing-limit check) and `newsStore` (draft/published) are in-memory only, reset on reload. `residentStore` (Phase 9C — saved items + request history; Phase 9D added `updateRequestStatus`) and `planStore` (Phase 9E — the mocked local Free/Premium plan) both persist to `localStorage` via Zustand's own `persist` middleware; both are cleared/reset on explicit resident Log Out (see Phase 9C/9E Results).
 - Demo-only auth: `useAuth()`/`useAdminAuth()`, name-only sessions, no password, no backend. Already consumed only through their public hooks everywhere (verified in Phase 9A). `AuthProvider.logout()` also clears `residentStore` and resets `planStore` — see Phase 9C/9E Results.
 - Free/Premium capability model (Phase 9E): `Plan → PlanEntitlements → Capability`, centralized in `types/entitlements.ts`/`config/plans.ts`, consumed only via `useCapability`/`usePlanEntitlements`/`<RequireCapability>` — never a scattered `plan === "premium"` check. Frontend-only UX gating, explicitly not a security boundary.
+- Shared `Card` surface primitive (Visual Phase V1, `src/components/ui/card.tsx`) — presentation-only, variants `default`/`interactive`/`elevated`/`workspace`/`featured`; `ProviderCard`/`BusinessCard`/`TutorCard`/`PropertyCard` compose it instead of each owning its own surface classes. `docs/design/DESIGN_SYSTEM.md` is the single visual-design source of truth going forward.
 - Static seed data lives in `src/data/*.ts`, typed via `src/types/*.ts`.
 - TypeScript strict mode enabled (Phase 9A) — zero errors, no `any`, no suppressions needed.
 - No PWA (no manifest, no service worker, no install prompt).
@@ -108,6 +111,19 @@ Full history is in `git log`; this file summarizes outcomes, not the blow-by-blo
 - No dependency added. No billing/payment/backend implementation of any kind. Build passes. TypeScript strict passes with zero errors. Lint stays at the existing 8-warning baseline. No test suite exists to run.
 - Reviewed via `review-phase` across three passes (initial → 1 blocking fix [listing-limit counting semantics] → final): verdict READY FOR COMMIT.
 
+## Visual Phase V1 Result
+
+- Added a shared, presentation-only `Card` primitive (`src/components/ui/card.tsx`) per `docs/design/DESIGN_SYSTEM.md` §8 — variants: `default` / `interactive` / `elevated` / `workspace` / `featured`. `Card` never sets `role`/`tabIndex`/`onClick`/`onKeyDown`/`aria-label` itself; a consumer must still supply those explicitly to make a card clickable.
+- `ProviderCard`, `BusinessCard`, `TutorCard`, `PropertyCard` migrated to compose `Card` (`variant="interactive"`), replacing an identical hand-duplicated wrapper class string that previously existed independently in all 4 files.
+- `CardImage`/`PlaceholderImage` imagery seam untouched — each migrated card still owns its own image region, overlays (`SaveButton`, `Badge`), and CTA row exactly as before.
+- Keyboard activation (Enter/Space), click navigation, Save/Favorite, badges, and CTA behavior all verified unchanged, live, across all 4 migrated cards.
+- Existing motion system reused as-is — the shared `cardHover` preset now applies from inside `Card` for `interactive`/`featured` variants only, instead of being spread independently in each card component; no new motion concept introduced.
+- No new visual tokens — every `Card` class references an existing token already in `src/index.css`.
+- No dependency added (`package.json` unchanged).
+- `npx tsc -b --force` and `npm run build` pass. Lint remains at the established 8-warning baseline (a transient 9th `only-export-components` warning from `card.tsx` exporting `cardVariants` was fixed by making `cardVariants` module-private before final review).
+- Reviewed via `review-phase`: verdict READY FOR COMMIT.
+- Known follow-ups, intentionally deferred: `CategoryCard` and `ListingSummaryCard` still hand-roll their own surface styling (not migrated — `CategoryCard` renders as a `Link` with `compact`/`emphasis` props that don't map onto the current variant set; `ListingSummaryCard` is non-interactive with different padding/layout); the `elevated`/`workspace`/`featured` `Card` variants are defined (per DESIGN_SYSTEM.md §8) but have no consumer yet in production UI.
+
 ## Production V1 Direction
 
 - Complete the frontend before the backend.
@@ -143,6 +159,8 @@ Full history is in `git log`; this file summarizes outcomes, not the blow-by-blo
 - Dead route `/services/home-construction` (defined, wired, but no inbound link anywhere).
 - `shadcn` CLI package sits in `dependencies` instead of `devDependencies` (zero runtime impact, hygiene only).
 - No SPA-fallback hosting config (`vercel.json`/`netlify.toml`/`_redirects`) — will 404 on refresh/direct link on a real static host until added.
+- `CategoryCard` and `ListingSummaryCard` still hand-roll their own card surface styling — not yet migrated to the shared `Card` primitive (Visual Phase V1); candidates for a later visual phase.
+- `Card`'s `elevated`/`workspace`/`featured` variants are defined (`docs/design/DESIGN_SYSTEM.md` §8) but have no consumer in production UI yet — only `interactive` is in use as of Visual Phase V1.
 
 ## Do Not Build Yet
 
@@ -158,7 +176,7 @@ Full history is in `git log`; this file summarizes outcomes, not the blow-by-blo
 
 ## Next Step
 
-Visual/UI Refresh Planning. `docs/development/DESIGN_SYSTEM.md` will be created before any visual/theme changes begin.
+Visual Phase V2 — Consumer Discovery/Card Refresh (per `docs/design/DESIGN_SYSTEM.md` §23's phased migration plan).
 
 ## Resume Instructions
 

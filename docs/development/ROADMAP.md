@@ -52,13 +52,31 @@ High-level only — implementation details for each phase are worked out when th
 ---
 
 ## Visual/UI Refresh Planning
-**STATUS: NEXT**
+**STATUS: COMPLETE**
 
 - Objective: plan a visual/theme refresh for the frontend before making any styling changes.
-- Major scope: create `docs/development/DESIGN_SYSTEM.md` first (tokens, typography, color, spacing conventions currently in use) before any visual/theme work begins.
-- Out of scope: implementing the refresh itself — this entry covers planning only until scoped further.
+- Delivered: a read-only Visual/UI audit (design-system inventory, consumer/professional/admin flow audit, imagery/color/typography/motion/accessibility/responsive findings, root-cause analysis, P0–P3 prioritized recommendations) followed by `docs/design/DESIGN_SYSTEM.md` — the single visual-design source of truth (vision, principles, color/typography/spacing/radius/elevation system, the Card primitive design spec, imagery rules, per-surface component guidance, forms/buttons/badges/navigation/motion/responsive/accessibility rules, dark-mode status, anti-patterns, and the Visual Phase V1–V6 migration strategy).
+- Out of scope (unchanged): implementing the refresh itself — that begins with Visual Phase V1 below.
 - Dependencies: none.
-- Completion/verification: `DESIGN_SYSTEM.md` exists and accurately reflects the current design system before any visual change is made.
+- Verification: `docs/design/DESIGN_SYSTEM.md` exists and accurately reflects the current design system; no source/CSS/token changes were made while producing it.
+
+## Visual Phase V1 — Shared Card Primitive + Surface Foundation
+**STATUS: COMPLETE** (commit: pending)
+
+- Objective: introduce a reusable, presentation-only `Card` surface primitive centralizing the border/radius/background/shadow/interactive-hover behavior duplicated across domain cards, per `docs/design/DESIGN_SYSTEM.md` §8.
+- Delivered: `src/components/ui/card.tsx` (variants `default`/`interactive`/`elevated`/`workspace`/`featured`); `ProviderCard`/`BusinessCard`/`TutorCard`/`PropertyCard` migrated to compose it (`variant="interactive"`), removing a verbatim-duplicated wrapper class string that previously existed independently in each file. `CardImage`/`PlaceholderImage`, keyboard/navigation/Save/CTA behavior, and the existing `cardHover` motion preset are all preserved unchanged — `Card` applies `cardHover` internally for `interactive`/`featured` variants rather than each card spreading it independently.
+- Deliberately not implemented: migrating `CategoryCard` (renders as a `Link` with `compact`/`emphasis` props not yet mapped onto the variant set) or `ListingSummaryCard` (non-interactive, different padding/layout); the `elevated`/`workspace`/`featured` variants are defined but unconsumed; no Home/Hero/Search-filter/Directory/detail-page/workspace/admin/dark-mode/typography work — all explicitly out of scope for V1.
+- Dependencies: none new (`package.json` unchanged).
+- Verification: `npx tsc -b --force` and `npm run build` pass; lint remains at the established 8-warning baseline (a transient 9th warning from `card.tsx` exporting an unused `cardVariants` was fixed by making it module-private); responsive behavior reverified at 375px/820px/1440px; reviewed via `review-phase` — final verdict READY FOR COMMIT.
+
+## Visual Phase V2 — Consumer Discovery/Card Refresh
+**STATUS: NEXT**
+
+- Objective: raise the visual confidence of consumer discovery surfaces per `docs/design/DESIGN_SYSTEM.md` §10/§23 — Search/Explore's filter bar and active-filter chips, and the sparse Directory landing page.
+- Major scope: to be confirmed against the live repo when this phase begins — not finalized here.
+- Out of scope: Home/Hero redesign, detail-page redesign, Professional Workspace/Admin redesign, dark mode, typography changes, new filter logic/behavior (visual treatment only).
+- Dependencies: Visual Phase V1 (the `Card` primitive).
+- Completion/verification: no change to filter/search behavior or URL state; responsive re-check at 375px/820px/1440px.
 
 ## Phase 9F — Admin Production UX
 
