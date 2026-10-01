@@ -54,8 +54,8 @@ function ResultList({ hits, loading, onSelect, onClearFilters }: ResultListProps
           exit={{ opacity: 0 }}
           transition={{ duration: duration.route }}
         >
-          <Grid cols={3} gap={4}>
-            {Array.from({ length: 6 }).map((_, i) => (
+          <Grid cols={4} gap={4}>
+            {Array.from({ length: 8 }).map((_, i) => (
               <ResultCardSkeleton key={i} />
             ))}
           </Grid>
@@ -84,7 +84,7 @@ function ResultList({ hits, loading, onSelect, onClearFilters }: ResultListProps
           exit={{ opacity: 0 }}
           transition={{ duration: duration.route }}
         >
-          <Grid cols={3} gap={4}>
+          <Grid cols={4} gap={4}>
             {hits.map((hit) => (
               <div key={`${hit.kind}-${hit.item.id}`}>{renderHit(hit, onSelect)}</div>
             ))}

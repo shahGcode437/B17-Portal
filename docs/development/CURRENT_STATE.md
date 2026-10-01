@@ -10,13 +10,13 @@ master
 
 ## Current Verified Commit
 
-d61ee8f Add B-17 Portal design system specification
-Visual V1 commit: pending (implementation complete, review passed, not yet committed)
+b74760e Visual V1: add shared card surface foundation
+Visual V2 commit: pending (implementation complete, review passed, not yet committed)
 
 ## Current Phase
 
-Visual Phase V1 — Shared Card Primitive + Surface Foundation: COMPLETE, reviewed (READY FOR COMMIT), commit pending approval.
-Next frontend step: Visual Phase V2 — Consumer Discovery/Card Refresh.
+Visual Phase V2 — Consumer Discovery/Card Refresh: COMPLETE, reviewed (READY FOR COMMIT), commit pending approval.
+Next frontend step: Visual Phase V3 — Detail Pages + Imagery.
 
 ## Completed Product Work
 
@@ -38,6 +38,7 @@ Next frontend step: Visual Phase V2 — Consumer Discovery/Card Refresh.
 - Phase 9E — Free/Premium Foundation (see below)
 - Visual/UI Refresh audit + `docs/design/DESIGN_SYSTEM.md` (single visual-design source of truth)
 - Visual Phase V1 — Shared Card Primitive + Surface Foundation (see below)
+- Visual Phase V2 — Consumer Discovery/Card Refresh (see below)
 
 Full history is in `git log`; this file summarizes outcomes, not the blow-by-blow.
 
@@ -49,7 +50,7 @@ Full history is in `git log`; this file summarizes outcomes, not the blow-by-blo
 - Four Zustand stores: `listingsStore` (provider/business/property listing lifecycle: pending → approved/rejected, plus `archived` as of Phase 9D; `selectActiveListingsBySubmitter`/`isListingCountedTowardPlanLimit` added Phase 9E for the Free listing-limit check) and `newsStore` (draft/published) are in-memory only, reset on reload. `residentStore` (Phase 9C — saved items + request history; Phase 9D added `updateRequestStatus`) and `planStore` (Phase 9E — the mocked local Free/Premium plan) both persist to `localStorage` via Zustand's own `persist` middleware; both are cleared/reset on explicit resident Log Out (see Phase 9C/9E Results).
 - Demo-only auth: `useAuth()`/`useAdminAuth()`, name-only sessions, no password, no backend. Already consumed only through their public hooks everywhere (verified in Phase 9A). `AuthProvider.logout()` also clears `residentStore` and resets `planStore` — see Phase 9C/9E Results.
 - Free/Premium capability model (Phase 9E): `Plan → PlanEntitlements → Capability`, centralized in `types/entitlements.ts`/`config/plans.ts`, consumed only via `useCapability`/`usePlanEntitlements`/`<RequireCapability>` — never a scattered `plan === "premium"` check. Frontend-only UX gating, explicitly not a security boundary.
-- Shared `Card` surface primitive (Visual Phase V1, `src/components/ui/card.tsx`) — presentation-only, variants `default`/`interactive`/`elevated`/`workspace`/`featured`; `ProviderCard`/`BusinessCard`/`TutorCard`/`PropertyCard` compose it instead of each owning its own surface classes. `docs/design/DESIGN_SYSTEM.md` is the single visual-design source of truth going forward.
+- Shared `Card` surface primitive (Visual Phase V1, `src/components/ui/card.tsx`) — presentation-only, variants `default`/`interactive`/`elevated`/`workspace`/`featured`; `ProviderCard`/`BusinessCard`/`TutorCard`/`PropertyCard` compose it instead of each owning its own surface classes. As of Visual Phase V2, `ProviderCard`/`BusinessCard` use the `featured` variant when the item's real `featured` seed field is `true`. `docs/design/DESIGN_SYSTEM.md` is the single visual-design source of truth going forward.
 - Static seed data lives in `src/data/*.ts`, typed via `src/types/*.ts`.
 - TypeScript strict mode enabled (Phase 9A) — zero errors, no `any`, no suppressions needed.
 - No PWA (no manifest, no service worker, no install prompt).
@@ -124,6 +125,21 @@ Full history is in `git log`; this file summarizes outcomes, not the blow-by-blo
 - Reviewed via `review-phase`: verdict READY FOR COMMIT.
 - Known follow-ups, intentionally deferred: `CategoryCard` and `ListingSummaryCard` still hand-roll their own surface styling (not migrated — `CategoryCard` renders as a `Link` with `compact`/`emphasis` props that don't map onto the current variant set; `ListingSummaryCard` is non-interactive with different padding/layout); the `elevated`/`workspace`/`featured` `Card` variants are defined (per DESIGN_SYSTEM.md §8) but have no consumer yet in production UI.
 
+## Visual Phase V2 Result
+
+**Search/Discovery**: Search/Explore's control hierarchy now reads SEARCH → FILTER → ACTIVE CRITERIA → RESULT COUNT → RESULTS. Desktop filters are grouped inside a `Card`-surfaced panel; the content-type toggle and active filter chips get a clearer primary-tinted selected state (scoped to `FilterControls.tsx`/`SearchPage.tsx` only — the shared `toggle.tsx` primitive, also used by `UpgradePage`, was not touched); the result count moved to its own labeled line directly above the grid; the results grid density increased from 3 to 4 columns, matching Home's existing card density; `ResultCardSkeleton` now shares the same `Card` surface as the real cards instead of a parallel hand-rolled one.
+
+**Search UX fix**: Home Hero's quick-search suggestions ("Try: Electrician," etc.) previously navigated to Search without ever syncing Hero's own controlled search input — a local-state desynchronization in `Hero.tsx`, not a `SearchPage`/URL-architecture problem. Fixed by having `runSearch` call `setQuery(value)` before navigating. `SearchPage`'s URL-as-source-of-truth architecture is unchanged. Verified: quick-suggestion click, manual typing, Enter submit, clear, hard reload directly on a filtered URL, browser Back/Forward, and mobile all behave correctly.
+
+**Cards**: `ProviderCard`/`BusinessCard` now use the `featured` Card variant (defined but unconsumed since Visual V1) only when the real `provider.featured`/`business.featured` seed field is `true` — confirmed via `grep` that `Tutor`/`Property` have no `featured` field, so neither received a fabricated featured treatment. All 4 domain-card titles now use 2-line clamping for long-name resilience. Keyboard activation (Enter/Space), click navigation, Save/Favorite, and CTA behavior were all verified unchanged live.
+
+**Directory/Services**: no changes — live verification showed both pages already have well-populated real category grids (7 and 11 categories respectively); the prior audit's "sparse" finding was a stale-render artifact of session tooling, not a real gap.
+
+**Performance/quality**: no new dependency; bundle size increase negligible (+0.06% JS, confirmed via build output); `npx tsc -b --force` clean; `npm run build` succeeds; `npm run lint` remains at the established 8-warning baseline; no test suite exists to run; no auth/admin/professional-workspace/detail-page/backend architecture touched.
+
+- Reviewed via `review-phase`: verdict READY FOR COMMIT.
+- Known follow-ups, intentionally deferred: `NewsCard` still hand-rolls its own card surface; `CategoryCard` remains unmigrated to the `Card` primitive (intentional — it renders as a `Link` with `compact`/`emphasis` props, and adding `asChild` "merely because" was explicitly out of scope); the `elevated`/`workspace` `Card` variants remain unused in production UI; detail pages remain the largest visual-quality gap (one hero photo then plain text blocks) and are Visual V3's explicit focus; Business Directory image coverage (several categories still fall back to the generic placeholder) still needs improvement; tablet width (820px) was not freshly re-screenshotted during the final V2 review (unchanged grid-breakpoint classes already verified at that width in V1).
+
 ## Production V1 Direction
 
 - Complete the frontend before the backend.
@@ -159,8 +175,10 @@ Full history is in `git log`; this file summarizes outcomes, not the blow-by-blo
 - Dead route `/services/home-construction` (defined, wired, but no inbound link anywhere).
 - `shadcn` CLI package sits in `dependencies` instead of `devDependencies` (zero runtime impact, hygiene only).
 - No SPA-fallback hosting config (`vercel.json`/`netlify.toml`/`_redirects`) — will 404 on refresh/direct link on a real static host until added.
-- `CategoryCard` and `ListingSummaryCard` still hand-roll their own card surface styling — not yet migrated to the shared `Card` primitive (Visual Phase V1); candidates for a later visual phase.
-- `Card`'s `elevated`/`workspace`/`featured` variants are defined (`docs/design/DESIGN_SYSTEM.md` §8) but have no consumer in production UI yet — only `interactive` is in use as of Visual Phase V1.
+- `CategoryCard`, `ListingSummaryCard`, and `NewsCard` still hand-roll their own card surface styling — not yet migrated to the shared `Card` primitive; candidates for a later visual phase.
+- `Card`'s `elevated`/`workspace` variants are defined (`docs/design/DESIGN_SYSTEM.md` §8) but have no consumer in production UI yet — `interactive` (Visual V1) and `featured` (Visual V2, data-driven for Provider/Business) are in use.
+- Detail pages (Business/Provider/Tutor/Property) still drop from one large hero photo into plain text blocks with no supporting visual structure — the largest remaining visual-quality gap, targeted by Visual Phase V3.
+- Business Directory image coverage is uneven — several business categories still fall back to the generic icon placeholder instead of a real photo.
 
 ## Do Not Build Yet
 
@@ -176,7 +194,7 @@ Full history is in `git log`; this file summarizes outcomes, not the blow-by-blo
 
 ## Next Step
 
-Visual Phase V2 — Consumer Discovery/Card Refresh (per `docs/design/DESIGN_SYSTEM.md` §23's phased migration plan).
+Visual Phase V3 — Detail Pages + Imagery (per `docs/design/DESIGN_SYSTEM.md` §23's phased migration plan).
 
 ## Resume Instructions
 

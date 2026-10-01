@@ -22,7 +22,7 @@ function BusinessCard({ business, onSelect }: BusinessCardProps) {
 
   return (
     <Card
-      variant="interactive"
+      variant={business.featured ? "featured" : "interactive"}
       role="button"
       tabIndex={0}
       onClick={onSelect}
@@ -46,7 +46,7 @@ function BusinessCard({ business, onSelect }: BusinessCardProps) {
       </div>
       <Stack gap={2} className="px-1">
         <Stack direction="row" justify="between" align="start" gap={2}>
-          <Typography variant="label" className="text-base">
+          <Typography variant="label" className="line-clamp-2 text-base">
             {business.name}
           </Typography>
           <DemoBadge />

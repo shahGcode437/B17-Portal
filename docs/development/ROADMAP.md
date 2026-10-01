@@ -70,13 +70,22 @@ High-level only — implementation details for each phase are worked out when th
 - Verification: `npx tsc -b --force` and `npm run build` pass; lint remains at the established 8-warning baseline (a transient 9th warning from `card.tsx` exporting an unused `cardVariants` was fixed by making it module-private); responsive behavior reverified at 375px/820px/1440px; reviewed via `review-phase` — final verdict READY FOR COMMIT.
 
 ## Visual Phase V2 — Consumer Discovery/Card Refresh
+**STATUS: COMPLETE** (commit: pending)
+
+- Objective: raise the visual confidence of consumer discovery surfaces per `docs/design/DESIGN_SYSTEM.md` §10/§23.
+- Delivered: Search/Explore's control hierarchy reordered to SEARCH → FILTER → ACTIVE CRITERIA → RESULT COUNT → RESULTS; desktop filters grouped into a `Card`-surfaced panel; content-type toggle and active filter chips given a clearer primary-tinted selected state (scoped locally, not a shared-component change); results grid density raised 3→4 columns; `ResultCardSkeleton` migrated onto the shared `Card` surface; `ProviderCard`/`BusinessCard` wired to the (previously unconsumed) `featured` Card variant using real `featured` seed data only; all 4 domain-card titles given 2-line title clamping. Also fixed a real, verified Search UX bug: Home Hero's quick-search suggestion buttons navigated without syncing Hero's own controlled search input (`runSearch` now calls `setQuery(value)` before navigating) — `SearchPage`'s URL-as-source-of-truth architecture was confirmed already correct and left unchanged.
+- Deliberately not implemented: Directory/Services changes (live verification showed both already have well-populated real category grids — the earlier audit's "sparse" finding was a stale-render tooling artifact, not a real gap); `CategoryCard`/`ListingSummaryCard`/`NewsCard` migration to `Card`; a custom themed Select to replace the native filter `<select>`s; any Home/Hero visual redesign beyond the one-line search-sync fix; detail-page, Professional Workspace, Admin, or dark-mode work.
+- Dependencies: Visual Phase V1 (the `Card` primitive).
+- Verification: `npx tsc -b --force` and `npm run build` pass; lint remains at the established 8-warning baseline; no new dependency; negligible bundle increase (+0.06% JS); live-verified quick-suggestion/manual-typing/Enter/clear/reload/back-forward/mobile search behavior, keyboard card activation, Save/Favorite, and quick-view dialogs all unchanged; reviewed via `review-phase` — final verdict READY FOR COMMIT.
+
+## Visual Phase V3 — Detail Pages + Imagery
 **STATUS: NEXT**
 
-- Objective: raise the visual confidence of consumer discovery surfaces per `docs/design/DESIGN_SYSTEM.md` §10/§23 — Search/Explore's filter bar and active-filter chips, and the sparse Directory landing page.
+- Objective: implement the richer detail-page composition and close the Business Directory imagery-coverage gap per `docs/design/DESIGN_SYSTEM.md` §9/§11/§23.
 - Major scope: to be confirmed against the live repo when this phase begins — not finalized here.
-- Out of scope: Home/Hero redesign, detail-page redesign, Professional Workspace/Admin redesign, dark mode, typography changes, new filter logic/behavior (visual treatment only).
-- Dependencies: Visual Phase V1 (the `Card` primitive).
-- Completion/verification: no change to filter/search behavior or URL state; responsive re-check at 375px/820px/1440px.
+- Out of scope: ratings/maps/reviews (not real product features); Professional Workspace/Admin redesign; dark mode; typography changes.
+- Dependencies: Visual Phase V1 (the `Card` primitive), Visual Phase V2.
+- Completion/verification: no fabricated trust signals or content; responsive re-check at 375px/820px/1440px.
 
 ## Phase 9F — Admin Production UX
 

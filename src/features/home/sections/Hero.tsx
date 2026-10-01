@@ -18,6 +18,10 @@ function Hero() {
   const [query, setQuery] = useState("")
 
   function runSearch(value: string) {
+    // Keep the visible input in sync with what's actually being searched —
+    // a quick-suggestion click sets the term here too, not just the URL, so
+    // the box reflects the selection instead of appearing to ignore the click.
+    setQuery(value)
     const params = value.trim() ? `?q=${encodeURIComponent(value.trim())}` : ""
     navigate(`${routes.search}${params}`)
   }

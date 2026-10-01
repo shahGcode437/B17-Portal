@@ -1,10 +1,11 @@
-import { MapPin, MessageCircle, Wrench } from "lucide-react"
+import { MapPin, MessageCircle, Wrench, Star } from "lucide-react"
 import { useNavigate } from "react-router-dom"
 import type { Provider } from "@/types/provider"
 import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
 import { CardImage } from "@/components/media/CardImage"
 import { DemoBadge } from "@/components/feedback/DemoBadge"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { SaveButton } from "@/components/inputs/SaveButton"
@@ -24,7 +25,7 @@ function ProviderCard({ provider, onSelect }: ProviderCardProps) {
 
   return (
     <Card
-      variant="interactive"
+      variant={provider.featured ? "featured" : "interactive"}
       role="button"
       tabIndex={0}
       onClick={onSelect}
@@ -38,11 +39,17 @@ function ProviderCard({ provider, onSelect }: ProviderCardProps) {
     >
       <div className="relative">
         <CardImage src={provider.image} icon={Wrench} label={provider.name} />
+        {provider.featured && (
+          <Badge className="absolute left-2 top-2 gap-1 bg-brand-accent text-brand-accent-foreground">
+            <Star className="size-3" aria-hidden="true" />
+            Featured
+          </Badge>
+        )}
         <SaveButton kind="provider" id={provider.id} name={provider.name} className="absolute right-2 top-2" />
       </div>
       <Stack gap={2} className="px-1">
         <Stack direction="row" justify="between" align="start" gap={2}>
-          <Typography variant="label" className="text-base">
+          <Typography variant="label" className="line-clamp-2 text-base">
             {provider.name}
           </Typography>
           <DemoBadge />

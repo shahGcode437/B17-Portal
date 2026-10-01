@@ -6,6 +6,7 @@ import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Card } from "@/components/ui/card"
 import { SearchBar } from "@/components/inputs/SearchBar"
 import { FilterControls } from "@/components/inputs/FilterControls"
 import { FilterSheet } from "@/components/overlay/FilterSheet"
@@ -276,7 +277,7 @@ function SearchPage() {
         />
 
         <Stack direction="row" align="center" justify="between" wrap gap={3}>
-          <div className="hidden md:block">
+          <Card variant="default" className="hidden gap-3 p-3 md:flex md:w-full">
             <FilterControls
               type={type}
               onTypeChange={handleTypeChange}
@@ -287,7 +288,7 @@ function SearchPage() {
               onClear={clearFilters}
               showClear={hasActiveFilters}
             />
-          </div>
+          </Card>
           <FilterSheet
             type={type}
             onTypeChange={handleTypeChange}
@@ -299,21 +300,22 @@ function SearchPage() {
             showClear={hasActiveFilters}
             resultCount={results.length}
           />
-          <Typography variant="body-sm" className="text-muted-foreground">
-            {loading ? "Searching…" : `${results.length} result${results.length === 1 ? "" : "s"}`}
-          </Typography>
         </Stack>
 
         {activeChips.length > 0 && (
           <Stack direction="row" wrap gap={2}>
             {activeChips.map((chip) => (
-              <Badge key={chip.key} variant="secondary" className="gap-1 py-1 pr-1">
+              <Badge
+                key={chip.key}
+                variant="secondary"
+                className="gap-1 border border-primary/30 bg-primary/5 py-1 pr-1 text-primary"
+              >
                 {chip.label}
                 <button
                   type="button"
                   onClick={chip.onRemove}
                   aria-label={`Remove ${chip.label} filter`}
-                  className="rounded-full p-0.5 hover:bg-background/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                  className="rounded-full p-0.5 hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
                 >
                   <X className="size-3" aria-hidden="true" />
                 </button>
@@ -321,6 +323,10 @@ function SearchPage() {
             ))}
           </Stack>
         )}
+
+        <Typography variant="label" className="text-foreground">
+          {loading ? "Searching…" : `${results.length} result${results.length === 1 ? "" : "s"}`}
+        </Typography>
 
         <ResultList hits={visibleResults} loading={loading} onSelect={preview.open} onClearFilters={clearFilters} />
 

@@ -244,7 +244,12 @@ function FilterControls({
         className="w-full flex-wrap justify-start"
       >
         {searchTypeFilters.map((filter) => (
-          <ToggleGroupItem key={filter.value} value={filter.value} aria-label={filter.label}>
+          <ToggleGroupItem
+            key={filter.value}
+            value={filter.value}
+            aria-label={filter.label}
+            className="data-[state=on]:border-primary data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:hover:bg-primary/90"
+          >
             {filter.label}
           </ToggleGroupItem>
         ))}

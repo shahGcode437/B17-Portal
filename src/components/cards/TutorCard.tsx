@@ -39,7 +39,7 @@ function TutorCard({ tutor, onSelect }: TutorCardProps) {
       </div>
       <Stack gap={2} className="px-1">
         <Stack direction="row" justify="between" align="start" gap={2}>
-          <Typography variant="label" className="text-base">
+          <Typography variant="label" className="line-clamp-2 text-base">
             {tutor.name}
           </Typography>
           <DemoBadge />
