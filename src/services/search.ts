@@ -1,4 +1,4 @@
-import type { SearchHit, SearchResultKind, SearchFilters, SortOption } from "@/types/search"
+import type { SearchHit, SearchResultKind, SearchFilters, SearchSuggestion, SortOption } from "@/types/search"
 import type { Provider } from "@/types/provider"
 import type { Business } from "@/types/business"
 import type { Tutor } from "@/types/tutor"
@@ -12,6 +12,7 @@ import { properties } from "@/data/properties"
 import { sponsoredCards } from "@/data/sponsored"
 import { useListingsStore } from "@/state/listingsStore"
 import { useNewsStore } from "@/state/newsStore"
+import { searchTypeFilters } from "@/config/search"
 import {
   mapProviderToResult,
   mapBusinessToResult,
@@ -178,6 +179,143 @@ export function searchAll(
     return searchableText(hit).includes(q)
   })
   return sortHits(matched, sort)
+}
+
+/** Shortest query that produces suggestions — a single character is too ambiguous to be useful. */
+export const MIN_SUGGESTION_QUERY_LENGTH = 2
+
+const KIND_LABELS = new Map(searchTypeFilters.map((filter) => [filter.value, filter.label]))
+const KIND_ORDER: SearchResultKind[] = ["provider", "business", "tutor", "property", "news"]
+
+/** The real, already-searchable pieces of a hit that suggestions may be built from — nothing is invented. */
+interface SuggestionSource {
+  entity: { id: string; label: string; subtitle: string }
+  /** Categorical fields (category, subject, grade, property type, listing type). */
+  fields: string[]
+  tags: string[]
+}
+
+function suggestionSource(hit: SearchHit): SuggestionSource {
+  switch (hit.kind) {
+    case "provider":
+      return {
+        entity: { id: hit.item.id, label: hit.item.name, subtitle: hit.item.categoryLabel },
+        fields: [hit.item.categoryLabel],
+        tags: hit.item.tags,
+      }
+    case "business":
+      return {
+        entity: { id: hit.item.id, label: hit.item.name, subtitle: hit.item.category },
+        fields: [hit.item.category],
+        tags: hit.item.tags,
+      }
+    case "tutor":
+      return {
+        entity: { id: hit.item.id, label: hit.item.name, subtitle: `${hit.item.subject} · ${hit.item.grade}` },
+        fields: [hit.item.subject, hit.item.grade],
+        tags: hit.item.tags,
+      }
+    case "property": {
+      const listing = hit.item.listingType === "sale" ? "For Sale" : "For Rent"
+      return {
+        entity: { id: hit.item.id, label: hit.item.title, subtitle: `${hit.item.propertyType} · ${listing}` },
+        fields: [hit.item.propertyType, listing],
+        tags: hit.item.tags,
+      }
+    }
+    case "news":
+      return {
+        entity: { id: hit.item.id, label: hit.item.title, subtitle: hit.item.category },
+        fields: [hit.item.category],
+        tags: hit.item.tags,
+      }
+  }
+}
+
+/** 0 exact, 1 starts-with, 2 word-prefix, 3 contains — or null when `label` doesn't contain `q` at all. Both arguments must already be lowercased. */
+function suggestionRank(label: string, q: string): number | null {
+  const first = label.indexOf(q)
+  if (first === -1) return null
+  if (label === q) return 0
+  if (first === 0) return 1
+  for (let i = first; i !== -1; i = label.indexOf(q, i + 1)) {
+    if (!/[\p{L}\p{N}]/u.test(label[i - 1])) return 2
+  }
+  return 3
+}
+
+function capitalizeFirst(value: string): string {
+  return value.charAt(0).toUpperCase() + value.slice(1)
+}
+
+/**
+ * Predictive suggestions for the Search box (Visual V2.1), derived only from
+ * fields the existing search already matches on — item names/titles,
+ * categorical fields and tags — for approved/published content only (it reuses
+ * `allHits`). Selecting any suggestion therefore always yields at least one
+ * result in its own type. Area and furnishing are intentionally not
+ * suggested: each already has an exact-match filter, and a substring query
+ * like "furnished" would also match "Unfurnished".
+ *
+ * Ranking is deterministic: exact → starts-with → word-prefix → contains, then
+ * shorter label, then alphabetical. Results are de-duplicated per type and
+ * capped at `limit`.
+ *
+ * This signature deliberately mirrors the future backend contract
+ * (`GET /api/v1/search/suggestions?q=&type=&limit=`) so the local
+ * implementation can be swapped for an API call behind `useSearchSuggestions`.
+ */
+export function getSearchSuggestions(
+  query: string,
+  type: SearchResultKind | "all" = "all",
+  limit = 8
+): SearchSuggestion[] {
+  const q = query.trim().toLowerCase()
+  if (q.length < MIN_SUGGESTION_QUERY_LENGTH) return []
+
+  const sources = allHits()
+    .filter((hit) => type === "all" || hit.kind === type)
+    .map((hit) => ({ kind: hit.kind, source: suggestionSource(hit) }))
+
+  const seen = new Set<string>()
+  const ranked: { suggestion: SearchSuggestion; rank: number }[] = []
+
+  function consider(kind: SearchResultKind, id: string, label: string, secondaryLabel: string) {
+    const trimmed = label.trim()
+    if (!trimmed) return
+    const lowered = trimmed.toLowerCase()
+    const key = `${kind}|${lowered}`
+    if (seen.has(key)) return
+    const rank = suggestionRank(lowered, q)
+    if (rank === null) return
+    seen.add(key)
+    ranked.push({ suggestion: { id, label: trimmed, secondaryLabel, type: kind, value: trimmed }, rank })
+  }
+
+  // Categorical fields first, then tags, then individual items: when the same
+  // text appears in more than one role, the best-cased, most general one wins.
+  for (const { kind, source } of sources) {
+    const kindLabel = KIND_LABELS.get(kind) ?? kind
+    for (const field of source.fields) consider(kind, `${kind}:term:${field.toLowerCase()}`, field, kindLabel)
+  }
+  for (const { kind, source } of sources) {
+    const kindLabel = KIND_LABELS.get(kind) ?? kind
+    for (const tag of source.tags) consider(kind, `${kind}:term:${tag.toLowerCase()}`, capitalizeFirst(tag), kindLabel)
+  }
+  for (const { kind, source } of sources) {
+    const kindLabel = KIND_LABELS.get(kind) ?? kind
+    const { id, label, subtitle } = source.entity
+    consider(kind, `${kind}:item:${id}`, label, `${kindLabel} · ${subtitle}`)
+  }
+
+  ranked.sort(
+    (a, b) =>
+      a.rank - b.rank ||
+      a.suggestion.label.length - b.suggestion.label.length ||
+      a.suggestion.label.localeCompare(b.suggestion.label) ||
+      KIND_ORDER.indexOf(a.suggestion.type) - KIND_ORDER.indexOf(b.suggestion.type)
+  )
+  return ranked.slice(0, limit).map((entry) => entry.suggestion)
 }
 
 /**

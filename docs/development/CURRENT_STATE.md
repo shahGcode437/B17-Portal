@@ -2,7 +2,7 @@
 
 ## Last Updated
 
-2026-10-01
+2026-10-03
 
 ## Current Branch
 
@@ -10,12 +10,12 @@ master
 
 ## Current Verified Commit
 
-b74760e Visual V1: add shared card surface foundation
-Visual V2 commit: pending (implementation complete, review passed, not yet committed)
+0f02378 Visual V2: refine consumer discovery experience
+Visual V2.1 commit: pending (implementation complete, review passed, not yet committed)
 
 ## Current Phase
 
-Visual Phase V2 — Consumer Discovery/Card Refresh: COMPLETE, reviewed (READY FOR COMMIT), commit pending approval.
+Visual Phase V2.1 — Contextual Search + Predictive Suggestions: COMPLETE, reviewed (READY FOR COMMIT), commit pending approval.
 Next frontend step: Visual Phase V3 — Detail Pages + Imagery.
 
 ## Completed Product Work
@@ -39,6 +39,7 @@ Next frontend step: Visual Phase V3 — Detail Pages + Imagery.
 - Visual/UI Refresh audit + `docs/design/DESIGN_SYSTEM.md` (single visual-design source of truth)
 - Visual Phase V1 — Shared Card Primitive + Surface Foundation (see below)
 - Visual Phase V2 — Consumer Discovery/Card Refresh (see below)
+- Visual Phase V2.1 — Contextual Search + Predictive Suggestions (see below)
 
 Full history is in `git log`; this file summarizes outcomes, not the blow-by-blow.
 
@@ -46,7 +47,8 @@ Full history is in `git log`; this file summarizes outcomes, not the blow-by-blo
 
 - React 19 + TypeScript (strict) + Vite 8 SPA, no SSR.
 - Three route trees under `createBrowserRouter`: `ConsumerLayout` (Header/Footer/MobileNav), `ProviderLayout` (now a full Professional Workspace shell — Overview/Listings/Leads/Profile nav, Phase 9D), `AdminLayout`. All routes are statically imported — no code splitting yet.
-- `src/services/search.ts` is the single public read-data seam for all domain content (providers, businesses, tutors, properties, news, sponsored cards, plus category/subject/type tile enumeration). Components must not import `@/data/*` domain arrays directly — confirmed and enforced as of Phase 9A.
+- `src/services/search.ts` is the single public read-data seam for all domain content (providers, businesses, tutors, properties, news, sponsored cards, plus category/subject/type tile enumeration, and — as of Visual V2.1 — `getSearchSuggestions` for predictive search). Components must not import `@/data/*` domain arrays directly — confirmed and enforced as of Phase 9A.
+- Search/Explore state contract (Visual V2.1): URL = committed state (`q`/`type`/filters/sort); the input is a local draft of `q`; the suggestion list is transient local state. No global search store.
 - Four Zustand stores: `listingsStore` (provider/business/property listing lifecycle: pending → approved/rejected, plus `archived` as of Phase 9D; `selectActiveListingsBySubmitter`/`isListingCountedTowardPlanLimit` added Phase 9E for the Free listing-limit check) and `newsStore` (draft/published) are in-memory only, reset on reload. `residentStore` (Phase 9C — saved items + request history; Phase 9D added `updateRequestStatus`) and `planStore` (Phase 9E — the mocked local Free/Premium plan) both persist to `localStorage` via Zustand's own `persist` middleware; both are cleared/reset on explicit resident Log Out (see Phase 9C/9E Results).
 - Demo-only auth: `useAuth()`/`useAdminAuth()`, name-only sessions, no password, no backend. Already consumed only through their public hooks everywhere (verified in Phase 9A). `AuthProvider.logout()` also clears `residentStore` and resets `planStore` — see Phase 9C/9E Results.
 - Free/Premium capability model (Phase 9E): `Plan → PlanEntitlements → Capability`, centralized in `types/entitlements.ts`/`config/plans.ts`, consumed only via `useCapability`/`usePlanEntitlements`/`<RequireCapability>` — never a scattered `plan === "premium"` check. Frontend-only UX gating, explicitly not a security boundary.
@@ -140,6 +142,32 @@ Full history is in `git log`; this file summarizes outcomes, not the blow-by-blo
 - Reviewed via `review-phase`: verdict READY FOR COMMIT.
 - Known follow-ups, intentionally deferred: `NewsCard` still hand-rolls its own card surface; `CategoryCard` remains unmigrated to the `Card` primitive (intentional — it renders as a `Link` with `compact`/`emphasis` props, and adding `asChild` "merely because" was explicitly out of scope); the `elevated`/`workspace` `Card` variants remain unused in production UI; detail pages remain the largest visual-quality gap (one hero photo then plain text blocks) and are Visual V3's explicit focus; Business Directory image coverage (several categories still fall back to the generic placeholder) still needs improvement; tablet width (820px) was not freshly re-screenshotted during the final V2 review (unchanged grid-breakpoint classes already verified at that width in V1).
 
+## Visual Phase V2.1 Result
+
+**Search architecture**: the URL remains the committed source of truth (`q`, `type`, filters, sort — results read straight from it). The search input is a local *draft* of the URL's `q`; the suggestion list is transient local UI state. No new global search store and no backend dependency was added. The previous model mirrored local state *into* the URL through an effect; that was removed (see "same-mount URL fix" below).
+
+**Predictive search**: a typed `SearchSuggestion` model (`{ id, label, secondaryLabel, type, value }`, no domain objects) and `getSearchSuggestions(query, type, limit)` in the `search.ts` data seam. Suggestions derive only from real, existing approved/published data (item names/titles, categorical fields, tags) — nothing invented; selecting any suggestion always yields at least one result in its own type. Ranking is deterministic: exact → starts-with → word-prefix → contains; de-duplicated per type and capped at 8; minimum 2 characters. Type-specific suggestions are supported (Services/Directory/Education/Property/News only suggest their own domain; All mixes domains). Area and furnishing are intentionally not suggested (each has an exact-match filter, and a substring query like "furnished" would also match "Unfurnished"). The engine sits behind `useSearchSuggestions`, which also owns the debounce, so a future `GET /api/v1/search/suggestions?q=&type=&limit=` call can replace the local implementation without rebuilding the SearchBar UI.
+
+**Search UX**: mouse and keyboard suggestion selection; ArrowUp/ArrowDown/Enter/Escape; combobox/listbox semantics (`aria-expanded`/`aria-controls`/`aria-activedescendant`/`aria-selected`, plus a live region announcing the count; Tab closes the list with no keyboard trap). Manual typing is debounced into the URL (250ms); Enter commits immediately; selecting a suggestion updates query + type + URL + results in one write; clearing removes `q`; changing type preserves `q` (and drops filters/sort that belong to the old type); the placeholder is contextual per type. Reload and browser Back/Forward restore search state. The Home Hero quick-search sync fix from Visual V2 is preserved.
+
+**Same-mount URL fix**: previously, an in-app navigation to `/search` while `SearchPage` was already mounted (Explore/header link, Back/Forward between two `/search` entries) was overwritten — the URL-sync effect re-ran with stale local state and wrote the old `q` back. Fixed by making the URL the only committed state: results read it directly, the input is a draft that is dropped on any PUSH/POP navigation (this page's own writes are always REPLACE) and a pending typing commit is cancelled, and all URL writes go through one `updateParams` helper that starts from the live browser URL. The skip-ref mechanism used earlier in the phase was removed. The draft reset uses React's documented render-phase "adjust state on change" pattern (guarded, loop-free, verified under StrictMode).
+
+**Zero results**: contextual messaging (e.g. "No Education results for “Electrician”") with a primary action that clears the search while preserving the selected type, and a secondary action that broadens the same query to All of B-17. `EmptyState` gained optional secondary-action props (existing usages unchanged).
+
+**Mobile**: the compact SearchBar input now uses 16px text below the `md` breakpoint (it measured 14px) to avoid mobile focus-zoom risk; desktop stays 14px. Verified 375/430px → 16px and 820px/desktop/1440px → 14px; autocomplete verified with no horizontal overflow and correct alignment at all tested widths; the Filters sheet still behaves correctly (the open suggestion list covers the Filters trigger on mobile, so it closes on an outside tap first).
+
+**Hero**: the "Solar installer" quick-search chip became "Solar" — the previous static phrase matched nothing in the searchable data ("installation", never "installer"). "Solar" returns a real current result (Sunrise Solar Solutions). The other chips were not touched.
+
+**Quality**: `npx tsc -b --force` clean; `npm run build` succeeds (JS ≈ 840 KB, +0.7% vs V2); lint remains at the established 8-warning baseline (an `exhaustive-deps` warning introduced mid-phase was fixed, not suppressed); no new dependency; fresh browser console 0 errors / 0 warnings; no test suite exists. Reviewed via `review-phase`: verdict READY FOR COMMIT.
+
+**Known limitations**:
+- Home quick-search chips are still curated static strings and could drift from the data in future.
+- `updateParams` reads `window.location.search`, so it assumes browser history / `createBrowserRouter`; revisit if the router type changes.
+- A future *external* REPLACE navigation into an already-mounted `SearchPage` would be treated as the page's own write (none exists today — every current `replace: true` targets another route).
+- A theoretical few-millisecond window exists where an external PUSH and one of the page's own REPLACE writes land before a single React render; never observed.
+- The real iOS on-screen keyboard has not been physically tested.
+- No backend search service exists yet; local data powers the suggestions.
+
 ## Production V1 Direction
 
 - Complete the frontend before the backend.
@@ -179,6 +207,8 @@ Full history is in `git log`; this file summarizes outcomes, not the blow-by-blo
 - `Card`'s `elevated`/`workspace` variants are defined (`docs/design/DESIGN_SYSTEM.md` §8) but have no consumer in production UI yet — `interactive` (Visual V1) and `featured` (Visual V2, data-driven for Provider/Business) are in use.
 - Detail pages (Business/Provider/Tutor/Property) still drop from one large hero photo into plain text blocks with no supporting visual structure — the largest remaining visual-quality gap, targeted by Visual Phase V3.
 - Business Directory image coverage is uneven — several business categories still fall back to the generic icon placeholder instead of a real photo.
+- Home Hero quick-search chips are static curated strings (not derived from data) and could drift from the searchable data again; "Solar installer" already did once and became "Solar" in Visual V2.1.
+- Search `updateParams` (Visual V2.1) assumes browser history / `createBrowserRouter`, and treats any REPLACE navigation into a mounted `/search` as its own write — no external REPLACE navigation exists today. Search suggestions are local-data only until a backend search service exists; the real iOS on-screen keyboard has not been physically tested.
 
 ## Do Not Build Yet
 

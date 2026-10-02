@@ -41,7 +41,7 @@ High-level only — implementation details for each phase are worked out when th
 - Verification: build passes, TypeScript strict passes, lint at existing baseline, no regressions to existing listing creation/moderation flows, reviewed via `review-phase` — final verdict READY FOR COMMIT. Non-blocking cleanup noted, not yet actioned: unused `routes.editListing` constant; `resubmitListing` has no store-level status guard (enforced only in `EditListingPage`'s UI).
 
 ## Phase 9E — Free/Premium Foundation
-**STATUS: COMPLETE** (commit: pending — implementation done, reviewed READY FOR COMMIT)
+**STATUS: COMPLETE** (commit `d3fa12f`)
 
 - Objective: introduce a capability/entitlement model (frontend only, no billing).
 - Delivered: centralized typed `Plan → PlanEntitlements → Capability` architecture (`useCapability`/`usePlanEntitlements`/`<RequireCapability>`), a mocked local `planStore` (Free/Premium, `localStorage`-persisted, reset on explicit logout); Analytics as the one real gated Premium example; an Upgrade/plan-comparison page with no pricing or payment flow; a Free active-listing limit of 3 where only `pending`/`approved` listings count (`rejected`/`archived` don't consume the quota — archiving genuinely frees a slot); Premium has no numeric listing cap.
@@ -61,7 +61,7 @@ High-level only — implementation details for each phase are worked out when th
 - Verification: `docs/design/DESIGN_SYSTEM.md` exists and accurately reflects the current design system; no source/CSS/token changes were made while producing it.
 
 ## Visual Phase V1 — Shared Card Primitive + Surface Foundation
-**STATUS: COMPLETE** (commit: pending)
+**STATUS: COMPLETE** (commit `b74760e`)
 
 - Objective: introduce a reusable, presentation-only `Card` surface primitive centralizing the border/radius/background/shadow/interactive-hover behavior duplicated across domain cards, per `docs/design/DESIGN_SYSTEM.md` §8.
 - Delivered: `src/components/ui/card.tsx` (variants `default`/`interactive`/`elevated`/`workspace`/`featured`); `ProviderCard`/`BusinessCard`/`TutorCard`/`PropertyCard` migrated to compose it (`variant="interactive"`), removing a verbatim-duplicated wrapper class string that previously existed independently in each file. `CardImage`/`PlaceholderImage`, keyboard/navigation/Save/CTA behavior, and the existing `cardHover` motion preset are all preserved unchanged — `Card` applies `cardHover` internally for `interactive`/`featured` variants rather than each card spreading it independently.
@@ -70,13 +70,23 @@ High-level only — implementation details for each phase are worked out when th
 - Verification: `npx tsc -b --force` and `npm run build` pass; lint remains at the established 8-warning baseline (a transient 9th warning from `card.tsx` exporting an unused `cardVariants` was fixed by making it module-private); responsive behavior reverified at 375px/820px/1440px; reviewed via `review-phase` — final verdict READY FOR COMMIT.
 
 ## Visual Phase V2 — Consumer Discovery/Card Refresh
-**STATUS: COMPLETE** (commit: pending)
+**STATUS: COMPLETE** (commit `0f02378`)
 
 - Objective: raise the visual confidence of consumer discovery surfaces per `docs/design/DESIGN_SYSTEM.md` §10/§23.
 - Delivered: Search/Explore's control hierarchy reordered to SEARCH → FILTER → ACTIVE CRITERIA → RESULT COUNT → RESULTS; desktop filters grouped into a `Card`-surfaced panel; content-type toggle and active filter chips given a clearer primary-tinted selected state (scoped locally, not a shared-component change); results grid density raised 3→4 columns; `ResultCardSkeleton` migrated onto the shared `Card` surface; `ProviderCard`/`BusinessCard` wired to the (previously unconsumed) `featured` Card variant using real `featured` seed data only; all 4 domain-card titles given 2-line title clamping. Also fixed a real, verified Search UX bug: Home Hero's quick-search suggestion buttons navigated without syncing Hero's own controlled search input (`runSearch` now calls `setQuery(value)` before navigating) — `SearchPage`'s URL-as-source-of-truth architecture was confirmed already correct and left unchanged.
 - Deliberately not implemented: Directory/Services changes (live verification showed both already have well-populated real category grids — the earlier audit's "sparse" finding was a stale-render tooling artifact, not a real gap); `CategoryCard`/`ListingSummaryCard`/`NewsCard` migration to `Card`; a custom themed Select to replace the native filter `<select>`s; any Home/Hero visual redesign beyond the one-line search-sync fix; detail-page, Professional Workspace, Admin, or dark-mode work.
 - Dependencies: Visual Phase V1 (the `Card` primitive).
 - Verification: `npx tsc -b --force` and `npm run build` pass; lint remains at the established 8-warning baseline; no new dependency; negligible bundle increase (+0.06% JS); live-verified quick-suggestion/manual-typing/Enter/clear/reload/back-forward/mobile search behavior, keyboard card activation, Save/Favorite, and quick-view dialogs all unchanged; reviewed via `review-phase` — final verdict READY FOR COMMIT.
+
+## Visual Phase V2.1 — Contextual Search + Predictive Suggestions
+**STATUS: COMPLETE** (Visual V2.1 commit: pending)
+
+- Objective: close two Search/Explore UX gaps before V3 — zero-result friction after a content-type switch with an active query, and no predictive/autocomplete search.
+- Delivered: predictive suggestions built only from real, existing approved/published data (typed `SearchSuggestion` model; ranking exact → starts-with → word-prefix → contains; de-duplicated; capped at 8; type-specific), isolated behind `getSearchSuggestions` in `search.ts` and the `useSearchSuggestions` hook so a future backend `/search/suggestions` endpoint can replace it without UI changes; an accessible combobox `SearchBar` (mouse and keyboard, ArrowUp/Down/Enter/Escape, listbox semantics); immediate Enter commit and atomic suggestion selection (query + type + URL + results); contextual placeholders per type; contextual zero-result messaging with "clear search keeping the type" and "search all of B-17" actions. Fixed a real same-mount URL-sync bug by making the URL the sole committed state (the input is a draft that follows external navigation; the old local-state→URL effect and skip-ref were removed). Compact SearchBar input raised to 16px below `md` (was 14px) to avoid mobile focus-zoom; Hero chip "Solar installer" → "Solar" (the old phrase matched nothing).
+- Deliberately not implemented: search history, trending searches, voice/AI search, a global search store, suggesting area or furnishing (exact-match filters already exist), deriving Hero chips from data, any backend search service.
+- Dependencies: Visual Phase V2 (Search/Explore surface). No new dependency.
+- Verification: `npx tsc -b --force` and `npm run build` pass; lint remains at the established 8-warning baseline; fresh browser console 0 errors / 0 warnings; verified typing/debounce, Enter, mouse and keyboard selection, Escape, clear, type switching, both zero-result actions, reload, Back/Forward, same-mount external navigation, Home quick-search, and 375/430/820/1440px; reviewed via `review-phase` — final verdict READY FOR COMMIT.
+- Known limitations: Hero chips remain static strings; `updateParams` assumes browser history/`createBrowserRouter`; a future external REPLACE navigation into a mounted `/search` would be treated as the page's own write; real iOS keyboard not physically tested; no backend search service yet.
 
 ## Visual Phase V3 — Detail Pages + Imagery
 **STATUS: NEXT**

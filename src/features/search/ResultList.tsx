@@ -18,11 +18,21 @@ import {
 } from "@/services/mappers"
 import { duration } from "@/lib/motion"
 
+/** What to show when a search matches nothing — computed by the page, which knows the query/type context. */
+export interface ResultEmptyContent {
+  title: string
+  description: string
+  actionLabel: string
+  onAction: () => void
+  secondaryActionLabel?: string
+  onSecondaryAction?: () => void
+}
+
 interface ResultListProps {
   hits: SearchHit[]
   loading: boolean
   onSelect: (result: SearchResult) => void
-  onClearFilters: () => void
+  empty: ResultEmptyContent
 }
 
 function renderHit(hit: SearchHit, onSelect: (result: SearchResult) => void) {
@@ -41,7 +51,7 @@ function renderHit(hit: SearchHit, onSelect: (result: SearchResult) => void) {
 }
 
 /** Search/Explore result grid: skeleton → empty state → mixed-kind result cards. */
-function ResultList({ hits, loading, onSelect, onClearFilters }: ResultListProps) {
+function ResultList({ hits, loading, onSelect, empty }: ResultListProps) {
   const stateKey = loading ? "loading" : hits.length === 0 ? "empty" : "results"
 
   return (
@@ -68,13 +78,7 @@ function ResultList({ hits, loading, onSelect, onClearFilters }: ResultListProps
           exit={{ opacity: 0 }}
           transition={{ duration: duration.route }}
         >
-          <EmptyState
-            icon={SearchX}
-            title="No results found"
-            description="Try a different search term, or clear filters to browse everything."
-            actionLabel="Clear filters"
-            onAction={onClearFilters}
-          />
+          <EmptyState icon={SearchX} {...empty} />
         </motion.div>
       ) : (
         <motion.div

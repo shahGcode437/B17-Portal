@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react"
-import { useSearchParams } from "react-router-dom"
+import { useEffect, useMemo, useRef, useState } from "react"
+import { useLocation, useNavigationType, useSearchParams } from "react-router-dom"
 import { X } from "lucide-react"
 import { Container } from "@/components/foundation/Container"
 import { Stack } from "@/components/foundation/Stack"
@@ -11,14 +11,14 @@ import { SearchBar } from "@/components/inputs/SearchBar"
 import { FilterControls } from "@/components/inputs/FilterControls"
 import { FilterSheet } from "@/components/overlay/FilterSheet"
 import { ResultPreviewDialog } from "@/components/overlay/ResultPreviewDialog"
-import { ResultList } from "@/features/search/ResultList"
-import { useDebouncedValue } from "@/hooks/useDebouncedValue"
+import { ResultList, type ResultEmptyContent } from "@/features/search/ResultList"
 import { useSearchResults } from "@/hooks/useSearchResults"
+import { useSearchSuggestions } from "@/hooks/useSearchSuggestions"
 import { useResultPreview } from "@/hooks/useResultPreview"
 import { searchTypeFilters } from "@/config/search"
 import { serviceCategories } from "@/data/serviceCategories"
 import { site } from "@/data/site"
-import type { SearchResultKind, SearchFilters, SortOption } from "@/types/search"
+import type { SearchResultKind, SearchFilters, SearchSuggestion, SortOption } from "@/types/search"
 
 const VALID_TYPES = new Set(searchTypeFilters.map((f) => f.value))
 const FILTER_PARAM_KEYS = [
@@ -98,6 +98,14 @@ function writeFilters(params: URLSearchParams, filters: SearchFilters) {
   }
 }
 
+/** Switching type drops filters/sort that belong to the previous type (different value spaces) but never touches `q`. */
+function applyType(params: URLSearchParams, nextType: SearchResultKind | "all") {
+  if (nextType === "all") params.delete("type")
+  else params.set("type", nextType)
+  for (const key of FILTER_PARAM_KEYS) params.delete(key)
+  params.delete("sort")
+}
+
 function categoryChipLabel(type: SearchResultKind | "all", value: string): string {
   if (type === "provider") return serviceCategories.find((c) => c.slug === value)?.label ?? value
   return value
@@ -112,87 +120,139 @@ interface ActiveChip {
 /** Interactive Search/Explore (UI/UX Spec §8) — the core discovery journey's second step. */
 function SearchPage() {
   const [searchParams, setSearchParams] = useSearchParams()
+  const location = useLocation()
+  const navigationType = useNavigationType()
   const preview = useResultPreview()
 
-  const initialQuery = searchParams.get("q") ?? ""
+  // The URL is the committed search state: results, type, filters and sort
+  // all read straight from it, and nothing here mirrors local state into it.
+  const committedQuery = (searchParams.get("q") ?? "").trim()
   const type = readType(searchParams.get("type"))
   const filters = useFilters(searchParams)
   const sort = readSort(searchParams)
 
-  const [inputValue, setInputValue] = useState(initialQuery)
-  const debouncedQuery = useDebouncedValue(inputValue, 250)
+  // The input is a draft of the URL's `q`: `null` means "show the URL's
+  // value"; otherwise it holds the raw text being edited. Every write this
+  // page makes is a REPLACE, so a PUSH/POP into the mounted page (Explore
+  // link, Back/Forward, any other link to /search) is by definition an
+  // external change — it drops the draft so the input follows the new URL
+  // instead of the stale text overwriting it.
+  const [draft, setDraft] = useState<string | null>(null)
+  const [seenLocationKey, setSeenLocationKey] = useState(location.key)
+  if (location.key !== seenLocationKey) {
+    setSeenLocationKey(location.key)
+    if (navigationType !== "REPLACE") setDraft(null)
+  }
+  const inputValue = draft ?? (searchParams.get("q") ?? "")
 
-  // Keep only `q` in sync as the user types — everything else in the URL
-  // (type/filters/sort) is left exactly as it is, so typing never clears an
-  // active filter. Uses the functional updater so this never depends on (or
-  // can go stale against) `searchParams` itself — one source of truth.
-  useEffect(() => {
-    setSearchParams(
-      (prev) => {
-        const next = new URLSearchParams(prev)
-        if (debouncedQuery.trim()) next.set("q", debouncedQuery.trim())
-        else next.delete("q")
-        return next
-      },
-      { replace: true }
-    )
-  }, [debouncedQuery, setSearchParams])
-
+  const suggestions = useSearchSuggestions(inputValue, type)
+  const typeFilter = searchTypeFilters.find((f) => f.value === type)
   const { results, visibleResults, hasMore, loadMore, loading } = useSearchResults(
-    debouncedQuery,
+    committedQuery,
     type,
     filters,
     sort
   )
 
+  // Typing is debounced into the URL; Enter / picking a suggestion commit at once.
+  const commitTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
+  useEffect(() => () => clearTimeout(commitTimer.current), [])
+  useEffect(() => {
+    // A pending typing commit must not fire after an external navigation has
+    // replaced the URL (the draft it would write was just discarded).
+    if (navigationType !== "REPLACE") clearTimeout(commitTimer.current)
+  }, [location.key, navigationType])
+
+  /**
+   * The single URL writer. It starts from the live browser URL rather than
+   * from `searchParams` captured at render time: React Router applies
+   * navigations in a transition, so a captured copy can lag a write made
+   * moments ago and would silently revert it.
+   */
+  function updateParams(mutate: (params: URLSearchParams) => void) {
+    const current = new URLSearchParams(window.location.search)
+    const next = new URLSearchParams(current)
+    mutate(next)
+    if (next.toString() !== current.toString()) setSearchParams(next, { replace: true })
+  }
+
+  function handleInputChange(value: string) {
+    setDraft(value)
+    clearTimeout(commitTimer.current)
+    commitTimer.current = setTimeout(() => commitQuery(value), 250)
+  }
+
+  /**
+   * Commits a query now, optionally moving to `nextType` in the same URL
+   * write (a picked suggestion that belongs to another content type).
+   */
+  function commitQuery(value: string, nextType?: SearchResultKind | "all") {
+    clearTimeout(commitTimer.current)
+    const trimmed = value.trim()
+    setDraft(value)
+    updateParams((params) => {
+      if (trimmed) params.set("q", trimmed)
+      else params.delete("q")
+      if (nextType !== undefined && nextType !== readType(params.get("type"))) applyType(params, nextType)
+    })
+  }
+
+  function handleSuggestionSelect(suggestion: SearchSuggestion) {
+    commitQuery(suggestion.value, suggestion.type)
+  }
+
   function handleTypeChange(nextType: SearchResultKind | "all") {
-    setSearchParams(
-      (prev) => {
-        const next = new URLSearchParams(prev)
-        if (nextType === "all") next.delete("type")
-        else next.set("type", nextType)
-        // A filter/sort value from the previous type is never valid for a
-        // different type (different value space, e.g. provider category
-        // slugs vs. business category names) — drop them rather than risk a
-        // stale, silently-mismatched filter.
-        for (const key of FILTER_PARAM_KEYS) next.delete(key)
-        next.delete("sort")
-        return next
-      },
-      { replace: true }
-    )
+    // A filter/sort value from the previous type is never valid for a
+    // different type (different value space, e.g. provider category slugs vs.
+    // business category names) — applyType drops them; `q` is preserved.
+    updateParams((params) => applyType(params, nextType))
   }
 
   function handleFiltersChange(nextFilters: SearchFilters) {
-    setSearchParams(
-      (prev) => {
-        const next = new URLSearchParams(prev)
-        writeFilters(next, nextFilters)
-        return next
-      },
-      { replace: true }
-    )
+    updateParams((params) => writeFilters(params, nextFilters))
   }
 
   function handleSortChange(nextSort: SortOption) {
-    setSearchParams(
-      (prev) => {
-        const next = new URLSearchParams(prev)
-        if (nextSort === "default") next.delete("sort")
-        else next.set("sort", nextSort)
-        return next
-      },
-      { replace: true }
-    )
+    updateParams((params) => {
+      if (nextSort === "default") params.delete("sort")
+      else params.set("sort", nextSort)
+    })
   }
 
   function clearFilters() {
-    setInputValue("")
-    setSearchParams({}, { replace: true })
+    clearTimeout(commitTimer.current)
+    setDraft("")
+    updateParams((params) => {
+      for (const key of Array.from(params.keys())) params.delete(key)
+    })
   }
 
+  const typeLabel = type === "all" ? null : (typeFilter?.label ?? null)
+
+  // Zero results: say what was searched and where, and offer real next steps
+  // (clear just the query keeping the type, or widen to everything).
+  const emptyContent: ResultEmptyContent = committedQuery
+    ? {
+        title: typeLabel ? `No ${typeLabel} results for “${committedQuery}”` : `No results for “${committedQuery}”`,
+        description: typeLabel
+          ? `Nothing in ${typeLabel} matches this search. Clear it to browse everything in ${typeLabel}, or search all of B-17 instead.`
+          : "Try a different search term, or clear filters to browse everything.",
+        actionLabel: typeLabel ? `Clear search and browse ${typeLabel}` : "Clear search",
+        onAction: () => commitQuery(""),
+        ...(typeLabel && {
+          secondaryActionLabel: "Search all of B-17",
+          onSecondaryAction: () => handleTypeChange("all"),
+        }),
+      }
+    : {
+        title: "No results found",
+        description: "Try a different search term, or clear filters to browse everything.",
+        actionLabel: "Clear filters",
+        onAction: clearFilters,
+      }
+
   const hasActiveFilters =
-    Boolean(debouncedQuery.trim()) || type !== "all" || Object.keys(filters).length > 0 || sort !== "default"
+    Boolean(committedQuery) || type !== "all" || Object.keys(filters).length > 0 || sort !== "default"
 
   const activeChips: ActiveChip[] = []
   if (type !== "all") {
@@ -271,9 +331,11 @@ function SearchPage() {
 
         <SearchBar
           value={inputValue}
-          onChange={setInputValue}
-          onSubmit={setInputValue}
-          placeholder={site.searchPrompt}
+          onChange={handleInputChange}
+          onSubmit={commitQuery}
+          placeholder={typeFilter?.placeholder ?? site.searchPrompt}
+          suggestions={suggestions}
+          onSuggestionSelect={handleSuggestionSelect}
         />
 
         <Stack direction="row" align="center" justify="between" wrap gap={3}>
@@ -325,10 +387,12 @@ function SearchPage() {
         )}
 
         <Typography variant="label" className="text-foreground">
-          {loading ? "Searching…" : `${results.length} result${results.length === 1 ? "" : "s"}`}
+          {loading
+            ? "Searching…"
+            : `${results.length} result${results.length === 1 ? "" : "s"}${committedQuery ? ` for “${committedQuery}”` : ""}`}
         </Typography>
 
-        <ResultList hits={visibleResults} loading={loading} onSelect={preview.open} onClearFilters={clearFilters} />
+        <ResultList hits={visibleResults} loading={loading} onSelect={preview.open} empty={emptyContent} />
 
         {!loading && hasMore && (
           <Stack align="center">

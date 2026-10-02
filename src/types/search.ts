@@ -35,6 +35,27 @@ export interface SearchResult {
 export interface SearchTypeFilter {
   value: SearchResultKind | "all"
   label: string
+  /** Empty-input placeholder for this type. Omitted for "all", which keeps the site-wide search prompt. */
+  placeholder?: string
+}
+
+/**
+ * One predictive-search suggestion (Visual V2.1). Deliberately a flat,
+ * UI-ready shape with no domain objects, so the SearchBar never depends on
+ * Provider/Business/etc. — a backend suggestions endpoint can return exactly
+ * this shape later without touching the UI.
+ */
+export interface SearchSuggestion {
+  /** Stable logical key (not a DOM id). */
+  id: string
+  /** Text shown for the suggestion. */
+  label: string
+  /** Short context shown under the label, e.g. "Property · Flat · For Rent". */
+  secondaryLabel: string
+  /** Content type the suggestion belongs to — selecting it switches Search to this type. */
+  type: SearchResultKind
+  /** The query committed when the suggestion is selected. */
+  value: string
 }
 
 /**

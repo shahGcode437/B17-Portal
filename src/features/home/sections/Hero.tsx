@@ -10,7 +10,7 @@ import { site } from "@/data/site"
 import { routes } from "@/config/routes"
 import { fadeUp } from "@/lib/motion"
 
-const suggestions = ["Electrician", "Solar installer", "Physics tutor", "House for rent"]
+const suggestions = ["Electrician", "Solar", "Physics tutor", "House for rent"]
 
 /** Search-first hero (UI/UX Spec §7.1) — the dominant interaction on Home. */
 function Hero() {
