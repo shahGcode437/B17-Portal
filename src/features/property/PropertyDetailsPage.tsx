@@ -1,20 +1,22 @@
 import { useNavigate, useParams } from "react-router-dom"
-import { motion } from "motion/react"
-import { ArrowLeft, MapPin, BedDouble, KeyRound } from "lucide-react"
+import { MapPin, BedDouble, KeyRound, Home, Sofa } from "lucide-react"
 import { Container } from "@/components/foundation/Container"
-import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
-import { CardImage } from "@/components/media/CardImage"
 import { DemoBadge } from "@/components/feedback/DemoBadge"
 import { EmptyState } from "@/components/feedback/EmptyState"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { SaveButton } from "@/components/inputs/SaveButton"
+import { DetailLayout } from "@/components/detail/DetailLayout"
+import { DetailHero } from "@/components/detail/DetailHero"
+import { DetailSummary } from "@/components/detail/DetailSummary"
+import { DetailSection } from "@/components/detail/DetailSection"
+import { DetailFacts, type DetailFact } from "@/components/detail/DetailFacts"
+import { DetailTagList } from "@/components/detail/DetailTagList"
 import { getPropertyById } from "@/services/search"
 import { useToast } from "@/hooks/useToast"
 import { SIMULATED_MESSAGES } from "@/lib/simulatedActions"
 import { routes } from "@/config/routes"
-import { fadeUp } from "@/lib/motion"
 
 /**
  * Public Property Details (Master Spec Screen 17) — mirrors TutorProfilePage/
@@ -42,95 +44,58 @@ function PropertyDetailsPage() {
     )
   }
 
-  return (
-    <Container className="py-8 sm:py-12">
-      <motion.div {...fadeUp}>
-        <Stack gap={6} className="mx-auto max-w-3xl">
-          <button
-            type="button"
-            onClick={() => navigate(-1)}
-            className="flex w-fit items-center gap-1.5 rounded text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-          >
-            <ArrowLeft className="size-4" aria-hidden="true" />
-            Back
-          </button>
+  // Only facts the listing actually has — optional fields are simply omitted.
+  const facts: DetailFact[] = [{ icon: Home, label: "Type", value: property.propertyType }]
+  if (property.bedrooms) facts.push({ icon: BedDouble, label: "Bedrooms", value: String(property.bedrooms) })
+  if (property.furnished) facts.push({ icon: Sofa, label: "Furnishing", value: property.furnished })
+  facts.push({ icon: MapPin, label: "Area", value: property.area, wide: true })
 
-          <div className="relative">
-            <CardImage
-              src={property.image}
-              icon={KeyRound}
-              label={property.title}
-              tone="accent"
-              className="shadow-medium"
-            />
-            <Badge
-              className="absolute left-3 top-3"
-              variant={property.listingType === "sale" ? "default" : "secondary"}
-            >
+  return (
+    <DetailLayout
+      onBack={() => navigate(-1)}
+      notice="This is a prototype property listing with demo details — it does not represent a real, verified B-17 property or transaction."
+      hero={
+        <DetailHero
+          src={property.image}
+          icon={KeyRound}
+          label={property.title}
+          tone="accent"
+          aspectClassName="aspect-[4/3] sm:aspect-[16/10]"
+          badges={
+            <Badge variant={property.listingType === "sale" ? "default" : "secondary"}>
               {property.listingType === "sale" ? "For Sale" : "For Rent"}
             </Badge>
-            <SaveButton kind="property" id={property.id} name={property.title} className="absolute right-3 top-3" />
-          </div>
-
-          <Stack gap={4}>
-            <Stack direction="row" justify="between" align="start" gap={3}>
-              <Stack gap={1}>
-                <Typography variant="h1" className="text-balance">
-                  {property.title}
-                </Typography>
-                <Typography variant="body-lg" className="font-medium text-primary">
-                  {property.price}
-                </Typography>
-              </Stack>
-              <DemoBadge />
-            </Stack>
-
-            <Stack direction="row" wrap gap={4} className="text-muted-foreground">
-              <Stack direction="row" align="center" gap={1}>
-                <MapPin className="size-4 shrink-0" aria-hidden="true" />
-                <Typography variant="body-sm">{property.area}</Typography>
-              </Stack>
-              <Typography variant="body-sm">{property.propertyType}</Typography>
-              {property.bedrooms && (
-                <Stack direction="row" align="center" gap={1}>
-                  <BedDouble className="size-4 shrink-0" aria-hidden="true" />
-                  <Typography variant="body-sm">{property.bedrooms} bed</Typography>
-                </Stack>
-              )}
-              {property.furnished && <Typography variant="body-sm">{property.furnished}</Typography>}
-            </Stack>
-
-            {property.description && (
-              <Typography variant="body" className="text-muted-foreground">
-                {property.description}
-              </Typography>
-            )}
-
-            {property.tags.length > 0 && (
-              <Stack gap={2}>
-                <Typography variant="label">Details</Typography>
-                <Stack direction="row" wrap gap={2}>
-                  {property.tags.map((tag) => (
-                    <Badge key={tag} variant="outline" className="font-normal capitalize">
-                      {tag}
-                    </Badge>
-                  ))}
-                </Stack>
-              </Stack>
-            )}
-
-            <Typography variant="caption" className="text-muted-foreground">
-              This is a prototype property listing with demo details — it does not represent a
-              real, verified B-17 property or transaction.
-            </Typography>
-          </Stack>
-
-          <Button size="lg" className="w-full sm:w-auto" onClick={() => show(SIMULATED_MESSAGES.contact)}>
-            Contact Agent
-          </Button>
-        </Stack>
-      </motion.div>
-    </Container>
+          }
+          action={<SaveButton kind="property" id={property.id} name={property.title} />}
+        />
+      }
+      summary={
+        <DetailSummary
+          badges={<DemoBadge />}
+          title={property.title}
+          highlight={property.price}
+          facts={<DetailFacts facts={facts} />}
+          actions={
+            <Button size="lg" className="w-full" onClick={() => show(SIMULATED_MESSAGES.contact)}>
+              Contact Agent
+            </Button>
+          }
+        />
+      }
+    >
+      {property.description && (
+        <DetailSection title="About this property">
+          <Typography variant="body" className="break-words text-muted-foreground">
+            {property.description}
+          </Typography>
+        </DetailSection>
+      )}
+      {property.tags.length > 0 && (
+        <DetailSection title="Details">
+          <DetailTagList tags={property.tags} />
+        </DetailSection>
+      )}
+    </DetailLayout>
   )
 }
 

@@ -1,20 +1,22 @@
 import { useNavigate, useParams } from "react-router-dom"
-import { motion } from "motion/react"
-import { ArrowLeft, MapPin, MessageCircle, Building2, Star } from "lucide-react"
+import { MapPin, MessageCircle, Building2 } from "lucide-react"
 import { Container } from "@/components/foundation/Container"
-import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
-import { CardImage } from "@/components/media/CardImage"
 import { DemoBadge } from "@/components/feedback/DemoBadge"
 import { EmptyState } from "@/components/feedback/EmptyState"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { SaveButton } from "@/components/inputs/SaveButton"
+import { DetailLayout } from "@/components/detail/DetailLayout"
+import { DetailHero } from "@/components/detail/DetailHero"
+import { DetailSummary } from "@/components/detail/DetailSummary"
+import { DetailSection } from "@/components/detail/DetailSection"
+import { DetailFacts } from "@/components/detail/DetailFacts"
+import { DetailTagList } from "@/components/detail/DetailTagList"
+import { FeaturedBadge } from "@/components/detail/FeaturedBadge"
 import { getBusinessById } from "@/services/search"
 import { useToast } from "@/hooks/useToast"
 import { SIMULATED_MESSAGES } from "@/lib/simulatedActions"
 import { routes } from "@/config/routes"
-import { fadeUp } from "@/lib/motion"
 
 /**
  * Public Business Profile (Master Spec Screen 11) — mirrors TutorProfilePage/
@@ -44,96 +46,50 @@ function BusinessProfilePage() {
   }
 
   return (
-    <Container className="py-8 sm:py-12">
-      <motion.div {...fadeUp}>
-        <Stack gap={6} className="mx-auto max-w-3xl">
-          <button
-            type="button"
-            onClick={() => navigate(-1)}
-            className="flex w-fit items-center gap-1.5 rounded text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-          >
-            <ArrowLeft className="size-4" aria-hidden="true" />
-            Back
-          </button>
-
-          <div className="relative">
-            <CardImage
-              src={business.image}
-              icon={Building2}
-              label={business.name}
-              tone="accent"
-              className="shadow-medium"
-            />
-            {business.featured && (
-              <Badge className="absolute left-3 top-3 gap-1 bg-brand-accent text-brand-accent-foreground">
-                <Star className="size-3" aria-hidden="true" />
-                Featured
-              </Badge>
-            )}
-            <SaveButton kind="business" id={business.id} name={business.name} className="absolute right-3 top-3" />
-          </div>
-
-          <Stack gap={4}>
-            <Stack direction="row" justify="between" align="start" gap={3}>
-              <Stack gap={1}>
-                <Typography variant="h1" className="text-balance">
-                  {business.name}
-                </Typography>
-                <Typography variant="body-lg" className="text-primary">
-                  {business.category}
-                </Typography>
-              </Stack>
-              <DemoBadge />
-            </Stack>
-
-            <Typography variant="body" className="text-muted-foreground">
-              {business.description}
-            </Typography>
-
-            <Stack gap={2}>
-              <Typography variant="label">Area</Typography>
-              <Stack direction="row" align="center" gap={1} className="text-muted-foreground">
-                <MapPin className="size-4 shrink-0" aria-hidden="true" />
-                <Typography variant="body-sm">{business.area}</Typography>
-              </Stack>
-            </Stack>
-
-            {business.tags.length > 0 && (
-              <Stack gap={2}>
-                <Typography variant="label">Details</Typography>
-                <Stack direction="row" wrap gap={2}>
-                  {business.tags.map((tag) => (
-                    <Badge key={tag} variant="outline" className="font-normal capitalize">
-                      {tag}
-                    </Badge>
-                  ))}
-                </Stack>
-              </Stack>
-            )}
-
-            <Typography variant="caption" className="text-muted-foreground">
-              This is a prototype business listing with demo details — it does not represent a
-              real, verified B-17 business.
-            </Typography>
-          </Stack>
-
-          <Stack gap={2} className="flex-col-reverse sm:flex-row">
-            <Button
-              size="lg"
-              variant="outline"
-              className="flex-1"
-              onClick={() => show(SIMULATED_MESSAGES.whatsapp)}
-            >
-              <MessageCircle />
-              WhatsApp
-            </Button>
-            <Button size="lg" className="flex-1" onClick={() => show(SIMULATED_MESSAGES.contact)}>
-              Contact Business
-            </Button>
-          </Stack>
-        </Stack>
-      </motion.div>
-    </Container>
+    <DetailLayout
+      onBack={() => navigate(-1)}
+      notice="This is a prototype business listing with demo details — it does not represent a real, verified B-17 business."
+      hero={
+        <DetailHero
+          src={business.image}
+          icon={Building2}
+          label={business.name}
+          tone="accent"
+          badges={business.featured && <FeaturedBadge />}
+          action={<SaveButton kind="business" id={business.id} name={business.name} />}
+        />
+      }
+      summary={
+        <DetailSummary
+          badges={<DemoBadge />}
+          title={business.name}
+          subtitle={business.category}
+          facts={<DetailFacts facts={[{ icon: MapPin, label: "Area", value: business.area, wide: true }]} />}
+          actions={
+            <>
+              <Button size="lg" className="w-full" onClick={() => show(SIMULATED_MESSAGES.contact)}>
+                Contact Business
+              </Button>
+              <Button size="lg" variant="outline" className="w-full" onClick={() => show(SIMULATED_MESSAGES.whatsapp)}>
+                <MessageCircle />
+                WhatsApp
+              </Button>
+            </>
+          }
+        />
+      }
+    >
+      <DetailSection title="About">
+        <Typography variant="body" className="break-words text-muted-foreground">
+          {business.description}
+        </Typography>
+      </DetailSection>
+      {business.tags.length > 0 && (
+        <DetailSection title="Details">
+          <DetailTagList tags={business.tags} />
+        </DetailSection>
+      )}
+    </DetailLayout>
   )
 }
 

@@ -79,7 +79,7 @@ High-level only — implementation details for each phase are worked out when th
 - Verification: `npx tsc -b --force` and `npm run build` pass; lint remains at the established 8-warning baseline; no new dependency; negligible bundle increase (+0.06% JS); live-verified quick-suggestion/manual-typing/Enter/clear/reload/back-forward/mobile search behavior, keyboard card activation, Save/Favorite, and quick-view dialogs all unchanged; reviewed via `review-phase` — final verdict READY FOR COMMIT.
 
 ## Visual Phase V2.1 — Contextual Search + Predictive Suggestions
-**STATUS: COMPLETE** (Visual V2.1 commit: pending)
+**STATUS: COMPLETE** (commit `4e92833`)
 
 - Objective: close two Search/Explore UX gaps before V3 — zero-result friction after a content-type switch with an active query, and no predictive/autocomplete search.
 - Delivered: predictive suggestions built only from real, existing approved/published data (typed `SearchSuggestion` model; ranking exact → starts-with → word-prefix → contains; de-duplicated; capped at 8; type-specific), isolated behind `getSearchSuggestions` in `search.ts` and the `useSearchSuggestions` hook so a future backend `/search/suggestions` endpoint can replace it without UI changes; an accessible combobox `SearchBar` (mouse and keyboard, ArrowUp/Down/Enter/Escape, listbox semantics); immediate Enter commit and atomic suggestion selection (query + type + URL + results); contextual placeholders per type; contextual zero-result messaging with "clear search keeping the type" and "search all of B-17" actions. Fixed a real same-mount URL-sync bug by making the URL the sole committed state (the input is a draft that follows external navigation; the old local-state→URL effect and skip-ref were removed). Compact SearchBar input raised to 16px below `md` (was 14px) to avoid mobile focus-zoom; Hero chip "Solar installer" → "Solar" (the old phrase matched nothing).
@@ -89,13 +89,23 @@ High-level only — implementation details for each phase are worked out when th
 - Known limitations: Hero chips remain static strings; `updateParams` assumes browser history/`createBrowserRouter`; a future external REPLACE navigation into a mounted `/search` would be treated as the page's own write; real iOS keyboard not physically tested; no backend search service yet.
 
 ## Visual Phase V3 — Detail Pages + Imagery
+**STATUS: COMPLETE** (Visual V3 commit: pending)
+
+- Objective: implement the richer detail-page composition and a deliberate missing-image treatment per `docs/design/DESIGN_SYSTEM.md` §9/§11/§23.
+- Delivered: shared, presentation-only detail primitives (`DetailLayout`, `DetailHero`, `DetailSummary`, `DetailSection`, `DetailFacts`, `DetailTagList`, `FeaturedBadge` in `src/components/detail/`) adopted by the Provider, Business, Tutor and Property detail pages; image-led cover; mobile-first cover → summary → CTA → facts → sections order with a sticky desktop summary/action panel; sections and facts built from real fields only (no fake ratings/reviews/trust signals); a captioned hero fallback for missing images (`size="hero"` on `PlaceholderImage`/`CardImage`); 44px CTAs and a 44×44 detail Save button; a long-token overflow bug fixed. News received only the shared hero treatment. Also a global accessibility fix: the light-mode primary, brand-accent and destructive tokens were darkened within their existing color families to reach ≥4.5:1 text contrast (5.48 / 5.18 / 5.45:1), with a darker default-Button hover — documented in `DESIGN_SYSTEM.md` §4/§15; dark-mode tokens unchanged.
+- Deliberately not implemented: ratings/reviews/maps/verification, related-content recommendations, image galleries/carousels (only one image per item exists), real upload/storage, new demo photography (Business Directory photo *coverage* is still uneven — only its fallback presentation improved), the unconsumed `Card` variants, migrating `NewsCard`/`CategoryCard`/`ListingSummaryCard`, any search/workspace/admin/dark-mode work.
+- Dependencies: Visual Phase V1 (the `Card` primitive), Visual Phase V2. No new dependency.
+- Verification: `npx tsc -b --force` and `npm run build` pass; lint remains at the established 8-warning baseline; fresh browser console 0 errors / 0 warnings; verified at 375/430/820/1440px (cover, summary column, sticky behavior, CTA size/alignment, overflow, long-content and image-shape resilience), plus keyboard order/focus, Save, CTA behavior, Back and the login-resume flow; button states (default/hover/focus/disabled/outline/destructive) re-measured after the contrast change; reviewed via `review-phase` — final verdict READY FOR COMMIT.
+- Known follow-ups: warning/success/info status-badge contrast (about 2.71/2.79/4.19:1) and a dedicated focus-indicator contrast review; Featured badge markup duplicated between cards and `FeaturedBadge`; real-device testing pending; demo imagery will be replaced by real client/user media.
+
+## Visual Phase V4 — Resident + Professional Workspace Polish
 **STATUS: NEXT**
 
-- Objective: implement the richer detail-page composition and close the Business Directory imagery-coverage gap per `docs/design/DESIGN_SYSTEM.md` §9/§11/§23.
-- Major scope: to be confirmed against the live repo when this phase begins — not finalized here.
-- Out of scope: ratings/maps/reviews (not real product features); Professional Workspace/Admin redesign; dark mode; typography changes.
-- Dependencies: Visual Phase V1 (the `Card` primitive), Visual Phase V2.
-- Completion/verification: no fabricated trust signals or content; responsive re-check at 375px/820px/1440px.
+- Objective: apply the shared `Card` primitive (`workspace` variant) and typography/spacing polish to Resident and Professional Workspace surfaces per `docs/design/DESIGN_SYSTEM.md` §12/§23.
+- Major scope: to be confirmed against the live repo when this phase begins — likely Overview stat tiles, Listings/Leads rows (`ListingSummaryCard`), Profile/Settings, and the status-badge contrast follow-up noted above.
+- Out of scope: new workspace features/modules, capability/entitlement logic changes, Admin redesign (Visual V5), dark mode, typography changes.
+- Dependencies: Visual Phase V1 (the `Card` primitive); Phase 9C–9E (the surfaces being polished).
+- Completion/verification: no change to capability-gating, lead/request status behavior or listing-limit logic (visual only); responsive re-check at 375px/820px/1440px.
 
 ## Phase 9F — Admin Production UX
 

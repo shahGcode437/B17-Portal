@@ -9,6 +9,8 @@ interface CardImageProps extends React.ComponentProps<"img"> {
   icon: LucideIcon
   label: string
   tone?: "primary" | "accent"
+  /** Passed to PlaceholderImage — "hero" for detail-page cover regions. */
+  placeholderSize?: "card" | "hero"
   className?: string
 }
 
@@ -18,11 +20,11 @@ interface CardImageProps extends React.ComponentProps<"img"> {
  * missing/invalid paths (typo, asset not yet supplied) fail gracefully by
  * falling back to PlaceholderImage rather than a broken image icon.
  */
-function CardImage({ src, icon, label, tone, className, ...imgProps }: CardImageProps) {
+function CardImage({ src, icon, label, tone, placeholderSize, className, ...imgProps }: CardImageProps) {
   const [failed, setFailed] = React.useState(false)
 
   if (!src || failed) {
-    return <PlaceholderImage icon={icon} label={label} tone={tone} className={className} />
+    return <PlaceholderImage icon={icon} label={label} tone={tone} size={placeholderSize} className={className} />
   }
 
   return (

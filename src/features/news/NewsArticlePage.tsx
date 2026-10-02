@@ -4,7 +4,7 @@ import { Calendar, Newspaper } from "lucide-react"
 import { Container } from "@/components/foundation/Container"
 import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
-import { CardImage } from "@/components/media/CardImage"
+import { DetailHero } from "@/components/detail/DetailHero"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { EmptyState } from "@/components/feedback/EmptyState"
@@ -50,13 +50,7 @@ function NewsArticlePage() {
             <Link to={routes.news}>Back to News & Daily Updates</Link>
           </Button>
 
-          <CardImage
-            src={article.image}
-            icon={Newspaper}
-            label={article.title}
-            tone="accent"
-            className="shadow-medium"
-          />
+          <DetailHero src={article.image} icon={Newspaper} label={article.title} tone="accent" />
 
           <Stack gap={3}>
             <Stack direction="row" align="center" wrap gap={2}>

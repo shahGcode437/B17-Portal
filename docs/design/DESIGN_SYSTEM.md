@@ -50,9 +50,9 @@ All colors are defined as CSS custom properties in `src/index.css`, mapped into 
 ### Light mode (`:root`)
 | Token | Value | Usage |
 |---|---|---|
-| `--primary` | `#059669` | Primary brand color ("location green") — primary buttons, links, active nav states, focus ring |
+| `--primary` | `#047857` | Primary brand color ("location green") — primary buttons, links, active nav states. White on it is **5.48:1** (see "Contrast refinement" below). |
 | `--primary-foreground` | `#ffffff` | Text/icons on primary |
-| `--brand-accent` | `#ea580c` | "Action orange" — **high-intent CTAs only**: Request, WhatsApp/Contact, Featured ribbon. Not for decoration or general emphasis. |
+| `--brand-accent` | `#c2410c` | "Action orange" — **high-intent/accent use only**: Request, WhatsApp/Contact, Featured ribbon. Not for decoration or general emphasis. White on it is **5.18:1**. |
 | `--brand-accent-foreground` | `#ffffff` | Text/icons on brand-accent |
 | `--accent` / `--accent-foreground` | `#ecfdf5` / `#065f46` | Internal hover/highlight tint (dropdowns, menu items) — distinct from `brand-accent`; never used as a CTA color |
 | `--background` / `--foreground` | `#ffffff` / `#0f172a` | Page background / primary text |
@@ -60,14 +60,27 @@ All colors are defined as CSS custom properties in `src/index.css`, mapped into 
 | `--secondary` / `--secondary-foreground` | `#f1f5f9` / `#0f172a` | Secondary surfaces, secondary buttons |
 | `--muted` / `--muted-foreground` | `#f1f5f9` / `#475569` | De-emphasized backgrounds/text (captions, helper text, placeholders) |
 | `--border` / `--input` | `#e2e8f0` | Borders, input borders |
-| `--ring` | `#059669` | Focus ring (matches primary) |
-| `--destructive` / `--destructive-foreground` | `#dc2626` / `#ffffff` | Destructive actions (reject, archive-confirm, delete) |
+| `--ring` | `#059669` | Focus ring — intentionally left at the previous primary shade (not changed in the contrast refinement; see Known limitations in `CURRENT_STATE.md` for the focus-indicator review) |
+| `--destructive` / `--destructive-foreground` | `#b91c1c` / `#ffffff` | Destructive actions (reject, archive-confirm, delete). Destructive button text on its tinted fill is **5.45:1** (4.59:1 on hover). |
 | `--success` / `--success-foreground` | `#16a34a` / `#ffffff` | Approved/success status |
 | `--warning` / `--warning-foreground` | `#d97706` / `#ffffff` | Pending/warning status |
 | `--info` / `--info-foreground` | `#2563eb` / `#ffffff` | Informational status |
 
+### Contrast refinement (Visual V3 gate)
+The first light-mode values — primary `#059669`, brand accent `#ea580c`, destructive `#dc2626` — gave white button text only **3.77:1**, **3.56:1** and (destructive text on its tinted fill) **4.14:1**, below the WCAG AA 4.5:1 target for normal-size text. This was a system-wide, pre-existing issue, not specific to any one page. It was fixed at the token level, once:
+
+| Token | Before → after | Scale step | Result |
+|---|---|---|---|
+| `--primary` | `#059669` → `#047857` | emerald-600 → emerald-700 | white text 3.77 → **5.48:1**; `text-primary` on white 3.77 → 5.48:1 |
+| `--brand-accent` | `#ea580c` → `#c2410c` | orange-600 → orange-700 | white text 3.56 → **5.18:1** |
+| `--destructive` | `#dc2626` → `#b91c1c` | red-600 → red-700 | button text on tint 4.14 → **5.45:1** (hover 3.52 → 4.59:1) |
+
+Why this is not a palette replacement: each value is the next-darker step of the **same Tailwind color family** the file already draws from (the existing `#065f46`, `#ecfdf5` and `#10b981` are emerald; `#fb923c` is orange), so green is still the main brand color and orange is still the accent. The already-present `#065f46` (7.68:1) was considered and rejected as a larger visual shift than the 4.5:1 target needs. No page-level or one-off overrides were added — every surface that uses these tokens inherits the change (default Buttons, default Badges, the selected filter toggle, `text-primary` labels, the Featured badge/border, destructive buttons).
+
+Orange remains reserved for high-intent/accent use (as implemented today, the Featured badge and featured-card border); it was not made more decorative. **Dark-mode tokens were not changed** (see below). The warning/success/info status colors were also not changed and still fall short of 4.5:1 for their badge text (tracked as a follow-up in `CURRENT_STATE.md`).
+
 ### Dark mode (`.dark`) — tokens exist, not currently user-facing (see §21)
-`--primary: #10b981`, `--brand-accent: #fb923c`, `--background: #0b1120`, `--card: #111827`, plus full parallel border/status/sidebar sets. Defined for forward-compatibility; do not design new components assuming dark mode is reachable today.
+`--primary: #10b981`, `--brand-accent: #fb923c`, `--background: #0b1120`, `--card: #111827`, plus full parallel border/status/sidebar sets. Defined for forward-compatibility; do not design new components assuming dark mode is reachable today. Unchanged by the contrast refinement above.
 
 ### Usage rules
 - **Green (`primary`) is the default brand color** — navigation active states, primary buttons, links, focus rings, category icon tiles.
@@ -270,14 +283,14 @@ Current shadcn-pattern primitives (`Input`, `Label`, `Textarea`, `Toggle`/`Toggl
 
 | Variant | Visual | Usage |
 |---|---|---|
-| `default` (primary) | `bg-primary` solid | Default action, navigation CTAs |
+| `default` (primary) | `bg-primary` solid; hover mixes 12% of `--foreground` into primary (`color-mix(in srgb, …)`, a darker brand-compatible green, **6.42:1** with white text — the former `primary/80` hover lightened the fill and fell to 2.86:1) | Default action, navigation CTAs |
 | `secondary` | `bg-secondary` solid | Secondary emphasis, lower priority than primary |
 | `outline` | bordered, transparent fill | Tertiary actions, "View"/"Edit"-style row actions, WhatsApp button |
 | `ghost` | no border/fill until hover | Icon buttons, low-emphasis actions (search icon in header) |
 | `destructive` | `bg-destructive/10` tinted, not solid red | Reject/archive-confirm — intentionally restrained, not alarm-red |
 | `link` | text-only, underline on hover | Inline text actions |
 
-**High-intent orange CTA**: not a `Button` variant — applied via explicit `bg-brand-accent` classes (e.g., "Contact Business" button) layered on top of the `default` button structure, reserved specifically for Request/Contact/WhatsApp-style actions per §4. Do not apply orange to navigational buttons, section CTAs ("View all"), or any non-contact action — "View all" links correctly use plain primary-colored text links today, not buttons, and should stay that way.
+**High-intent orange CTA**: not a `Button` variant — it would be applied via explicit `bg-brand-accent` classes on top of the `default` button structure, reserved specifically for Request/Contact/WhatsApp-style actions per §4. *Current implementation note:* the Request/Contact/WhatsApp buttons (cards and detail pages) use the primary green `default` variant, and orange appears only on the Featured badge and featured-card border; with the contrast refinement (§4) white text on orange is 5.18:1, so an orange button is now permissible if a future phase chooses it. Do not apply orange to navigational buttons, section CTAs ("View all"), or any non-contact action — "View all" links correctly use plain primary-colored text links today, not buttons, and should stay that way.
 
 Sizes (`xs/sm/default/lg/icon*`) follow a fixed height/radius scale already defined in `buttonVariants` — reuse, don't redefine per-feature.
 

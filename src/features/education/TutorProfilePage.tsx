@@ -1,20 +1,21 @@
 import { useNavigate, useParams } from "react-router-dom"
-import { motion } from "motion/react"
-import { ArrowLeft, MapPin, MessageCircle, GraduationCap } from "lucide-react"
+import { MapPin, MessageCircle, GraduationCap, BookOpen } from "lucide-react"
 import { Container } from "@/components/foundation/Container"
-import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
-import { CardImage } from "@/components/media/CardImage"
 import { DemoBadge } from "@/components/feedback/DemoBadge"
 import { EmptyState } from "@/components/feedback/EmptyState"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { SaveButton } from "@/components/inputs/SaveButton"
+import { DetailLayout } from "@/components/detail/DetailLayout"
+import { DetailHero } from "@/components/detail/DetailHero"
+import { DetailSummary } from "@/components/detail/DetailSummary"
+import { DetailSection } from "@/components/detail/DetailSection"
+import { DetailFacts } from "@/components/detail/DetailFacts"
+import { DetailTagList } from "@/components/detail/DetailTagList"
 import { getTutorById } from "@/services/search"
 import { useToast } from "@/hooks/useToast"
 import { SIMULATED_MESSAGES } from "@/lib/simulatedActions"
 import { routes } from "@/config/routes"
-import { fadeUp } from "@/lib/motion"
 
 /**
  * Public Tutor Profile (Master Spec Screen 14) — mirrors ProviderProfilePage's
@@ -43,72 +44,50 @@ function TutorProfilePage() {
   }
 
   return (
-    <Container className="py-8 sm:py-12">
-      <motion.div {...fadeUp}>
-        <Stack gap={6} className="mx-auto max-w-3xl">
-          <button
-            type="button"
-            onClick={() => navigate(-1)}
-            className="flex w-fit items-center gap-1.5 rounded text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-          >
-            <ArrowLeft className="size-4" aria-hidden="true" />
-            Back
-          </button>
-
-          <div className="relative">
-            <CardImage src={tutor.image} icon={GraduationCap} label={tutor.name} className="shadow-medium" />
-            <SaveButton kind="tutor" id={tutor.id} name={tutor.name} className="absolute right-3 top-3" />
-          </div>
-
-          <Stack gap={4}>
-            <Stack direction="row" justify="between" align="start" gap={3}>
-              <Stack gap={1}>
-                <Typography variant="h1" className="text-balance">
-                  {tutor.name}
-                </Typography>
-                <Typography variant="body-lg" className="text-primary">
-                  {tutor.subject} · {tutor.grade}
-                </Typography>
-              </Stack>
-              <DemoBadge />
-            </Stack>
-
-            <Typography variant="body" className="text-muted-foreground">
-              {tutor.bio}
-            </Typography>
-
-            <Stack gap={2}>
-              <Typography variant="label">Subjects / Focus</Typography>
-              <Stack direction="row" wrap gap={2}>
-                {tutor.tags.map((tag) => (
-                  <Badge key={tag} variant="outline" className="font-normal capitalize">
-                    {tag}
-                  </Badge>
-                ))}
-              </Stack>
-            </Stack>
-
-            <Stack gap={2}>
-              <Typography variant="label">Area</Typography>
-              <Stack direction="row" align="center" gap={1} className="text-muted-foreground">
-                <MapPin className="size-4 shrink-0" aria-hidden="true" />
-                <Typography variant="body-sm">{tutor.area}</Typography>
-              </Stack>
-            </Stack>
-
-            <Typography variant="caption" className="text-muted-foreground">
-              This is a prototype tutor listing with demo details — it does not represent a real,
-              verified B-17 tutor.
-            </Typography>
-          </Stack>
-
-          <Button size="lg" className="w-full sm:w-auto" onClick={() => show(SIMULATED_MESSAGES.whatsapp)}>
-            <MessageCircle />
-            Chat on WhatsApp
-          </Button>
-        </Stack>
-      </motion.div>
-    </Container>
+    <DetailLayout
+      onBack={() => navigate(-1)}
+      notice="This is a prototype tutor listing with demo details — it does not represent a real, verified B-17 tutor."
+      hero={
+        <DetailHero
+          src={tutor.image}
+          icon={GraduationCap}
+          label={tutor.name}
+          action={<SaveButton kind="tutor" id={tutor.id} name={tutor.name} />}
+        />
+      }
+      summary={
+        <DetailSummary
+          badges={<DemoBadge />}
+          title={tutor.name}
+          facts={
+            <DetailFacts
+              facts={[
+                { icon: BookOpen, label: "Subject", value: tutor.subject },
+                { icon: GraduationCap, label: "Grade", value: tutor.grade },
+                { icon: MapPin, label: "Area", value: tutor.area, wide: true },
+              ]}
+            />
+          }
+          actions={
+            <Button size="lg" className="w-full" onClick={() => show(SIMULATED_MESSAGES.whatsapp)}>
+              <MessageCircle />
+              Chat on WhatsApp
+            </Button>
+          }
+        />
+      }
+    >
+      <DetailSection title="About">
+        <Typography variant="body" className="break-words text-muted-foreground">
+          {tutor.bio}
+        </Typography>
+      </DetailSection>
+      {tutor.tags.length > 0 && (
+        <DetailSection title="Subjects & focus">
+          <DetailTagList tags={tutor.tags} />
+        </DetailSection>
+      )}
+    </DetailLayout>
   )
 }
 

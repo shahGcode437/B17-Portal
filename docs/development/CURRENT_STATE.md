@@ -10,13 +10,13 @@ master
 
 ## Current Verified Commit
 
-0f02378 Visual V2: refine consumer discovery experience
-Visual V2.1 commit: pending (implementation complete, review passed, not yet committed)
+4e92833 Visual V2.1: add contextual predictive search
+Visual V3 commit: pending (implementation complete, review passed, not yet committed)
 
 ## Current Phase
 
-Visual Phase V2.1 — Contextual Search + Predictive Suggestions: COMPLETE, reviewed (READY FOR COMMIT), commit pending approval.
-Next frontend step: Visual Phase V3 — Detail Pages + Imagery.
+Visual Phase V3 — Detail Pages + Imagery: COMPLETE, reviewed (READY FOR COMMIT), commit pending approval.
+Next frontend step: Visual Phase V4 — Resident + Professional Workspace Polish.
 
 ## Completed Product Work
 
@@ -40,6 +40,7 @@ Next frontend step: Visual Phase V3 — Detail Pages + Imagery.
 - Visual Phase V1 — Shared Card Primitive + Surface Foundation (see below)
 - Visual Phase V2 — Consumer Discovery/Card Refresh (see below)
 - Visual Phase V2.1 — Contextual Search + Predictive Suggestions (see below)
+- Visual Phase V3 — Detail Pages + Imagery (see below)
 
 Full history is in `git log`; this file summarizes outcomes, not the blow-by-blow.
 
@@ -168,6 +169,28 @@ Full history is in `git log`; this file summarizes outcomes, not the blow-by-blo
 - The real iOS on-screen keyboard has not been physically tested.
 - No backend search service exists yet; local data powers the suggestions.
 
+## Visual Phase V3 Result
+
+**Detail pages**: the Provider, Business, Tutor and Property detail pages now share presentation-only detail primitives in `src/components/detail/` — `DetailLayout`, `DetailHero`, `DetailSummary`, `DetailSection`, `DetailFacts`, `DetailTagList` and `FeaturedBadge`. Each page decides what goes in each slot (domain differences are preserved; there is no giant universal component).
+
+- **Layout/order**: mobile-first cover → summary → CTA → facts → sections, in DOM order; from `lg` the summary becomes a sticky side panel (pure CSS grid, no layout effects). The primary action is a 44px full-width button directly under the title (in the first screen at 375px), with a secondary outline button below it; facts sit after the actions.
+- **Imagery**: image-led hero/cover (4:3 on mobile, 16:9 from `sm`; Property 16:10), loaded eagerly with high fetch priority; `object-cover` keeps portrait/panorama/tiny/very-large sources from changing the cover's size. A missing/failed image shows a deliberate captioned fallback ("No photo available", larger icon tile, same ratio) via a backward-compatible `size="hero"` option on `PlaceholderImage`/`CardImage` (card placeholders unchanged).
+- **Real data only**: every fact, chip and section comes from existing fields (Featured only where `featured` is true; Property facts Type/Bedrooms/Furnishing/Area only when present; the price is shown as its original formatted string; sections are omitted when their data is absent). No fake reviews, ratings, verification, availability or trust signals; the honest demo disclaimer is retained. Existing actions are preserved (Back, Save, WhatsApp, Request Service with login-resume, Contact Business, Contact Agent, simulated toast messages).
+- **Touch targets**: detail CTAs are 44px; the detail-page Save button was raised from 32×32 to 44×44 (card Save buttons are unchanged at 32×32).
+- **Resilience**: a layout bug found by the long-content test was fixed — one unbroken long token had expanded the summary card to 1423px on mobile because the grid column was implicit; the explicit `minmax(0,1fr)` column keeps long titles/areas/descriptions contained (verified with a 185-character title, long area, 28 tags and long description at 375px). Desktop container widened to `max-w-6xl` (cover 768px at 1440px).
+- **News**: received only the bounded shared hero treatment (`DetailHero`); its editorial layout and lack of marketplace CTAs are unchanged.
+
+**Accessibility improvement (contrast)**: white text on the light-mode primary, brand-accent and destructive fills was below the 4.5:1 AA target (3.77, 3.56 and 4.14:1) — a system-wide pre-existing issue. The light-mode tokens were darkened within their existing color families (`--primary` `#059669` → `#047857`, `--brand-accent` `#ea580c` → `#c2410c`, `--destructive` `#dc2626` → `#b91c1c`), now 5.48 / 5.18 / 5.45:1 (destructive hover 4.59). The default Button hover now mixes a little foreground into primary (6.42:1; the former `primary/80` hover lightened the fill to 2.86:1). Every surface using these tokens inherits the change (default Buttons/Badges, the selected filter toggle, `text-primary` labels, the Featured badge, destructive buttons). Dark-mode tokens were not changed. Details are documented in `docs/design/DESIGN_SYSTEM.md` §4.
+
+**Quality**: `npx tsc -b --force` clean; `npm run build` succeeds (JS ≈ 839 KB — slightly *smaller* than V2.1, since five pages' duplicated markup collapsed into shared components); lint remains at the established 8-warning baseline; no dependency added; fresh browser console 0 errors / 0 warnings; no test suite exists. Verified at 375/430/820/1440px on all four marketplace detail pages plus News, including the fallback-image cases in the seed data. Reviewed via `review-phase`: verdict READY FOR COMMIT.
+
+**Known follow-ups**:
+- The warning/success/info status-badge text (admin/workspace/resident surfaces) is still below 4.5:1 on its tinted fill (about 2.71, 2.79 and 4.19:1); the badges carry an icon and label, so they aren't color-only. Review in V4/V5.
+- Focus-indicator contrast should receive a dedicated accessibility review (the focus ring is `ring-ring/50` at about 1.9:1 on white, with the solid ring-colored border as the stronger cue; `--ring` was intentionally not changed).
+- Featured badge markup remains duplicated between `ProviderCard`/`BusinessCard` and the new `FeaturedBadge` (consolidating would touch V2 card files).
+- Real-device testing remains pending (including the iOS on-screen keyboard from V2.1).
+- Current demo imagery will later be replaced by real client/user media; the demo photos are ~1000px wide, so they render a little soft at the 768px cover on high-density screens. No gallery was built — only one image per item exists.
+
 ## Production V1 Direction
 
 - Complete the frontend before the backend.
@@ -205,7 +228,9 @@ Full history is in `git log`; this file summarizes outcomes, not the blow-by-blo
 - No SPA-fallback hosting config (`vercel.json`/`netlify.toml`/`_redirects`) — will 404 on refresh/direct link on a real static host until added.
 - `CategoryCard`, `ListingSummaryCard`, and `NewsCard` still hand-roll their own card surface styling — not yet migrated to the shared `Card` primitive; candidates for a later visual phase.
 - `Card`'s `elevated`/`workspace` variants are defined (`docs/design/DESIGN_SYSTEM.md` §8) but have no consumer in production UI yet — `interactive` (Visual V1) and `featured` (Visual V2, data-driven for Provider/Business) are in use.
-- Detail pages (Business/Provider/Tutor/Property) still drop from one large hero photo into plain text blocks with no supporting visual structure — the largest remaining visual-quality gap, targeted by Visual Phase V3.
+- The Professional Workspace and Resident surfaces are still flat data tiles/rows (stat tiles, `ListingSummaryCard`) — the largest remaining visual-quality gap after Visual V3, targeted by Visual Phase V4.
+- Status-badge text colors (warning/success/info) fall below 4.5:1 contrast on their tinted fills, and the focus-ring indicator contrast has not had a dedicated review — see "Visual Phase V3 Result" known follow-ups.
+- `FeaturedBadge` markup is duplicated between `ProviderCard`/`BusinessCard` and `src/components/detail/FeaturedBadge.tsx`.
 - Business Directory image coverage is uneven — several business categories still fall back to the generic icon placeholder instead of a real photo.
 - Home Hero quick-search chips are static curated strings (not derived from data) and could drift from the searchable data again; "Solar installer" already did once and became "Solar" in Visual V2.1.
 - Search `updateParams` (Visual V2.1) assumes browser history / `createBrowserRouter`, and treats any REPLACE navigation into a mounted `/search` as its own write — no external REPLACE navigation exists today. Search suggestions are local-data only until a backend search service exists; the real iOS on-screen keyboard has not been physically tested.
@@ -224,7 +249,7 @@ Full history is in `git log`; this file summarizes outcomes, not the blow-by-blo
 
 ## Next Step
 
-Visual Phase V3 — Detail Pages + Imagery (per `docs/design/DESIGN_SYSTEM.md` §23's phased migration plan).
+Visual Phase V4 — Resident + Professional Workspace Polish (per `docs/design/DESIGN_SYSTEM.md` §23's phased migration plan).
 
 ## Resume Instructions
 
