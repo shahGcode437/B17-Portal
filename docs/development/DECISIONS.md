@@ -103,3 +103,9 @@ Concise decisions only. Where the originating date isn't known, none is given ra
 **Decision:** One independently verifiable phase per commit.
 **Reason:** keeps history bisectable and each change reviewable/revertable on its own; matches the established workflow across every phase so far.
 **Revisit when:** not anticipated.
+
+---
+
+**Decision:** Food & Dining is implemented as a Business vertical (`Business.vertical` plus an optional nested `food` profile), not as a new domain, listing kind, Saved kind or Search result kind.
+**Reason:** reuses the existing listing lifecycle, moderation, Professional Workspace, Saved items and search with no duplicate store or detail implementation; details in `docs/product/FOOD_DINING.md`.
+**Revisit when:** a Food-specific capability (e.g. ordering) genuinely cannot be expressed on the Business model.

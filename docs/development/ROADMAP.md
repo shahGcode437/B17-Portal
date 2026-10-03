@@ -134,6 +134,7 @@ V1 Shared Card Foundation → V2 Consumer Discovery → V2.1 Predictive Search �
 ## Food & Dining Directory Expansion
 **STATUS: NEXT**
 
+- Source of truth: `docs/product/FOOD_DINING.md` (architecture frozen; phases FD1–FD5, one commit each).
 - Objective: add Food & Dining as a bounded frontend/product vertical expansion, reusing the existing Business Directory, search, listing-onboarding and Admin moderation patterns rather than introducing a new architecture.
 - Major scope: to be confirmed against the live repo when the phase begins — likely Food & Dining category/discovery surfaces, demo data, search/filter integration and the listing/moderation path for food businesses, using real fields only and the shared design system.
 - Out of scope: cart, online ordering, delivery logistics, payments, reviews/ratings, backend work.

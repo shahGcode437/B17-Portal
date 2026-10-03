@@ -356,7 +356,7 @@ Visual V6 — Final Responsive, Accessibility & Interaction Polish = **COMPLETE*
 
 ## Next Step
 
-Food & Dining Directory Expansion — a bounded frontend/product vertical expansion using the existing Business Directory, search, listing-onboarding and moderation patterns (see `docs/development/ROADMAP.md`). Cart, online ordering, delivery logistics and payments are explicitly out of scope.
+Food & Dining Directory Expansion — a bounded frontend/product vertical expansion using the existing Business Directory, search, listing-onboarding and moderation patterns (see `docs/product/FOOD_DINING.md` for the frozen architecture and `docs/development/ROADMAP.md` for sequencing). Cart, online ordering, delivery logistics and payments are explicitly out of scope.
 
 ## Resume Instructions
 
