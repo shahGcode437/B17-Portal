@@ -60,7 +60,7 @@ All colors are defined as CSS custom properties in `src/index.css`, mapped into 
 | `--secondary` / `--secondary-foreground` | `#f1f5f9` / `#0f172a` | Secondary surfaces, secondary buttons |
 | `--muted` / `--muted-foreground` | `#f1f5f9` / `#475569` | De-emphasized backgrounds/text (captions, helper text, placeholders) |
 | `--border` / `--input` | `#e2e8f0` | Borders, input borders |
-| `--ring` | `#059669` | Focus ring — intentionally left at the previous primary shade (not changed in the contrast refinement; see Known limitations in `CURRENT_STATE.md` for the focus-indicator review) |
+| `--ring` | `#047857` | Focus ring — the accessible primary green (5.48:1 on white); changed from `#059669` in Visual V6 (see §20) |
 | `--destructive` / `--destructive-foreground` | `#b91c1c` / `#ffffff` | Destructive actions (reject, archive-confirm, delete). Destructive button text on its tinted fill is **5.45:1** (4.59:1 on hover). |
 | `--success` / `--success-foreground` | `#16a34a` / `#ffffff` | Approved/success status |
 | `--warning` / `--warning-foreground` | `#d97706` / `#ffffff` | Pending/warning status |
@@ -285,7 +285,7 @@ Define going forward:
 - **Review surfaces**: lead with the facts a moderation decision needs (identity, type, submitter, date, current status, any rejection reason); keep the decision actions always reachable (sticky on small screens).
 - **Forms**: Admin content forms (news create/edit) follow the same Forms & Inputs rules as everywhere else (§14) — Admin density comes from layout/spacing, not from different form components.
 - **Actions**: primary action (Review/Approve) uses `default`/`outline` button variants exactly as elsewhere; destructive actions (Reject) use the `destructive` button variant — no Admin-specific button styling. Important actions are ≥44px on touch and compact from `sm`.
-- **Focus**: Admin controls use a strong solid focus ring with a contrasting gap (and a solid white ring on the dark header). This is Admin-local; the global shared focus-ring token (§20) is unchanged and its cleanup remains future work.
+- **Focus**: Admin controls use the shared focus system (§20); on the dark header a solid white ring is used instead, because the green ring has too little contrast on dark navy.
 
 **Imagery in Admin is functional, not decorative**: a compact thumbnail appears in a row only when the record actually has media (with the shared fallback if it fails to load); otherwise a small kind icon is used. Never invent a media slot for text-only items, and never let imagery dominate a dense row.
 
@@ -295,7 +295,7 @@ Current shadcn-pattern primitives (`Input`, `Label`, `Textarea`, `Toggle`/`Toggl
 
 - **Labels**: always a `Label`/`Typography variant="label"` above its control, never placeholder-as-label.
 - **Field spacing**: `Stack gap={}` vertical rhythm between fields (consistent with foundation components elsewhere) — no ad-hoc margin stacking.
-- **Focus state**: `focus-visible:ring-3 focus-visible:ring-ring/50` + `border-ring` — already applied consistently via shared `Input`/`Button` variants; any new input must inherit this, not redefine focus styling.
+- **Focus state**: the shared solid focus ring (§20) plus `border-ring`, applied via the shared `Input`/`Button` variants; any new input must inherit this, not redefine focus styling. Inputs are 44px tall on touch and compact from `md`.
 - **Errors**: `aria-invalid` triggers `border-destructive` + `ring-destructive/20` automatically on shared inputs/buttons (already wired in the component variants) — pair with visible error text, never color alone.
 - **Helper text**: `Typography variant="caption"` (muted) directly below the field.
 - **Sheets/dialog forms**: use the existing `Dialog`/`Sheet` primitives (Radix-based) — `shadow-elevated`, `z-modal` — never a custom modal implementation.
@@ -375,7 +375,7 @@ Verified breakpoints and expectations (confirmed live during the Visual/UI audit
 - **~1440px (desktop)**: full multi-column grids (confirmed 4-across on Featured Providers), `DesktopNav` visible, `Container`'s `max-w-7xl` caps content width with growing side gutters beyond that.
 
 **Mobile-first rules:**
-- **Touch targets**: nav items use `min-h-11` (44px) — maintain this minimum for any new tappable element.
+- **Touch targets**: see §20 — about 44×44 CSS px effective target for important touch interactions.
 - **Content priority**: search and primary CTAs stay above/near the fold; secondary navigation (category browsing) follows.
 - **Search prominence**: the hero search bar and the compact `Search/Explore` bar share one `SearchBar` component specifically so prominence/behavior stay consistent across contexts.
 - **Card stacking**: single column on mobile, no horizontal scroll-snap carousels in the current implementation — grids simply wrap/stack; do not introduce horizontal-scroll card rails without a specific justification, since none exist today.
@@ -386,9 +386,11 @@ Verified breakpoints and expectations (confirmed live during the Visual/UI audit
 Visual-design requirements, confirmed present today and required to remain so:
 
 - **Contrast**: current palette's text colors (`foreground #0f172a` on `background #ffffff`, `muted-foreground #475569` on `muted #f1f5f9`) read as comfortably AA-compliant for body text; any new color pairing introduced in future phases should be checked against WCAG AA before use (no automated contrast audit was run as part of this document — that's Phase 9J scope).
-- **Focus visibility**: every interactive primitive (`Button`, `Badge`-as-link, card wrappers, nav links) carries an explicit `focus-visible:ring-3 focus-visible:ring-ring/50` treatment — never remove focus outlines without an equivalent visible replacement.
+- **Focus visibility (Visual V6)**: one consistent, clearly visible focus system. The shared light-mode focus color is the accessible primary green (`--ring`, §4), drawn as a solid ring (with a small gap on filled buttons/toggles) that clears ≥3:1 non-text contrast; anything without its own ring gets the same color as a baseline outline. A control shows **one** indicator, never two. Exceptions are deliberate and local: the dark Admin header uses a solid white ring, and workspace tab rows draw an inset ring so a scroll container can't clip it. The Search pill shows its outer focus treatment for **input** focus only, while its submit button keeps its own indicator. Never remove a focus indicator without an equivalent replacement.
 - **Text sizing**: all text sizing goes through `Typography` variants (§5) — never a raw `text-[Npx]` value that bypasses the scale.
-- **Touch targets**: 44px (`min-h-11`) minimum on primary navigation; apply the same minimum to any new mobile-tappable control.
+- **Touch targets (Visual V6)**: important touch interactions should provide an effective target of about 44×44 CSS px where practical. Controls may stay visually compact (card Save, WhatsApp/Request, chips, small buttons) as long as their effective hit area is large enough — shared `Button`/`Toggle` extend their hit area invisibly, and chip-remove and header/footer links follow the same rule. The compact Search field stays visually compact, while the whole pill redirects presses on its padding and decorative icon to the input (the input and the submit button keep their own behavior).
+- **Headings and empty states (Visual V6)**: every page has exactly one meaningful h1 and a logical heading order with no skipped levels. `EmptyState` takes an explicit heading level: a page-replacing empty/not-found state uses the page h1; an empty state nested in a page uses the next lower level.
+- **Dialogs (Visual V6)**: dialogs restore focus to the control that opened them on close, start focus intentionally, are constrained to the viewport with internal scrolling, wrap long unbroken text instead of overflowing, and keep their primary actions reachable on mobile. Every dialog view has an accessible title and description.
 - **Semantic status**: status is always text + color together (§16, §20) — color is reinforcement, never the sole channel.
 - **Color independence**: do not add any indicator (success/error/plan tier/moderation status) that relies on hue alone to be understood.
 - **Readable overlays**: overlay elements on imagery (`SaveButton` heart icon, `Featured` badge) sit on a solid/semi-opaque chip background (confirmed: white circular backing on `SaveButton`) rather than directly on photo pixels — preserve this pattern for any new image-overlay element.

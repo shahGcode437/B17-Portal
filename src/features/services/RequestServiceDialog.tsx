@@ -69,14 +69,13 @@ function RequestServiceDialog({ provider, requesterName, open, onOpenChange }: R
       <DialogContent className="sm:max-w-md">
         {submitted ? (
           <Stack gap={4} className="items-center py-2 text-center">
-            <span className="flex size-12 items-center justify-center rounded-full bg-success/15 text-success">
+            <span className="flex size-12 items-center justify-center rounded-full bg-success/15 text-success-text">
               <CheckCircle2 className="size-6" aria-hidden="true" />
             </span>
             <Stack gap={1}>
-              <Typography variant="h3">Request submitted successfully</Typography>
-              <Typography variant="body-sm" className="text-muted-foreground">
-                Your service request has been recorded for this demo.
-              </Typography>
+              {/* A real DialogTitle/Description so the success view still has an accessible name. */}
+              <DialogTitle className="text-xl">Request submitted successfully</DialogTitle>
+              <DialogDescription>Your service request has been recorded for this demo.</DialogDescription>
             </Stack>
 
             <Stack gap={1} className="w-full rounded-lg bg-muted p-3 text-left">

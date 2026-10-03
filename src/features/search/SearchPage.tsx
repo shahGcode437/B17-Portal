@@ -377,7 +377,7 @@ function SearchPage() {
                   type="button"
                   onClick={chip.onRemove}
                   aria-label={`Remove ${chip.label} filter`}
-                  className="rounded-full p-0.5 hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                  className="relative rounded-full p-0.5 after:absolute after:-inset-3.5 after:content-[''] hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <X className="size-3" aria-hidden="true" />
                 </button>

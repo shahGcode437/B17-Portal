@@ -15,7 +15,7 @@ function Footer() {
       <Container className="py-12">
         <Stack direction="row" wrap justify="between" gap={8}>
           <Stack gap={3} className="max-w-sm">
-            <Link to={routes.home} className="flex items-center gap-2" aria-label={`${site.name} home`}>
+            <Link to={routes.home} className="flex min-h-11 items-center gap-2" aria-label={`${site.name} home`}>
               <span className="flex size-7 items-center justify-center rounded-lg bg-primary text-primary-foreground">
                 <MapPin className="size-4" aria-hidden="true" />
               </span>
@@ -30,12 +30,12 @@ function Footer() {
 
           <Stack gap={3}>
             <Typography variant="label">Explore</Typography>
-            <Stack as="ul" gap={2}>
+            <Stack as="ul" gap={0}>
               {footerNav.map((item) => (
                 <li key={item.path}>
                   <Link
                     to={item.path}
-                    className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+                    className="inline-flex min-h-11 items-center text-sm text-muted-foreground transition-colors hover:text-foreground"
                   >
                     {item.label}
                   </Link>
@@ -46,11 +46,11 @@ function Footer() {
 
           <Stack gap={3}>
             <Typography variant="label">For Providers</Typography>
-            <Stack as="ul" gap={2}>
+            <Stack as="ul" gap={0}>
               <li>
                 <Link
                   to={routes.providerDashboard}
-                  className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+                  className="inline-flex min-h-11 items-center text-sm text-muted-foreground transition-colors hover:text-foreground"
                 >
                   List Your Business / Service
                 </Link>
@@ -60,12 +60,12 @@ function Footer() {
 
           <Stack gap={3}>
             <Typography variant="label">Coming Soon</Typography>
-            <Stack as="ul" gap={2}>
+            <Stack as="ul" gap={0}>
               {footerFutureModules.map((item) => (
                 <li key={item.label}>
                   <Link
                     to={item.path}
-                    className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+                    className="inline-flex min-h-11 items-center text-sm text-muted-foreground transition-colors hover:text-foreground"
                   >
                     {item.label}
                   </Link>

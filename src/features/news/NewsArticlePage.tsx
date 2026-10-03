@@ -32,6 +32,7 @@ function NewsArticlePage() {
     return (
       <Container className="py-16">
         <EmptyState
+          headingLevel={1}
           icon={Newspaper}
           title="Content not found"
           description="This news item or update doesn't exist or may no longer be available."

@@ -25,7 +25,7 @@ function CategoryCard({ to, icon: Icon, label, description, emphasis, compact, c
       to={to}
       {...cardHover}
       className={cn(
-        "flex flex-col items-center gap-2 rounded-xl border bg-card text-center shadow-subtle transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
+        "flex flex-col items-center gap-2 rounded-xl border bg-card text-center shadow-subtle transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         compact ? "p-3" : "p-5",
         emphasis ? "border-primary/30 bg-primary/5" : "border-border hover:border-primary/30",
         className

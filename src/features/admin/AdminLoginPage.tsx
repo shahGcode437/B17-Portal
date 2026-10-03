@@ -42,7 +42,7 @@ function AdminLoginPage() {
               credentials are required for this prototype.
             </Typography>
           </Stack>
-          <Button size="lg" className="h-11 w-full focus-visible:ring-ring focus-visible:ring-offset-2" onClick={handleContinue}>
+          <Button size="lg" className="h-11 w-full" onClick={handleContinue}>
             Continue as Admin (Demo)
           </Button>
           <Typography variant="caption" className="text-muted-foreground">

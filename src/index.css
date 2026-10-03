@@ -132,7 +132,10 @@
     --destructive-foreground: #ffffff;
     --border: #e2e8f0;
     --input: #e2e8f0;
-    --ring: #059669;
+    /* Focus ring: the primary green (emerald-700) — 5.48:1 on white, so a solid
+       ring clears the 3:1 non-text contrast target (the old #059669 at 50% alpha
+       measured only ~1.9:1). */
+    --ring: #047857;
 
     /* Brand accent: "action orange" — Request/Contact CTAs. Orange-700: white
        text is 5.2:1 (orange-600 #ea580c gave 3.6:1). */
@@ -225,10 +228,21 @@
 
 @layer base {
   * {
-    @apply border-border outline-ring/50;
+    @apply border-border;
+    }
+  /* Baseline focus indicator for anything without its own treatment (links, nav,
+     footer, ...). Components that draw a ring set `outline-none` (a utility,
+     which wins over this layer), so there is one visible indicator, never two. */
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
     }
   body {
     @apply bg-background text-foreground font-sans;
+    /* Long unbroken user-supplied tokens (names, areas, URLs) wrap inside their box
+       instead of overflowing it. `break-word` (unlike `anywhere`) does not change
+       intrinsic sizing, so normal layouts are unaffected. */
+    overflow-wrap: break-word;
     }
   h1, h2, h3, h4, h5, h6 {
     @apply font-heading;

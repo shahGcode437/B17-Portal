@@ -74,12 +74,12 @@ function FilterSheet({
         </div>
         <SheetFooter className="flex-row">
           <SheetClose asChild>
-            <Button variant="outline" className="flex-1" onClick={onClear} disabled={!showClear}>
+            <Button variant="outline" className="h-11 flex-1" onClick={onClear} disabled={!showClear}>
               Clear
             </Button>
           </SheetClose>
           <SheetClose asChild>
-            <Button className="flex-1">Apply</Button>
+            <Button className="h-11 flex-1">Apply</Button>
           </SheetClose>
         </SheetFooter>
       </SheetContent>

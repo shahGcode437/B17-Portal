@@ -37,7 +37,9 @@ function AnalyticsLocked() {
         <Lock className="size-6" aria-hidden="true" />
       </span>
       <Stack gap={1}>
-        <Typography variant="h3">Analytics is a Premium feature</Typography>
+        <Typography as="h2" variant="h3">
+          Analytics is a Premium feature
+        </Typography>
         <Typography variant="body-sm" className="mx-auto max-w-sm text-muted-foreground">
           Upgrade to Premium to see a breakdown of your listings by moderation status and your
           leads by status.

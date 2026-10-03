@@ -35,6 +35,7 @@ function SearchBar({
 }: SearchBarProps) {
   const listboxId = useId()
   const rootRef = useRef<HTMLFormElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
   const [open, setOpen] = useState(false)
   const [activeIndex, setActiveIndex] = useState(-1)
 
@@ -109,13 +110,21 @@ function SearchBar({
     <form
       ref={rootRef}
       role="search"
+      // The compact pill is ~46px tall but its input is shorter: a press on the pill's own
+      // padding or the decorative icon should focus the input. Real controls (the input,
+      // Search button, suggestion list) keep their own behavior.
+      onPointerDown={(event) => {
+        if ((event.target as HTMLElement).closest("input, button, a, [role=listbox]")) return
+        event.preventDefault()
+        inputRef.current?.focus()
+      }}
       onSubmit={(e) => {
         e.preventDefault()
         close()
         onSubmit?.(value)
       }}
       className={cn(
-        "group relative flex w-full items-center gap-2 rounded-full border border-border bg-card shadow-subtle transition-all duration-200 focus-within:border-primary focus-within:shadow-elevated",
+        "group relative flex w-full items-center gap-2 rounded-full border border-border bg-card shadow-subtle transition-all duration-200 focus-within:border-primary focus-within:shadow-elevated has-[input:focus-visible]:ring-2 has-[input:focus-visible]:ring-ring",
         size === "hero" ? "p-2" : "p-1",
         className
       )}
@@ -125,6 +134,7 @@ function SearchBar({
         aria-hidden="true"
       />
       <Input
+        ref={inputRef}
         type="search"
         value={value}
         onChange={(e) => handleChange(e.target.value)}

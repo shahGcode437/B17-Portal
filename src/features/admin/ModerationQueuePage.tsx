@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react"
+import { useMemo, useState } from "react"
 import { motion } from "motion/react"
 import { Wrench, Building2, KeyRound, ClipboardCheck } from "lucide-react"
 import { Container } from "@/components/foundation/Container"
@@ -69,7 +69,6 @@ function ModerationQueuePage() {
   // close animation and Radix can return focus to the Review button that opened it.
   const [reviewing, setReviewing] = useState<PendingListing | null>(null)
   const [reviewOpen, setReviewOpen] = useState(false)
-  const openerRef = useRef<HTMLElement | null>(null)
 
   const counts = useMemo(() => {
     const byStatus: Record<ListingStatus | "all", number> = { all: listings.length, pending: 0, approved: 0, rejected: 0, archived: 0 }
@@ -141,8 +140,7 @@ function ModerationQueuePage() {
                             variant={listing.status === "pending" ? "default" : "outline"}
                             className={rowActionClass}
                             aria-label={`Review ${title}`}
-                            onClick={(event) => {
-                              openerRef.current = event.currentTarget
+                            onClick={() => {
                               setReviewing(listing)
                               setReviewOpen(true)
                             }}
@@ -176,7 +174,6 @@ function ModerationQueuePage() {
         listing={reviewing}
         open={reviewOpen}
         onOpenChange={setReviewOpen}
-        returnFocusRef={openerRef}
       />
     </Container>
   )

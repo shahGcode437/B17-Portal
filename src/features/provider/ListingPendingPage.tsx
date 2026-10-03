@@ -56,6 +56,7 @@ function ListingPendingPage() {
     return (
       <Container className="py-16">
         <EmptyState
+          headingLevel={1}
           title="No listing submitted yet"
           description="You haven't submitted a listing in this session."
           actionLabel="List Your Business / Service / Property"

@@ -13,12 +13,13 @@ master
 4e92833 Visual V2.1: add contextual predictive search
 d993992 Visual V3: refresh detail pages and imagery
 e51d5e9 Visual V4: polish resident and professional workspaces
-Visual V5 commit: pending (implementation complete, review passed, not yet committed)
+c26bda2 Visual V5: refine admin experience
+Visual V6 commit: pending (implementation complete, review passed, not yet committed)
 
 ## Current Phase
 
-Visual Phase V5 — Admin Refinement: COMPLETE, reviewed (READY FOR COMMIT), commit pending approval.
-Next frontend step: Visual Phase V6 — Final Responsive, Accessibility & Interaction Polish.
+Visual Phase V6 — Final Responsive, Accessibility & Interaction Polish: COMPLETE, reviewed (READY FOR COMMIT), commit pending approval. The Visual Refresh sequence (V1–V6) is complete.
+Next product phase: Food & Dining Directory Expansion.
 
 ## Completed Product Work
 
@@ -45,6 +46,7 @@ Next frontend step: Visual Phase V6 — Final Responsive, Accessibility & Intera
 - Visual Phase V3 — Detail Pages + Imagery (see below)
 - Visual Phase V4 — Resident + Professional Workspace Polish (see below)
 - Visual Phase V5 — Admin Refinement (see below)
+- Visual Phase V6 — Final Responsive, Accessibility & Interaction Polish (see below)
 
 Full history is in `git log`; this file summarizes outcomes, not the blow-by-blow.
 
@@ -260,6 +262,41 @@ Visual V5 — Admin Refinement = **COMPLETE**. Presentation and accessibility on
 - Approve/Reject remain available on some non-pending listings (including approved/rejected/archived), because V5 intentionally preserved existing business logic; valid moderation state transitions must be explicitly decided before production/backend enforcement.
 - The resident preview inside the Admin review dialog still uses the existing consumer card.
 
+## Visual Phase V6 Result
+
+Visual V6 — Final Responsive, Accessibility & Interaction Polish = **COMPLETE**. A cross-app polish pass; no redesign and no business-logic change. Current V6 source scope: 47 modified files, no new files.
+
+**Focus**
+- Global/shared focus visibility improved: `--ring` is now the accessible primary green (`#047857`), shared components use a solid ring, and a baseline outline covers anything without its own; the low-contrast ring debt is closed (759 of 764 measured focusables ≥3:1 across 31 routes; the remainder were a measuring artifact on the dark header).
+- Admin dark-header focus verified explicitly (solid white ring, 17.85:1, no double indicator).
+- The Search pill/submit-button double ring is fixed (the pill ring now follows input focus only).
+
+**Touch**
+- Important consumer, workspace and Admin touch targets improved at their shared sources: `Button` and `Toggle` hit areas, 44px inputs on touch, header/footer/Back links, chip-remove and Hero chips.
+- The compact Search field now has an effective ~46px touch target without increasing its visual input height: the pill's padding and the decorative icon focus the input; the submit button stays independent.
+
+**Accessibility**
+- `EmptyState` heading hierarchy fixed (explicit level; page-replacing states use h1). Representative routes have one meaningful h1 and no heading skips at all six widths; Coming Soon, Analytics, Upgrade and Listings headings corrected.
+- The request dialog's success view has an accessible dialog title/description.
+- Remaining semantic status color debt closed (the last plain `text-success` uses).
+- Admin logout added through the existing Admin auth context (visible only when signed in; labeled on mobile; protected routes redirect afterwards).
+
+**Dialogs / responsive**
+- Shared dialog focus return implemented; tall dialogs are viewport-constrained and scrollable; long-token wrapping strengthened (dialog grid, body `overflow-wrap`, flex rows).
+- Responsive sweep passed at 320 / 375 / 430 / 820 / 1024 / 1440px with a long-content stress test; no horizontal-overflow regression found.
+
+**Search**
+- V2.1 predictive-search behavior preserved: autocomplete, keyboard navigation, Enter submit, debounce, URL sync, Back/Forward, same-mount navigation and zero-result recovery verified.
+
+**Quality**: no new dependencies; no new files; `npx tsc -b --force` clean; `npm run build` succeeds (JS ≈ 854 KB, +~0.2% vs V5); lint remains at the established 8-warning baseline; no automated test suite exists; fresh browser console 0 errors / 0 warnings. Reviewed via `review-phase`: verdict READY FOR COMMIT. See `docs/design/DESIGN_SYSTEM.md` §20.
+
+**Known non-blocking follow-ups**:
+- Desktop Footer/Back-link density (44px rows at every width) can be revisited later if desired.
+- Real-device/iOS testing is still pending.
+- The Admin resident preview still reuses the consumer card.
+- Admin moderation transition rules for non-pending states still need an explicit future product/backend decision.
+- The large single JavaScript bundle remains and should be addressed through route-level code splitting.
+
 ## Production V1 Direction
 
 - Complete the frontend before the backend.
@@ -268,14 +305,15 @@ Visual V5 — Admin Refinement = **COMPLETE**. Presentation and accessibility on
 - Professional Workspace (shared shell, profession-specific modules).
 - Free/Premium foundation (capability model, no billing yet).
 - Admin production UX (user management, verification, moderation history).
-- Mobile/PWA (manifest, service worker, installability).
+- Food & Dining Directory expansion (bounded frontend/product vertical on the existing Business Directory/search/listing/moderation patterns; no cart, ordering, delivery or payments).
 - Performance/code splitting (route-level `React.lazy`).
+- Mobile/PWA (manifest, service worker, installability).
 - Notifications + trust/reviews UI shells.
 - Accessibility/SEO/cleanup + final frontend QA.
 
 ## Known Technical Debt
 
-- One large, eagerly-loaded JS bundle (~848 KB) — no route-level code splitting yet.
+- One large, eagerly-loaded JS bundle (~854 KB) — no route-level code splitting yet.
 - No PWA (manifest/service worker/icons all absent).
 - No notifications UI yet.
 - Resident state (`residentStore`) has no stable user id to scope by — demo auth is name-only, so per-account scoping is not real; explicit Log Out (not reload) is the only privacy boundary today. Real account scoping belongs to the backend/API phase (Phase 12).
@@ -297,7 +335,7 @@ Visual V5 — Admin Refinement = **COMPLETE**. Presentation and accessibility on
 - No SPA-fallback hosting config (`vercel.json`/`netlify.toml`/`_redirects`) — will 404 on refresh/direct link on a real static host until added.
 - `CategoryCard` and `NewsCard` still hand-roll their own card surface styling — not yet migrated to the shared `Card` primitive; candidates for a later visual phase. (`ListingSummaryCard` moved onto `Card` `workspace` in Visual V4.)
 - `Card`'s `elevated` variant is defined (`docs/design/DESIGN_SYSTEM.md` §8) but has no consumer in production UI yet — `interactive` (V1), `featured` (V2) and `workspace` (V4) are in use.
-- Resident, Professional and Admin status badges now use the shared `StatusBadge` (≥5.45:1); only the `RequestServiceDialog` success icon still uses the older presentation. The global focus-ring indicator contrast (`ring-ring/50`, ≈1.9:1) has not had a dedicated review — see "Visual Phase V5 Result" known follow-ups (V6).
+- Status badges everywhere use the shared `StatusBadge` or the accessible `-text` status tokens (≥5.45:1), and the global focus ring was fixed in Visual V6 — no open color/focus-contrast debt is currently known.
 - `FeaturedBadge` markup is duplicated between `ProviderCard`/`BusinessCard` and `src/components/detail/FeaturedBadge.tsx`.
 - Business Directory image coverage is uneven — several business categories still fall back to the generic icon placeholder instead of a real photo.
 - Home Hero quick-search chips are static curated strings (not derived from data) and could drift from the searchable data again; "Solar installer" already did once and became "Solar" in Visual V2.1.
@@ -311,13 +349,14 @@ Visual V5 — Admin Refinement = **COMPLETE**. Presentation and accessibility on
 - Community Activities
 - B-17 Vault
 - Real payments
+- Cart, online ordering and delivery logistics (explicitly outside the Food & Dining phase)
 - Native Android/iOS apps
 - Full production RBAC before the backend exists
 - Speculative profession-specific modules without explicit approval
 
 ## Next Step
 
-Visual Phase V6 — Final Responsive, Accessibility & Interaction Polish (per `docs/design/DESIGN_SYSTEM.md` §23's phased migration plan).
+Food & Dining Directory Expansion — a bounded frontend/product vertical expansion using the existing Business Directory, search, listing-onboarding and moderation patterns (see `docs/development/ROADMAP.md`). Cart, online ordering, delivery logistics and payments are explicitly out of scope.
 
 ## Resume Instructions
 

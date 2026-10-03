@@ -1,4 +1,4 @@
-import { useRef, useState, type RefObject } from "react"
+import { useRef, useState } from "react"
 import { CheckCircle2, XCircle } from "lucide-react"
 import type { PendingListing } from "@/types/listing"
 import {
@@ -25,8 +25,6 @@ interface ReviewPanelProps {
   listing: PendingListing | null
   open: boolean
   onOpenChange: (open: boolean) => void
-  /** The control that opened the panel — focus returns to it on close (Radix only does this for a `Dialog.Trigger`, and this dialog is controlled). */
-  returnFocusRef?: RefObject<HTMLElement | null>
 }
 
 const MIN_REASON_LENGTH = 10
@@ -48,7 +46,7 @@ const dateFormatter = new Intl.DateTimeFormat("en-US", {
  * RequestServiceDialog pattern: a single Dialog whose body swaps views
  * (preview+actions vs. reject-reason) via local state.
  */
-function ReviewPanel({ listing, open, onOpenChange, returnFocusRef }: ReviewPanelProps) {
+function ReviewPanel({ listing, open, onOpenChange }: ReviewPanelProps) {
   const { setStatus } = useListingsStore()
   const { show } = useToast()
   const [showReasonInput, setShowReasonInput] = useState(false)
@@ -101,12 +99,7 @@ function ReviewPanel({ listing, open, onOpenChange, returnFocusRef }: ReviewPane
           event.preventDefault()
           contentRef.current?.focus()
         }}
-        onCloseAutoFocus={(event) => {
-          if (!returnFocusRef?.current) return
-          event.preventDefault()
-          returnFocusRef.current.focus()
-        }}
-        className="max-h-[calc(100svh-2rem)] gap-0 overflow-y-auto p-0 sm:max-w-md"
+        className="gap-0 p-0 sm:max-w-md"
       >
         <div className="flex flex-col gap-4 p-4">
           <DialogHeader className="pr-8">
@@ -162,7 +155,7 @@ function ReviewPanel({ listing, open, onOpenChange, returnFocusRef }: ReviewPane
                 aria-invalid={!!reasonError}
                 aria-describedby={reasonError ? "reject-reason-hint reject-reason-error" : "reject-reason-hint"}
                 rows={3}
-                className="min-h-24 text-base focus-visible:ring-ring md:text-sm"
+                className="min-h-24 text-base md:text-sm"
                 autoFocus
               />
               <Typography id="reject-reason-hint" variant="caption">

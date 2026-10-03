@@ -13,6 +13,13 @@ interface EmptyStateProps {
   /** Optional second, lower-emphasis way forward (e.g. widening a narrowed search). */
   secondaryActionLabel?: string
   onSecondaryAction?: () => void
+  /**
+   * Heading level of the title. Defaults to 2 (an empty region inside a page
+   * that already has an h1). Pass 1 when the empty state *is* the page — e.g. a
+   * "not found" state that replaces the whole screen — so the page still has
+   * exactly one h1 and no level is skipped.
+   */
+  headingLevel?: 1 | 2 | 3
 }
 
 /** Explains an empty result set and offers a concrete next action. */
@@ -24,6 +31,7 @@ function EmptyState({
   onAction,
   secondaryActionLabel,
   onSecondaryAction,
+  headingLevel = 2,
 }: EmptyStateProps) {
   const hasPrimary = actionLabel && onAction
   const hasSecondary = secondaryActionLabel && onSecondaryAction
@@ -34,7 +42,9 @@ function EmptyState({
         <Icon className="size-6" aria-hidden="true" />
       </span>
       <Stack gap={1}>
-        <Typography variant="h3">{title}</Typography>
+        <Typography as={`h${headingLevel}` as const} variant="h3">
+          {title}
+        </Typography>
         <Typography variant="body" className="text-muted-foreground">
           {description}
         </Typography>

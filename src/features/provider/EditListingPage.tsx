@@ -78,6 +78,7 @@ function EditListingPage() {
     return (
       <Container className="py-16">
         <EmptyState
+          headingLevel={1}
           title="Listing not found"
           description="This listing doesn't exist, isn't yours, or may have been removed."
           actionLabel="Back to Listings"
@@ -91,6 +92,7 @@ function EditListingPage() {
     return (
       <Container className="py-16">
         <EmptyState
+          headingLevel={1}
           title="This listing is archived"
           description="Archived listings can't be edited in this demo."
           actionLabel="Back to Listings"

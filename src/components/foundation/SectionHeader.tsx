@@ -40,7 +40,7 @@ function SectionHeader({
       {viewAllPath && (
         <Link
           to={viewAllPath}
-          className="flex shrink-0 items-center gap-1 text-sm font-medium text-primary transition-colors hover:text-primary/80"
+          className="flex min-h-11 shrink-0 items-center gap-1 text-sm font-medium text-primary transition-colors hover:text-primary/80"
         >
           {viewAllLabel}
           <ArrowRight className="size-4" aria-hidden="true" />

@@ -33,6 +33,7 @@ function TutorProfilePage() {
     return (
       <Container className="py-16">
         <EmptyState
+          headingLevel={1}
           icon={GraduationCap}
           title="Tutor not found"
           description="This tutor profile doesn't exist or may no longer be available."

@@ -35,7 +35,7 @@ function PlanColumn({ plan, current }: { plan: Plan; current: boolean }) {
   return (
     <Card variant="workspace" className={`gap-3 p-5 ${current ? "border-primary bg-primary/5" : ""}`}>
       <Stack direction="row" align="center" justify="between">
-        <Typography variant="h3" className="capitalize">
+        <Typography as="h2" variant="h3" className="capitalize">
           {plan}
         </Typography>
         {current && (
@@ -50,7 +50,7 @@ function PlanColumn({ plan, current }: { plan: Plan; current: boolean }) {
       <Stack gap={2}>
         {entitlements.capabilities.map((capability) => (
           <Stack key={capability} direction="row" align="center" gap={2}>
-            <CheckCircle2 className="size-4 shrink-0 text-success" aria-hidden="true" />
+            <CheckCircle2 className="size-4 shrink-0 text-success-text" aria-hidden="true" />
             <Typography variant="body-sm">
               <span className="sr-only">Included: </span>
               {CAPABILITY_LABELS[capability]}

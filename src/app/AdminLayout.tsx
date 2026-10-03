@@ -1,4 +1,4 @@
-import { MapPin, LayoutDashboard, ClipboardList, Newspaper } from "lucide-react"
+import { MapPin, LayoutDashboard, ClipboardList, Newspaper, LogOut } from "lucide-react"
 import { Link, NavLink, Outlet } from "react-router-dom"
 import { Container } from "@/components/foundation/Container"
 import { Stack } from "@/components/foundation/Stack"
@@ -6,6 +6,7 @@ import { Typography } from "@/components/foundation/Typography"
 import { cn } from "@/lib/utils"
 import { routes } from "@/config/routes"
 import { headerFocusClass } from "@/features/admin/adminStyles"
+import { useAdminAuth } from "@/hooks/useAdminAuth"
 
 const adminNav = [
   { label: "Dashboard", path: routes.adminDashboard, icon: LayoutDashboard, end: true },
@@ -19,6 +20,8 @@ const adminNav = [
  * A compact nav row (not a sidebar) links the two management areas.
  */
 function AdminLayout() {
+  const { admin, logout } = useAdminAuth()
+
   return (
     <div className="flex min-h-svh flex-col bg-secondary/30">
       <header className="border-b border-border bg-foreground text-background">
@@ -54,6 +57,21 @@ function AdminLayout() {
                   <span className="sr-only sm:not-sr-only">{item.label}</span>
                 </NavLink>
               ))}
+              {admin && (
+                // Existing admin logout (clears the demo admin session). Each Admin page's
+                // `useRequireAdminAuth` then redirects to Admin Login — no extra navigation here.
+                <button
+                  type="button"
+                  onClick={logout}
+                  className={cn(
+                    "ml-1 flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-md border-l border-background/20 px-2.5 text-sm font-medium text-background/70 transition-colors hover:bg-background/10 hover:text-background",
+                    headerFocusClass
+                  )}
+                >
+                  <LogOut className="size-4" aria-hidden="true" />
+                  <span className="sr-only sm:not-sr-only">Log out</span>
+                </button>
+              )}
             </nav>
           </Stack>
         </Container>

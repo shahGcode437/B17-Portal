@@ -109,7 +109,7 @@ High-level only — implementation details for each phase are worked out when th
 - Known follow-ups: Admin/some consumer badges still on the older status presentation; global focus-ring treatment for the final accessibility review; shared `EmptyState` h1→h3 skip; 28px consumer-card WhatsApp/Request targets on Saved; no stored cancellation history.
 
 ## Visual Phase V5 — Admin Refinement
-**STATUS: COMPLETE** (Visual V5 commit: pending)
+**STATUS: COMPLETE** (commit `c26bda2`)
 
 - Objective: bring Admin to production-quality visual and accessibility standards per `docs/design/DESIGN_SYSTEM.md` §13/§23 while preserving its dark-header, dense, utilitarian identity.
 - Delivered: dashboard with real status-badge counts (Pending/Approved/Rejected/Archived listings, Published/Draft content); a shared dense `AdminRow` for the moderation queue and content list, with filter counts and thumbnails only where real media exists; a review dialog reorganized around the moderation decision with a sticky mobile action region and improved rejection-reason UX; accessible Draft/Published status via the shared `StatusBadge` (old low-contrast Admin statuses migrated, all ≥5.45:1); grouped, 44px-target content form; labeled header icons; Admin-local strong focus ring; dialog focus that starts intentionally and returns to the opening Review control.
@@ -119,19 +119,35 @@ High-level only — implementation details for each phase are worked out when th
 - Known follow-ups: global focus ring; ~27–28px consumer-card WhatsApp/Request targets; `EmptyState` h1→h3 skip; no Admin logout control; Approve/Reject still offered on some non-pending listings (valid state transitions must be decided before backend enforcement); the Admin resident preview still uses the consumer card.
 
 ## Visual Phase V6 — Final Responsive, Accessibility & Interaction Polish
+**STATUS: COMPLETE** (Visual V6 commit: pending)
+
+- Objective: close the remaining accessibility and responsive debt across all surfaces, per `docs/design/DESIGN_SYSTEM.md` §19/§20/§23.
+- Delivered: one consistent focus system (accessible green `--ring`, solid rings, baseline outline, no double indicators; Search pill ring follows input focus); effective ~44px touch targets via shared `Button`/`Toggle` hit areas, 44px touch inputs and link/chip fixes, with the compact Search pill redirecting padding/icon presses to the input; `EmptyState` explicit heading level with one h1 and no heading skips per page; shared dialog focus return, viewport-constrained scrolling dialogs and long-token wrapping; an accessible success-dialog title; the last semantic status color uses migrated; Admin logout through the existing Admin auth context; a 320/375/430/820/1024/1440px responsive sweep with a content stress test.
+- Deliberately not implemented: business-logic changes (including Admin Approve/Reject on non-pending listings), PWA, route-level code splitting, backend work, dark mode, new animation.
+- Dependencies: Visual Phases V1–V5. No new dependency, no new files (47 modified).
+- Verification: `npx tsc -b --force` and `npm run build` pass; lint remains at the established 8-warning baseline; no test suite; fresh browser console 0 errors / 0 warnings; Search V2.1 behavior and the full Resident/Professional/Admin flows re-verified; bundle ≈ +0.2%; reviewed via `review-phase` — READY FOR COMMIT.
+- Known follow-ups: desktop Footer/Back-link density; real-device/iOS testing; Admin resident preview reuses the consumer card; Admin non-pending transition rules need a product/backend decision; the large single JS bundle (route-level code splitting).
+
+### Visual Refresh sequence — complete
+V1 Shared Card Foundation → V2 Consumer Discovery → V2.1 Predictive Search → V3 Detail Pages + Imagery → V4 Resident + Professional Workspace → V5 Admin Refinement → V6 Final Responsive, Accessibility & Interaction Polish.
+
+## Food & Dining Directory Expansion
 **STATUS: NEXT**
 
-- Objective: close the remaining accessibility and responsive debt across all surfaces before Production V1 moves on, per `docs/design/DESIGN_SYSTEM.md` §19/§20/§23.
-- Major scope:
-  - global focus visibility (the shared `ring-ring/50` focus ring, ≈1.9:1 on white);
-  - `EmptyState` heading semantics (the h1 → h3 skip);
-  - undersized consumer interactive targets (card WhatsApp/Request buttons, header logo/search);
-  - Admin logout control;
-  - a cross-app responsive regression pass (375/430/820/1440px);
-  - final keyboard/focus/dialog checks across consumer, Resident, Professional and Admin.
-- Out of scope: new features or modules, business-logic changes, dark mode, new animation concepts, backend work.
-- Dependencies: Visual Phases V1–V5.
-- Completion/verification: tsc/build/lint at baseline; no regression to any existing flow; measured focus-indicator and target-size improvements; fresh console clean.
+- Objective: add Food & Dining as a bounded frontend/product vertical expansion, reusing the existing Business Directory, search, listing-onboarding and Admin moderation patterns rather than introducing a new architecture.
+- Major scope: to be confirmed against the live repo when the phase begins — likely Food & Dining category/discovery surfaces, demo data, search/filter integration and the listing/moderation path for food businesses, using real fields only and the shared design system.
+- Out of scope: cart, online ordering, delivery logistics, payments, reviews/ratings, backend work.
+- Dependencies: Visual Phases V1–V6; Phase 9B (search), Phase 9D (Professional Workspace) and the Admin moderation flow.
+- Completion/verification: no regression to existing directory/search/listing/moderation behavior; responsive and accessibility checks per the V6 standards; tsc/build/lint at baseline.
+
+### Planned sequence after Food & Dining
+1. Phase 9H — route-level code splitting / performance
+2. Phase 9G — PWA / installability
+3. Phase 9J — SEO, accessibility tooling and final frontend QA
+4. Frontend freeze
+5. Phases 10–13 — backend architecture and implementation
+
+Phases 9F (Admin Production UX) and 9I (Notifications + Trust/Reviews UI) remain valid Production V1 items below; their sequencing relative to the list above is to be confirmed by a product decision before the frontend freeze. Only 9H now runs before 9G.
 
 ## Phase 9F — Admin Production UX
 

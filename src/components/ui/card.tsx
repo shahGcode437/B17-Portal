@@ -11,11 +11,11 @@ const cardVariants = cva(
       variant: {
         default: "border-border shadow-subtle",
         interactive:
-          "cursor-pointer border-border shadow-subtle hover:border-primary/30 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
+          "cursor-pointer border-border shadow-subtle hover:border-primary/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         elevated: "border-border shadow-medium",
         workspace: "gap-3 border-border p-4 shadow-subtle",
         featured:
-          "cursor-pointer border-brand-accent/40 shadow-subtle hover:border-brand-accent/60 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
+          "cursor-pointer border-brand-accent/40 shadow-subtle hover:border-brand-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
       },
     },
     defaultVariants: {

@@ -53,7 +53,9 @@ function RequestDetailDialog({ request, onOpenChange }: RequestDetailDialogProps
 
               <Stack direction="row" align="center" gap={1} className="text-muted-foreground">
                 <MapPin className="size-3.5 shrink-0" aria-hidden="true" />
-                <Typography variant="body-sm">{request.area}</Typography>
+                <Typography variant="body-sm" className="min-w-0 [overflow-wrap:anywhere]">
+                  {request.area}
+                </Typography>
               </Stack>
 
               <Stack direction="row" align="center" gap={1} className="text-muted-foreground">

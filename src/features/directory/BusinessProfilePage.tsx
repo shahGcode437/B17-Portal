@@ -35,6 +35,7 @@ function BusinessProfilePage() {
     return (
       <Container className="py-16">
         <EmptyState
+          headingLevel={1}
           icon={Building2}
           title="Business not found"
           description="This business listing doesn't exist or may no longer be available."

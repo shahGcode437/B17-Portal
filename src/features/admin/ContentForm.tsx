@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { zodResolver } from "@/lib/zodResolver"
-import { segmentItemClass, rowActionClass, inputClass } from "@/features/admin/adminStyles"
+import { segmentItemClass, rowActionClass } from "@/features/admin/adminStyles"
 import { contentSchema, type ContentFormValues } from "@/features/admin/contentSchema"
 import type { NewsKind, NewsStatus } from "@/types/news"
 
@@ -98,8 +98,7 @@ function ContentForm({
           <Stack gap={2}>
             <Label htmlFor="content-title">Title</Label>
             <Input
-              className={inputClass}
-              id="content-title"
+                            id="content-title"
               placeholder="e.g. Scheduled Water Supply Maintenance — Block C"
               aria-invalid={!!errors.title}
               aria-describedby={errors.title ? "content-title-error" : undefined}
@@ -115,8 +114,7 @@ function ContentForm({
           <Stack gap={2}>
             <Label htmlFor="content-category">Category</Label>
             <Input
-              className={inputClass}
-              id="content-category"
+                            id="content-category"
               placeholder="e.g. Utilities, Community, Infrastructure"
               aria-invalid={!!errors.category}
               aria-describedby={errors.category ? "content-category-error" : undefined}
@@ -152,8 +150,7 @@ function ContentForm({
           <Stack gap={2}>
             <Label htmlFor="content-date">Date</Label>
             <Input
-              className={inputClass}
-              id="content-date"
+                            id="content-date"
               type="date"
               aria-invalid={!!errors.publishedAt}
               aria-describedby={errors.publishedAt ? "content-date-error" : undefined}
@@ -169,8 +166,7 @@ function ContentForm({
           <Stack gap={2}>
             <Label htmlFor="content-tags">Tags</Label>
             <Input
-              className={inputClass}
-              id="content-tags"
+                            id="content-tags"
               placeholder="e.g. water, utilities, maintenance"
               aria-describedby="content-tags-hint"
               {...register("tagsInput")}
@@ -183,8 +179,7 @@ function ContentForm({
           <Stack gap={2}>
             <Label htmlFor="content-image">Image Path</Label>
             <Input
-              className={inputClass}
-              id="content-image"
+                            id="content-image"
               placeholder="e.g. /images/news/water.jpg"
               aria-describedby="content-image-hint"
               {...register("image")}

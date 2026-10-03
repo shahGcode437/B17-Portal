@@ -8,7 +8,7 @@ function MetaItem({ icon: Icon, children }: { icon: typeof Calendar; children: s
   return (
     <span className="flex min-w-0 items-center gap-1 text-muted-foreground">
       <Icon className="size-3.5 shrink-0" aria-hidden="true" />
-      <Typography as="span" variant="caption" className="break-words">
+      <Typography as="span" variant="caption" className="min-w-0 [overflow-wrap:anywhere]">
         {children}
       </Typography>
     </span>

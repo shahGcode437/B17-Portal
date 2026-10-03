@@ -28,7 +28,7 @@ function NewsCard({ article, onSelect }: NewsCardProps) {
           onSelect?.()
         }
       }}
-      className="flex cursor-pointer flex-col gap-3 rounded-xl border border-border bg-card p-3 text-left shadow-subtle transition-colors hover:border-primary/30 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+      className="flex cursor-pointer flex-col gap-3 rounded-xl border border-border bg-card p-3 text-left shadow-subtle transition-colors hover:border-primary/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       aria-label={`Read ${article.title}`}
     >
       <CardImage src={article.image} icon={Newspaper} label={article.title} tone="accent" />

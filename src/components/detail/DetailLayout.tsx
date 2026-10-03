@@ -33,7 +33,7 @@ function DetailLayout({ onBack, hero, summary, children, notice }: DetailLayoutP
           <button
             type="button"
             onClick={onBack}
-            className="flex w-fit items-center gap-1.5 rounded text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+            className="flex min-h-11 w-fit items-center gap-1.5 rounded text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <ArrowLeft className="size-4" aria-hidden="true" />
             Back

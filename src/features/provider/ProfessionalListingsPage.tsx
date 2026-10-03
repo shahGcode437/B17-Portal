@@ -161,7 +161,9 @@ function ProfessionalListingsPage() {
                 <Store className="size-6" aria-hidden="true" />
               </span>
               <Stack gap={1}>
-                <Typography variant="h3">You haven't listed anything yet</Typography>
+                <Typography as="h2" variant="h3">
+                  You haven't listed anything yet
+                </Typography>
                 <Typography variant="body-sm" className="mx-auto max-w-xs text-muted-foreground">
                   Share your service, business or property with B-17 residents in a few quick steps.
                 </Typography>

@@ -66,6 +66,7 @@ function ProviderProfilePage() {
     return (
       <Container className="py-16">
         <EmptyState
+          headingLevel={1}
           icon={Wrench}
           title="Provider not found"
           description="This provider listing doesn't exist or may no longer be available."

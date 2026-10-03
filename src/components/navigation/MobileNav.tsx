@@ -20,7 +20,7 @@ function MobileNav() {
                 className={({ isActive }) =>
                   cn(
                     "flex min-h-11 flex-col items-center justify-center gap-0.5 py-2 text-[11px] font-medium text-muted-foreground transition-colors",
-                    isActive && "text-primary"
+                    isActive && "font-semibold text-primary"
                   )
                 }
               >

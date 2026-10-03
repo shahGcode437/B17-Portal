@@ -74,7 +74,7 @@ function Hero() {
                 key={s}
                 type="button"
                 onClick={() => runSearch(s)}
-                className="rounded-full border border-border bg-card px-3 py-1 text-xs text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                className="relative rounded-full border border-border bg-card px-3 py-1 text-xs after:absolute after:inset-x-0 after:-inset-y-2.5 after:content-['']  text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 {s}
               </button>

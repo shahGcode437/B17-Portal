@@ -17,7 +17,7 @@ function Header() {
     <header className="sticky top-0 z-sticky border-b border-border bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/80">
       <Container>
         <Stack direction="row" align="center" justify="between" gap={4} className="h-16">
-          <Link to={routes.home} className="flex items-center gap-2 shrink-0" aria-label={`${site.name} home`}>
+          <Link to={routes.home} className="flex min-h-11 shrink-0 items-center gap-2" aria-label={`${site.name} home`}>
             <span className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
               <MapPin className="size-4.5" aria-hidden="true" />
             </span>

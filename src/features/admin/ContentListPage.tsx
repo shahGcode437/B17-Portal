@@ -11,7 +11,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { WorkspaceEmpty } from "@/components/workspace/WorkspaceEmpty"
 import { ContentStatusBadge } from "@/features/admin/ContentStatusBadge"
 import { AdminRow, AdminThumb } from "@/features/admin/AdminRow"
-import { segmentItemClass, rowActionClass, focusRingClass } from "@/features/admin/adminStyles"
+import { segmentItemClass, rowActionClass } from "@/features/admin/adminStyles"
 import { useNewsStore } from "@/state/newsStore"
 import { useToast } from "@/hooks/useToast"
 import { useRequireAdminAuth } from "@/hooks/useRequireAdminAuth"
@@ -77,7 +77,7 @@ function ContentListPage() {
                 Create and manage B-17 news and daily updates.
               </Typography>
             </Stack>
-            <Button asChild className={`h-11 sm:h-9 ${focusRingClass}`}>
+            <Button asChild className="h-11 sm:h-9">
               <Link to={routes.adminContentNew}>
                 <PlusCircle />
                 Create Content

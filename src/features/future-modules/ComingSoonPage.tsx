@@ -23,7 +23,9 @@ function ComingSoonPage({ title = "Coming Soon" }: ComingSoonPageProps) {
         <span className="flex size-12 items-center justify-center rounded-full bg-accent text-accent-foreground">
           <Construction className="size-6" aria-hidden="true" />
         </span>
-        <Typography variant="h2">{title}</Typography>
+        <Typography as="h1" variant="h2">
+          {title}
+        </Typography>
         <Typography variant="body" className="text-muted-foreground">
           This part of the B-17 Portal prototype is still being built. Check back soon.
         </Typography>

@@ -34,6 +34,7 @@ function PropertyDetailsPage() {
     return (
       <Container className="py-16">
         <EmptyState
+          headingLevel={1}
           icon={KeyRound}
           title="Property not found"
           description="This property listing doesn't exist or may no longer be available."

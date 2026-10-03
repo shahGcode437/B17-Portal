@@ -67,6 +67,7 @@ function ListingFormPage() {
     return (
       <Container className="py-16">
         <EmptyState
+          headingLevel={1}
           title="You've reached your active listing limit"
           description={`The ${plan} plan allows up to ${entitlements.maxListings} active (pending or approved) listings. Upgrade to Premium for a higher limit, or archive an existing listing first.`}
           actionLabel="See Premium"
@@ -125,7 +126,7 @@ function ListingFormPage() {
                   key={choiceKind}
                   type="button"
                   onClick={() => handleChooseType(choiceKind)}
-                  className="flex items-center gap-4 rounded-xl border border-border bg-card p-4 text-left shadow-subtle transition-colors hover:border-primary/30 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+                  className="flex items-center gap-4 rounded-xl border border-border bg-card p-4 text-left shadow-subtle transition-colors hover:border-primary/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <span className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-foreground">
                     <Icon className="size-5" aria-hidden="true" />
