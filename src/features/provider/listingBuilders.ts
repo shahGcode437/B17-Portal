@@ -29,6 +29,8 @@ export function buildBusiness(values: ListingFormValues, id: string): Business {
   return {
     id,
     name: values.name,
+    // Onboarding currently creates general businesses; Food & Dining listing fields arrive in FD4.
+    vertical: "general",
     category: values.category,
     description: values.description,
     area: values.area,

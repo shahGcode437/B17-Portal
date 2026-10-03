@@ -14,12 +14,14 @@ master
 d993992 Visual V3: refresh detail pages and imagery
 e51d5e9 Visual V4: polish resident and professional workspaces
 c26bda2 Visual V5: refine admin experience
-Visual V6 commit: pending (implementation complete, review passed, not yet committed)
+683303b Visual V6: finalize responsive accessibility and interaction polish
+d8ee414 docs: freeze Food and Dining architecture
+FD1 commit: pending (implementation complete, review passed, not yet committed)
 
 ## Current Phase
 
-Visual Phase V6 — Final Responsive, Accessibility & Interaction Polish: COMPLETE, reviewed (READY FOR COMMIT), commit pending approval. The Visual Refresh sequence (V1–V6) is complete.
-Next product phase: Food & Dining Directory Expansion.
+Food & Dining FD1 — Domain / Data / Search Foundation: COMPLETE, reviewed (READY FOR COMMIT), commit pending approval. The Visual Refresh sequence (V1–V6) is complete and committed.
+Next product step: FD2 — Food Discovery (see `docs/product/FOOD_DINING.md`).
 
 ## Completed Product Work
 
@@ -47,6 +49,7 @@ Next product phase: Food & Dining Directory Expansion.
 - Visual Phase V4 — Resident + Professional Workspace Polish (see below)
 - Visual Phase V5 — Admin Refinement (see below)
 - Visual Phase V6 — Final Responsive, Accessibility & Interaction Polish (see below)
+- Food & Dining FD1 — Domain / Data / Search Foundation (see below)
 
 Full history is in `git log`; this file summarizes outcomes, not the blow-by-blow.
 
@@ -297,6 +300,35 @@ Visual V6 — Final Responsive, Accessibility & Interaction Polish = **COMPLETE*
 - Admin moderation transition rules for non-pending states still need an explicit future product/backend decision.
 - The large single JavaScript bundle remains and should be addressed through route-level code splitting.
 
+## Food & Dining FD1 Result
+
+Food & Dining FD1 — Domain / Data / Search Foundation = **COMPLETE** (FD1 commit: pending). Source of truth: `docs/product/FOOD_DINING.md`. FD1 adds no routes and no Food UI beyond the search filters.
+
+**Domain**
+- Food is implemented as a Business vertical; `Business.vertical` (`general | food`) is explicit on every Business record, with an optional `food` profile.
+- Taxonomy and service options are centralized in `src/config/food.ts`; the primary Food category drives `Business.category`.
+- No new Food store, listing kind, Saved kind or Search result kind.
+
+**Data**
+- 10 demo Food businesses; Capital Bakers (`business-06`) migrated to Food / Bakeries and no longer appears in the general Directory.
+- Image (`cafe.jpg`) and fallback states are represented, as are missing optional fields. No fake ratings, reviews, contact details or popularity.
+
+**Search**
+- `vertical`, `foodCategory` and `service` filters are implemented; Food category labels and menu-highlight names are searchable; predictive suggestions include Food terms and resolve to actual Business results.
+- Search V2.1 behavior is preserved; URL reload, filter reset on type change, and Back/Forward behavior were verified.
+- The Business filter controls scope by Business Type; Food scope shows Food Category and Service selects.
+
+**Compatibility**
+- Saved works unchanged with `kind: "business"`; Professional and Admin remain compatible. No architecture changes were required.
+
+**Quality**: no dependencies added; `npx tsc -b --force` clean; `npm run build` succeeds (JS ≈ 862 KB); lint remains at the established 8-warning baseline; fresh Search console 0 errors / 0 warnings; no automated test suite exists. Reviewed via `review-phase`: READY FOR COMMIT.
+
+**Known limitations**
+- No `/food` entry point yet (Home, Directory, navigation, footer arrive in FD2).
+- No Food-specific detail presentation yet; Food cards remain the generic `BusinessCard`.
+- No Food onboarding yet; preserving `FoodProfile` through create/edit/resubmit belongs to FD4 (the current `buildBusiness` creates general businesses and is not Food-safe).
+- The existing limitation remains: general Business category/area filter options derive from the static seed, not from approved user-submitted listings.
+
 ## Production V1 Direction
 
 - Complete the frontend before the backend.
@@ -313,7 +345,7 @@ Visual V6 — Final Responsive, Accessibility & Interaction Polish = **COMPLETE*
 
 ## Known Technical Debt
 
-- One large, eagerly-loaded JS bundle (~854 KB) — no route-level code splitting yet.
+- One large, eagerly-loaded JS bundle (~862 KB) — no route-level code splitting yet.
 - No PWA (manifest/service worker/icons all absent).
 - No notifications UI yet.
 - Resident state (`residentStore`) has no stable user id to scope by — demo auth is name-only, so per-account scoping is not real; explicit Log Out (not reload) is the only privacy boundary today. Real account scoping belongs to the backend/API phase (Phase 12).
@@ -356,7 +388,7 @@ Visual V6 — Final Responsive, Accessibility & Interaction Polish = **COMPLETE*
 
 ## Next Step
 
-Food & Dining Directory Expansion — a bounded frontend/product vertical expansion using the existing Business Directory, search, listing-onboarding and moderation patterns (see `docs/product/FOOD_DINING.md` for the frozen architecture and `docs/development/ROADMAP.md` for sequencing). Cart, online ordering, delivery logistics and payments are explicitly out of scope.
+FD2 — Food Discovery: the `/food` landing page, category discovery, scoped Search entry, service-option shortcuts, real Featured handling and the Home/Directory/navigation/footer entry points (see `docs/product/FOOD_DINING.md` for the frozen architecture and `docs/development/ROADMAP.md` for sequencing). Cart, online ordering, delivery logistics and payments are explicitly out of scope.
 
 ## Resume Instructions
 

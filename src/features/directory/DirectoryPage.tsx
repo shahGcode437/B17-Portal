@@ -23,7 +23,7 @@ const categoryIcons: Record<string, LucideIcon> = {
 
 /** Pairs each real business category with its display icon, in seed order. */
 function getCategoryTiles() {
-  return getBusinessCategories().map((category) => ({
+  return getBusinessCategories("general").map((category) => ({
     category,
     icon: categoryIcons[category] ?? Building2,
   }))

@@ -5,6 +5,7 @@ import { Stack } from "@/components/foundation/Stack"
 import { cn } from "@/lib/utils"
 import { searchTypeFilters } from "@/config/search"
 import { serviceCategories } from "@/data/serviceCategories"
+import { FOOD_CATEGORIES, FOOD_SERVICE_OPTIONS, FOOD_VERTICAL_LABEL } from "@/config/food"
 import {
   getProviderAreas,
   getBusinessCategories,
@@ -111,20 +112,58 @@ function ContextualFilters({
   }
 
   if (type === "business") {
+    const isFood = filters.vertical === "food"
     return (
       <>
         <FilterSelect
-          label="Category"
-          value={filters.category ?? ""}
-          onChange={(v) => set({ category: v || undefined })}
-          options={toOptions(getBusinessCategories())}
+          label="Business Type"
+          value={filters.vertical ?? ""}
+          onChange={(v) =>
+            // Changing the scope resets the dependent fields: general categories and Food filters have different value spaces.
+            set({
+              vertical: (v || undefined) as SearchFilters["vertical"],
+              category: undefined,
+              foodCategory: undefined,
+              service: undefined,
+            })
+          }
+          options={[
+            { value: "general", label: "General" },
+            { value: "food", label: FOOD_VERTICAL_LABEL },
+          ]}
           full={full}
         />
+        {isFood ? (
+          <>
+            <FilterSelect
+              label="Food Category"
+              value={filters.foodCategory ?? ""}
+              onChange={(v) => set({ foodCategory: (v || undefined) as SearchFilters["foodCategory"] })}
+              options={FOOD_CATEGORIES.map((c) => ({ value: c.slug, label: c.label }))}
+              full={full}
+            />
+            <FilterSelect
+              label="Service"
+              value={filters.service ?? ""}
+              onChange={(v) => set({ service: (v || undefined) as SearchFilters["service"] })}
+              options={FOOD_SERVICE_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+              full={full}
+            />
+          </>
+        ) : (
+          <FilterSelect
+            label="Category"
+            value={filters.category ?? ""}
+            onChange={(v) => set({ category: v || undefined })}
+            options={toOptions(getBusinessCategories(filters.vertical))}
+            full={full}
+          />
+        )}
         <FilterSelect
           label="Area"
           value={filters.area ?? ""}
           onChange={(v) => set({ area: v || undefined })}
-          options={toOptions(getBusinessAreas())}
+          options={toOptions(getBusinessAreas(filters.vertical))}
           full={full}
         />
       </>

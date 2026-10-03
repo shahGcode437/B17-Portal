@@ -31,6 +31,7 @@ export const pendingListingsSeed: PendingListing[] = [
     data: {
       id: "pending-seed-02",
       name: "Capital Stationery Mart (Demo)",
+      vertical: "general",
       category: "Stationery",
       description: "Office and school stationery, printing and photocopying services.",
       area: "B-17, Block A (Demo Area)",

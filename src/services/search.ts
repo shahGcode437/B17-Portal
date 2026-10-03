@@ -1,6 +1,6 @@
 import type { SearchHit, SearchResultKind, SearchFilters, SearchSuggestion, SortOption } from "@/types/search"
 import type { Provider } from "@/types/provider"
-import type { Business } from "@/types/business"
+import type { Business, BusinessVertical, FoodProfile } from "@/types/business"
 import type { Tutor } from "@/types/tutor"
 import type { Property, ListingType, FurnishingStatus } from "@/types/property"
 import type { NewsArticle } from "@/types/news"
@@ -13,6 +13,7 @@ import { sponsoredCards } from "@/data/sponsored"
 import { useListingsStore } from "@/state/listingsStore"
 import { useNewsStore } from "@/state/newsStore"
 import { searchTypeFilters } from "@/config/search"
+import { foodCategoryLabel } from "@/config/food"
 import {
   mapProviderToResult,
   mapBusinessToResult,
@@ -84,6 +85,11 @@ function allHits(): SearchHit[] {
   ]
 }
 
+/** Extra searchable Food terms: the DISPLAY labels of every Food category and the menu-highlight names. */
+function foodSearchTerms(food: FoodProfile): string[] {
+  return [...food.categories.map(foodCategoryLabel), ...(food.menuHighlights ?? []).map((highlight) => highlight.name)]
+}
+
 /** Builds the same {title, subtitle, description, area, tags} bag used for matching, regardless of kind. */
 function searchableText(hit: SearchHit): string {
   const result =
@@ -97,7 +103,9 @@ function searchableText(hit: SearchHit): string {
             ? mapPropertyToResult(hit.item)
             : mapNewsToResult(hit.item)
 
-  return [result.title, result.subtitle, result.description, result.area ?? "", ...result.tags]
+  const foodTerms = hit.kind === "business" && hit.item.food ? foodSearchTerms(hit.item.food) : []
+
+  return [result.title, result.subtitle, result.description, result.area ?? "", ...result.tags, ...foodTerms]
     .join(" ")
     .toLowerCase()
 }
@@ -131,6 +139,10 @@ function matchesFilters(hit: SearchHit, filters: SearchFilters): boolean {
     case "business":
       if (filters.area && hit.item.area !== filters.area) return false
       if (filters.category && hit.item.category !== filters.category) return false
+      if (filters.vertical && hit.item.vertical !== filters.vertical) return false
+      // Food-only filters: a business without a Food profile can never match them.
+      if (filters.foodCategory && !hit.item.food?.categories.includes(filters.foodCategory)) return false
+      if (filters.service && !hit.item.food?.serviceOptions.includes(filters.service)) return false
       return true
     case "tutor":
       if (filters.area && hit.item.area !== filters.area) return false
@@ -203,12 +215,15 @@ function suggestionSource(hit: SearchHit): SuggestionSource {
         fields: [hit.item.categoryLabel],
         tags: hit.item.tags,
       }
-    case "business":
+    case "business": {
+      const food = hit.item.food
       return {
         entity: { id: hit.item.id, label: hit.item.name, subtitle: hit.item.category },
-        fields: [hit.item.category],
-        tags: hit.item.tags,
+        fields: [hit.item.category, ...(food ? food.categories.map(foodCategoryLabel) : [])],
+        // Menu-highlight names are searchable (see `foodSearchTerms`), so they are valid suggestions too.
+        tags: [...hit.item.tags, ...(food?.menuHighlights ?? []).map((highlight) => highlight.name)],
       }
+    }
     case "tutor":
       return {
         entity: { id: hit.item.id, label: hit.item.name, subtitle: `${hit.item.subject} · ${hit.item.grade}` },
@@ -340,14 +355,24 @@ export function getFeaturedBusinesses(limit = 4) {
   return [...businesses].sort((a, b) => Number(b.featured) - Number(a.featured)).slice(0, limit)
 }
 
-/** Unique business categories in seed order — feeds the Business Directory landing page's tiles. */
-export function getBusinessCategories(): string[] {
-  return uniqueInOrder(businesses, (b) => b.category)
+/**
+ * Unique business categories in seed order — feeds the Business Directory landing page's tiles.
+ * Pass a `vertical` to scope to it (the general Directory passes "general" so Food categories
+ * aren't duplicated there); omitted, every business is included, as before.
+ */
+export function getBusinessCategories(vertical?: BusinessVertical): string[] {
+  return uniqueInOrder(
+    businesses.filter((b) => !vertical || b.vertical === vertical),
+    (b) => b.category
+  )
 }
 
-/** Unique business areas in seed order — feeds the Search "Area" filter for the Directory. */
-export function getBusinessAreas(): string[] {
-  return uniqueInOrder(businesses, (b) => b.area)
+/** Unique business areas in seed order — feeds the Search "Area" filter for the Directory (optionally scoped to a vertical). */
+export function getBusinessAreas(vertical?: BusinessVertical): string[] {
+  return uniqueInOrder(
+    businesses.filter((b) => !vertical || b.vertical === vertical),
+    (b) => b.area
+  )
 }
 
 /** Same static-then-approved-listing resolution as getProviderById, for the same reason. */

@@ -1,9 +1,10 @@
 import type { LucideIcon } from "lucide-react"
 import type { Provider } from "@/types/provider"
-import type { Business } from "@/types/business"
+import type { Business, BusinessVertical } from "@/types/business"
 import type { Tutor } from "@/types/tutor"
 import type { Property, ListingType, FurnishingStatus } from "@/types/property"
 import type { NewsArticle } from "@/types/news"
+import type { FoodCategorySlug, FoodServiceOption } from "@/config/food"
 
 export type SearchResultKind = "provider" | "business" | "tutor" | "property" | "news"
 
@@ -73,6 +74,12 @@ export interface SearchFilters {
   furnished?: FurnishingStatus
   listingType?: ListingType
   propertyType?: string
+  /** Business Directory only: scopes results to general or Food & Dining businesses. */
+  vertical?: BusinessVertical
+  /** Food & Dining only — a canonical slug from `config/food.ts`. */
+  foodCategory?: FoodCategorySlug
+  /** Food & Dining only — a canonical service option from `config/food.ts`. */
+  service?: FoodServiceOption
 }
 
 /**

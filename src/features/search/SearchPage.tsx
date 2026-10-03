@@ -18,6 +18,13 @@ import { useResultPreview } from "@/hooks/useResultPreview"
 import { searchTypeFilters } from "@/config/search"
 import { serviceCategories } from "@/data/serviceCategories"
 import { site } from "@/data/site"
+import {
+  FOOD_VERTICAL_LABEL,
+  foodCategoryLabel,
+  foodServiceLabel,
+  isFoodCategory,
+  isFoodServiceOption,
+} from "@/config/food"
 import type { SearchResultKind, SearchFilters, SearchSuggestion, SortOption } from "@/types/search"
 
 const VALID_TYPES = new Set(searchTypeFilters.map((f) => f.value))
@@ -30,6 +37,9 @@ const FILTER_PARAM_KEYS = [
   "furnished",
   "listingType",
   "propertyType",
+  "vertical",
+  "foodCategory",
+  "service",
 ] as const
 
 function readType(value: string | null): SearchResultKind | "all" {
@@ -46,6 +56,9 @@ function buildFilters(raw: {
   furnished: string | null
   listingType: string | null
   propertyType: string | null
+  vertical: string | null
+  foodCategory: string | null
+  service: string | null
 }): SearchFilters {
   const filters: SearchFilters = {}
   if (raw.area) filters.area = raw.area
@@ -56,6 +69,10 @@ function buildFilters(raw: {
   if (raw.furnished) filters.furnished = raw.furnished as SearchFilters["furnished"]
   if (raw.listingType) filters.listingType = raw.listingType as SearchFilters["listingType"]
   if (raw.propertyType) filters.propertyType = raw.propertyType
+  // Food params are validated against the canonical config: an unknown value is ignored, never trusted.
+  if (raw.vertical === "general" || raw.vertical === "food") filters.vertical = raw.vertical
+  if (raw.foodCategory && isFoodCategory(raw.foodCategory)) filters.foodCategory = raw.foodCategory
+  if (raw.service && isFoodServiceOption(raw.service)) filters.service = raw.service
   return filters
 }
 
@@ -69,10 +86,13 @@ function useFilters(params: URLSearchParams): SearchFilters {
   const furnished = params.get("furnished")
   const listingType = params.get("listingType")
   const propertyType = params.get("propertyType")
+  const vertical = params.get("vertical")
+  const foodCategory = params.get("foodCategory")
+  const service = params.get("service")
 
   return useMemo(
-    () => buildFilters({ area, category, subject, grade, bedrooms, furnished, listingType, propertyType }),
-    [area, category, subject, grade, bedrooms, furnished, listingType, propertyType]
+    () => buildFilters({ area, category, subject, grade, bedrooms, furnished, listingType, propertyType, vertical, foodCategory, service }),
+    [area, category, subject, grade, bedrooms, furnished, listingType, propertyType, vertical, foodCategory, service]
   )
 }
 
@@ -91,6 +111,9 @@ function writeFilters(params: URLSearchParams, filters: SearchFilters) {
     ["furnished", filters.furnished],
     ["listingType", filters.listingType],
     ["propertyType", filters.propertyType],
+    ["vertical", filters.vertical],
+    ["foodCategory", filters.foodCategory],
+    ["service", filters.service],
   ]
   for (const [key, value] of entries) {
     if (value) params.set(key, value)
@@ -299,6 +322,28 @@ function SearchPage() {
       key: "propertyType",
       label: filters.propertyType,
       onRemove: () => handleFiltersChange({ ...filters, propertyType: undefined }),
+    })
+  }
+  if (filters.vertical) {
+    activeChips.push({
+      key: "vertical",
+      label: filters.vertical === "food" ? FOOD_VERTICAL_LABEL : "General businesses",
+      // Removing the scope also drops the Food-only filters that depend on it.
+      onRemove: () => handleFiltersChange({ ...filters, vertical: undefined, foodCategory: undefined, service: undefined }),
+    })
+  }
+  if (filters.foodCategory) {
+    activeChips.push({
+      key: "foodCategory",
+      label: `Food category: ${foodCategoryLabel(filters.foodCategory)}`,
+      onRemove: () => handleFiltersChange({ ...filters, foodCategory: undefined }),
+    })
+  }
+  if (filters.service) {
+    activeChips.push({
+      key: "service",
+      label: `Service: ${foodServiceLabel(filters.service)}`,
+      onRemove: () => handleFiltersChange({ ...filters, service: undefined }),
     })
   }
   if (filters.minBedrooms) {
