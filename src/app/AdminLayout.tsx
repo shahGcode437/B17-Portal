@@ -5,6 +5,7 @@ import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
 import { cn } from "@/lib/utils"
 import { routes } from "@/config/routes"
+import { headerFocusClass } from "@/features/admin/adminStyles"
 
 const adminNav = [
   { label: "Dashboard", path: routes.adminDashboard, icon: LayoutDashboard, end: true },
@@ -23,7 +24,11 @@ function AdminLayout() {
       <header className="border-b border-border bg-foreground text-background">
         <Container>
           <Stack direction="row" align="center" justify="between" gap={4} className="h-14">
-            <Link to={routes.home} className="flex items-center gap-2 shrink-0" aria-label="Back to B-17 Portal">
+            <Link
+              to={routes.home}
+              className={cn("flex min-h-11 min-w-11 shrink-0 items-center gap-2 rounded-md", headerFocusClass)}
+              aria-label="Back to B-17 Portal"
+            >
               <span className="flex size-6 items-center justify-center rounded-md bg-primary text-primary-foreground">
                 <MapPin className="size-3.5" aria-hidden="true" />
               </span>
@@ -39,13 +44,14 @@ function AdminLayout() {
                   end={item.end}
                   className={({ isActive }) =>
                     cn(
-                      "flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium text-background/70 transition-colors hover:bg-background/10 hover:text-background",
-                      isActive && "bg-background/15 text-background"
+                      "flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-md px-2.5 text-sm font-medium text-background/70 transition-colors hover:bg-background/10 hover:text-background",
+                      headerFocusClass,
+                      isActive && "bg-background/15 font-semibold text-background"
                     )
                   }
                 >
                   <item.icon className="size-4" aria-hidden="true" />
-                  <span className="hidden sm:inline">{item.label}</span>
+                  <span className="sr-only sm:not-sr-only">{item.label}</span>
                 </NavLink>
               ))}
             </nav>

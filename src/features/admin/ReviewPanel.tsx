@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useRef, useState, type RefObject } from "react"
 import { CheckCircle2, XCircle } from "lucide-react"
 import type { PendingListing } from "@/types/listing"
 import {
@@ -16,6 +16,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { ProviderCard } from "@/components/cards/ProviderCard"
 import { BusinessCard } from "@/components/cards/BusinessCard"
 import { PropertyCard } from "@/components/cards/PropertyCard"
+import { rowActionClass as actionClass } from "@/features/admin/adminStyles"
+import { ListingStatusBadge } from "@/features/provider/ListingStatusBadge"
 import { useListingsStore } from "@/state/listingsStore"
 import { useToast } from "@/hooks/useToast"
 
@@ -23,9 +25,17 @@ interface ReviewPanelProps {
   listing: PendingListing | null
   open: boolean
   onOpenChange: (open: boolean) => void
+  /** The control that opened the panel — focus returns to it on close (Radix only does this for a `Dialog.Trigger`, and this dialog is controlled). */
+  returnFocusRef?: RefObject<HTMLElement | null>
 }
 
 const MIN_REASON_LENGTH = 10
+
+const kindLabel: Record<PendingListing["kind"], string> = {
+  provider: "Service / Professional",
+  business: "Business / Shop",
+  property: "Property",
+}
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", {
   month: "short",
@@ -38,12 +48,13 @@ const dateFormatter = new Intl.DateTimeFormat("en-US", {
  * RequestServiceDialog pattern: a single Dialog whose body swaps views
  * (preview+actions vs. reject-reason) via local state.
  */
-function ReviewPanel({ listing, open, onOpenChange }: ReviewPanelProps) {
+function ReviewPanel({ listing, open, onOpenChange, returnFocusRef }: ReviewPanelProps) {
   const { setStatus } = useListingsStore()
   const { show } = useToast()
   const [showReasonInput, setShowReasonInput] = useState(false)
   const [reason, setReason] = useState("")
   const [reasonError, setReasonError] = useState<string | null>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
 
   function handleOpenChange(next: boolean) {
     onOpenChange(next)
@@ -82,32 +93,61 @@ function ReviewPanel({ listing, open, onOpenChange }: ReviewPanelProps) {
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Review Listing</DialogTitle>
-          <DialogDescription>
-            This is how the listing will appear to residents once approved.
-          </DialogDescription>
-        </DialogHeader>
+      <DialogContent
+        ref={contentRef}
+        // Start at the top of the dialog (title/summary) rather than on the first tabbable element,
+        // which would be the resident preview card — the decision controls come after reading.
+        onOpenAutoFocus={(event) => {
+          event.preventDefault()
+          contentRef.current?.focus()
+        }}
+        onCloseAutoFocus={(event) => {
+          if (!returnFocusRef?.current) return
+          event.preventDefault()
+          returnFocusRef.current.focus()
+        }}
+        className="max-h-[calc(100svh-2rem)] gap-0 overflow-y-auto p-0 sm:max-w-md"
+      >
+        <div className="flex flex-col gap-4 p-4">
+          <DialogHeader className="pr-8">
+            <DialogTitle className="break-words">Review Listing</DialogTitle>
+            <DialogDescription>
+              Check the details, then approve or reject. The preview below is how it will appear to residents once approved.
+            </DialogDescription>
+          </DialogHeader>
 
-        <Stack gap={4}>
-          {listing.kind === "provider" && <ProviderCard provider={listing.data} />}
-          {listing.kind === "business" && <BusinessCard business={listing.data} />}
-          {listing.kind === "property" && <PropertyCard property={listing.data} />}
+          <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2 rounded-lg bg-muted p-3 text-sm">
+            <dt className="text-muted-foreground">Listing</dt>
+            <dd className="break-words font-medium">{displayName}</dd>
+            <dt className="text-muted-foreground">Type</dt>
+            <dd className="break-words">{kindLabel[listing.kind]}</dd>
+            <dt className="text-muted-foreground">Submitted by</dt>
+            <dd className="break-words font-medium">{listing.submittedBy}</dd>
+            <dt className="text-muted-foreground">Submitted</dt>
+            <dd className="font-medium">{dateFormatter.format(new Date(listing.submittedAt))}</dd>
+            <dt className="text-muted-foreground">Status</dt>
+            <dd>
+              <ListingStatusBadge status={listing.status} />
+            </dd>
+            {listing.status === "rejected" && listing.rejectionReason && (
+              <>
+                <dt className="text-muted-foreground">Rejection reason</dt>
+                <dd className="break-words">{listing.rejectionReason}</dd>
+              </>
+            )}
+          </dl>
 
-          <Stack gap={1} className="rounded-lg bg-muted p-3">
-            <Typography variant="body-sm">
-              <span className="text-muted-foreground">Submitted by:</span>{" "}
-              <span className="font-medium">{listing.submittedBy}</span>
+          <section aria-label="Resident preview" className="flex flex-col gap-2">
+            <Typography as="h3" variant="label" className="text-muted-foreground">
+              Resident preview
             </Typography>
-            <Typography variant="body-sm">
-              <span className="text-muted-foreground">Submitted:</span>{" "}
-              <span className="font-medium">
-                {dateFormatter.format(new Date(listing.submittedAt))}
-              </span>
-            </Typography>
-          </Stack>
+            {listing.kind === "provider" && <ProviderCard provider={listing.data} />}
+            {listing.kind === "business" && <BusinessCard business={listing.data} />}
+            {listing.kind === "property" && <PropertyCard property={listing.data} />}
+          </section>
+        </div>
 
+        <div className="sticky bottom-0 border-t border-border bg-popover p-4">
           {showReasonInput ? (
             <Stack gap={2}>
               <Label htmlFor="reject-reason">Rejection reason</Label>
@@ -120,9 +160,14 @@ function ReviewPanel({ listing, open, onOpenChange }: ReviewPanelProps) {
                   if (reasonError) setReasonError(null)
                 }}
                 aria-invalid={!!reasonError}
-                aria-describedby={reasonError ? "reject-reason-error" : undefined}
+                aria-describedby={reasonError ? "reject-reason-hint reject-reason-error" : "reject-reason-hint"}
+                rows={3}
+                className="min-h-24 text-base focus-visible:ring-ring md:text-sm"
                 autoFocus
               />
+              <Typography id="reject-reason-hint" variant="caption">
+                At least {MIN_REASON_LENGTH} characters. The submitter will see this reason on their listing.
+              </Typography>
               {reasonError && (
                 <Typography
                   id="reject-reason-error"
@@ -134,10 +179,10 @@ function ReviewPanel({ listing, open, onOpenChange }: ReviewPanelProps) {
                 </Typography>
               )}
               <Stack gap={2} className="flex-col-reverse sm:flex-row sm:justify-end">
-                <Button type="button" variant="outline" onClick={() => setShowReasonInput(false)}>
+                <Button type="button" variant="outline" className={actionClass} onClick={() => setShowReasonInput(false)}>
                   Cancel
                 </Button>
-                <Button type="button" variant="destructive" onClick={handleConfirmReject}>
+                <Button type="button" variant="destructive" className={actionClass} onClick={handleConfirmReject}>
                   <XCircle />
                   Confirm Rejection
                 </Button>
@@ -145,17 +190,17 @@ function ReviewPanel({ listing, open, onOpenChange }: ReviewPanelProps) {
             </Stack>
           ) : (
             <Stack gap={2} className="flex-col-reverse sm:flex-row sm:justify-end">
-              <Button type="button" variant="destructive" onClick={() => setShowReasonInput(true)}>
+              <Button type="button" variant="destructive" className={actionClass} onClick={() => setShowReasonInput(true)}>
                 <XCircle />
                 Reject
               </Button>
-              <Button type="button" onClick={handleApprove}>
+              <Button type="button" className={actionClass} onClick={handleApprove}>
                 <CheckCircle2 />
                 Approve
               </Button>
             </Stack>
           )}
-        </Stack>
+        </div>
       </DialogContent>
     </Dialog>
   )

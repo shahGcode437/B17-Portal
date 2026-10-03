@@ -7,8 +7,8 @@ import { Card } from "@/components/ui/card"
 interface WorkspaceEmptyProps {
   icon: LucideIcon
   message: string
-  /** Real next step (a route that exists) — an empty region should always point somewhere. */
-  action?: { label: string; to: string }
+  /** Real next step: a route that exists (`to`) or an in-page action such as clearing a filter (`onClick`). */
+  action?: { label: string; to?: string; onClick?: () => void }
 }
 
 /** Compact inline empty state for a section inside an overview (the full-page `EmptyState` is for whole-page emptiness). */
@@ -19,9 +19,14 @@ function WorkspaceEmpty({ icon: Icon, message, action }: WorkspaceEmptyProps) {
       <Typography variant="body-sm" className="text-muted-foreground">
         {message}
       </Typography>
-      {action && (
+      {action?.to && (
         <Button asChild variant="outline" className="h-11">
           <Link to={action.to}>{action.label}</Link>
+        </Button>
+      )}
+      {action?.onClick && (
+        <Button type="button" variant="outline" className="h-11" onClick={action.onClick}>
+          {action.label}
         </Button>
       )}
     </Card>

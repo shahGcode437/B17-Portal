@@ -1,47 +1,23 @@
-import { Link } from "react-router-dom"
 import { motion } from "motion/react"
-import { Clock, CheckCircle2, XCircle, ClipboardList, Newspaper, FileEdit } from "lucide-react"
-import type { LucideIcon } from "lucide-react"
 import { Container } from "@/components/foundation/Container"
 import { Grid } from "@/components/foundation/Grid"
 import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
-import { Button } from "@/components/ui/button"
+import { WorkspaceSection } from "@/components/workspace/WorkspaceSection"
+import { AdminStat } from "@/features/admin/AdminStat"
+import { ContentStatusBadge } from "@/features/admin/ContentStatusBadge"
+import { ListingStatusBadge } from "@/features/provider/ListingStatusBadge"
 import { useListingsStore } from "@/state/listingsStore"
 import { useNewsStore } from "@/state/newsStore"
 import { useRequireAdminAuth } from "@/hooks/useRequireAdminAuth"
 import { routes } from "@/config/routes"
 import { fadeUp } from "@/lib/motion"
 
-interface KpiCardProps {
-  label: string
-  count: number
-  icon: LucideIcon
-  className: string
-}
-
-function KpiCard({ label, count, icon: Icon, className }: KpiCardProps) {
-  return (
-    <Stack gap={3} className="rounded-xl border border-border bg-card p-4 shadow-subtle">
-      <span className={`flex size-9 items-center justify-center rounded-lg ${className}`}>
-        <Icon className="size-4.5" aria-hidden="true" />
-      </span>
-      <Stack gap={0}>
-        <Typography as="p" variant="h2" className="text-2xl">
-          {count}
-        </Typography>
-        <Typography variant="body-sm" className="text-muted-foreground">
-          {label}
-        </Typography>
-      </Stack>
-    </Stack>
-  )
-}
-
 /**
- * Admin Dashboard (Master Spec §17) — live KPIs for both listing moderation
- * and news content, each sourced only from their own store (no invented
- * figures).
+ * Admin Dashboard (Master Spec §17; compact status counts in Visual V5) —
+ * live counts for both listing moderation and news content, each sourced
+ * only from their own store (no invented figures). Each count is the shared
+ * status badge plus the number, linking to where those records are managed.
  */
 function AdminDashboardPage() {
   const admin = useRequireAdminAuth()
@@ -53,6 +29,7 @@ function AdminDashboardPage() {
   const pending = listings.filter((l) => l.status === "pending").length
   const approved = listings.filter((l) => l.status === "approved").length
   const rejected = listings.filter((l) => l.status === "rejected").length
+  const archived = listings.filter((l) => l.status === "archived").length
 
   const published = items.filter((i) => i.status === "published").length
   const draft = items.filter((i) => i.status === "draft").length
@@ -68,63 +45,51 @@ function AdminDashboardPage() {
             </Typography>
           </Stack>
 
-          <Stack gap={3}>
-            <Stack direction="row" align="center" justify="between" gap={3} wrap>
-              <Typography variant="label">Listings</Typography>
-              <Button asChild size="sm">
-                <Link to={routes.adminModeration}>
-                  <ClipboardList />
-                  Review Pending Listings
-                </Link>
-              </Button>
-            </Stack>
-            <Grid cols={3} gap={4}>
-              <KpiCard
-                label="Pending"
-                count={pending}
-                icon={Clock}
-                className="bg-warning/15 text-warning"
+          <WorkspaceSection title="Listings" actionLabel="Open listing review" actionTo={routes.adminModeration}>
+            <Grid cols={4} gap={3} className="grid-cols-2 sm:grid-cols-4 lg:grid-cols-4">
+              <AdminStat
+                badge={<ListingStatusBadge status="pending" />}
+                linkLabel="Pending listings"
+                value={pending}
+                to={routes.adminModeration}
               />
-              <KpiCard
-                label="Approved"
-                count={approved}
-                icon={CheckCircle2}
-                className="bg-success/15 text-success"
+              <AdminStat
+                badge={<ListingStatusBadge status="approved" />}
+                linkLabel="Approved listings"
+                value={approved}
+                to={routes.adminModeration}
               />
-              <KpiCard
-                label="Rejected"
-                count={rejected}
-                icon={XCircle}
-                className="bg-destructive/10 text-destructive"
+              <AdminStat
+                badge={<ListingStatusBadge status="rejected" />}
+                linkLabel="Rejected listings"
+                value={rejected}
+                to={routes.adminModeration}
+              />
+              <AdminStat
+                badge={<ListingStatusBadge status="archived" />}
+                linkLabel="Archived listings"
+                value={archived}
+                to={routes.adminModeration}
               />
             </Grid>
-          </Stack>
+          </WorkspaceSection>
 
-          <Stack gap={3}>
-            <Stack direction="row" align="center" justify="between" gap={3} wrap>
-              <Typography variant="label">News & Daily Updates</Typography>
-              <Button asChild size="sm">
-                <Link to={routes.adminContent}>
-                  <Newspaper />
-                  Manage News & Updates
-                </Link>
-              </Button>
-            </Stack>
-            <Grid cols={2} gap={4}>
-              <KpiCard
-                label="Published"
-                count={published}
-                icon={CheckCircle2}
-                className="bg-success/15 text-success"
+          <WorkspaceSection title="News & Daily Updates" actionLabel="Manage news & updates" actionTo={routes.adminContent}>
+            <Grid cols={2} gap={3} className="grid-cols-2 sm:grid-cols-4 lg:grid-cols-4">
+              <AdminStat
+                badge={<ContentStatusBadge status="published" />}
+                linkLabel="Published content"
+                value={published}
+                to={routes.adminContent}
               />
-              <KpiCard
-                label="Draft"
-                count={draft}
-                icon={FileEdit}
-                className="bg-muted text-muted-foreground"
+              <AdminStat
+                badge={<ContentStatusBadge status="draft" />}
+                linkLabel="Draft content"
+                value={draft}
+                to={routes.adminContent}
               />
             </Grid>
-          </Stack>
+          </WorkspaceSection>
         </Stack>
       </motion.div>
     </Container>

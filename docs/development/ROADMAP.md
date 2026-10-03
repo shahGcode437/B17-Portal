@@ -89,7 +89,7 @@ High-level only — implementation details for each phase are worked out when th
 - Known limitations: Hero chips remain static strings; `updateParams` assumes browser history/`createBrowserRouter`; a future external REPLACE navigation into a mounted `/search` would be treated as the page's own write; real iOS keyboard not physically tested; no backend search service yet.
 
 ## Visual Phase V3 — Detail Pages + Imagery
-**STATUS: COMPLETE** (Visual V3 commit: pending)
+**STATUS: COMPLETE** (commit `d993992`)
 
 - Objective: implement the richer detail-page composition and a deliberate missing-image treatment per `docs/design/DESIGN_SYSTEM.md` §9/§11/§23.
 - Delivered: shared, presentation-only detail primitives (`DetailLayout`, `DetailHero`, `DetailSummary`, `DetailSection`, `DetailFacts`, `DetailTagList`, `FeaturedBadge` in `src/components/detail/`) adopted by the Provider, Business, Tutor and Property detail pages; image-led cover; mobile-first cover → summary → CTA → facts → sections order with a sticky desktop summary/action panel; sections and facts built from real fields only (no fake ratings/reviews/trust signals); a captioned hero fallback for missing images (`size="hero"` on `PlaceholderImage`/`CardImage`); 44px CTAs and a 44×44 detail Save button; a long-token overflow bug fixed. News received only the shared hero treatment. Also a global accessibility fix: the light-mode primary, brand-accent and destructive tokens were darkened within their existing color families to reach ≥4.5:1 text contrast (5.48 / 5.18 / 5.45:1), with a darker default-Button hover — documented in `DESIGN_SYSTEM.md` §4/§15; dark-mode tokens unchanged.
@@ -99,7 +99,7 @@ High-level only — implementation details for each phase are worked out when th
 - Known follow-ups: warning/success/info status-badge contrast (about 2.71/2.79/4.19:1) and a dedicated focus-indicator contrast review; Featured badge markup duplicated between cards and `FeaturedBadge`; real-device testing pending; demo imagery will be replaced by real client/user media.
 
 ## Visual Phase V4 — Resident + Professional Workspace Polish
-**STATUS: COMPLETE** (Visual V4 commit: pending)
+**STATUS: COMPLETE** (commit `e51d5e9`)
 
 - Objective: apply the shared `Card` primitive (`workspace` variant) and typography/spacing polish to Resident and Professional Workspace surfaces per `docs/design/DESIGN_SYSTEM.md` §12/§23.
 - Delivered: Resident Overview with real Saved / Active Requests / All Requests metrics plus recent requests and saved items; Saved grouped by domain (the `{kind,id,savedAt}` model preserved); My Requests grouped into active and completed/cancelled with status-derived progress (list bar, detail tracker); Professional Overview with real derived metric tiles; Listings (quota visualization respecting pending+approved counting) and Leads (`REQUEST_TRANSITIONS` preserved exactly) on workspace surfaces; honest, entitlement-gated Analytics; polished Upgrade/Profile with no billing or fabricated fields; shared `WorkspaceTabs` nav. New shared primitives: `StatusBadge`, `WorkspaceTabs`, `MetricTile`, `WorkspaceSection`, `WorkspaceEmpty`, `SelectableCard`, `RequestProgress`, `RequestMeta`. Accessibility: new `--success-text`/`--warning-text`/`--info-text` tokens lift status-badge text contrast to ≥5.45:1; statuses always carry text + icon; stronger focus ring on V4 surfaces; 44px workspace nav and mobile tap targets.
@@ -109,13 +109,29 @@ High-level only — implementation details for each phase are worked out when th
 - Known follow-ups: Admin/some consumer badges still on the older status presentation; global focus-ring treatment for the final accessibility review; shared `EmptyState` h1→h3 skip; 28px consumer-card WhatsApp/Request targets on Saved; no stored cancellation history.
 
 ## Visual Phase V5 — Admin Refinement
+**STATUS: COMPLETE** (Visual V5 commit: pending)
+
+- Objective: bring Admin to production-quality visual and accessibility standards per `docs/design/DESIGN_SYSTEM.md` §13/§23 while preserving its dark-header, dense, utilitarian identity.
+- Delivered: dashboard with real status-badge counts (Pending/Approved/Rejected/Archived listings, Published/Draft content); a shared dense `AdminRow` for the moderation queue and content list, with filter counts and thumbnails only where real media exists; a review dialog reorganized around the moderation decision with a sticky mobile action region and improved rejection-reason UX; accessible Draft/Published status via the shared `StatusBadge` (old low-contrast Admin statuses migrated, all ≥5.45:1); grouped, 44px-target content form; labeled header icons; Admin-local strong focus ring; dialog focus that starts intentionally and returns to the opening Review control.
+- Deliberately not implemented: bulk or AI moderation, analytics/charts, audit logs, notifications, reviewer assignment, role changes, any change to approve/reject/publishing logic, the auth model, routes, backend code, or non-Admin surfaces.
+- Dependencies: Visual Phase V4 (`StatusBadge`, status tokens, workspace primitives). No new dependency.
+- Verification: `npx tsc -b --force` and `npm run build` pass; lint remains at the established 8-warning baseline; no test suite; fresh browser console 0 errors / 0 warnings; verified at 375/430/820/1440px and across the live Admin flows; bundle ≈ +0.45%; reviewed via `review-phase` — READY FOR COMMIT.
+- Known follow-ups: global focus ring; ~27–28px consumer-card WhatsApp/Request targets; `EmptyState` h1→h3 skip; no Admin logout control; Approve/Reject still offered on some non-pending listings (valid state transitions must be decided before backend enforcement); the Admin resident preview still uses the consumer card.
+
+## Visual Phase V6 — Final Responsive, Accessibility & Interaction Polish
 **STATUS: NEXT**
 
-- Objective: apply the shared primitives and status presentation to Admin per `docs/design/DESIGN_SYSTEM.md` §13/§23 while strictly preserving its dark-bar/density identity.
-- Major scope: adopt `StatusBadge` and the status text tokens for moderation rows, the dashboard and content-status badges (closing the remaining sub-4.5:1 status text); moderation-row and form consistency with the shared surfaces.
-- Out of scope: moderation logic changes, imagery in Admin, new admin features (Phase 9F), dark-mode work.
-- Dependencies: Visual Phase V4 (`StatusBadge`, status tokens, workspace primitives).
-- Completion/verification: approve/reject/status flows behave identically; dark header preserved; responsive re-check at 375px/820px/1440px.
+- Objective: close the remaining accessibility and responsive debt across all surfaces before Production V1 moves on, per `docs/design/DESIGN_SYSTEM.md` §19/§20/§23.
+- Major scope:
+  - global focus visibility (the shared `ring-ring/50` focus ring, ≈1.9:1 on white);
+  - `EmptyState` heading semantics (the h1 → h3 skip);
+  - undersized consumer interactive targets (card WhatsApp/Request buttons, header logo/search);
+  - Admin logout control;
+  - a cross-app responsive regression pass (375/430/820/1440px);
+  - final keyboard/focus/dialog checks across consumer, Resident, Professional and Admin.
+- Out of scope: new features or modules, business-logic changes, dark mode, new animation concepts, backend work.
+- Dependencies: Visual Phases V1–V5.
+- Completion/verification: tsc/build/lint at baseline; no regression to any existing flow; measured focus-indicator and target-size improvements; fresh console clean.
 
 ## Phase 9F — Admin Production UX
 

@@ -278,13 +278,16 @@ Preserve exactly:
 - **Compact nav row** (not a sidebar) — Dashboard/Listings/News & Updates, icon + label, matches the existing information-density-first intent.
 
 Define going forward:
-- **Moderation rows**: current list-row pattern (icon tile + title/category/submitted-by + status badge + action button) is correct for density — keep rows, do not convert to a card grid.
-- **Tables/lists**: favor consistent row height and left-aligned text over decorative styling; status is always a `Badge`, never color-only (see §16/§20).
-- **Status visibility**: pending/approved/rejected/archived each get a distinct `Badge` variant + label text, matching the semantic status colors in §4.
+- **Direction (Visual V5)**: Admin is operational, dense and utilitarian — it prioritizes scanability over decoration, and stays clearly distinct from the consumer marketplace and the warmer Resident/Professional workspaces. It reuses the shared tokens, `Card` surface and `StatusBadge`, with tighter padding than the workspace.
+- **Moderation rows**: a compact list row (identity: title, type/category, submitter and date; then status badge and action) is correct for density — keep rows, do not convert to a card grid. On mobile the status and actions stack beneath the identity. The primary action (Review) is filled only where action is needed (pending items).
+- **Tables/lists**: favor consistent row height and left-aligned text over decorative styling; status is always the shared `StatusBadge`, never color-only (see §16/§20).
+- **Status visibility**: pending/approved/rejected/archived and draft/published use the shared `StatusBadge` (tone + icon + label, accessible text contrast); do not map unrelated statuses onto a tone merely to reuse it.
+- **Review surfaces**: lead with the facts a moderation decision needs (identity, type, submitter, date, current status, any rejection reason); keep the decision actions always reachable (sticky on small screens).
 - **Forms**: Admin content forms (news create/edit) follow the same Forms & Inputs rules as everywhere else (§14) — Admin density comes from layout/spacing, not from different form components.
-- **Actions**: primary action (Review/Approve) uses `default`/`outline` button variants exactly as elsewhere; destructive actions (Reject) use the `destructive` button variant — no Admin-specific button styling.
+- **Actions**: primary action (Review/Approve) uses `default`/`outline` button variants exactly as elsewhere; destructive actions (Reject) use the `destructive` button variant — no Admin-specific button styling. Important actions are ≥44px on touch and compact from `sm`.
+- **Focus**: Admin controls use a strong solid focus ring with a contrasting gap (and a solid white ring on the dark header). This is Admin-local; the global shared focus-ring token (§20) is unchanged and its cleanup remains future work.
 
-**Avoid unnecessary decorative imagery in Admin** — generic category icons (current behavior) are correct; do not introduce listing photos into dense moderation rows just for visual interest.
+**Imagery in Admin is functional, not decorative**: a compact thumbnail appears in a row only when the record actually has media (with the shared fallback if it fails to load); otherwise a small kind icon is used. Never invent a media slot for text-only items, and never let imagery dominate a dense row.
 
 ## 14. Forms & Inputs
 
@@ -446,8 +449,8 @@ Proposed small, independently verifiable implementation phases for the visual re
 - **Out of scope**: adding imagery to Admin; changing moderation logic.
 - **Verification**: moderation approve/reject/status flows behave identically; dark header preserved.
 
-### Visual Phase V6 — Responsive/Microinteraction Final Polish
-- **Objective**: close remaining §19 responsive gaps (mobile hero sizing, any tablet-specific issues found during V1–V5) and verify motion consistency across all migrated surfaces.
+### Visual Phase V6 — Final Responsive, Accessibility & Interaction Polish
+- **Objective**: close the remaining accessibility and responsive debt across all surfaces (global focus visibility, `EmptyState` heading semantics, undersized consumer targets, Admin logout) and close remaining §19 responsive gaps (mobile hero sizing, any tablet-specific issues found during V1–V5) and verify motion consistency across all migrated surfaces.
 - **Scope**: targeted responsive fixes identified during earlier phases; final motion-token audit (no new tokens expected).
 - **Out of scope**: new animation concepts not already defined in `src/lib/motion.ts`.
 - **Verification**: full 375/820/1440px pass across consumer/professional/admin; `prefers-reduced-motion` still respected.

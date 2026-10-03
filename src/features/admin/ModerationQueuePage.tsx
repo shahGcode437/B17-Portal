@@ -1,14 +1,16 @@
-import { useMemo, useState } from "react"
+import { useMemo, useRef, useState } from "react"
 import { motion } from "motion/react"
-import { Wrench, Building2, KeyRound } from "lucide-react"
+import { Wrench, Building2, KeyRound, ClipboardCheck } from "lucide-react"
 import { Container } from "@/components/foundation/Container"
 import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
 import { Button } from "@/components/ui/button"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
-import { EmptyState } from "@/components/feedback/EmptyState"
+import { WorkspaceEmpty } from "@/components/workspace/WorkspaceEmpty"
 import { ListingStatusBadge } from "@/features/provider/ListingStatusBadge"
 import { ReviewPanel } from "@/features/admin/ReviewPanel"
+import { AdminRow, AdminThumb } from "@/features/admin/AdminRow"
+import { segmentItemClass, rowActionClass } from "@/features/admin/adminStyles"
 import { useListingsStore } from "@/state/listingsStore"
 import { useRequireAdminAuth } from "@/hooks/useRequireAdminAuth"
 import type { ListingStatus, PendingListing } from "@/types/listing"
@@ -52,12 +54,28 @@ function listingCategory(listing: PendingListing): string {
   return `${listing.data.propertyType} · ${listing.data.listingType === "sale" ? "For Sale" : "For Rent"}`
 }
 
+function emptyMessage(filter: ListingStatus | "all"): string {
+  if (filter === "all") return "No listings have been submitted yet."
+  if (filter === "pending") return "No pending reviews — the queue is clear."
+  return `No ${filter} listings.`
+}
+
 /** Moderation Queue (Master Spec §17) — pending-first list of submitted listings, with Review action. */
 function ModerationQueuePage() {
   const admin = useRequireAdminAuth()
   const { listings } = useListingsStore()
   const [filter, setFilter] = useState<ListingStatus | "all">("all")
+  // `reviewing` is kept after close (only `reviewOpen` flips) so the dialog stays mounted through its
+  // close animation and Radix can return focus to the Review button that opened it.
   const [reviewing, setReviewing] = useState<PendingListing | null>(null)
+  const [reviewOpen, setReviewOpen] = useState(false)
+  const openerRef = useRef<HTMLElement | null>(null)
+
+  const counts = useMemo(() => {
+    const byStatus: Record<ListingStatus | "all", number> = { all: listings.length, pending: 0, approved: 0, rejected: 0, archived: 0 }
+    for (const listing of listings) byStatus[listing.status] += 1
+    return byStatus
+  }, [listings])
 
   const visible = useMemo(
     () =>
@@ -96,57 +114,55 @@ function ModerationQueuePage() {
             className="flex-wrap"
           >
             {filterOptions.map((option) => (
-              <ToggleGroupItem key={option.value} value={option.value}>
-                {option.label}
+              <ToggleGroupItem key={option.value} value={option.value} className={segmentItemClass}>
+                {option.label} ({counts[option.value]})
               </ToggleGroupItem>
             ))}
           </ToggleGroup>
 
           {visible.length === 0 ? (
-            <EmptyState
-              title="No listings here"
-              description="There are no listings matching this filter right now."
+            <WorkspaceEmpty
+              icon={ClipboardCheck}
+              message={emptyMessage(filter)}
+              action={filter === "all" ? undefined : { label: "Show all listings", onClick: () => setFilter("all") }}
             />
           ) : (
             <motion.div initial="initial" animate="animate" variants={staggerContainer}>
-              <Stack gap={3}>
+              <Stack gap={2}>
                 {visible.map((listing) => {
-                  const Icon = kindIcon[listing.kind]
+                  const title = listingTitle(listing)
                   return (
-                    <motion.div
-                      key={listing.id}
-                      variants={staggerItem}
-                      className="flex flex-col gap-4 rounded-xl border border-border bg-card p-4 shadow-subtle sm:flex-row sm:items-center sm:justify-between"
-                    >
-                      <Stack direction="row" align="start" gap={3}>
-                        <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-foreground">
-                          <Icon className="size-4" aria-hidden="true" />
-                        </span>
-                        <Stack gap={1}>
-                          <Typography variant="label">{listingTitle(listing)}</Typography>
-                          <Typography variant="body-sm" className="text-muted-foreground">
-                            {kindLabel[listing.kind]}
-                            {" · "}
-                            {listingCategory(listing)}
-                          </Typography>
-                          <Typography variant="caption" className="text-muted-foreground">
-                            Submitted by {listing.submittedBy} on{" "}
-                            {dateFormatter.format(new Date(listing.submittedAt))}
-                          </Typography>
-                        </Stack>
-                      </Stack>
-                      <Stack
-                        direction="row"
-                        align="center"
-                        justify="between"
-                        gap={3}
-                        className="sm:flex-col sm:items-end sm:justify-normal"
+                    <motion.div key={listing.id} variants={staggerItem}>
+                      <AdminRow
+                        leading={<AdminThumb src={listing.data.image} icon={kindIcon[listing.kind]} label={title} />}
+                        status={<ListingStatusBadge status={listing.status} />}
+                        actions={
+                          <Button
+                            variant={listing.status === "pending" ? "default" : "outline"}
+                            className={rowActionClass}
+                            aria-label={`Review ${title}`}
+                            onClick={(event) => {
+                              openerRef.current = event.currentTarget
+                              setReviewing(listing)
+                              setReviewOpen(true)
+                            }}
+                          >
+                            Review
+                          </Button>
+                        }
                       >
-                        <ListingStatusBadge status={listing.status} />
-                        <Button size="sm" onClick={() => setReviewing(listing)}>
-                          Review
-                        </Button>
-                      </Stack>
+                        <Typography as="span" variant="label" className="break-words">
+                          {title}
+                        </Typography>
+                        <Typography as="span" variant="body-sm" className="break-words text-muted-foreground">
+                          {kindLabel[listing.kind]}
+                          {" · "}
+                          {listingCategory(listing)}
+                        </Typography>
+                        <Typography as="span" variant="caption" className="break-words">
+                          Submitted by {listing.submittedBy} on {dateFormatter.format(new Date(listing.submittedAt))}
+                        </Typography>
+                      </AdminRow>
                     </motion.div>
                   )
                 })}
@@ -158,10 +174,9 @@ function ModerationQueuePage() {
 
       <ReviewPanel
         listing={reviewing}
-        open={!!reviewing}
-        onOpenChange={(nextOpen) => {
-          if (!nextOpen) setReviewing(null)
-        }}
+        open={reviewOpen}
+        onOpenChange={setReviewOpen}
+        returnFocusRef={openerRef}
       />
     </Container>
   )

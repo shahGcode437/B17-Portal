@@ -12,12 +12,13 @@ master
 
 4e92833 Visual V2.1: add contextual predictive search
 d993992 Visual V3: refresh detail pages and imagery
-Visual V4 commit: pending (implementation complete, review passed, not yet committed)
+e51d5e9 Visual V4: polish resident and professional workspaces
+Visual V5 commit: pending (implementation complete, review passed, not yet committed)
 
 ## Current Phase
 
-Visual Phase V4 — Resident + Professional Workspace Polish: COMPLETE, reviewed (READY FOR COMMIT), commit pending approval.
-Next frontend step: Visual Phase V5 — Admin Refinement.
+Visual Phase V5 — Admin Refinement: COMPLETE, reviewed (READY FOR COMMIT), commit pending approval.
+Next frontend step: Visual Phase V6 — Final Responsive, Accessibility & Interaction Polish.
 
 ## Completed Product Work
 
@@ -43,6 +44,7 @@ Next frontend step: Visual Phase V5 — Admin Refinement.
 - Visual Phase V2.1 — Contextual Search + Predictive Suggestions (see below)
 - Visual Phase V3 — Detail Pages + Imagery (see below)
 - Visual Phase V4 — Resident + Professional Workspace Polish (see below)
+- Visual Phase V5 — Admin Refinement (see below)
 
 Full history is in `git log`; this file summarizes outcomes, not the blow-by-blow.
 
@@ -218,11 +220,45 @@ Visual V4 — Resident + Professional Workspace Polish = **COMPLETE**. Presentat
 **Quality**: no new dependency; `npx tsc -b --force` clean; `npm run build` succeeds (JS ≈ 848 KB, +~1.1% vs V3's ≈ 839 KB); lint remains at the established 8-warning baseline; no test suite exists; fresh browser console 0 errors / 0 warnings. Verified at 375/430/820/1440px (no horizontal overflow on any Resident/Professional route) and live: login, Saved add/unsave, request creation/history/detail, listing create/approve/reject/resubmit/archive, Free quota messaging, Leads transitions, Analytics lock/unlock, Free/Premium switch, and logout clearing resident data and resetting the plan to Free. Reviewed via `review-phase`: verdict READY FOR COMMIT.
 
 **Known follow-ups**:
-- Admin and some consumer badges (`ContentStatusBadge`, admin dashboard badges, the `RequestServiceDialog` success icon) still use the older `text-success`/`text-warning` presentation — Visual V5.
+- Admin and some consumer badges (`ContentStatusBadge`, admin dashboard badges, the `RequestServiceDialog` success icon) still use the older `text-success`/`text-warning` presentation — the Admin badges were migrated in Visual V5; the `RequestServiceDialog` success icon remains.
 - The global focus-ring treatment (`ring-ring/50`, ≈1.9:1 on white, baked into shadcn `Button`/`Badge` and consumer cards) remains for the final accessibility review.
 - The shared `EmptyState` renders an `h3`, so a page-level empty state can produce an h1→h3 heading skip.
 - Consumer-card WhatsApp/Request buttons (28px) remain smaller than 44px on the Saved page; the consumer header logo/search targets are 32px.
 - Cancelled requests cannot show cancellation history (e.g. which step they were cancelled at) because none is stored; request progress shows position only.
+
+## Visual Phase V5 Result
+
+Visual V5 — Admin Refinement = **COMPLETE**. Presentation and accessibility only: the dark Admin header and utilitarian density are preserved, and no moderation or publishing business logic changed.
+
+**Admin dashboard**
+- Real counts only: Pending / Approved / Rejected / Archived listings and Published / Draft content, as compact status-badge tiles that link to where those records are managed. No fake charts or analytics.
+
+**Moderation**
+- Shared dense `AdminRow` presentation (queue and content list); status, type/category, submitter and date are easier to scan; the primary Review button is filled only for pending items; filters show live counts.
+- Compact thumbnails only where a listing has real media (shared fallback on error); otherwise a kind icon — no invented media slots.
+- The review dialog is reorganized around the decision: a summary (listing, type, submitter, date, status, any rejection reason) first, the resident preview below, and a sticky action region so Approve/Reject never scroll off-screen on mobile.
+- Rejection reason UX/accessibility improved (hint text, `aria-describedby`, readable mobile field). The existing approve/reject validation (10-character minimum) and behavior are preserved.
+
+**Content / news**
+- Same shared Admin row treatment; accessible Draft/Published status via `StatusBadge`; operational empty states with real actions; the content form is grouped into Content / Details / Publishing sections with 44px mobile fields. Publishing CRUD and schema behavior are unchanged (the form's "Publishing" field label is now "Visibility", since that is the section title).
+
+**Accessibility**
+- The old low-contrast Admin statuses (dashboard icon tiles, `ContentStatusBadge`) migrated to the shared `StatusBadge`; all measured Admin status contrast ≥ 5.45:1; status is always icon + text, never color-only.
+- Mobile controls and actions use 44px targets where appropriate; the Admin header nav icons now have accessible labels (`sr-only`).
+- Admin-local strong solid focus ring (with a contrasting gap; solid white on the dark header). Dialog focus now starts intentionally at the top of the dialog and returns to the Review control that opened it.
+- Global focus-ring debt remains for V6.
+
+**Shared pieces**: new Admin-local `AdminRow`/`AdminThumb`, `AdminStat` and `adminStyles` constants in `src/features/admin/`; `WorkspaceEmpty` gained an optional in-page `onClick` action (backward compatible). See `docs/design/DESIGN_SYSTEM.md` §13.
+
+**Quality**: no dependency added; `npx tsc -b --force` clean; `npm run build` succeeds (JS ≈ 852 KB, +~0.45% vs V4's ≈ 848 KB); lint remains at the established 8-warning baseline; no test suite exists; fresh browser console 0 errors / 0 warnings. Verified at 375/430/820/1440px (no horizontal overflow on any Admin route) and live: admin auth gating/redirect, dashboard, queue ordering and filters, review → approve and reject (including validation and reason display), publish/unpublish, content create/edit/validation, empty filtered states, long-title and image/no-image items, and keyboard focus/dialog behavior. Reviewed via `review-phase`: verdict READY FOR COMMIT.
+
+**Known follow-ups**:
+- The global shared focus ring (`ring-ring/50`, ≈1.9:1 on white) remains below the desired contrast and belongs in V6.
+- Consumer-card WhatsApp/Request targets remain ~27–28px (visible in the Admin resident preview and on Saved).
+- The shared `EmptyState` can produce an h1 → h3 heading skip.
+- An Admin logout control does not yet exist (`logout` is in the admin auth context but unused by any UI).
+- Approve/Reject remain available on some non-pending listings (including approved/rejected/archived), because V5 intentionally preserved existing business logic; valid moderation state transitions must be explicitly decided before production/backend enforcement.
+- The resident preview inside the Admin review dialog still uses the existing consumer card.
 
 ## Production V1 Direction
 
@@ -261,7 +297,7 @@ Visual V4 — Resident + Professional Workspace Polish = **COMPLETE**. Presentat
 - No SPA-fallback hosting config (`vercel.json`/`netlify.toml`/`_redirects`) — will 404 on refresh/direct link on a real static host until added.
 - `CategoryCard` and `NewsCard` still hand-roll their own card surface styling — not yet migrated to the shared `Card` primitive; candidates for a later visual phase. (`ListingSummaryCard` moved onto `Card` `workspace` in Visual V4.)
 - `Card`'s `elevated` variant is defined (`docs/design/DESIGN_SYSTEM.md` §8) but has no consumer in production UI yet — `interactive` (V1), `featured` (V2) and `workspace` (V4) are in use.
-- Status-badge text on Admin and a few consumer surfaces still uses the older `text-success`/`text-warning` colors below 4.5:1 (Resident/Professional badges were fixed in Visual V4 via `StatusBadge`), and the global focus-ring indicator contrast has not had a dedicated review — see "Visual Phase V4 Result" known follow-ups.
+- Resident, Professional and Admin status badges now use the shared `StatusBadge` (≥5.45:1); only the `RequestServiceDialog` success icon still uses the older presentation. The global focus-ring indicator contrast (`ring-ring/50`, ≈1.9:1) has not had a dedicated review — see "Visual Phase V5 Result" known follow-ups (V6).
 - `FeaturedBadge` markup is duplicated between `ProviderCard`/`BusinessCard` and `src/components/detail/FeaturedBadge.tsx`.
 - Business Directory image coverage is uneven — several business categories still fall back to the generic icon placeholder instead of a real photo.
 - Home Hero quick-search chips are static curated strings (not derived from data) and could drift from the searchable data again; "Solar installer" already did once and became "Solar" in Visual V2.1.
@@ -281,7 +317,7 @@ Visual V4 — Resident + Professional Workspace Polish = **COMPLETE**. Presentat
 
 ## Next Step
 
-Visual Phase V5 — Admin Refinement (per `docs/design/DESIGN_SYSTEM.md` §23's phased migration plan).
+Visual Phase V6 — Final Responsive, Accessibility & Interaction Polish (per `docs/design/DESIGN_SYSTEM.md` §23's phased migration plan).
 
 ## Resume Instructions
 
