@@ -6,6 +6,7 @@ import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Card } from "@/components/ui/card"
 import { useListingsStore, selectListingsBySubmitter } from "@/state/listingsStore"
 import { useAuth } from "@/hooks/useAuth"
 import { useRequireAuth } from "@/hooks/useRequireAuth"
@@ -54,23 +55,29 @@ function ProfessionalProfilePage() {
 
   return (
     <Container className="py-8 sm:py-12">
-      <motion.div {...fadeUp} className="mx-auto max-w-xl">
+      <motion.div {...fadeUp} className="mx-auto max-w-2xl">
         <Stack gap={6}>
-          <Stack direction="row" align="center" gap={3}>
-            <span className="flex size-14 items-center justify-center rounded-full bg-primary text-primary-foreground">
+          <Typography variant="h1">Profile</Typography>
+
+          <Card variant="workspace" className="flex-row items-center gap-3">
+            <span className="flex size-14 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
               <UserRound className="size-6" aria-hidden="true" />
             </span>
-            <Stack gap={0}>
-              <Typography variant="h2">{user.name}</Typography>
+            <Stack gap={0} className="min-w-0">
+              <Typography as="p" variant="label" className="break-words font-heading text-xl font-semibold">
+                {user.name}
+              </Typography>
               <Typography variant="body-sm" className="text-muted-foreground">
                 Signed in (demo) — no real professional account has been created.
               </Typography>
             </Stack>
-          </Stack>
+          </Card>
 
           {kinds.length > 0 && (
             <Stack gap={2}>
-              <Typography variant="label">Listing Types</Typography>
+              <Typography as="h2" variant="label" className="font-heading text-lg font-semibold">
+                Listing types
+              </Typography>
               <Stack direction="row" wrap gap={2}>
                 {kinds.map((kind) => (
                   <Badge key={kind} variant="outline" className="gap-1 font-normal">
@@ -82,7 +89,9 @@ function ProfessionalProfilePage() {
           )}
 
           <Stack gap={2}>
-            <Typography variant="label">Public Listings</Typography>
+            <Typography as="h2" variant="label" className="font-heading text-lg font-semibold">
+              Public listings
+            </Typography>
             {approvedListings.length === 0 ? (
               <Typography variant="body-sm" className="text-muted-foreground">
                 None of your listings are approved and public yet.
@@ -93,7 +102,7 @@ function ProfessionalProfilePage() {
                   <Link
                     key={listing.id}
                     to={publicPathFor(listing)}
-                    className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-primary transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+                    className="flex min-h-11 items-center break-words rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-primary shadow-subtle transition-colors hover:border-primary/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     {listingTitle(listing)}
                   </Link>
@@ -102,7 +111,7 @@ function ProfessionalProfilePage() {
             )}
           </Stack>
 
-          <Button variant="outline" className="w-fit" onClick={handleLogout}>
+          <Button variant="outline" className="h-11 w-fit" onClick={handleLogout}>
             <LogOut />
             Log Out
           </Button>

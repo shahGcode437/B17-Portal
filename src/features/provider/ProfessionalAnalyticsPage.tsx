@@ -1,4 +1,4 @@
-import { useMemo } from "react"
+import { useMemo, type ReactNode } from "react"
 import { Link } from "react-router-dom"
 import { motion } from "motion/react"
 import { Lock } from "lucide-react"
@@ -7,6 +7,10 @@ import { Grid } from "@/components/foundation/Grid"
 import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
 import { Button } from "@/components/ui/button"
+import { Card } from "@/components/ui/card"
+import { WorkspaceSection } from "@/components/workspace/WorkspaceSection"
+import { ListingStatusBadge } from "@/features/provider/ListingStatusBadge"
+import { RequestStatusBadge } from "@/features/resident/RequestStatusBadge"
 import { RequireCapability } from "@/components/access/RequireCapability"
 import { useListingsStore, selectListingsBySubmitter } from "@/state/listingsStore"
 import { useResidentStore } from "@/state/residentStore"
@@ -16,34 +20,19 @@ import { fadeUp } from "@/lib/motion"
 import type { ListingStatus } from "@/types/listing"
 import type { RequestStatus } from "@/types/resident"
 
-const listingStatusLabels: Record<ListingStatus, string> = {
-  pending: "Pending Review",
-  approved: "Approved",
-  rejected: "Rejected",
-  archived: "Archived",
-}
-
-const requestStatusLabels: Record<RequestStatus, string> = {
-  submitted: "Submitted",
-  accepted: "Accepted",
-  "in-progress": "In Progress",
-  completed: "Completed",
-  cancelled: "Cancelled",
-}
-
-function CountRow({ label, value }: { label: string; value: number }) {
+function CountRow({ badge, value }: { badge: ReactNode; value: number }) {
   return (
-    <Stack direction="row" align="center" justify="between" className="rounded-lg border border-border bg-card px-3 py-2">
-      <Typography variant="body-sm">{label}</Typography>
-      <Typography variant="label">{value}</Typography>
-    </Stack>
+    <Card variant="workspace" className="flex-row items-center justify-between gap-3 p-3">
+      {badge}
+      <span className="font-heading text-xl font-semibold leading-none">{value}</span>
+    </Card>
   )
 }
 
 /** Locked preview shown to Free professionals — explains what's unavailable, not just a grayed-out block. */
 function AnalyticsLocked() {
   return (
-    <Stack align="center" gap={4} className="rounded-xl border border-dashed border-border bg-muted/30 py-12 text-center">
+    <Card variant="workspace" className="items-center gap-4 border-dashed bg-muted/30 py-12 text-center shadow-none">
       <span className="flex size-12 items-center justify-center rounded-full bg-accent text-accent-foreground">
         <Lock className="size-6" aria-hidden="true" />
       </span>
@@ -54,10 +43,10 @@ function AnalyticsLocked() {
           leads by status.
         </Typography>
       </Stack>
-      <Button asChild>
+      <Button asChild className="h-11">
         <Link to={routes.providerUpgrade}>See Premium</Link>
       </Button>
-    </Stack>
+    </Card>
   )
 }
 
@@ -110,23 +99,21 @@ function ProfessionalAnalyticsPage() {
 
           <RequireCapability capability="analytics.basic" fallback={<AnalyticsLocked />}>
             <Stack gap={6}>
-              <Stack gap={3}>
-                <Typography variant="label">Listings by Status</Typography>
+              <WorkspaceSection title="Listings by status">
                 <Grid cols={2} gap={2}>
                   {breakdown.listingsByStatus.map(({ status, count }) => (
-                    <CountRow key={status} label={listingStatusLabels[status]} value={count} />
+                    <CountRow key={status} badge={<ListingStatusBadge status={status} />} value={count} />
                   ))}
                 </Grid>
-              </Stack>
+              </WorkspaceSection>
 
-              <Stack gap={3}>
-                <Typography variant="label">Leads by Status</Typography>
+              <WorkspaceSection title="Leads by status">
                 <Grid cols={2} gap={2}>
                   {breakdown.leadsByStatus.map(({ status, count }) => (
-                    <CountRow key={status} label={requestStatusLabels[status]} value={count} />
+                    <CountRow key={status} badge={<RequestStatusBadge status={status} />} value={count} />
                   ))}
                 </Grid>
-              </Stack>
+              </WorkspaceSection>
             </Stack>
           </RequireCapability>
         </Stack>

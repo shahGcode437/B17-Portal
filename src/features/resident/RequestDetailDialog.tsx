@@ -12,6 +12,7 @@ import {
 import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
 import { Button } from "@/components/ui/button"
+import { RequestProgress } from "@/components/workspace/RequestProgress"
 import { RequestStatusBadge } from "@/features/resident/RequestStatusBadge"
 import { providerProfilePath } from "@/config/routes"
 
@@ -38,14 +39,16 @@ function RequestDetailDialog({ request, onOpenChange }: RequestDetailDialogProps
         {request && (
           <>
             <DialogHeader>
-              <Stack direction="row" align="start" justify="between" gap={2}>
-                <DialogTitle className="capitalize">{request.service}</DialogTitle>
+              <Stack direction="row" align="start" justify="between" gap={2} className="pr-8">
+                <DialogTitle className="min-w-0 break-words capitalize">{request.service}</DialogTitle>
                 <RequestStatusBadge status={request.status} />
               </Stack>
               <DialogDescription>Requested from {request.providerName}</DialogDescription>
             </DialogHeader>
 
-            <Stack gap={3} className="text-left">
+            <Stack gap={4} className="text-left">
+              <RequestProgress status={request.status} />
+
               <Typography variant="body-sm">{request.details}</Typography>
 
               <Stack direction="row" align="center" gap={1} className="text-muted-foreground">
@@ -88,7 +91,7 @@ function RequestDetailDialog({ request, onOpenChange }: RequestDetailDialogProps
             <DialogFooter>
               <Button
                 variant="outline"
-                className="w-full"
+                className="h-11 w-full"
                 onClick={() => {
                   onOpenChange(false)
                   navigate(providerProfilePath(request.providerId))

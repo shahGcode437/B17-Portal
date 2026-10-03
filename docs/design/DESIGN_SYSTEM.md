@@ -65,6 +65,9 @@ All colors are defined as CSS custom properties in `src/index.css`, mapped into 
 | `--success` / `--success-foreground` | `#16a34a` / `#ffffff` | Approved/success status |
 | `--warning` / `--warning-foreground` | `#d97706` / `#ffffff` | Pending/warning status |
 | `--info` / `--info-foreground` | `#2563eb` / `#ffffff` | Informational status |
+| `--success-text` | `#166534` | Status **text** on a `success/15` tint (status badges). 6.03:1. |
+| `--warning-text` | `#92400e` | Status **text** on a `warning/15` tint. 6.05:1. |
+| `--info-text` | `#1d4ed8` | Status **text** on an `info/15` tint. 5.45:1. |
 
 ### Contrast refinement (Visual V3 gate)
 The first light-mode values — primary `#059669`, brand accent `#ea580c`, destructive `#dc2626` — gave white button text only **3.77:1**, **3.56:1** and (destructive text on its tinted fill) **4.14:1**, below the WCAG AA 4.5:1 target for normal-size text. This was a system-wide, pre-existing issue, not specific to any one page. It was fixed at the token level, once:
@@ -77,7 +80,10 @@ The first light-mode values — primary `#059669`, brand accent `#ea580c`, destr
 
 Why this is not a palette replacement: each value is the next-darker step of the **same Tailwind color family** the file already draws from (the existing `#065f46`, `#ecfdf5` and `#10b981` are emerald; `#fb923c` is orange), so green is still the main brand color and orange is still the accent. The already-present `#065f46` (7.68:1) was considered and rejected as a larger visual shift than the 4.5:1 target needs. No page-level or one-off overrides were added — every surface that uses these tokens inherits the change (default Buttons, default Badges, the selected filter toggle, `text-primary` labels, the Featured badge/border, destructive buttons).
 
-Orange remains reserved for high-intent/accent use (as implemented today, the Featured badge and featured-card border); it was not made more decorative. **Dark-mode tokens were not changed** (see below). The warning/success/info status colors were also not changed and still fall short of 4.5:1 for their badge text (tracked as a follow-up in `CURRENT_STATE.md`).
+Orange remains reserved for high-intent/accent use (as implemented today, the Featured badge and featured-card border); it was not made more decorative. **Dark-mode tokens were not changed** (see below). The warning/success/info status colors were not changed in this refinement; their badge-text contrast was fixed separately in Visual V4 (see "Status text tokens" below).
+
+### Status text tokens (Visual V4)
+The base `--success`/`--warning`/`--info` colors are fill/icon colors; used as text on their own 15% tint they measured only 2.79 / 2.71 / 4.19:1. Status **text** now uses the dedicated `--success-text`, `--warning-text` and `--info-text` tokens (darker steps of the same families: green-800, amber-800, blue-700), measured as rendered at **6.03 / 6.05 / 5.45:1**. Destructive text on its `/10` tint (5.45:1) and neutral `muted-foreground` on `muted` (6.92:1) already passed. Dark-mode values of the new tokens equal the existing dark status colors. Rule: use `-text` tokens for status text and the base tokens for fills and icons — never page-level hex overrides.
 
 ### Dark mode (`.dark`) — tokens exist, not currently user-facing (see §21)
 `--primary: #10b981`, `--brand-accent: #fb923c`, `--background: #0b1120`, `--card: #111827`, plus full parallel border/status/sidebar sets. Defined for forward-compatibility; do not design new components assuming dark mode is reachable today. Unchanged by the contrast refinement above.
@@ -146,6 +152,8 @@ Z-index scale: `base(0) / sticky(20) / dropdown(30) / modal(40) / toast(50)` —
 Avoid stacking more than one elevation step beyond what the interaction state requires — this system is deliberately restrained; do not introduce heavier shadows or gradient surfaces (see §22).
 
 ## 8. Shared Card System — DESIGN SPEC ONLY
+
+> Status note: the `Card` primitive has since been built (Visual V1). The `workspace` variant is consumed by the Resident and Professional surfaces (Visual V4, §12). The text below is the original spec and is kept for rationale.
 
 **Not implemented in this phase.** This section defines the target API for a future `Card` primitive so that Provider/Business/Tutor/Property/News cards can eventually compose it instead of each independently owning identical surface styling.
 
@@ -248,6 +256,19 @@ The workspace already achieves a distinct, correctly-scoped shell: its own heade
 - **Analytics (locked state)**: lock icon + explanation + "See Premium" CTA — already a good, non-decorative upsell pattern; preserve it as the model for any future locked-feature UI.
 - **Premium/locked states generally**: never hide a gated feature entirely — show it locked with a clear unlock path (current Analytics tab behavior), consistent with the product's capability-model philosophy.
 
+### Shared workspace pattern (Visual V4)
+Resident account pages and Professional Workspace pages use one small set of shared building blocks rather than page-specific styling:
+
+- **`Card` `workspace` variant** — the surface for metric tiles, list rows, quota/plan cards and inline empty states (a dashed, shadowless variant of it for empty/upsell strips).
+- **`WorkspaceTabs`** — the single underline-tab row for both the Resident (Overview/Saved/My Requests) and Professional (Overview/Listings/Leads/Analytics/Profile) navs: 44px tall, fits at 375px, active tab marked by underline + weight (not color alone).
+- **`MetricTile`** — compact count tile showing a real derived number; optionally a whole-tile link.
+- **`WorkspaceSection` / `WorkspaceEmpty`** — a titled region (h2 + optional "View all") and its inline empty state, which always offers a real next action.
+- **`SelectableCard`** — a workspace list row that opens a detail view or navigates, built on a native button/link inside the card.
+- **`RequestProgress` / `RequestMeta`** — status-derived progress for a service request (a decorative bar on list rows, a labeled step tracker in detail) and its submitted/preferred/area line. Progress shows position only; it never implies timestamps, ETAs or history.
+- **`StatusBadge`** — see §16.
+
+Focus on these surfaces uses a solid `ring-ring` (3.77:1 on white) rather than the 50%-alpha default.
+
 The workspace should read as "warmer SaaS tool" relative to Admin: same tokens, same `Card` surfaces once built, but more breathing room and typography confidence than Admin's dense rows — not more imagery.
 
 ## 13. Admin
@@ -298,7 +319,8 @@ Sizes (`xs/sm/default/lg/icon*`) follow a fixed height/radius scale already defi
 
 `Badge` (`src/components/ui/badge.tsx`) variants: `default` (primary-filled), `secondary` (muted — used by `DemoBadge`), `destructive`, `outline`, `ghost`, `link`.
 
-- **Status badges** (pending/approved/rejected/archived, and Free/Premium plan): always paired with text, never a bare color dot — current admin/workspace implementation already follows this.
+- **Status badges** (pending/approved/rejected/archived, request statuses, and Free/Premium plan): always paired with text, never a bare color dot.
+- **Shared `StatusBadge` pattern** (`src/components/feedback/StatusBadge.tsx`, Visual V4): every status is a semantic **tone** (`success`/`warning`/`info`/`danger`/`neutral`) + a semantic **icon** + a **text label**, with text colored by the `-text` status tokens (§4) so contrast stays ≥4.5:1. Domain wrappers (`ListingStatusBadge`, `RequestStatusBadge`) only map their status to tone/icon/label, so Resident and Professional show the same language for a request. Statuses that share a tone must differ by icon and label (e.g. Accepted vs Completed). Prefer this pattern for any new status; Admin and a few consumer badges still use the older presentation (§23, V5).
 - **Free/Premium badges**: `Free Plan`/`Premium Plan` shown as plain outlined/secondary badges near plan-relevant UI (confirmed live on Workspace Overview) — keep understated; this is informational, not a decorative achievement badge.
 - **Category tags**: `outline` or `secondary` badge variant, small, used in multiples (detail page "Details" tag row) — fine as-is.
 - **Verified/future trust badges**: none exist today and none are approved for this document — do not design or imply a verification badge system without an explicit product decision; `DemoBadge` exists specifically to prevent this ambiguity ("Demo Listing" is always visible, never a real trust claim).
@@ -310,8 +332,8 @@ Sizes (`xs/sm/default/lg/icon*`) follow a fixed height/radius scale already defi
 |---|---|---|
 | Consumer desktop | `Header` + `DesktopNav` | Sticky, blurred background, horizontal links, right-aligned search/List-Your-Business/Login |
 | Consumer mobile | `MobileNav` | Fixed bottom tab bar, max 5 destinations, icon + 11px label, active = primary color |
-| Resident account | `/profile` tabs (Overview/Saved/My Requests) | In-page tab row, not a separate shell — resident stays inside the consumer Header |
-| Professional | `ProfessionalNav` inside its own workspace shell | Underline-tab pattern, separate header ("· Provider") from consumer Header |
+| Resident account | `/profile` tabs (Overview/Saved/My Requests) | `WorkspaceTabs` in-page tab row, not a separate shell — resident stays inside the consumer Header |
+| Professional | `ProfessionalNav` inside its own workspace shell | `WorkspaceTabs` underline-tab pattern, separate header ("· Provider") from consumer Header |
 | Admin | Compact nav row inside `AdminLayout` | Icon + label on a dark bar, separate header ("· Admin") from consumer Header |
 
 Three shells (consumer / professional / admin) are intentional and must stay visually distinct at the header level (already correct) while sharing the same underlying token/type/motion system (also already correct) — do not merge them into one shell, and do not let Admin/Professional's headers drift onto the consumer `Header` component.

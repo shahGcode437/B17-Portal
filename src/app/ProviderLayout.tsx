@@ -19,7 +19,7 @@ function ProviderLayout() {
       <header className="border-b border-border bg-background">
         <Container>
           <Stack direction="row" align="center" justify="between" gap={4} className="h-14">
-            <Link to={routes.home} className="flex items-center gap-2" aria-label="Back to B-17 Portal">
+            <Link to={routes.home} className="flex min-h-11 items-center gap-2 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="Back to B-17 Portal">
               <span className="flex size-6 items-center justify-center rounded-md bg-primary text-primary-foreground">
                 <MapPin className="size-3.5" aria-hidden="true" />
               </span>

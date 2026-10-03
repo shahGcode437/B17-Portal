@@ -1,51 +1,46 @@
-import { Wrench, MapPin, Calendar } from "lucide-react"
+import { Wrench } from "lucide-react"
 import type { ServiceRequestRecord } from "@/types/resident"
-import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
+import { SelectableCard } from "@/components/workspace/SelectableCard"
+import { RequestMeta } from "@/components/workspace/RequestMeta"
+import { RequestProgress } from "@/components/workspace/RequestProgress"
 import { RequestStatusBadge } from "@/features/resident/RequestStatusBadge"
-
-const dateFormatter = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" })
+import { getProviderById } from "@/services/search"
 
 interface RequestSummaryCardProps {
   request: ServiceRequestRecord
   onSelect: () => void
 }
 
-/** One row in "My Requests" — mirrors ListingSummaryCard's layout for a consistent list pattern. */
+/**
+ * One row in "My Requests". Identity is the service plus the provider it was
+ * sent to (name snapshot from the request, with the provider's live category
+ * when it still resolves). The thin bar is a glance at where the request is;
+ * the badge says it in words.
+ */
 function RequestSummaryCard({ request, onSelect }: RequestSummaryCardProps) {
+  const categoryLabel = getProviderById(request.providerId)?.categoryLabel
+
   return (
-    <button
-      type="button"
-      onClick={onSelect}
-      className="flex w-full flex-col gap-3 rounded-xl border border-border bg-card p-4 text-left shadow-subtle transition-colors hover:border-primary/30 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 sm:flex-row sm:items-start"
-    >
-      <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-foreground">
-        <Wrench className="size-4.5" aria-hidden="true" />
-      </span>
-      <Stack gap={2} className="flex-1">
-        <Stack direction="row" align="start" justify="between" gap={3}>
-          <Stack gap={1}>
-            <Typography variant="label" className="text-base capitalize">
-              {request.service}
-            </Typography>
-            <Typography variant="body-sm" className="text-muted-foreground">
-              {request.providerName}
-            </Typography>
-          </Stack>
-          <RequestStatusBadge status={request.status} />
-        </Stack>
-        <Stack direction="row" wrap gap={3} className="text-muted-foreground">
-          <Stack direction="row" align="center" gap={1}>
-            <Calendar className="size-3.5 shrink-0" aria-hidden="true" />
-            <Typography variant="caption">Submitted {dateFormatter.format(new Date(request.submittedAt))}</Typography>
-          </Stack>
-          <Stack direction="row" align="center" gap={1}>
-            <MapPin className="size-3.5 shrink-0" aria-hidden="true" />
-            <Typography variant="caption">{request.area}</Typography>
-          </Stack>
-        </Stack>
-      </Stack>
-    </button>
+    <SelectableCard onSelect={onSelect}>
+      <div className="flex items-start gap-3">
+        <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-foreground">
+          <Wrench className="size-4.5" aria-hidden="true" />
+        </span>
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <Typography as="span" variant="label" className="break-words text-base capitalize">
+            {request.service}
+          </Typography>
+          <Typography as="span" variant="body-sm" className="break-words text-muted-foreground">
+            To {request.providerName}
+            {categoryLabel ? ` · ${categoryLabel}` : ""}
+          </Typography>
+        </div>
+        <RequestStatusBadge status={request.status} />
+      </div>
+      <RequestProgress status={request.status} compact />
+      <RequestMeta request={request} />
+    </SelectableCard>
   )
 }
 

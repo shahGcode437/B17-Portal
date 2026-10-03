@@ -11,12 +11,13 @@ master
 ## Current Verified Commit
 
 4e92833 Visual V2.1: add contextual predictive search
-Visual V3 commit: pending (implementation complete, review passed, not yet committed)
+d993992 Visual V3: refresh detail pages and imagery
+Visual V4 commit: pending (implementation complete, review passed, not yet committed)
 
 ## Current Phase
 
-Visual Phase V3 — Detail Pages + Imagery: COMPLETE, reviewed (READY FOR COMMIT), commit pending approval.
-Next frontend step: Visual Phase V4 — Resident + Professional Workspace Polish.
+Visual Phase V4 — Resident + Professional Workspace Polish: COMPLETE, reviewed (READY FOR COMMIT), commit pending approval.
+Next frontend step: Visual Phase V5 — Admin Refinement.
 
 ## Completed Product Work
 
@@ -41,6 +42,7 @@ Next frontend step: Visual Phase V4 — Resident + Professional Workspace Polish
 - Visual Phase V2 — Consumer Discovery/Card Refresh (see below)
 - Visual Phase V2.1 — Contextual Search + Predictive Suggestions (see below)
 - Visual Phase V3 — Detail Pages + Imagery (see below)
+- Visual Phase V4 — Resident + Professional Workspace Polish (see below)
 
 Full history is in `git log`; this file summarizes outcomes, not the blow-by-blow.
 
@@ -191,6 +193,37 @@ Full history is in `git log`; this file summarizes outcomes, not the blow-by-blo
 - Real-device testing remains pending (including the iOS on-screen keyboard from V2.1).
 - Current demo imagery will later be replaced by real client/user media; the demo photos are ~1000px wide, so they render a little soft at the 768px cover on high-density screens. No gallery was built — only one image per item exists.
 
+## Visual Phase V4 Result
+
+Visual V4 — Resident + Professional Workspace Polish = **COMPLETE**. Presentation only: no business logic, status logic, entitlement semantics, routes or persistence changed.
+
+**Resident**
+- Overview shows real Saved / Active Requests / All Requests metrics (Active = not completed/cancelled); recent requests and recently saved items come from existing state only (saved references resolved through the public search boundary). No streaks, points, wallet or recommendations.
+- Saved is grouped by domain (Services/Businesses/Tutors/Properties) while preserving the `{kind, id, savedAt}` reference model; each card keeps its own Save toggle (44×44 on this page).
+- My Requests is grouped into Active and Completed & cancelled; cards show service, provider, dates, area and a progress bar. The request detail dialog includes a status-derived progress tracker. No fake ETA, cost or history data.
+
+**Professional**
+- Overview uses real derived metrics only (Active leads, Total/Pending/Approved/Rejected/Archived listings) as `MetricTile`s linking to their pages; recent listings/leads rows; empty states with real actions.
+- Listings and Leads use workspace surfaces (`ListingSummaryCard` now on `Card` `workspace`). The Free-plan quota card visualizes active listings and respects the pending+approved counting rule. Leads are split Open vs Completed & cancelled and preserve `REQUEST_TRANSITIONS` exactly (the "Next action" hint reads from it).
+- Analytics remains honest (derived status counts only) and entitlement-gated (Free sees the locked upsell). Upgrade and Profile are polished without billing or fabricated fields; the demo plan switch is unchanged.
+- Professional and Resident navigation share `WorkspaceTabs`.
+
+**Shared primitives introduced**: `StatusBadge` (`src/components/feedback/`), `WorkspaceTabs` (`src/components/navigation/`), and `MetricTile`, `WorkspaceSection`, `WorkspaceEmpty`, `SelectableCard`, `RequestProgress`, `RequestMeta` (`src/components/workspace/`), plus `src/features/resident/savedItems.ts` (saved-reference resolver). See `docs/design/DESIGN_SYSTEM.md` §12/§16. The `Card` `workspace` variant now has production consumers.
+
+**Accessibility**
+- Shared `StatusBadge`: statuses always include text + icon; new `--success-text`/`--warning-text`/`--info-text` tokens raise status-text contrast from 2.79 / 2.71 / 4.19:1 to 6.03 / 6.05 / 5.45:1 (all ≥ 5.45:1 as rendered; destructive 5.45:1, neutral 6.92:1).
+- V4 workspace surfaces use the stronger solid focus ring (`ring-ring`, 3.77:1 on white).
+- Workspace nav is 44px tall and fits at 375px; workspace tap targets (action buttons, dialog buttons, plan toggle, shell header link) raised for mobile; every Resident/Professional page has an `h1`.
+
+**Quality**: no new dependency; `npx tsc -b --force` clean; `npm run build` succeeds (JS ≈ 848 KB, +~1.1% vs V3's ≈ 839 KB); lint remains at the established 8-warning baseline; no test suite exists; fresh browser console 0 errors / 0 warnings. Verified at 375/430/820/1440px (no horizontal overflow on any Resident/Professional route) and live: login, Saved add/unsave, request creation/history/detail, listing create/approve/reject/resubmit/archive, Free quota messaging, Leads transitions, Analytics lock/unlock, Free/Premium switch, and logout clearing resident data and resetting the plan to Free. Reviewed via `review-phase`: verdict READY FOR COMMIT.
+
+**Known follow-ups**:
+- Admin and some consumer badges (`ContentStatusBadge`, admin dashboard badges, the `RequestServiceDialog` success icon) still use the older `text-success`/`text-warning` presentation — Visual V5.
+- The global focus-ring treatment (`ring-ring/50`, ≈1.9:1 on white, baked into shadcn `Button`/`Badge` and consumer cards) remains for the final accessibility review.
+- The shared `EmptyState` renders an `h3`, so a page-level empty state can produce an h1→h3 heading skip.
+- Consumer-card WhatsApp/Request buttons (28px) remain smaller than 44px on the Saved page; the consumer header logo/search targets are 32px.
+- Cancelled requests cannot show cancellation history (e.g. which step they were cancelled at) because none is stored; request progress shows position only.
+
 ## Production V1 Direction
 
 - Complete the frontend before the backend.
@@ -206,7 +239,7 @@ Full history is in `git log`; this file summarizes outcomes, not the blow-by-blo
 
 ## Known Technical Debt
 
-- One large, eagerly-loaded JS bundle (~783 KB) — no route-level code splitting yet.
+- One large, eagerly-loaded JS bundle (~848 KB) — no route-level code splitting yet.
 - No PWA (manifest/service worker/icons all absent).
 - No notifications UI yet.
 - Resident state (`residentStore`) has no stable user id to scope by — demo auth is name-only, so per-account scoping is not real; explicit Log Out (not reload) is the only privacy boundary today. Real account scoping belongs to the backend/API phase (Phase 12).
@@ -226,10 +259,9 @@ Full history is in `git log`; this file summarizes outcomes, not the blow-by-blo
 - Dead route `/services/home-construction` (defined, wired, but no inbound link anywhere).
 - `shadcn` CLI package sits in `dependencies` instead of `devDependencies` (zero runtime impact, hygiene only).
 - No SPA-fallback hosting config (`vercel.json`/`netlify.toml`/`_redirects`) — will 404 on refresh/direct link on a real static host until added.
-- `CategoryCard`, `ListingSummaryCard`, and `NewsCard` still hand-roll their own card surface styling — not yet migrated to the shared `Card` primitive; candidates for a later visual phase.
-- `Card`'s `elevated`/`workspace` variants are defined (`docs/design/DESIGN_SYSTEM.md` §8) but have no consumer in production UI yet — `interactive` (Visual V1) and `featured` (Visual V2, data-driven for Provider/Business) are in use.
-- The Professional Workspace and Resident surfaces are still flat data tiles/rows (stat tiles, `ListingSummaryCard`) — the largest remaining visual-quality gap after Visual V3, targeted by Visual Phase V4.
-- Status-badge text colors (warning/success/info) fall below 4.5:1 contrast on their tinted fills, and the focus-ring indicator contrast has not had a dedicated review — see "Visual Phase V3 Result" known follow-ups.
+- `CategoryCard` and `NewsCard` still hand-roll their own card surface styling — not yet migrated to the shared `Card` primitive; candidates for a later visual phase. (`ListingSummaryCard` moved onto `Card` `workspace` in Visual V4.)
+- `Card`'s `elevated` variant is defined (`docs/design/DESIGN_SYSTEM.md` §8) but has no consumer in production UI yet — `interactive` (V1), `featured` (V2) and `workspace` (V4) are in use.
+- Status-badge text on Admin and a few consumer surfaces still uses the older `text-success`/`text-warning` colors below 4.5:1 (Resident/Professional badges were fixed in Visual V4 via `StatusBadge`), and the global focus-ring indicator contrast has not had a dedicated review — see "Visual Phase V4 Result" known follow-ups.
 - `FeaturedBadge` markup is duplicated between `ProviderCard`/`BusinessCard` and `src/components/detail/FeaturedBadge.tsx`.
 - Business Directory image coverage is uneven — several business categories still fall back to the generic icon placeholder instead of a real photo.
 - Home Hero quick-search chips are static curated strings (not derived from data) and could drift from the searchable data again; "Solar installer" already did once and became "Solar" in Visual V2.1.
@@ -249,7 +281,7 @@ Full history is in `git log`; this file summarizes outcomes, not the blow-by-blo
 
 ## Next Step
 
-Visual Phase V4 — Resident + Professional Workspace Polish (per `docs/design/DESIGN_SYSTEM.md` §23's phased migration plan).
+Visual Phase V5 — Admin Refinement (per `docs/design/DESIGN_SYSTEM.md` §23's phased migration plan).
 
 ## Resume Instructions
 

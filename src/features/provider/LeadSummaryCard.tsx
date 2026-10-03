@@ -1,10 +1,11 @@
-import { User, MapPin, Calendar } from "lucide-react"
+import { User } from "lucide-react"
 import type { ServiceRequestRecord } from "@/types/resident"
-import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
+import { SelectableCard } from "@/components/workspace/SelectableCard"
+import { RequestMeta } from "@/components/workspace/RequestMeta"
+import { RequestProgress } from "@/components/workspace/RequestProgress"
 import { RequestStatusBadge } from "@/features/resident/RequestStatusBadge"
-
-const dateFormatter = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" })
+import { REQUEST_TRANSITIONS } from "@/features/provider/requestTransitions"
 
 interface LeadSummaryCardProps {
   request: ServiceRequestRecord
@@ -13,44 +14,36 @@ interface LeadSummaryCardProps {
 
 /**
  * One row in "Leads" (Phase 9D) — the professional-side counterpart of
- * `RequestSummaryCard` (Phase 9C's My Requests). Same underlying
- * `ServiceRequestRecord`, framed for the professional: who requested, not
- * which provider (the professional already knows that's their own listing).
+ * `RequestSummaryCard`. Same `ServiceRequestRecord`, framed for the
+ * professional: who requested, not which provider. The hint line names the
+ * next valid action straight from `REQUEST_TRANSITIONS` (the single source of
+ * truth for the state machine), so it can never disagree with the dialog.
  */
 function LeadSummaryCard({ request, onSelect }: LeadSummaryCardProps) {
+  const [nextAction] = REQUEST_TRANSITIONS[request.status]
+
   return (
-    <button
-      type="button"
-      onClick={onSelect}
-      className="flex w-full flex-col gap-3 rounded-xl border border-border bg-card p-4 text-left shadow-subtle transition-colors hover:border-primary/30 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 sm:flex-row sm:items-start"
-    >
-      <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-foreground">
-        <User className="size-4.5" aria-hidden="true" />
-      </span>
-      <Stack gap={2} className="flex-1">
-        <Stack direction="row" align="start" justify="between" gap={3}>
-          <Stack gap={1}>
-            <Typography variant="label" className="text-base capitalize">
-              {request.service}
-            </Typography>
-            <Typography variant="body-sm" className="text-muted-foreground">
-              Requested by {request.requestedBy}
-            </Typography>
-          </Stack>
-          <RequestStatusBadge status={request.status} />
-        </Stack>
-        <Stack direction="row" wrap gap={3} className="text-muted-foreground">
-          <Stack direction="row" align="center" gap={1}>
-            <Calendar className="size-3.5 shrink-0" aria-hidden="true" />
-            <Typography variant="caption">Submitted {dateFormatter.format(new Date(request.submittedAt))}</Typography>
-          </Stack>
-          <Stack direction="row" align="center" gap={1}>
-            <MapPin className="size-3.5 shrink-0" aria-hidden="true" />
-            <Typography variant="caption">{request.area}</Typography>
-          </Stack>
-        </Stack>
-      </Stack>
-    </button>
+    <SelectableCard onSelect={onSelect}>
+      <div className="flex items-start gap-3">
+        <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-foreground">
+          <User className="size-4.5" aria-hidden="true" />
+        </span>
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <Typography as="span" variant="label" className="break-words text-base capitalize">
+            {request.service}
+          </Typography>
+          <Typography as="span" variant="body-sm" className="break-words text-muted-foreground">
+            From {request.requestedBy}
+          </Typography>
+        </div>
+        <RequestStatusBadge status={request.status} />
+      </div>
+      <RequestProgress status={request.status} compact />
+      <RequestMeta request={request} />
+      <Typography as="span" variant="caption" className="font-medium text-foreground">
+        {nextAction ? `Next action: ${nextAction.label}` : "No further action needed"}
+      </Typography>
+    </SelectableCard>
   )
 }
 

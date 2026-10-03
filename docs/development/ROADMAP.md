@@ -99,13 +99,23 @@ High-level only — implementation details for each phase are worked out when th
 - Known follow-ups: warning/success/info status-badge contrast (about 2.71/2.79/4.19:1) and a dedicated focus-indicator contrast review; Featured badge markup duplicated between cards and `FeaturedBadge`; real-device testing pending; demo imagery will be replaced by real client/user media.
 
 ## Visual Phase V4 — Resident + Professional Workspace Polish
-**STATUS: NEXT**
+**STATUS: COMPLETE** (Visual V4 commit: pending)
 
 - Objective: apply the shared `Card` primitive (`workspace` variant) and typography/spacing polish to Resident and Professional Workspace surfaces per `docs/design/DESIGN_SYSTEM.md` §12/§23.
-- Major scope: to be confirmed against the live repo when this phase begins — likely Overview stat tiles, Listings/Leads rows (`ListingSummaryCard`), Profile/Settings, and the status-badge contrast follow-up noted above.
-- Out of scope: new workspace features/modules, capability/entitlement logic changes, Admin redesign (Visual V5), dark mode, typography changes.
-- Dependencies: Visual Phase V1 (the `Card` primitive); Phase 9C–9E (the surfaces being polished).
-- Completion/verification: no change to capability-gating, lead/request status behavior or listing-limit logic (visual only); responsive re-check at 375px/820px/1440px.
+- Delivered: Resident Overview with real Saved / Active Requests / All Requests metrics plus recent requests and saved items; Saved grouped by domain (the `{kind,id,savedAt}` model preserved); My Requests grouped into active and completed/cancelled with status-derived progress (list bar, detail tracker); Professional Overview with real derived metric tiles; Listings (quota visualization respecting pending+approved counting) and Leads (`REQUEST_TRANSITIONS` preserved exactly) on workspace surfaces; honest, entitlement-gated Analytics; polished Upgrade/Profile with no billing or fabricated fields; shared `WorkspaceTabs` nav. New shared primitives: `StatusBadge`, `WorkspaceTabs`, `MetricTile`, `WorkspaceSection`, `WorkspaceEmpty`, `SelectableCard`, `RequestProgress`, `RequestMeta`. Accessibility: new `--success-text`/`--warning-text`/`--info-text` tokens lift status-badge text contrast to ≥5.45:1; statuses always carry text + icon; stronger focus ring on V4 surfaces; 44px workspace nav and mobile tap targets.
+- Deliberately not implemented: fake ETAs/costs/history, revenue/views/conversion analytics, notifications, messaging, reviews/ratings, billing/checkout, profession-specific modules, any change to search, detail pages, Admin, auth, entitlements, the listing status machine, routes, persistence or dark mode.
+- Dependencies: Visual Phase V1 (the `Card` primitive); Phase 9C–9E (the surfaces polished). No new dependency.
+- Verification: `npx tsc -b --force` and `npm run build` pass; lint remains at the established 8-warning baseline; no test suite; fresh browser console 0 errors / 0 warnings; verified at 375/430/820/1440px and across the live Resident/Professional flows (including Free quota, Leads transitions, Analytics lock, plan switch and logout reset); bundle ≈ +1.1%; reviewed via `review-phase` — READY FOR COMMIT.
+- Known follow-ups: Admin/some consumer badges still on the older status presentation; global focus-ring treatment for the final accessibility review; shared `EmptyState` h1→h3 skip; 28px consumer-card WhatsApp/Request targets on Saved; no stored cancellation history.
+
+## Visual Phase V5 — Admin Refinement
+**STATUS: NEXT**
+
+- Objective: apply the shared primitives and status presentation to Admin per `docs/design/DESIGN_SYSTEM.md` §13/§23 while strictly preserving its dark-bar/density identity.
+- Major scope: adopt `StatusBadge` and the status text tokens for moderation rows, the dashboard and content-status badges (closing the remaining sub-4.5:1 status text); moderation-row and form consistency with the shared surfaces.
+- Out of scope: moderation logic changes, imagery in Admin, new admin features (Phase 9F), dark-mode work.
+- Dependencies: Visual Phase V4 (`StatusBadge`, status tokens, workspace primitives).
+- Completion/verification: approve/reject/status flows behave identically; dark header preserved; responsive re-check at 375px/820px/1440px.
 
 ## Phase 9F — Admin Production UX
 

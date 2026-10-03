@@ -1,11 +1,15 @@
 import { useMemo } from "react"
 import { Link } from "react-router-dom"
 import { motion } from "motion/react"
-import { Store, Inbox } from "lucide-react"
+import { Store, Inbox, Layers, Clock, CheckCircle2, XCircle, Archive, MessageSquareText } from "lucide-react"
 import { Container } from "@/components/foundation/Container"
 import { Grid } from "@/components/foundation/Grid"
 import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
+import { Card } from "@/components/ui/card"
+import { MetricTile } from "@/components/workspace/MetricTile"
+import { WorkspaceEmpty } from "@/components/workspace/WorkspaceEmpty"
+import { WorkspaceSection } from "@/components/workspace/WorkspaceSection"
 import { RequestStatusBadge } from "@/features/resident/RequestStatusBadge"
 import { ListingStatusBadge } from "@/features/provider/ListingStatusBadge"
 import { PlanBadge } from "@/features/provider/PlanBadge"
@@ -22,16 +26,20 @@ function listingTitle(listing: { kind: string; data: { title?: string; name?: st
   return listing.kind === "property" ? (listing.data.title ?? "") : (listing.data.name ?? "")
 }
 
-function StatCard({ label, value }: { label: string; value: number }) {
+/** A compact, non-interactive recent-activity row: identity on the left, status + date wrapping beneath it on narrow screens. */
+function RecentRow({ title, badge, date, capitalize }: { title: string; badge: React.ReactNode; date: string; capitalize?: boolean }) {
   return (
-    <Stack gap={1} className="rounded-xl border border-border bg-card p-4 shadow-subtle">
-      <Typography variant="h2" className="text-3xl">
-        {value}
+    <Card variant="workspace" className="flex-row flex-wrap items-center justify-between gap-x-3 gap-y-2 p-3">
+      <Typography as="span" variant="body-sm" className={`min-w-0 flex-1 basis-40 break-words font-medium ${capitalize ? "capitalize" : ""}`}>
+        {title}
       </Typography>
-      <Typography variant="body-sm" className="text-muted-foreground">
-        {label}
-      </Typography>
-    </Stack>
+      <span className="flex items-center gap-2">
+        {badge}
+        <Typography as="span" variant="caption">
+          {date}
+        </Typography>
+      </span>
+    </Card>
   )
 }
 
@@ -59,6 +67,7 @@ function ProfessionalOverviewPage() {
         pending: mine.filter((l) => l.status === "pending").length,
         approved: mine.filter((l) => l.status === "approved").length,
         rejected: mine.filter((l) => l.status === "rejected").length,
+        archived: mine.filter((l) => l.status === "archived").length,
         activeLeads: leads.filter((r) => r.status !== "completed" && r.status !== "cancelled").length,
       },
     }
@@ -90,110 +99,71 @@ function ProfessionalOverviewPage() {
           </Stack>
 
           {plan === "free" && (
-            <Stack
-              direction="row"
-              align="center"
-              justify="between"
-              gap={3}
-              wrap
-              className="rounded-xl border border-dashed border-border bg-muted/30 px-4 py-3"
+            <Card
+              variant="workspace"
+              className="flex-row flex-wrap items-center justify-between gap-x-3 gap-y-1 border-dashed bg-muted/30 py-2 shadow-none"
             >
               <Typography variant="body-sm" className="text-muted-foreground">
                 You're on the Free plan — Premium adds Analytics and a higher listing limit.
               </Typography>
-              <Link to={routes.providerUpgrade} className="text-sm font-medium text-primary hover:underline">
+              <Link
+                to={routes.providerUpgrade}
+                className="inline-flex min-h-11 items-center rounded-md text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
                 See Premium
               </Link>
-            </Stack>
+            </Card>
           )}
 
-          <Grid cols={3} gap={3}>
-            <StatCard label="Total Listings" value={counts.total} />
-            <StatCard label="Pending Review" value={counts.pending} />
-            <StatCard label="Approved" value={counts.approved} />
-            <StatCard label="Rejected" value={counts.rejected} />
-            <StatCard label="Active Leads" value={counts.activeLeads} />
-          </Grid>
+          <WorkspaceSection title="At a glance">
+            <Grid cols={3} gap={3} className="grid-cols-2 sm:grid-cols-3 lg:grid-cols-3">
+              <MetricTile label="Active leads" value={counts.activeLeads} icon={MessageSquareText} to={routes.providerLeads} />
+              <MetricTile label="Total listings" value={counts.total} icon={Layers} to={routes.providerListings} />
+              <MetricTile label="Pending review" value={counts.pending} icon={Clock} to={routes.providerListings} />
+              <MetricTile label="Approved" value={counts.approved} icon={CheckCircle2} to={routes.providerListings} />
+              <MetricTile label="Rejected" value={counts.rejected} icon={XCircle} to={routes.providerListings} />
+              <MetricTile label="Archived" value={counts.archived} icon={Archive} to={routes.providerListings} />
+            </Grid>
+          </WorkspaceSection>
 
-          <Stack gap={3}>
-            <Stack direction="row" align="center" justify="between">
-              <Typography variant="label">Recent Listings</Typography>
-              <Link to={routes.providerListings} className="text-sm text-primary hover:underline">
-                View all
-              </Link>
-            </Stack>
+          <WorkspaceSection title="Recent listings" actionLabel="View all" actionTo={routes.providerListings}>
             {recentListings.length === 0 ? (
-              <Stack align="center" gap={2} className="rounded-lg border border-dashed border-border py-8 text-center">
-                <Store className="size-5 text-muted-foreground" aria-hidden="true" />
-                <Typography variant="body-sm" className="text-muted-foreground">
-                  No listings submitted yet.
-                </Typography>
-              </Stack>
+              <WorkspaceEmpty
+                icon={Store}
+                message="No listings submitted yet."
+                action={{ label: "Create a Listing", to: routes.createListing }}
+              />
             ) : (
               <Stack gap={2}>
                 {recentListings.map((listing) => (
-                  <Stack
+                  <RecentRow
                     key={listing.id}
-                    direction="row"
-                    align="center"
-                    justify="between"
-                    gap={2}
-                    className="rounded-lg border border-border bg-card px-3 py-2"
-                  >
-                    <Typography variant="body-sm" className="truncate">
-                      {listingTitle(listing)}
-                    </Typography>
-                    <Stack direction="row" align="center" gap={2}>
-                      <ListingStatusBadge status={listing.status} />
-                      <Typography variant="caption" className="text-muted-foreground">
-                        {dateFormatter.format(new Date(listing.submittedAt))}
-                      </Typography>
-                    </Stack>
-                  </Stack>
+                    title={listingTitle(listing)}
+                    badge={<ListingStatusBadge status={listing.status} />}
+                    date={dateFormatter.format(new Date(listing.submittedAt))}
+                  />
                 ))}
               </Stack>
             )}
-          </Stack>
+          </WorkspaceSection>
 
-          <Stack gap={3}>
-            <Stack direction="row" align="center" justify="between">
-              <Typography variant="label">Recent Leads</Typography>
-              <Link to={routes.providerLeads} className="text-sm text-primary hover:underline">
-                View all
-              </Link>
-            </Stack>
+          <WorkspaceSection title="Recent leads" actionLabel="View all" actionTo={routes.providerLeads}>
             {recentLeads.length === 0 ? (
-              <Stack align="center" gap={2} className="rounded-lg border border-dashed border-border py-8 text-center">
-                <Inbox className="size-5 text-muted-foreground" aria-hidden="true" />
-                <Typography variant="body-sm" className="text-muted-foreground">
-                  No leads yet.
-                </Typography>
-              </Stack>
+              <WorkspaceEmpty icon={Inbox} message="No leads yet — they appear here once a resident requests one of your approved services." />
             ) : (
               <Stack gap={2}>
                 {recentLeads.map((request) => (
-                  <Stack
+                  <RecentRow
                     key={request.id}
-                    direction="row"
-                    align="center"
-                    justify="between"
-                    gap={2}
-                    className="rounded-lg border border-border bg-card px-3 py-2"
-                  >
-                    <Typography variant="body-sm" className="truncate capitalize">
-                      {request.service} — {request.requestedBy}
-                    </Typography>
-                    <Stack direction="row" align="center" gap={2}>
-                      <RequestStatusBadge status={request.status} />
-                      <Typography variant="caption" className="text-muted-foreground">
-                        {dateFormatter.format(new Date(request.submittedAt))}
-                      </Typography>
-                    </Stack>
-                  </Stack>
+                    capitalize
+                    title={`${request.service} — ${request.requestedBy}`}
+                    badge={<RequestStatusBadge status={request.status} />}
+                    date={dateFormatter.format(new Date(request.submittedAt))}
+                  />
                 ))}
               </Stack>
             )}
-          </Stack>
+          </WorkspaceSection>
         </Stack>
       </motion.div>
     </Container>

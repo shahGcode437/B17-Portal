@@ -1,17 +1,34 @@
 import { useMemo, useState } from "react"
+import { useNavigate } from "react-router-dom"
 import { motion } from "motion/react"
 import { Inbox } from "lucide-react"
 import { Container } from "@/components/foundation/Container"
 import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
 import { EmptyState } from "@/components/feedback/EmptyState"
+import { WorkspaceSection } from "@/components/workspace/WorkspaceSection"
 import { LeadSummaryCard } from "@/features/provider/LeadSummaryCard"
 import { LeadDetailDialog } from "@/features/provider/LeadDetailDialog"
 import { useListingsStore, selectListingsBySubmitter } from "@/state/listingsStore"
 import { useResidentStore } from "@/state/residentStore"
 import { useRequireAuth } from "@/hooks/useRequireAuth"
+import { routes } from "@/config/routes"
 import { fadeUp, staggerContainer, staggerItem } from "@/lib/motion"
 import type { ServiceRequestRecord } from "@/types/resident"
+
+function LeadList({ leads, onSelect }: { leads: ServiceRequestRecord[]; onSelect: (request: ServiceRequestRecord) => void }) {
+  return (
+    <motion.div initial="initial" animate="animate" variants={staggerContainer}>
+      <Stack gap={3}>
+        {leads.map((request) => (
+          <motion.div key={request.id} variants={staggerItem}>
+            <LeadSummaryCard request={request} onSelect={() => onSelect(request)} />
+          </motion.div>
+        ))}
+      </Stack>
+    </motion.div>
+  )
+}
 
 /**
  * Leads (Phase 9D) — the professional-side counterpart of Phase 9C's My
@@ -25,6 +42,7 @@ function ProfessionalLeadsPage() {
   const user = useRequireAuth()
   const { listings } = useListingsStore()
   const requests = useResidentStore((state) => state.requests)
+  const navigate = useNavigate()
   const [selected, setSelected] = useState<ServiceRequestRecord | null>(null)
 
   const myLeads = useMemo(() => {
@@ -36,6 +54,10 @@ function ProfessionalLeadsPage() {
     )
     return requests.filter((request) => myProviderIds.has(request.providerId))
   }, [listings, requests, user])
+
+  // Open vs closed is a split on the existing status only — completed/cancelled are the terminal states.
+  const open = useMemo(() => myLeads.filter((r) => r.status !== "completed" && r.status !== "cancelled"), [myLeads])
+  const closed = useMemo(() => myLeads.filter((r) => r.status === "completed" || r.status === "cancelled"), [myLeads])
 
   if (!user) return null
 
@@ -55,17 +77,22 @@ function ProfessionalLeadsPage() {
               icon={Inbox}
               title="No leads yet"
               description="Once a resident requests a service from one of your approved listings, it will show up here."
+              actionLabel="Manage Listings"
+              onAction={() => navigate(routes.providerListings)}
             />
           ) : (
-            <motion.div initial="initial" animate="animate" variants={staggerContainer}>
-              <Stack gap={3}>
-                {myLeads.map((request) => (
-                  <motion.div key={request.id} variants={staggerItem}>
-                    <LeadSummaryCard request={request} onSelect={() => setSelected(request)} />
-                  </motion.div>
-                ))}
-              </Stack>
-            </motion.div>
+            <Stack gap={8}>
+              {open.length > 0 && (
+                <WorkspaceSection title={`Open (${open.length})`}>
+                  <LeadList leads={open} onSelect={setSelected} />
+                </WorkspaceSection>
+              )}
+              {closed.length > 0 && (
+                <WorkspaceSection title={`Completed & cancelled (${closed.length})`}>
+                  <LeadList leads={closed} onSelect={setSelected} />
+                </WorkspaceSection>
+              )}
+            </Stack>
           )}
         </Stack>
       </motion.div>

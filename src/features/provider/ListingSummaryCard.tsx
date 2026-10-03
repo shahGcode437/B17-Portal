@@ -4,6 +4,7 @@ import type { PendingListing } from "@/types/listing"
 import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
 import { CardImage } from "@/components/media/CardImage"
+import { Card } from "@/components/ui/card"
 import { ListingStatusBadge } from "@/features/provider/ListingStatusBadge"
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", {
@@ -45,15 +46,15 @@ function ListingSummaryCard({ listing, actions }: ListingSummaryCardProps) {
   const title = listingTitle(listing)
 
   return (
-    <Stack gap={3} className="rounded-xl border border-border bg-card p-4 shadow-subtle sm:flex-row">
+    <Card variant="workspace" className="sm:flex-row">
       <CardImage src={listing.data.image} icon={Icon} label={title} tone="accent" className="sm:w-32 sm:shrink-0" />
-      <Stack gap={2} className="flex-1">
+      <Stack gap={2} className="min-w-0 flex-1">
         <Stack direction="row" align="start" justify="between" gap={3}>
-          <Stack gap={1}>
-            <Typography variant="label" className="text-base">
+          <Stack gap={1} className="min-w-0">
+            <Typography variant="label" className="break-words text-base">
               {title}
             </Typography>
-            <Typography variant="body-sm" className="text-muted-foreground">
+            <Typography variant="body-sm" className="break-words text-muted-foreground">
               {label} · {listingSubcategory(listing)}
             </Typography>
           </Stack>
@@ -63,13 +64,13 @@ function ListingSummaryCard({ listing, actions }: ListingSummaryCardProps) {
           Submitted {dateFormatter.format(new Date(listing.submittedAt))}
         </Typography>
         {listing.status === "rejected" && listing.rejectionReason && (
-          <Typography variant="body-sm" className="text-destructive">
-            Reason: {listing.rejectionReason}
+          <Typography variant="body-sm" className="rounded-lg bg-destructive/5 px-3 py-2 text-destructive">
+            <span className="font-medium">Reason:</span> {listing.rejectionReason}
           </Typography>
         )}
         {actions}
       </Stack>
-    </Stack>
+    </Card>
   )
 }
 

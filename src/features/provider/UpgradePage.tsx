@@ -3,6 +3,7 @@ import { Container } from "@/components/foundation/Container"
 import { Grid } from "@/components/foundation/Grid"
 import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
+import { Card } from "@/components/ui/card"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { useToast } from "@/hooks/useToast"
 import { useRequireAuth } from "@/hooks/useRequireAuth"
@@ -32,10 +33,7 @@ function isPlan(value: string): value is Plan {
 function PlanColumn({ plan, current }: { plan: Plan; current: boolean }) {
   const entitlements = PLAN_ENTITLEMENTS[plan]
   return (
-    <Stack
-      gap={3}
-      className={`rounded-xl border p-5 ${current ? "border-primary bg-primary/5" : "border-border bg-card"}`}
-    >
+    <Card variant="workspace" className={`gap-3 p-5 ${current ? "border-primary bg-primary/5" : ""}`}>
       <Stack direction="row" align="center" justify="between">
         <Typography variant="h3" className="capitalize">
           {plan}
@@ -53,18 +51,24 @@ function PlanColumn({ plan, current }: { plan: Plan; current: boolean }) {
         {entitlements.capabilities.map((capability) => (
           <Stack key={capability} direction="row" align="center" gap={2}>
             <CheckCircle2 className="size-4 shrink-0 text-success" aria-hidden="true" />
-            <Typography variant="body-sm">{CAPABILITY_LABELS[capability]}</Typography>
+            <Typography variant="body-sm">
+              <span className="sr-only">Included: </span>
+              {CAPABILITY_LABELS[capability]}
+            </Typography>
           </Stack>
         ))}
         {plan === "free" &&
           (["listings.extended", "analytics.basic", "professional.modules"] as Capability[]).map((capability) => (
             <Stack key={capability} direction="row" align="center" gap={2} className="text-muted-foreground">
               <Circle className="size-4 shrink-0" aria-hidden="true" />
-              <Typography variant="body-sm">{CAPABILITY_LABELS[capability]}</Typography>
+              <Typography variant="body-sm">
+                <span className="sr-only">Not included: </span>
+                {CAPABILITY_LABELS[capability]}
+              </Typography>
             </Stack>
           ))}
       </Stack>
-    </Stack>
+    </Card>
   )
 }
 
@@ -106,7 +110,7 @@ function UpgradePage() {
             <PlanColumn plan="premium" current={plan === "premium"} />
           </Grid>
 
-          <Stack gap={3} className="rounded-xl border border-dashed border-border p-4">
+          <Card variant="workspace" className="border-dashed shadow-none">
             <Stack gap={1}>
               <Typography variant="label">Try it (demo)</Typography>
               <Typography variant="body-sm" className="text-muted-foreground">
@@ -122,10 +126,10 @@ function UpgradePage() {
               aria-label="Switch demo plan"
               className="w-fit"
             >
-              <ToggleGroupItem value="free">Free</ToggleGroupItem>
-              <ToggleGroupItem value="premium">Premium</ToggleGroupItem>
+              <ToggleGroupItem value="free" className="h-11 min-w-20 data-[state=on]:border-primary data-[state=on]:bg-accent data-[state=on]:font-semibold data-[state=on]:text-accent-foreground">Free</ToggleGroupItem>
+              <ToggleGroupItem value="premium" className="h-11 min-w-20 data-[state=on]:border-primary data-[state=on]:bg-accent data-[state=on]:font-semibold data-[state=on]:text-accent-foreground">Premium</ToggleGroupItem>
             </ToggleGroup>
-          </Stack>
+          </Card>
         </Stack>
       </motion.div>
     </Container>
