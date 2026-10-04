@@ -15,7 +15,7 @@ function DesktopNav({ className, ...props }: DesktopNavProps) {
               to={item.path}
               className={({ isActive }) =>
                 cn(
-                  "rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground",
+                  "rounded-md px-2 py-2 text-sm font-medium whitespace-nowrap text-muted-foreground xl:px-3 transition-colors hover:bg-accent hover:text-accent-foreground",
                   isActive && "bg-accent text-accent-foreground"
                 )
               }

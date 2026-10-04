@@ -17,7 +17,7 @@ function QuickCategories() {
         viewport={{ once: true, margin: "-80px" }}
         variants={staggerContainer}
       >
-        <Grid cols={5} gap={4}>
+        <Grid cols={5} gap={4} className="lg:grid-cols-3 xl:grid-cols-6">
           {discoveryCategories.map((category) => (
             <motion.div key={category.label} variants={staggerItem}>
               <CategoryCard

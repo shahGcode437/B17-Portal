@@ -132,7 +132,7 @@ High-level only — implementation details for each phase are worked out when th
 V1 Shared Card Foundation → V2 Consumer Discovery → V2.1 Predictive Search → V3 Detail Pages + Imagery → V4 Resident + Professional Workspace → V5 Admin Refinement → V6 Final Responsive, Accessibility & Interaction Polish.
 
 ## Food & Dining Directory Expansion
-**STATUS: IN PROGRESS** (FD1 complete; FD2 next)
+**STATUS: IN PROGRESS** (FD1 and FD2 complete; FD3 next)
 
 - Source of truth: `docs/product/FOOD_DINING.md` (architecture frozen; phases FD1–FD5, one commit each).
 - Objective: add Food & Dining as a bounded frontend/product vertical expansion, reusing the existing Business Directory, search, listing-onboarding and Admin moderation patterns rather than introducing a new architecture.
@@ -140,19 +140,25 @@ V1 Shared Card Foundation → V2 Consumer Discovery → V2.1 Predictive Search �
 - Dependencies: Visual Phases V1–V6; Phase 9B (search), Phase 9D (Professional Workspace) and the Admin moderation flow.
 
 ### FD1 — Domain / Data / Search Foundation
-**STATUS: COMPLETE** (FD1 commit: pending)
+**STATUS: COMPLETE** (commit `120720f`)
 
 - Delivered: explicit `Business.vertical` (`general | food`) with an optional `FoodProfile`; canonical config-backed Food categories and service options (`src/config/food.ts`), with the primary category driving `Business.category`; 10 demo Food businesses including the migrated Capital Bakers; Food remaining `SearchResultKind` `business`; `vertical` / `foodCategory` / `service` Search filters with validated URL state and filter controls; Food category labels and menu-highlight names searchable; Food predictive suggestions that resolve to actual results; the general Directory scoped to general businesses.
 - Verification: `npx tsc -b --force` and `npm run build` pass; lint at the established 8-warning baseline; fresh Search console clean; Search V2.1 behavior, Saved, Professional and Admin compatibility verified; no dependency added.
 
 ### FD2 — Food Discovery
+**STATUS: COMPLETE** (FD2 commit: pending)
+
+- Delivered: the `/food` landing page (scoped Food search entry, config-driven category discovery and service-option shortcuts, a neutral Food business preview using `BusinessCard`, no fake Featured section); every Food path delegates to the existing Search (`type=business&vertical=food…`); General Directory tiles now scope with `vertical=general` so Food cannot leak into General Directory searches; Home, Directory, desktop-navigation and footer entry points; the five-item mobile bottom nav is unchanged.
+- Verification: `npx tsc -b --force` and `npm run build` pass; lint at the 8-warning baseline; fresh console clean; Search V2.1, Saved and responsive (320–1440) checks passed; no dependency added.
+
+### FD3 — Food Detail Experience
 **STATUS: NEXT**
 
-- Scope: the `/food` landing page; Food category discovery; scoped Search entry; service-option shortcuts; real Featured handling only (existing `featured` flag); a Home entry point; a Directory Food entry point; appropriate desktop navigation and footer entry points; the five-item mobile bottom nav is preserved; no independent Food results engine (it links into the existing Search).
-- Not part of FD2: Food detail sections, Food-specific card presentation (FD3), Food onboarding and Admin Food metadata (FD4).
+- Scope: conditional Food sections inside the existing `BusinessProfilePage`; Food identity/presentation refinement where justified; service options; an explicit delivery-by-business clarification; hours note; menu highlights; optional menu image; an optional Food/Saved presentation refinement only if useful.
+- Out of scope: Food onboarding, Food edit/resubmit support, Admin Food metadata (FD4); ordering, cart, checkout, commission, payments, reviews, ratings; backend work.
 
-### FD3–FD5
-**STATUS: NOT STARTED** — Food Detail Experience, Listing / Professional / Admin Integration (including preserving `FoodProfile` through create/edit/resubmit), and QA / Accessibility / Docs, per `docs/product/FOOD_DINING.md` §18.
+### FD4–FD5
+**STATUS: NOT STARTED** — Listing / Professional / Admin Integration (including preserving `FoodProfile` through create/edit/resubmit), and QA / Accessibility / Docs, per `docs/product/FOOD_DINING.md` §18.
 
 ### Planned sequence after Food & Dining
 1. Phase 9H — route-level code splitting / performance

@@ -1,4 +1,4 @@
-import { Wrench, Building2, GraduationCap, KeyRound, Newspaper } from "lucide-react"
+import { Wrench, Building2, Utensils, GraduationCap, KeyRound, Newspaper } from "lucide-react"
 import type { DiscoveryCategory } from "@/types/category"
 import { routes } from "@/config/routes"
 
@@ -16,6 +16,12 @@ export const discoveryCategories: DiscoveryCategory[] = [
     description: "Local businesses and professionals",
     path: routes.directory,
     icon: Building2,
+  },
+  {
+    label: "Food & Dining",
+    description: "Restaurants, cafes, bakeries and more",
+    path: routes.food,
+    icon: Utensils,
   },
   {
     label: "Education",

@@ -1,5 +1,5 @@
 import { motion } from "motion/react"
-import { Pill, Scissors, Shirt, ShoppingBasket, Car, Cookie, Dumbbell, Building2 } from "lucide-react"
+import { Pill, Scissors, Shirt, ShoppingBasket, Car, Cookie, Dumbbell, Building2, Utensils } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import { Container } from "@/components/foundation/Container"
 import { Grid } from "@/components/foundation/Grid"
@@ -57,10 +57,20 @@ function DirectoryPage() {
         variants={staggerContainer}
       >
         <Grid cols={4} gap={4}>
+          {/* Food & Dining is its own vertical (see /food): one entry here, and its categories are not repeated below. */}
+          <motion.div variants={staggerItem}>
+            <CategoryCard
+              to={routes.food}
+              icon={Utensils}
+              label="Food & Dining"
+              description="Restaurants, cafes, bakeries and more"
+              emphasis
+            />
+          </motion.div>
           {categories.map(({ category, icon }) => (
             <motion.div key={category} variants={staggerItem}>
               <CategoryCard
-                to={`${routes.search}?type=business&q=${encodeURIComponent(category)}`}
+                to={`${routes.search}?type=business&vertical=general&q=${encodeURIComponent(category)}`}
                 icon={icon}
                 label={category}
               />

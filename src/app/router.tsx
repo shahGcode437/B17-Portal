@@ -7,6 +7,7 @@ import { SearchPage } from "@/features/search/SearchPage"
 import { ServicesPage } from "@/features/services/ServicesPage"
 import { ProviderProfilePage } from "@/features/services/ProviderProfilePage"
 import { DirectoryPage } from "@/features/directory/DirectoryPage"
+import { FoodPage } from "@/features/food/FoodPage"
 import { BusinessProfilePage } from "@/features/directory/BusinessProfilePage"
 import { EducationPage } from "@/features/education/EducationPage"
 import { TutorProfilePage } from "@/features/education/TutorProfilePage"
@@ -54,6 +55,7 @@ export const router = createBrowserRouter([
       },
       { path: routes.providerProfile, element: <ProviderProfilePage /> },
       { path: routes.directory, element: <DirectoryPage /> },
+      { path: routes.food, element: <FoodPage /> },
       { path: routes.businessProfile, element: <BusinessProfilePage /> },
       { path: routes.education, element: <EducationPage /> },
       { path: routes.tutorProfile, element: <TutorProfilePage /> },

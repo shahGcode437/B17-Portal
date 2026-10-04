@@ -35,15 +35,16 @@ function Header() {
               </Link>
             </Button>
             <Button asChild variant="ghost" size="sm" className="hidden sm:inline-flex">
-              <Link to={routes.providerDashboard}>
+              <Link to={routes.providerDashboard} aria-label="List Your Business">
                 <Store />
-                List Your Business
+                {/* Icon-only until `xl`: with Food added to the nav, the full label no longer fits beside it at lg. */}
+                <span className="hidden xl:inline">List Your Business</span>
               </Link>
             </Button>
             <Button asChild variant="outline" size="sm" className="hidden sm:inline-flex">
               <Link to={user ? routes.profile : routes.login}>
                 <User />
-                {user ? user.name : "Log in"}
+                <span className="max-w-32 truncate">{user ? user.name : "Log in"}</span>
               </Link>
             </Button>
           </Stack>

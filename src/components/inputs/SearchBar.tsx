@@ -11,6 +11,8 @@ interface SearchBarProps {
   onChange: (value: string) => void
   onSubmit?: (value: string) => void
   placeholder?: string
+  /** Accessible name of the input. Defaults to the site-wide "Search B-17 Portal"; scoped searches (e.g. Food & Dining) pass their own. */
+  label?: string
   size?: "hero" | "compact"
   className?: string
   /** Predictive suggestions for the current text. Passing `onSuggestionSelect` turns the bar into an accessible combobox; without it the bar is a plain search box. */
@@ -28,6 +30,7 @@ function SearchBar({
   onChange,
   onSubmit,
   placeholder,
+  label = "Search B-17 Portal",
   size = "compact",
   className,
   suggestions = NO_SUGGESTIONS,
@@ -141,7 +144,7 @@ function SearchBar({
         onKeyDown={handleKeyDown}
         onBlur={close}
         placeholder={placeholder ?? "What do you need in B-17?"}
-        aria-label="Search B-17 Portal"
+        aria-label={label}
         enterKeyHint="search"
         autoComplete="off"
         {...(isCombobox && {

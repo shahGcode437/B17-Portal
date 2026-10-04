@@ -367,6 +367,18 @@ export function getBusinessCategories(vertical?: BusinessVertical): string[] {
   )
 }
 
+/**
+ * Food & Dining businesses for the /food preview (FD2): records flagged `featured` first
+ * (the existing real flag, nothing is promoted), then seed order. Static seed only, like
+ * `getFeaturedBusinesses`.
+ */
+export function getFoodBusinesses(limit = 4): Business[] {
+  return businesses
+    .filter((b) => b.vertical === "food")
+    .sort((a, b) => Number(Boolean(b.featured)) - Number(Boolean(a.featured)))
+    .slice(0, limit)
+}
+
 /** Unique business areas in seed order — feeds the Search "Area" filter for the Directory (optionally scoped to a vertical). */
 export function getBusinessAreas(vertical?: BusinessVertical): string[] {
   return uniqueInOrder(

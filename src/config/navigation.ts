@@ -3,6 +3,7 @@ import {
   Compass,
   Wrench,
   Building2,
+  Utensils,
   GraduationCap,
   KeyRound,
   Newspaper,
@@ -16,6 +17,7 @@ import { routes } from "@/config/routes"
 export const desktopNav: NavItem[] = [
   { label: "Services", path: routes.services, icon: Wrench },
   { label: "Directory", path: routes.directory, icon: Building2 },
+  { label: "Food", path: routes.food, icon: Utensils },
   { label: "Education", path: routes.education, icon: GraduationCap },
   { label: "Property", path: routes.property, icon: KeyRound },
   { label: "News & Updates", path: routes.news, icon: Newspaper },
@@ -33,6 +35,7 @@ export const mobileNav: NavItem[] = [
 export const footerNav: NavItem[] = [
   { label: "Services", path: routes.services },
   { label: "Business Directory", path: routes.directory },
+  { label: "Food & Dining", path: routes.food },
   { label: "Education", path: routes.education },
   { label: "Property", path: routes.property },
   { label: "News & Daily Updates", path: routes.news },

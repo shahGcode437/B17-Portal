@@ -8,6 +8,7 @@ export const routes = {
   services: "/services",
   servicesConstruction: "/services/home-construction",
   directory: "/directory",
+  food: "/food",
   education: "/education",
   property: "/property",
   news: "/news",
