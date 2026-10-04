@@ -2,8 +2,6 @@ import { useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import { motion } from "motion/react"
 import {
-  Armchair,
-  Bike,
   Coffee,
   Cookie,
   CookingPot,
@@ -12,7 +10,6 @@ import {
   IceCreamCone,
   Pizza,
   Sandwich,
-  ShoppingBag,
   Soup,
   Utensils,
   UtensilsCrossed,
@@ -31,6 +28,7 @@ import { Button } from "@/components/ui/button"
 import { FOOD_CATEGORIES, FOOD_SERVICE_OPTIONS } from "@/config/food"
 import type { FoodCategorySlug, FoodServiceOption } from "@/config/food"
 import { routes, businessProfilePath } from "@/config/routes"
+import { serviceIcons } from "@/features/food/foodIcons"
 import { getFoodBusinesses } from "@/services/search"
 import { fadeUp, staggerContainer, staggerItem } from "@/lib/motion"
 
@@ -47,12 +45,6 @@ const categoryIcons: Record<FoodCategorySlug, LucideIcon> = {
   "sweets-desserts": IceCreamCone,
   "desi-food": Soup,
   "tea-snacks": Utensils,
-}
-
-const serviceIcons: Record<FoodServiceOption, LucideIcon> = {
-  "dine-in": Armchair,
-  takeaway: ShoppingBag,
-  delivery: Bike,
 }
 
 /**

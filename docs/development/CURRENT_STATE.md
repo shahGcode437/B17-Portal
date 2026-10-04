@@ -17,12 +17,14 @@ c26bda2 Visual V5: refine admin experience
 683303b Visual V6: finalize responsive accessibility and interaction polish
 d8ee414 docs: freeze Food and Dining architecture
 120720f FD1: add Food and Dining domain search foundation
-FD2 commit: pending (implementation complete, review passed, not yet committed)
+1af5cea FD2: add Food and Dining discovery experience
+FD3 commit: pending (implementation complete, review passed, not yet committed)
 
 ## Current Phase
 
-Food & Dining FD2 — Discovery: COMPLETE, reviewed (READY FOR COMMIT), commit pending approval. FD1 is committed; the Visual Refresh sequence (V1–V6) is complete and committed.
-Next product step: FD3 — Food Detail Experience (see `docs/product/FOOD_DINING.md`).
+Current Phase: FD4 — Listing / Professional / Admin Integration (next; not started — see `docs/product/FOOD_DINING.md`).
+Food & Dining FD3 — Detail Experience: COMPLETE, reviewed (READY FOR COMMIT), commit pending approval. FD1 and FD2 are committed; the Visual Refresh sequence (V1–V6) is complete and committed.
+Next Step: FD4.
 
 ## Completed Product Work
 
@@ -52,6 +54,7 @@ Next product step: FD3 — Food Detail Experience (see `docs/product/FOOD_DINING
 - Visual Phase V6 — Final Responsive, Accessibility & Interaction Polish (see below)
 - Food & Dining FD1 — Domain / Data / Search Foundation (see below)
 - Food & Dining FD2 — Discovery (see below)
+- Food & Dining FD3 — Detail Experience (see below)
 
 Full history is in `git log`; this file summarizes outcomes, not the blow-by-blow.
 
@@ -327,13 +330,13 @@ Food & Dining FD1 — Domain / Data / Search Foundation = **COMPLETE** (commit `
 
 **Known limitations**
 - (Closed in FD2) The `/food` entry points now exist.
-- No Food-specific detail presentation yet; Food cards remain the generic `BusinessCard`.
+- (Closed in FD3) Food-specific detail presentation now exists on the Business profile; Food cards remain the generic `BusinessCard`.
 - No Food onboarding yet; preserving `FoodProfile` through create/edit/resubmit belongs to FD4 (the current `buildBusiness` creates general businesses and is not Food-safe).
 - The existing limitation remains: general Business category/area filter options derive from the static seed, not from approved user-submitted listings.
 
 ## Food & Dining FD2 Result
 
-Food & Dining FD2 — Discovery = **COMPLETE** (FD2 commit: pending). Source of truth: `docs/product/FOOD_DINING.md`. FD2 adds one route and no new data or domain concepts.
+Food & Dining FD2 — Discovery = **COMPLETE** (commit `1af5cea`). Source of truth: `docs/product/FOOD_DINING.md`. FD2 adds one route and no new data or domain concepts.
 
 - **`/food` landing page is live:** one h1; a scoped Food search entry; config-backed Food category tiles and service-option shortcuts (wording "Delivery by the business", with a note that B-17 Portal does not deliver); a neutral Food business preview using the existing `BusinessCard`. Food businesses still open at `/businesses/:id`; there is no `/food/:id`.
 - **Search reuse:** `/food` has no results engine of its own — every path goes into the existing Search page. Food links carry `type=business&vertical=food` (plus `foodCategory` / `service`); Search V2.1 behavior is preserved.
@@ -343,7 +346,21 @@ Food & Dining FD2 — Discovery = **COMPLETE** (FD2 commit: pending). Source of 
 - **Compatibility:** Search regression clean (general, services, tutors, properties, news, zero-result recovery, Back/Forward, suggestions); Saving a Food business works unchanged; responsive verified at 320 / 375 / 430 / 820 / 1024 / 1440 and accessibility checked (one h1, visible focus, 44px service buttons).
 - **Quality:** no dependency added; `npx tsc -b --force` clean; `npm run build` succeeds (JS ≈ 869 KB); lint at the established 8-warning baseline; fresh console 0 errors / 0 warnings; no automated test suite exists. Reviewed via `review-phase`: READY FOR COMMIT.
 
-**Known limitations:** the `/food` search box has no Food-scoped predictive suggestions yet; the preview uses the existing static demo business source; Food detail sections, Food-specific card presentation, Food onboarding and Admin Food metadata are not implemented (FD3/FD4); no Food item in the mobile bottom nav, by design.
+**Known limitations:** the `/food` search box has no Food-scoped predictive suggestions yet; the preview uses the existing static demo business source; Food-specific card presentation, Food onboarding and Admin Food metadata are not implemented (FD4; the Food detail sections arrived in FD3); no Food item in the mobile bottom nav, by design.
+
+## Food & Dining FD3 Result
+
+Food & Dining FD3 — Detail Experience = **COMPLETE** (FD3 commit: pending). Source of truth: `docs/product/FOOD_DINING.md`. FD3 adds no route, no data model and no dependency.
+
+- **Food sections live inside `BusinessProfilePage`:** composed conditionally for `vertical === "food"` through `FoodDetailSections`. `/businesses/:id` remains the only Food detail route — there is no `FoodDetailPage` and no `/food/:id`, so there is no duplicate route or detail architecture.
+- **Presentation:** a Food & Dining badge; the primary category stays as the subtitle (`Business.category`) with other categories shown as "Also serves"; service options with an explicit "delivery arranged by the business — B-17 Portal does not currently provide delivery" clarification; a display-only hours note (no Open Now logic); informational menu highlights with optional section / description / price (demo values); an optional menu image. Each section is omitted when its data is absent.
+- **Preserved:** the generic `BusinessCard` and the Saved architecture (`kind: "business"`) are unchanged; General Business details are unaffected; Search behavior is unchanged. The service-option icon map moved to a shared `src/features/food/foodIcons.ts`.
+- **No transactions:** no ordering, cart, quantity, checkout, payment, rating, review or delivery-provider behavior was introduced.
+- **Quality:** responsive (320 / 375 / 430 / 820 / 1024 / 1440) and accessibility checks passed (one h1, logical heading order, semantic lists, decorative icons hidden, visible focus); `npx tsc -b --force` clean; `npm run build` succeeds; lint at the established 8-warning baseline; fresh console 0 errors / 0 warnings; JS ≈ 871 KB; no automated test suite exists. Reviewed via `review-phase`: READY FOR COMMIT.
+
+**Known limitations:** no permanent demo `menuImage` exists; hours are free text; the generic `BusinessCard` / Saved presentation remains; Food cannot yet be created or edited through onboarding.
+
+**Known FD4 requirement:** the existing general Business builder (`buildBusiness`) is not Food-safe. FD4 must ensure `FoodProfile` survives **create, edit and resubmit**.
 
 ## Production V1 Direction
 
@@ -361,7 +378,7 @@ Food & Dining FD2 — Discovery = **COMPLETE** (FD2 commit: pending). Source of 
 
 ## Known Technical Debt
 
-- One large, eagerly-loaded JS bundle (~869 KB) — no route-level code splitting yet.
+- One large, eagerly-loaded JS bundle (~871 KB) — no route-level code splitting yet.
 - No PWA (manifest/service worker/icons all absent).
 - No notifications UI yet.
 - Resident state (`residentStore`) has no stable user id to scope by — demo auth is name-only, so per-account scoping is not real; explicit Log Out (not reload) is the only privacy boundary today. Real account scoping belongs to the backend/API phase (Phase 12).
@@ -404,7 +421,7 @@ Food & Dining FD2 — Discovery = **COMPLETE** (FD2 commit: pending). Source of 
 
 ## Next Step
 
-FD3 — Food Detail Experience: conditional Food sections inside the existing `BusinessProfilePage` (service options, an explicit "delivery by the business" clarification, hours note, menu highlights, optional menu image), with Food-specific presentation refinement only where justified (see `docs/product/FOOD_DINING.md` and `docs/development/ROADMAP.md`). Food onboarding, Admin Food metadata, ordering, cart, checkout, commission, payments, reviews and ratings stay out of scope.
+FD4 — Listing / Professional / Admin Integration: a Food & Dining choice in Business onboarding with `FoodListingFields` (1–3 categories, service options, hours note, menu highlights, optional menu image), validation/schema, Food support in `buildBusiness` (deriving `Business.category` from the primary Food category), edit prefill, preserving `FoodProfile` through create / edit / resubmit, Professional listing presentation as needed, and Admin Food metadata / review presentation (see `docs/product/FOOD_DINING.md` and `docs/development/ROADMAP.md`). Ordering, cart, checkout, commission, payments, merchant settlement, riders, platform delivery, reviews/ratings and backend work stay out of scope.
 
 ## Resume Instructions
 

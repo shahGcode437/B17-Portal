@@ -1,10 +1,11 @@
 import { useNavigate, useParams } from "react-router-dom"
-import { MapPin, MessageCircle, Building2 } from "lucide-react"
+import { MapPin, MessageCircle, Building2, Clock, Utensils, UtensilsCrossed } from "lucide-react"
 import { Container } from "@/components/foundation/Container"
 import { Typography } from "@/components/foundation/Typography"
 import { DemoBadge } from "@/components/feedback/DemoBadge"
 import { EmptyState } from "@/components/feedback/EmptyState"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import { SaveButton } from "@/components/inputs/SaveButton"
 import { DetailLayout } from "@/components/detail/DetailLayout"
 import { DetailHero } from "@/components/detail/DetailHero"
@@ -13,6 +14,9 @@ import { DetailSection } from "@/components/detail/DetailSection"
 import { DetailFacts } from "@/components/detail/DetailFacts"
 import { DetailTagList } from "@/components/detail/DetailTagList"
 import { FeaturedBadge } from "@/components/detail/FeaturedBadge"
+import { FoodDetailSections } from "@/features/directory/FoodDetailSections"
+import { FOOD_VERTICAL_LABEL, foodCategoryLabel } from "@/config/food"
+import type { DetailFact } from "@/components/detail/DetailFacts"
 import { getBusinessById } from "@/services/search"
 import { useToast } from "@/hooks/useToast"
 import { SIMULATED_MESSAGES } from "@/lib/simulatedActions"
@@ -46,6 +50,15 @@ function BusinessProfilePage() {
     )
   }
 
+  // Food & Dining (FD3): everything below is conditional on the Business's own vertical — a general
+  // Business renders exactly as before. `business.category` already is the primary Food category label,
+  // so only the *other* categories are listed ("Also serves"); labels come from the canonical config.
+  const food = business.vertical === "food" ? business.food : undefined
+  const alsoServes = food?.categories.slice(1).map(foodCategoryLabel).join(", ")
+  const facts: DetailFact[] = [{ icon: MapPin, label: "Area", value: business.area, wide: true }]
+  if (food?.hoursNote) facts.push({ icon: Clock, label: "Hours", value: food.hoursNote, wide: true })
+  if (alsoServes) facts.push({ icon: UtensilsCrossed, label: "Also serves", value: alsoServes, wide: true })
+
   return (
     <DetailLayout
       onBack={() => navigate(-1)}
@@ -62,10 +75,20 @@ function BusinessProfilePage() {
       }
       summary={
         <DetailSummary
-          badges={<DemoBadge />}
+          badges={
+            <>
+              <DemoBadge />
+              {business.vertical === "food" && (
+                <Badge variant="outline" className="gap-1 font-normal">
+                  <Utensils className="size-3" aria-hidden="true" />
+                  {FOOD_VERTICAL_LABEL}
+                </Badge>
+              )}
+            </>
+          }
           title={business.name}
           subtitle={business.category}
-          facts={<DetailFacts facts={[{ icon: MapPin, label: "Area", value: business.area, wide: true }]} />}
+          facts={<DetailFacts facts={facts} />}
           actions={
             <>
               <Button size="lg" className="w-full" onClick={() => show(SIMULATED_MESSAGES.contact)}>
@@ -85,6 +108,7 @@ function BusinessProfilePage() {
           {business.description}
         </Typography>
       </DetailSection>
+      {food && <FoodDetailSections businessName={business.name} food={food} />}
       {business.tags.length > 0 && (
         <DetailSection title="Details">
           <DetailTagList tags={business.tags} />
