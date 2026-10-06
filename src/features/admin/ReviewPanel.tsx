@@ -18,6 +18,8 @@ import { BusinessCard } from "@/components/cards/BusinessCard"
 import { PropertyCard } from "@/components/cards/PropertyCard"
 import { rowActionClass as actionClass } from "@/features/admin/adminStyles"
 import { ListingStatusBadge } from "@/features/provider/ListingStatusBadge"
+import { FoodListingSummary } from "@/features/provider/FoodListingSummary"
+import { businessTypeLabel } from "@/features/provider/listingDisplay"
 import { useListingsStore } from "@/state/listingsStore"
 import { useToast } from "@/hooks/useToast"
 
@@ -113,7 +115,9 @@ function ReviewPanel({ listing, open, onOpenChange }: ReviewPanelProps) {
             <dt className="text-muted-foreground">Listing</dt>
             <dd className="break-words font-medium">{displayName}</dd>
             <dt className="text-muted-foreground">Type</dt>
-            <dd className="break-words">{kindLabel[listing.kind]}</dd>
+            <dd className="break-words">
+              {listing.kind === "business" ? businessTypeLabel(listing.data, kindLabel.business) : kindLabel[listing.kind]}
+            </dd>
             <dt className="text-muted-foreground">Submitted by</dt>
             <dd className="break-words font-medium">{listing.submittedBy}</dd>
             <dt className="text-muted-foreground">Submitted</dt>
@@ -129,6 +133,8 @@ function ReviewPanel({ listing, open, onOpenChange }: ReviewPanelProps) {
               </>
             )}
           </dl>
+
+          {listing.kind === "business" && <FoodListingSummary business={listing.data} />}
 
           <section aria-label="Resident preview" className="flex flex-col gap-2">
             <Typography as="h3" variant="label" className="text-muted-foreground">

@@ -13,7 +13,14 @@ import { BusinessCard } from "@/components/cards/BusinessCard"
 import { PropertyCard } from "@/components/cards/PropertyCard"
 import { ListingForm } from "@/features/provider/ListingForm"
 import { PropertyListingForm } from "@/features/provider/PropertyListingForm"
-import { buildProvider, buildBusiness, buildProperty } from "@/features/provider/listingBuilders"
+import { FoodListingSummary } from "@/features/provider/FoodListingSummary"
+import {
+  buildProvider,
+  buildBusiness,
+  buildProperty,
+  emptyFoodFormValues,
+  foodProfileToFormValues,
+} from "@/features/provider/listingBuilders"
 import type { ListingFormValues, PropertyFormValues } from "@/features/provider/listingSchema"
 import { useListingsStore, selectListingsBySubmitter } from "@/state/listingsStore"
 import { useToast } from "@/hooks/useToast"
@@ -26,8 +33,13 @@ import type { Property } from "@/types/property"
 
 type Step = "form" | "preview"
 
+/**
+ * Listing data -> form values. A Food & Dining Business is prefilled with its whole FoodProfile
+ * (categories, services, hours, menu highlights, menu image) so editing and resubmitting never
+ * drops it; everything else keeps its previous (general) shape.
+ */
 function toListingValues(data: Provider | Business): ListingFormValues {
-  return {
+  const base = {
     name: data.name,
     category: data.category,
     description: data.description,
@@ -35,6 +47,10 @@ function toListingValues(data: Provider | Business): ListingFormValues {
     tagsInput: data.tags.join(", "),
     image: data.image,
   }
+  if ("vertical" in data && data.vertical === "food") {
+    return { ...base, vertical: "food", food: data.food ? foodProfileToFormValues(data.food) : emptyFoodFormValues() }
+  }
+  return { ...base, vertical: "general" }
 }
 
 function toPropertyValues(data: Property): PropertyFormValues {
@@ -155,7 +171,9 @@ function EditListingPage() {
           {step === "form" && listing.kind !== "property" && (
             <ListingForm
               kind={listing.kind}
-              defaultValues={toListingValues(listing.data as Provider | Business)}
+              // After "Edit" from the preview, keep what was already typed (incl. the Food block) instead of
+              // reverting to the stored listing.
+              defaultValues={(values as ListingFormValues | null) ?? toListingValues(listing.data as Provider | Business)}
               onBack={() => navigate(routes.providerListings)}
               onSubmit={handleFormSubmit}
             />
@@ -170,6 +188,9 @@ function EditListingPage() {
 
               {previewNonProperty && listing.kind === "provider" && <ProviderCard provider={previewNonProperty as Provider} />}
               {previewNonProperty && listing.kind === "business" && <BusinessCard business={previewNonProperty as Business} />}
+              {previewNonProperty && listing.kind === "business" && (
+                <FoodListingSummary business={previewNonProperty as Business} headingLevel={2} />
+              )}
               {previewProperty && <PropertyCard property={previewProperty} />}
 
               <Typography variant="caption" className="text-muted-foreground">

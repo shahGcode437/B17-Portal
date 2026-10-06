@@ -52,7 +52,7 @@ function FoodDetailSections({ businessName, food }: FoodDetailSectionsProps) {
       {menuHighlights.length > 0 && (
         <DetailSection title="Menu highlights">
           <Typography variant="body-sm" className="text-muted-foreground">
-            A few items this business offers. Prices, where shown, are illustrative demo values.
+            A few items this business offers. Prices shown are for reference and may change.
           </Typography>
           <ul className="divide-y divide-border rounded-xl border border-border bg-card">
             {menuHighlights.map((item) => (

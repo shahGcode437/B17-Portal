@@ -6,6 +6,7 @@ import { Typography } from "@/components/foundation/Typography"
 import { CardImage } from "@/components/media/CardImage"
 import { Card } from "@/components/ui/card"
 import { ListingStatusBadge } from "@/features/provider/ListingStatusBadge"
+import { businessCategoryLabel, businessTypeIcon, businessTypeLabel } from "@/features/provider/listingDisplay"
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", {
   month: "short",
@@ -25,7 +26,7 @@ function listingTitle(listing: PendingListing): string {
 
 function listingSubcategory(listing: PendingListing): string {
   if (listing.kind === "provider") return listing.data.categoryLabel
-  if (listing.kind === "business") return listing.data.category
+  if (listing.kind === "business") return businessCategoryLabel(listing.data)
   return `${listing.data.propertyType} · ${listing.data.listingType === "sale" ? "For Sale" : "For Rent"}`
 }
 
@@ -42,7 +43,10 @@ interface ListingSummaryCardProps {
  * (when applicable) for a single submitted listing.
  */
 function ListingSummaryCard({ listing, actions }: ListingSummaryCardProps) {
-  const { label, icon: Icon } = kindMeta[listing.kind]
+  const meta = kindMeta[listing.kind]
+  // A Food & Dining Business keeps its listing kind but is labelled (and iconned) as Food.
+  const label = listing.kind === "business" ? businessTypeLabel(listing.data, meta.label) : meta.label
+  const Icon = listing.kind === "business" ? businessTypeIcon(listing.data) : meta.icon
   const title = listingTitle(listing)
 
   return (

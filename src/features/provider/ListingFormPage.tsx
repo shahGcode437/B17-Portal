@@ -14,6 +14,7 @@ import { BusinessCard } from "@/components/cards/BusinessCard"
 import { PropertyCard } from "@/components/cards/PropertyCard"
 import { ListingForm } from "@/features/provider/ListingForm"
 import { PropertyListingForm } from "@/features/provider/PropertyListingForm"
+import { FoodListingSummary } from "@/features/provider/FoodListingSummary"
 import type { ListingFormValues, PropertyFormValues } from "@/features/provider/listingSchema"
 import { buildProvider, buildBusiness, buildProperty } from "@/features/provider/listingBuilders"
 import { useListingsStore, selectActiveListingsBySubmitter } from "@/state/listingsStore"
@@ -108,6 +109,9 @@ function ListingFormPage() {
   const previewProperty =
     step === "preview" && kind === "property" && values ? buildProperty(values as PropertyFormValues, draftId) : null
 
+  const previewBusiness =
+    step === "preview" && kind === "business" && values ? buildBusiness(values as ListingFormValues, draftId) : null
+
   return (
     <Container className="py-8 sm:py-12">
       <motion.div {...fadeUp} className="mx-auto max-w-xl">
@@ -168,9 +172,11 @@ function ListingFormPage() {
 
               <div aria-hidden={false}>
                 {kind === "provider" && <ProviderCard provider={buildProvider(values as ListingFormValues, draftId)} />}
-                {kind === "business" && <BusinessCard business={buildBusiness(values as ListingFormValues, draftId)} />}
+                {previewBusiness && <BusinessCard business={previewBusiness} />}
                 {kind === "property" && previewProperty && <PropertyCard property={previewProperty} />}
               </div>
+
+              {previewBusiness && <FoodListingSummary business={previewBusiness} headingLevel={2} />}
 
               {previewProperty && (previewProperty.propertyType || previewProperty.furnished) && (
                 <Typography variant="body-sm" className="text-muted-foreground">

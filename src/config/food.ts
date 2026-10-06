@@ -36,6 +36,9 @@ export type FoodServiceOption = (typeof FOOD_SERVICE_OPTIONS)[number]["value"]
 /** A Food business chooses between 1 and this many categories. */
 export const MAX_FOOD_CATEGORIES = 3
 
+/** A Food listing carries at most this many menu highlights (a discovery aid, not a full menu). */
+export const MAX_MENU_HIGHLIGHTS = 8
+
 /** Display name of the vertical (filter chips, future landing page). */
 export const FOOD_VERTICAL_LABEL = "Food & Dining"
 

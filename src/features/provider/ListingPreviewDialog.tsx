@@ -15,6 +15,7 @@ import { ProviderCard } from "@/components/cards/ProviderCard"
 import { BusinessCard } from "@/components/cards/BusinessCard"
 import { PropertyCard } from "@/components/cards/PropertyCard"
 import { ListingStatusBadge } from "@/features/provider/ListingStatusBadge"
+import { FoodListingSummary } from "@/features/provider/FoodListingSummary"
 import { providerProfilePath, businessProfilePath, propertyDetailsPath } from "@/config/routes"
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" })
@@ -59,6 +60,7 @@ function ListingPreviewDialog({ listing, onOpenChange }: ListingPreviewDialogPro
 
         {listing.kind === "provider" && <ProviderCard provider={listing.data} />}
         {listing.kind === "business" && <BusinessCard business={listing.data} />}
+        {listing.kind === "business" && <FoodListingSummary business={listing.data} />}
         {listing.kind === "property" && <PropertyCard property={listing.data} />}
 
         {listing.status === "rejected" && listing.rejectionReason && (

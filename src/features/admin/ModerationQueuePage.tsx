@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { WorkspaceEmpty } from "@/components/workspace/WorkspaceEmpty"
 import { ListingStatusBadge } from "@/features/provider/ListingStatusBadge"
+import { businessCategoryLabel, businessTypeIcon, businessTypeLabel } from "@/features/provider/listingDisplay"
 import { ReviewPanel } from "@/features/admin/ReviewPanel"
 import { AdminRow, AdminThumb } from "@/features/admin/AdminRow"
 import { segmentItemClass, rowActionClass } from "@/features/admin/adminStyles"
@@ -50,8 +51,16 @@ function listingTitle(listing: PendingListing): string {
 
 function listingCategory(listing: PendingListing): string {
   if (listing.kind === "provider") return listing.data.categoryLabel
-  if (listing.kind === "business") return listing.data.category
+  if (listing.kind === "business") return businessCategoryLabel(listing.data)
   return `${listing.data.propertyType} · ${listing.data.listingType === "sale" ? "For Sale" : "For Rent"}`
+}
+
+function listingTypeLabel(listing: PendingListing): string {
+  return listing.kind === "business" ? businessTypeLabel(listing.data, kindLabel.business) : kindLabel[listing.kind]
+}
+
+function listingIcon(listing: PendingListing): typeof Wrench {
+  return listing.kind === "business" ? businessTypeIcon(listing.data) : kindIcon[listing.kind]
 }
 
 function emptyMessage(filter: ListingStatus | "all"): string {
@@ -133,7 +142,7 @@ function ModerationQueuePage() {
                   return (
                     <motion.div key={listing.id} variants={staggerItem}>
                       <AdminRow
-                        leading={<AdminThumb src={listing.data.image} icon={kindIcon[listing.kind]} label={title} />}
+                        leading={<AdminThumb src={listing.data.image} icon={listingIcon(listing)} label={title} />}
                         status={<ListingStatusBadge status={listing.status} />}
                         actions={
                           <Button
@@ -153,7 +162,7 @@ function ModerationQueuePage() {
                           {title}
                         </Typography>
                         <Typography as="span" variant="body-sm" className="break-words text-muted-foreground">
-                          {kindLabel[listing.kind]}
+                          {listingTypeLabel(listing)}
                           {" · "}
                           {listingCategory(listing)}
                         </Typography>

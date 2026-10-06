@@ -11,6 +11,10 @@ interface ListingImageInputProps {
   /** A browser-local object URL (from a prior selection), or undefined if none chosen. */
   value?: string
   onChange: (value: string | undefined) => void
+  /** Field label and preview alt noun; defaults to the cover-image wording. */
+  label?: string
+  /** Show the whole picture (e.g. a menu) instead of cropping it to a cover-style 16:9 frame. */
+  contain?: boolean
 }
 
 /**
@@ -24,7 +28,7 @@ interface ListingImageInputProps {
  * needs to keep working for the rest of the browser session (Dashboard,
  * Moderation, Search, Detail page).
  */
-function ListingImageInput({ id, value, onChange }: ListingImageInputProps) {
+function ListingImageInput({ id, value, onChange, label = "Listing Image", contain = false }: ListingImageInputProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -52,14 +56,18 @@ function ListingImageInput({ id, value, onChange }: ListingImageInputProps) {
   return (
     <Stack gap={2}>
       <Typography variant="label" id={`${id}-label`}>
-        Listing Image
+        {label}
       </Typography>
 
       {value && (
         <img
           src={value}
-          alt="Preview of the selected listing image"
-          className="aspect-video w-full rounded-lg object-cover"
+          alt={`Preview of the selected ${label.toLowerCase()}`}
+          className={
+            contain
+              ? "max-h-64 w-full rounded-lg bg-muted object-contain"
+              : "aspect-video w-full rounded-lg object-cover"
+          }
         />
       )}
 
@@ -69,14 +77,14 @@ function ListingImageInput({ id, value, onChange }: ListingImageInputProps) {
           variant="outline"
           size="sm"
           className="w-fit"
-          aria-describedby={error ? `${id}-error` : undefined}
+          aria-describedby={error ? `${id}-label ${id}-error` : `${id}-label`}
           onClick={() => inputRef.current?.click()}
         >
           <ImagePlus />
           Choose Image
         </Button>
         {value && (
-          <Button type="button" variant="ghost" size="sm" onClick={handleRemove}>
+          <Button type="button" variant="ghost" size="sm" aria-describedby={`${id}-label`} onClick={handleRemove}>
             <X />
             Remove
           </Button>
