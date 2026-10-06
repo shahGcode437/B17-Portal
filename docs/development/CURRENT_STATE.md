@@ -19,13 +19,14 @@ d8ee414 docs: freeze Food and Dining architecture
 120720f FD1: add Food and Dining domain search foundation
 1af5cea FD2: add Food and Dining discovery experience
 dd28411 FD3: enrich Food and Dining business details
-FD4 commit: pending (implementation complete, review passed, not yet committed)
+3d6ba96 FD4: integrate Food listings with professional and admin flows
+FD5 commit: pending (QA complete, not yet committed)
 
 ## Current Phase
 
-Current Phase: FD5 — Food QA / Accessibility / Documentation (next; not started — see `docs/product/FOOD_DINING.md`).
-Food & Dining FD4 — Listing / Professional / Admin Integration: COMPLETE, reviewed (READY FOR COMMIT), commit pending approval. FD1–FD3 are committed; the Visual Refresh sequence (V1–V6) is complete and committed.
-Next Step: FD5.
+Current Phase: the Food & Dining frontend expansion (FD1–FD5) is COMPLETE; the next project phase is Phase 9H — Performance & Route Splitting, per `ROADMAP.md`.
+Food & Dining FD5 — Final QA / Accessibility / Documentation: COMPLETE, commit pending approval. FD1–FD4 are committed; the Visual Refresh sequence (V1–V6) is complete and committed.
+Next Step: Phase 9H (see Next Step below).
 
 ## Completed Product Work
 
@@ -57,6 +58,7 @@ Next Step: FD5.
 - Food & Dining FD2 — Discovery (see below)
 - Food & Dining FD3 — Detail Experience (see below)
 - Food & Dining FD4 — Listing / Professional / Admin Integration (see below)
+- Food & Dining FD5 — Final QA / Accessibility / Documentation (see below)
 
 Full history is in `git log`; this file summarizes outcomes, not the blow-by-blow.
 
@@ -364,7 +366,7 @@ Food & Dining FD3 — Detail Experience = **COMPLETE** (commit `dd28411`). Sourc
 
 ## Food & Dining FD4 Result
 
-Food & Dining FD4 — Listing / Professional / Admin Integration = **COMPLETE** (FD4 commit: pending). Source of truth: `docs/product/FOOD_DINING.md`. FD4 adds no route, no store and no dependency; Food stays a `kind: "business"` listing with `vertical: "food"`.
+Food & Dining FD4 — Listing / Professional / Admin Integration = **COMPLETE** (commit `3d6ba96`). Source of truth: `docs/product/FOOD_DINING.md`. FD4 adds no route, no store and no dependency; Food stays a `kind: "business"` listing with `vertical: "food"`.
 
 - **Merchant flow:** Business onboarding offers General Business or Food & Dining; Food reveals `FoodListingFields` (1–3 canonical categories, first = primary; at least one service option — a frozen requirement; optional hours note; up to 8 menu highlights; optional menu image). Create, preview, edit (full prefill) and resubmit all work for Food.
 - **`FoodProfile` lifecycle:** verified to survive create → pending → reject → edit → resubmit → approve → archive. The previously Food-unsafe `buildBusiness` now builds General or Food correctly, and `Business.category` is derived from the primary Food category (no second editable source).
@@ -374,9 +376,18 @@ Food & Dining FD4 — Listing / Professional / Admin Integration = **COMPLETE** 
 - **Compatibility:** General Business create / edit / moderation / public detail verified unchanged (no Food fields, no `food` key). No ordering, payment or premium features were added.
 - **Quality:** `npx tsc -b --force` clean; `npm run build` succeeds (JS ≈ 888 KB); lint at the established 8-warning baseline; fresh console 0 errors / 0 warnings; responsive (320 / 375 / 430 / 820 / 1024 / 1440) and keyboard-focus checks passed; no dependency added; no automated test suite exists. Reviewed via `review-phase`: READY FOR COMMIT.
 
-**Known limitations:** cover and menu images are browser-local (frontend prototype); Food → General discards Food data when saved (a warning is a FD5 decision); Food cards / Saved stay generic; no backend persistence or storage.
+**Known limitations:** cover and menu images are browser-local (frontend prototype); Food → General discards Food data when saved (an inline warning was added in FD5); Food cards / Saved stay generic; no backend persistence or storage.
 
-**Known FD5 items:** full Food Search regression; responsive / accessibility final sweep; long / empty / missing-data cases; the Food → General warning decision; final docs and review.
+## Food & Dining FD5 Result
+
+Food & Dining FD5 — Final QA / Accessibility / Documentation = **COMPLETE** (FD5 commit: pending). The **Food & Dining frontend expansion (FD1–FD5) is COMPLETE**; `docs/product/FOOD_DINING.md` is the final frontend source of truth (current implementation, known limitations and reserved future work are separated there). FD5 added no route, store, data model or dependency and did not redesign FD1–FD4.
+
+- **QA coverage (all passed):** `/food` (11 categories, 3 services, preview, View all, `vertical=food` links); Search V2.1 (Food / General scoping, `foodCategory` + `service` combinations, menu-item and secondary-category matching, suggestions with keyboard / Enter / Escape, Back / Forward, filter reset, refresh preserving URL state); Food detail for every seed Food business and the general ones (no blank sections, neutral price caption, no Food sections on General); the merchant lifecycle create → pending → reject → edit → resubmit → approve → archive with `FoodProfile` preserved and `Business.category` re-derived; Professional quota; Admin queue and review (reject-reason validation, focus return); Saved (`kind: "business"`, save / unsave); the General Business lifecycle (`vertical: "general"`, no `food` key); minimal / maximal / long / name-only-menu Food profiles; form validation limits.
+- **Fix:** an inline accessible warning ("Switching to General Business will remove Food-specific details when saved.") now appears when Food details exist and General is selected. No other bug was found.
+- **Responsive / accessibility:** clean at 320 / 375 / 430 / 820 / 1024 / 1440 across the Food surfaces (including the create form with errors and 8 menu rows, Professional listings and View, Admin queue and review); one h1 and logical headings; native radios / checkboxes with real state; named Add / Remove controls; linked errors; visible focus; dialog focus return verified.
+- **Quality:** `npx tsc -b --force` clean; `npm run build` succeeds (JS 887.94 kB / gzip 264.76 kB, CSS 73.60 kB — vs FD4: +0.34 kB JS); lint at the established 8-warning baseline, no new category; fresh console 0 errors / 0 warnings; no dependency added; no automated test suite exists.
+
+**Known limitations:** see `docs/product/FOOD_DINING.md` — no backend persistence; browser-local images; free-text hours; generic Business card / Saved presentation; no restore after Food → General; archived saved items are hidden under the existing Saved rules; the large-chunk build warning remains.
 
 ## Production V1 Direction
 
@@ -437,7 +448,7 @@ Food & Dining FD4 — Listing / Professional / Admin Integration = **COMPLETE** 
 
 ## Next Step
 
-FD5 — Food QA / Accessibility / Documentation: Food discovery and Search V2.1 regression; the create / edit / reject / resubmit / approve lifecycle; Professional quota and archive checks; Admin moderation; Saved; long / missing / empty Food data; the responsive sweep (320 / 375 / 430 / 820 / 1024 / 1440); accessibility; the Food → General warning decision; final Food docs and review (see `docs/product/FOOD_DINING.md` and `docs/development/ROADMAP.md`). Ordering, cart, checkout, commission, payments, backend, PWA, personalization / history and sharing / deep links stay out of scope.
+Phase 9H — Performance & Route Splitting (the first item of the "Planned sequence after Food & Dining" in `ROADMAP.md`), then Phase 9G (PWA / installability), Phase 9J (SEO, accessibility tooling and final frontend QA), the frontend freeze, and Phases 10–13 (backend). Phases 9F (Admin Production UX) and 9I (Notifications + Trust/Reviews UI) remain valid Production V1 items whose sequencing is to be confirmed by a product decision. Food & Dining work is closed on the frontend; ordering, cart, checkout, commission, payments, delivery logistics, reviews / ratings, premium merchant tools, sharing / deep links, PWA / native packaging and backend persistence stay out of scope until their roadmap phases.
 
 ## Resume Instructions
 

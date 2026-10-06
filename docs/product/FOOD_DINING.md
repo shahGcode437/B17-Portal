@@ -2,7 +2,7 @@
 
 Scope: the **Food & Dining** frontend/product vertical only. It is a bounded, discovery-first, free-first expansion of the existing Business Directory. Other documents remain authoritative for their own areas: `docs/design/DESIGN_SYSTEM.md` (visual rules), `docs/development/ROADMAP.md` (phase order), `docs/development/CURRENT_STATE.md` (implementation status), `docs/development/DECISIONS.md` (decision log). This file does not repeat them.
 
-Status: **architecture frozen; FD1, FD2, FD3 and FD4 implementation COMPLETE** (FD5 is next; FD5 is not implemented).
+Status: **architecture frozen; the Food & Dining frontend expansion (FD1–FD5) is COMPLETE.** This file is the final frontend source of truth. Sections describe the CURRENT implementation unless explicitly marked reserved / future (§15–§16 and "Future / reserved" below).
 
 ---
 
@@ -221,8 +221,8 @@ One phase = one independently reviewable commit.
 | FD1 — Domain / Data / Search Foundation | **COMPLETE** (commit `120720f`) |
 | FD2 — Food Discovery | **COMPLETE** (commit `1af5cea`) |
 | FD3 — Food Detail Experience | **COMPLETE** (commit `dd28411`) |
-| FD4 — Listing / Professional / Admin Integration | **COMPLETE** (FD4 commit: pending) |
-| FD5 — QA / Accessibility / Docs | Next — not implemented |
+| FD4 — Listing / Professional / Admin Integration | **COMPLETE** (commit `3d6ba96`) |
+| FD5 — QA / Accessibility / Docs | **COMPLETE** (FD5 commit: pending) |
 
 **FD1 now provides:** explicit `Business.vertical` (`general | food`) on every Business record; the optional `FoodProfile` and `MenuHighlight` types; canonical, config-backed Food categories and service options in `src/config/food.ts`; `Business.category` derived from the primary (first) Food category label; 10 demo Food businesses including the migrated Capital Bakers (`business-06`, now Food / Bakeries); Food remaining `SearchResultKind` `business`; the Search filters `vertical`, `foodCategory` and `service`; Food category labels and menu-highlight names as searchable text; predictive suggestions that resolve to actual Business results; URL state that validates the canonical Food filter values (unknown values are ignored); a general Directory currently scoped to general businesses; and Saved, Professional and Admin reused unchanged.
 
@@ -242,7 +242,7 @@ One phase = one independently reviewable commit.
 - *Service options:* the canonical service options are shown. Delivery is explicitly described as arranged by the business, and B-17 Portal is explicitly not presented as the delivery provider.
 - *Hours:* `hoursNote` is display-only free text — no Open Now logic and no structured weekly-hours model.
 - *Menu:* informational menu highlights are supported; the optional section / description / price fields render conditionally, and prices are display strings (the detail page caption is neutral: "Prices shown are for reference and may change."). There is no cart, order, quantity or checkout behavior. An optional `menuImage` is supported through the existing image system. Every Food section is omitted when its data is absent.
-- *Compatibility:* `BusinessCard` remains generic; Saved storage remains `kind: "business"`; General Business details are unchanged; Search behavior is unchanged; Food onboarding, edit and Admin work remain FD4.
+- *Compatibility:* `BusinessCard` remains generic; Saved storage remains `kind: "business"`; General Business details are unchanged; Search behavior is unchanged (Food onboarding, edit and Admin work arrived in FD4).
 - *Quality:* responsive verified at 320 / 375 / 430 / 820 / 1024 / 1440; one meaningful h1 and a logical heading order; semantic lists and decorative-icon handling verified; visible focus verified; TypeScript clean; build succeeds; lint at the established 8-warning baseline; fresh console clean; JS ≈ 871 KB; no dependency added.
 
 **FD4 now provides:**
@@ -258,12 +258,39 @@ One phase = one independently reviewable commit.
 - *Price copy:* the menu-price caption is neutral for both seed and merchant-submitted data: "Prices shown are for reference and may change."
 - *Quality:* General Business regression clean; responsive verified at 320 / 375 / 430 / 820 / 1024 / 1440; keyboard focus verified; TypeScript clean; build succeeds (JS ≈ 888 KB); lint at the established 8-warning baseline; fresh console clean; no dependency added.
 
-**Not yet implemented (FD5):** the QA / accessibility / docs closing phase; a Food-specific card or Saved presentation (Food still renders through the generic `BusinessCard`); a warning when a Food listing is switched to General.
+**FD5 now provides (final QA — no product scope added):**
 
-**FD4 known limitations:** cover and menu images remain browser-local under the current frontend prototype; Food → General intentionally discards Food-specific data when saved (consider a warning during FD5); Food cards / Saved remain generic Business presentation; backend persistence and storage are not implemented; no automated test suite exists.
+- *Regression coverage:* the whole vertical was exercised end to end — `/food` discovery; Search V2.1 scoping, filters, suggestions (keyboard, Enter, Escape), Back / Forward, filter reset and refresh; Food detail for all 10 seed Food businesses and the general ones; the merchant create → pending → reject → edit → resubmit → approve → archive lifecycle; quota; Admin queue / review; Saved (save, unsave, archived resolution); and the General Business lifecycle.
+- *Edge cases:* form validation limits (0 / 4 categories, 0 services, empty / long menu fields, the 9th menu row); minimal, maximal (3 categories, 3 services, 8 menu rows, both images), very long and name-only-menu Food profiles; missing hours / menu / menu image / secondary categories.
+- *One fix — Food → General warning:* an inline `role="status"` note ("Switching to General Business will remove Food-specific details when saved.") appears in the Business type group whenever Food details exist but General is selected. It is local to `ListingForm`, does not block switching, and adds no modal, history or restore feature.
+- *Quality:* TypeScript clean; build succeeds (JS 887.94 kB, gzip 264.76 kB; CSS 73.60 kB — essentially FD4); lint at the established 8-warning baseline with no new warning category; fresh console 0 errors / 0 warnings; responsive verified at 320 / 375 / 430 / 820 / 1024 / 1440 on `/food`, Search, Food detail (seed, minimal, long), the create form (errors, 8 menu rows, warning), Professional listings and View, and the Admin queue and review dialog; keyboard focus and dialog focus return verified; no dependency added; no automated test suite exists.
 
-**FD3 known limitations:** no permanent demo `menuImage` currently exists (the rendering was verified with a temporary test value only); hours remain free text; the generic `BusinessCard` / Saved presentation remains; Food cannot yet be created or edited through onboarding; the existing large-chunk build warning remains for future code-splitting work.
+### Final architecture (CURRENT implementation)
 
-**FD2 known limitations:** the `/food` search box has no Food-scoped predictive suggestions yet (the Search page itself keeps full suggestions); the preview uses the existing static demo business source; there is no Food item in the mobile bottom nav, by design.
+- **Model:** Food is a vertical of Business — listings stay `kind: "business"`, `vertical: "food"`, with an optional nested `FoodProfile`. There is no Food listing kind, store, dashboard, Admin, Saved kind or `SearchResultKind`.
+- **Routes:** `/food` (discovery landing) and `/businesses/:id` (the only detail route). No `/food/:id`.
+- **Taxonomy:** 11 canonical categories and 3 service options in `src/config/food.ts` — config, never free text. `Business.category` is derived from the primary (first) Food category.
+- **Search:** `type=business&vertical=food&foodCategory=<slug>&service=<option>` through the existing engine; Food and General are scoped apart (`vertical=general` / `vertical=food`); the URL is the committed state; ranking is unchanged.
+- **Detail:** conditional Food sections in `BusinessProfilePage` (identity badge, "Also serves", service options with the delivery-by-the-business clarification, hours note, menu highlights with the neutral price caption, optional menu image); every section is omitted when its data is absent.
+- **Listing flow (final lifecycle):** Business onboarding → Business type (General Business / Food & Dining) → form → preview → pending → admin approve or reject → (reject) edit with full prefill → resubmit → pending → approve → public → archive. `FoodProfile` survives every step; quota (pending + approved count) and moderation rules are the existing Business rules.
+- **Validation (final):** 1–3 unique canonical categories (first = primary); at least one canonical service option (frozen); hours ≤ 80 characters; up to 8 menu highlights, each with a required name (≤ 60) and optional section (≤ 40), description (≤ 120) and price (≤ 24, a display string); optional menu image. Errors are linked to their controls with `role="alert"`; focus moves to the first invalid Food control.
+- **Professional / Admin / Saved:** the Professional Workspace labels Food as "Food & Dining · <categories>"; the Admin queue and review panel show Food identity and metadata; Saved remains `{ kind: "business", id, savedAt }`.
 
-New files are expected only where justified: `src/config/food.ts` (taxonomy), `src/features/food/` (the landing page), and the Food form/detail sections. No `FoodCard`, no `FoodDetailPage`, no Food store.
+### Known limitations (current)
+
+- No backend persistence; all listing data is in-memory prototype state.
+- Cover and menu images are browser-local object URLs (no storage / upload).
+- Hours are free text (no structured hours, no "open now").
+- Food cards and Saved use the generic Business presentation.
+- Archived or unpublished saved businesses are silently hidden on the Saved page under the existing Saved resolution rules (not Food-specific).
+- The `/food` search box has no Food-scoped predictive suggestions of its own (the Search page does).
+- No Food item in the mobile bottom nav, by design.
+- Food → General discards Food data on save; the inline warning above is the only protection (no restore / history).
+- The large single JS chunk build warning remains (route-level code splitting is a later roadmap phase).
+- No automated test suite exists.
+
+### Future / reserved — NOT implemented
+
+Backend persistence and real media storage; premium merchant tools (Premium storefront, analytics, promotions, featured placement); ordering, cart, checkout; commission, settlement, payments, refunds; delivery logistics (riders, platform-managed delivery, tracking); reviews and ratings; sharing / deep links; PWA / native store packaging; personalization / history. These belong to later roadmap phases and must not be described as present behavior.
+
+Food files (final): `src/config/food.ts` (taxonomy, limits, label helpers); `src/features/food/` (`FoodPage`, `foodIcons`); `src/features/directory/FoodDetailSections.tsx`; `src/features/provider/` (`FoodListingFields`, `FoodListingSummary`, `listingDisplay`, plus the extended `listingSchema` / `listingBuilders` / `ListingForm`). No `FoodCard`, no `FoodDetailPage`, no Food store.

@@ -132,7 +132,7 @@ High-level only — implementation details for each phase are worked out when th
 V1 Shared Card Foundation → V2 Consumer Discovery → V2.1 Predictive Search → V3 Detail Pages + Imagery → V4 Resident + Professional Workspace → V5 Admin Refinement → V6 Final Responsive, Accessibility & Interaction Polish.
 
 ## Food & Dining Directory Expansion
-**STATUS: IN PROGRESS** (FD1–FD4 complete; FD5 next)
+**STATUS: COMPLETE** (FD1–FD5 complete; FD5 commit: pending)
 
 - Source of truth: `docs/product/FOOD_DINING.md` (architecture frozen; phases FD1–FD5, one commit each).
 - Objective: add Food & Dining as a bounded frontend/product vertical expansion, reusing the existing Business Directory, search, listing-onboarding and Admin moderation patterns rather than introducing a new architecture.
@@ -158,17 +158,18 @@ V1 Shared Card Foundation → V2 Consumer Discovery → V2.1 Predictive Search �
 - Verification: `npx tsc -b --force` and `npm run build` pass (JS ≈ 871 KB); lint at the 8-warning baseline; fresh console clean; responsive (320–1440) and accessibility checks passed; no dependency added.
 
 ### FD4 — Listing / Professional / Admin Integration
-**STATUS: COMPLETE** (FD4 commit: pending)
+**STATUS: COMPLETE** (commit `3d6ba96`)
 
 - Delivered: a Business type choice (General Business / Food & Dining) in onboarding, with Food fields only for Food (`FoodListingFields`: 1–3 canonical categories with the first as primary, at least one service option — a frozen requirement, optional hours note, up to 8 menu highlights, optional menu image); Food-safe `buildBusiness` and validation; `Business.category` derived from the primary Food category; edit prefill and `FoodProfile` preserved through create / pending / reject / edit / resubmit / approve / archive; the existing Professional Workspace labels Food as "Food & Dining"; the existing Admin queue and review panel show Food identity and metadata; approved Food appears in Search, the FD3 detail sections and Saved (`kind: "business"`); the menu-price caption is neutral for demo and merchant data. No fourth listing kind, no new store, no quota or moderation change.
 - Verification: `npx tsc -b --force` and `npm run build` pass (JS ≈ 888 KB); lint at the 8-warning baseline; fresh console clean; General Business regression clean; responsive (320–1440) and keyboard-focus checks passed; no dependency added.
-- Known limitations: images are browser-local; Food → General discards Food data without a warning (FD5 decision); Food cards / Saved remain generic; no backend persistence.
+- Known limitations: images are browser-local; Food → General discards Food data (an inline warning was added in FD5); Food cards / Saved remain generic; no backend persistence.
 
 ### FD5 — QA / Accessibility / Docs
-**STATUS: NEXT**
+**STATUS: COMPLETE** (FD5 commit: pending)
 
-- Scope: Food discovery regression; Search V2.1 regression; create / edit / reject / resubmit / approve lifecycle regression; Professional quota / archive checks; Admin moderation regression; Saved; long / missing / empty Food data; responsive 320 / 375 / 430 / 820 / 1024 / 1440; accessibility; the Food → General warning decision; final Food docs and review.
-- Out of scope: ordering, cart, checkout, commission, payments, backend, PWA, personalization / history, sharing / deep links.
+- Delivered: final end-to-end QA of the vertical — Food discovery, Search V2.1, Food detail, the create / edit / reject / resubmit / approve / archive lifecycle, Professional quota, Admin moderation, Saved, General Business regression, long / missing / empty Food data, responsive 320–1440 and accessibility; one fix (an inline warning when a Food listing is switched to General); the three Food docs synchronized (`docs/product/FOOD_DINING.md` is the final frontend source of truth).
+- Verification: `npx tsc -b --force` and `npm run build` pass (JS ≈ 888 KB); lint at the 8-warning baseline; fresh console clean; no dependency added; no automated test suite.
+- Result: the Food & Dining frontend expansion is complete. Reserved future work (backend persistence, real media storage, premium merchant tools, ordering / commission / payments, delivery, sharing / deep links, PWA / native packaging, personalization / history) is NOT part of the Food phases and belongs to the later roadmap items below.
 
 ### Planned sequence after Food & Dining
 1. Phase 9H — route-level code splitting / performance

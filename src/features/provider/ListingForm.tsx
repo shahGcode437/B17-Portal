@@ -71,6 +71,15 @@ function ListingForm({ kind, defaultValues, onSubmit, onBack }: ListingFormProps
   const isFood = isBusiness && vertical === "food"
   const [food, setFood] = useState<FoodFormValues>(() => defaultValues?.food ?? emptyFoodFormValues())
   const [foodErrors, setFoodErrors] = useState<FoodFieldErrors>({})
+  // A Business saved as General carries no Food data, so warn when Food details exist but General is selected.
+  const losesFoodData =
+    isBusiness &&
+    !isFood &&
+    (food.categories.length > 0 ||
+      food.serviceOptions.length > 0 ||
+      food.hoursNote.trim() !== "" ||
+      food.menuHighlights.length > 0 ||
+      food.menuImage !== undefined)
 
   function handleFoodChange(next: FoodFormValues) {
     setFood(next)
@@ -127,6 +136,15 @@ function ListingForm({ kind, defaultValues, onSubmit, onBack }: ListingFormProps
                 </label>
               ))}
             </div>
+            {losesFoodData && (
+              <Typography
+                variant="body-sm"
+                role="status"
+                className="rounded-lg bg-destructive/5 px-3 py-2 text-destructive"
+              >
+                Switching to General Business will remove Food-specific details when saved.
+              </Typography>
+            )}
           </fieldset>
         )}
 
