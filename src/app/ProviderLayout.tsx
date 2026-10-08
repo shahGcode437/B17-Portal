@@ -1,5 +1,6 @@
 import { MapPin } from "lucide-react"
-import { Link, Outlet } from "react-router-dom"
+import { Link } from "react-router-dom"
+import { RouteOutlet } from "@/app/RouteOutlet"
 import { Container } from "@/components/foundation/Container"
 import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
@@ -34,7 +35,7 @@ function ProviderLayout() {
         <ProfessionalNav />
       </Container>
       <main className="flex-1">
-        <Outlet />
+        <RouteOutlet />
       </main>
     </div>
   )

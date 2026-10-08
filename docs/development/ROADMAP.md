@@ -132,7 +132,7 @@ High-level only — implementation details for each phase are worked out when th
 V1 Shared Card Foundation → V2 Consumer Discovery → V2.1 Predictive Search → V3 Detail Pages + Imagery → V4 Resident + Professional Workspace → V5 Admin Refinement → V6 Final Responsive, Accessibility & Interaction Polish.
 
 ## Food & Dining Directory Expansion
-**STATUS: COMPLETE** (FD1–FD5 complete; FD5 commit: pending)
+**STATUS: COMPLETE** (FD1–FD5 complete; FD5 commit `431b954`)
 
 - Source of truth: `docs/product/FOOD_DINING.md` (architecture frozen; phases FD1–FD5, one commit each).
 - Objective: add Food & Dining as a bounded frontend/product vertical expansion, reusing the existing Business Directory, search, listing-onboarding and Admin moderation patterns rather than introducing a new architecture.
@@ -165,15 +165,15 @@ V1 Shared Card Foundation → V2 Consumer Discovery → V2.1 Predictive Search �
 - Known limitations: images are browser-local; Food → General discards Food data (an inline warning was added in FD5); Food cards / Saved remain generic; no backend persistence.
 
 ### FD5 — QA / Accessibility / Docs
-**STATUS: COMPLETE** (FD5 commit: pending)
+**STATUS: COMPLETE** (commit `431b954`)
 
 - Delivered: final end-to-end QA of the vertical — Food discovery, Search V2.1, Food detail, the create / edit / reject / resubmit / approve / archive lifecycle, Professional quota, Admin moderation, Saved, General Business regression, long / missing / empty Food data, responsive 320–1440 and accessibility; one fix (an inline warning when a Food listing is switched to General); the three Food docs synchronized (`docs/product/FOOD_DINING.md` is the final frontend source of truth).
 - Verification: `npx tsc -b --force` and `npm run build` pass (JS ≈ 888 KB); lint at the 8-warning baseline; fresh console clean; no dependency added; no automated test suite.
 - Result: the Food & Dining frontend expansion is complete. Reserved future work (backend persistence, real media storage, premium merchant tools, ordering / commission / payments, delivery, sharing / deep links, PWA / native packaging, personalization / history) is NOT part of the Food phases and belongs to the later roadmap items below.
 
 ### Planned sequence after Food & Dining
-1. Phase 9H — route-level code splitting / performance
-2. Phase 9G — PWA / installability
+1. ~~Phase 9H — route-level code splitting / performance~~ — **COMPLETE** (Phase 9H commit: pending)
+2. Phase 9G — PWA / installability — **NEXT**
 3. Phase 9J — SEO, accessibility tooling and final frontend QA
 4. Frontend freeze
 5. Phases 10–13 — backend architecture and implementation
@@ -197,12 +197,13 @@ Phases 9F (Admin Production UX) and 9I (Notifications + Trust/Reviews UI) remain
 - Completion/verification: app installable in Chrome/Edge, Lighthouse PWA checks pass, no change to existing routes/behavior.
 
 ## Phase 9H — Performance & Route Splitting
+**STATUS: COMPLETE** (Phase 9H commit: pending)
 
 - Objective: reduce initial bundle size.
-- Major scope: convert `router.tsx`'s eager imports to `React.lazy` + `Suspense`, prioritizing Admin/Provider and heavy detail pages.
-- Out of scope: broader architecture changes.
-- Dependencies: none.
-- Completion/verification: measurably smaller initial chunk, no navigation regressions.
+- Delivered: `router.tsx` converted to `React.lazy` page imports (Home, the three layout shells and the tiny ComingSoon / NotFound stubs stay eager); a keyed `Suspense` boundary (`RouteOutlet`) and a shared accessible `RouteFallback` inside each layout; no URL, guard, redirect, auth, Search or listing-lifecycle change; no dependency; no `manualChunks`.
+- Result: initial Home JS ≈ 888 kB / 265 kB gzip → ≈ 609 kB / ≈ 195 kB gzip (−31% / −26%); the >500 kB chunk warning is gone (largest chunk 342 kB); Professional and Admin code no longer load on Home.
+- Verification: `npx tsc -b --force` and `npm run build` pass; lint at the 8-warning baseline; direct-URL / refresh, Search V2.1, listing, Admin and responsive regressions clean; console clean.
+- Remaining: `motion` (≈255 kB) is still on the initial path; many tiny shared chunks; no prefetching or bundle budget (all deliberately out of this phase).
 
 ## Phase 9I — Notifications + Trust/Reviews UI
 

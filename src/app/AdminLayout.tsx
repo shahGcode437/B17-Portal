@@ -1,5 +1,6 @@
 import { MapPin, LayoutDashboard, ClipboardList, Newspaper, LogOut } from "lucide-react"
-import { Link, NavLink, Outlet } from "react-router-dom"
+import { Link, NavLink } from "react-router-dom"
+import { RouteOutlet } from "@/app/RouteOutlet"
 import { Container } from "@/components/foundation/Container"
 import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
@@ -77,7 +78,7 @@ function AdminLayout() {
         </Container>
       </header>
       <main className="flex-1">
-        <Outlet />
+        <RouteOutlet />
       </main>
     </div>
   )

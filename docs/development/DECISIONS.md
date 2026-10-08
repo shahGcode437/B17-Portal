@@ -109,3 +109,9 @@ Concise decisions only. Where the originating date isn't known, none is given ra
 **Decision:** Food & Dining is implemented as a Business vertical (`Business.vertical` plus an optional nested `food` profile), not as a new domain, listing kind, Saved kind or Search result kind.
 **Reason:** reuses the existing listing lifecycle, moderation, Professional Workspace, Saved items and search with no duplicate store or detail implementation; details in `docs/product/FOOD_DINING.md`.
 **Revisit when:** a Food-specific capability (e.g. ordering) genuinely cannot be expressed on the Business model.
+
+---
+
+**Decision:** Route-level code splitting uses `React.lazy` for every page except `HomePage` and the tiny stubs, with the layout shells kept eager and a `Suspense` boundary (`RouteOutlet`) keyed by the matched route id inside each layout; no `manualChunks` / `codeSplitting` config and no prefetching.
+**Reason:** a keyed boundary is required because React Router updates run in transitions (an unkeyed boundary would leave the old page frozen instead of showing the loading fallback), while keying by route id (not URL) preserves same-route behavior; Home and the shells stay eager to avoid a request waterfall on the landing screen; Rolldown's default splitting already removed the >500 kB chunk, so manual vendor chunks were not justified.
+**Revisit when:** the initial path needs further trimming (e.g. `LazyMotion` for the 255 kB `motion` chunk), request counts from the many small shared chunks matter, or route prefetching / a bundle-size budget is adopted.

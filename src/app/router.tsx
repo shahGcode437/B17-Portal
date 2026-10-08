@@ -1,41 +1,56 @@
+import { lazy, type ComponentType } from "react"
 import { createBrowserRouter } from "react-router-dom"
 import { ConsumerLayout } from "@/app/ConsumerLayout"
 import { ProviderLayout } from "@/app/ProviderLayout"
 import { AdminLayout } from "@/app/AdminLayout"
 import { HomePage } from "@/features/home/HomePage"
-import { SearchPage } from "@/features/search/SearchPage"
-import { ServicesPage } from "@/features/services/ServicesPage"
-import { ProviderProfilePage } from "@/features/services/ProviderProfilePage"
-import { DirectoryPage } from "@/features/directory/DirectoryPage"
-import { FoodPage } from "@/features/food/FoodPage"
-import { BusinessProfilePage } from "@/features/directory/BusinessProfilePage"
-import { EducationPage } from "@/features/education/EducationPage"
-import { TutorProfilePage } from "@/features/education/TutorProfilePage"
-import { PropertyPage } from "@/features/property/PropertyPage"
-import { PropertyDetailsPage } from "@/features/property/PropertyDetailsPage"
-import { NewsListPage } from "@/features/news/NewsListPage"
-import { NewsArticlePage } from "@/features/news/NewsArticlePage"
-import { LoginRegisterPage } from "@/features/auth/LoginRegisterPage"
-import { ResidentOverviewPage } from "@/features/resident/ResidentOverviewPage"
-import { SavedPage } from "@/features/resident/SavedPage"
-import { MyRequestsPage } from "@/features/resident/MyRequestsPage"
-import { ProfessionalOverviewPage } from "@/features/provider/ProfessionalOverviewPage"
-import { ProfessionalListingsPage } from "@/features/provider/ProfessionalListingsPage"
-import { ProfessionalLeadsPage } from "@/features/provider/ProfessionalLeadsPage"
-import { ProfessionalProfilePage } from "@/features/provider/ProfessionalProfilePage"
-import { ProfessionalAnalyticsPage } from "@/features/provider/ProfessionalAnalyticsPage"
-import { UpgradePage } from "@/features/provider/UpgradePage"
-import { ListingFormPage } from "@/features/provider/ListingFormPage"
-import { ListingPendingPage } from "@/features/provider/ListingPendingPage"
-import { EditListingPage } from "@/features/provider/EditListingPage"
-import { AdminLoginPage } from "@/features/admin/AdminLoginPage"
-import { AdminDashboardPage } from "@/features/admin/AdminDashboardPage"
-import { ModerationQueuePage } from "@/features/admin/ModerationQueuePage"
-import { ContentListPage } from "@/features/admin/ContentListPage"
-import { ContentFormPage } from "@/features/admin/ContentFormPage"
 import { ComingSoonPage } from "@/features/future-modules/ComingSoonPage"
 import { NotFoundPage } from "@/features/future-modules/NotFoundPage"
 import { routes } from "@/config/routes"
+
+/**
+ * Route-level code splitting (Phase 9H): every page except Home (the common
+ * landing screen) and the tiny ComingSoon / NotFound stubs is loaded on demand.
+ * Pages use named exports, so this adapts a dynamic import to React.lazy's
+ * default-export contract. The layout shells stay eager (they are small and
+ * every route needs one) and render the Suspense fallback around their Outlet.
+ */
+function lazyPage<K extends string>(load: () => Promise<Record<K, ComponentType>>, name: K) {
+  return lazy(async () => ({ default: (await load())[name] }))
+}
+
+const SearchPage = lazyPage(() => import("@/features/search/SearchPage"), "SearchPage")
+const ServicesPage = lazyPage(() => import("@/features/services/ServicesPage"), "ServicesPage")
+const ProviderProfilePage = lazyPage(() => import("@/features/services/ProviderProfilePage"), "ProviderProfilePage")
+const DirectoryPage = lazyPage(() => import("@/features/directory/DirectoryPage"), "DirectoryPage")
+const FoodPage = lazyPage(() => import("@/features/food/FoodPage"), "FoodPage")
+const BusinessProfilePage = lazyPage(() => import("@/features/directory/BusinessProfilePage"), "BusinessProfilePage")
+const EducationPage = lazyPage(() => import("@/features/education/EducationPage"), "EducationPage")
+const TutorProfilePage = lazyPage(() => import("@/features/education/TutorProfilePage"), "TutorProfilePage")
+const PropertyPage = lazyPage(() => import("@/features/property/PropertyPage"), "PropertyPage")
+const PropertyDetailsPage = lazyPage(() => import("@/features/property/PropertyDetailsPage"), "PropertyDetailsPage")
+const NewsListPage = lazyPage(() => import("@/features/news/NewsListPage"), "NewsListPage")
+const NewsArticlePage = lazyPage(() => import("@/features/news/NewsArticlePage"), "NewsArticlePage")
+const LoginRegisterPage = lazyPage(() => import("@/features/auth/LoginRegisterPage"), "LoginRegisterPage")
+const ResidentOverviewPage = lazyPage(() => import("@/features/resident/ResidentOverviewPage"), "ResidentOverviewPage")
+const SavedPage = lazyPage(() => import("@/features/resident/SavedPage"), "SavedPage")
+const MyRequestsPage = lazyPage(() => import("@/features/resident/MyRequestsPage"), "MyRequestsPage")
+
+const ProfessionalOverviewPage = lazyPage(() => import("@/features/provider/ProfessionalOverviewPage"), "ProfessionalOverviewPage")
+const ProfessionalListingsPage = lazyPage(() => import("@/features/provider/ProfessionalListingsPage"), "ProfessionalListingsPage")
+const ProfessionalLeadsPage = lazyPage(() => import("@/features/provider/ProfessionalLeadsPage"), "ProfessionalLeadsPage")
+const ProfessionalProfilePage = lazyPage(() => import("@/features/provider/ProfessionalProfilePage"), "ProfessionalProfilePage")
+const ProfessionalAnalyticsPage = lazyPage(() => import("@/features/provider/ProfessionalAnalyticsPage"), "ProfessionalAnalyticsPage")
+const UpgradePage = lazyPage(() => import("@/features/provider/UpgradePage"), "UpgradePage")
+const ListingFormPage = lazyPage(() => import("@/features/provider/ListingFormPage"), "ListingFormPage")
+const ListingPendingPage = lazyPage(() => import("@/features/provider/ListingPendingPage"), "ListingPendingPage")
+const EditListingPage = lazyPage(() => import("@/features/provider/EditListingPage"), "EditListingPage")
+
+const AdminLoginPage = lazyPage(() => import("@/features/admin/AdminLoginPage"), "AdminLoginPage")
+const AdminDashboardPage = lazyPage(() => import("@/features/admin/AdminDashboardPage"), "AdminDashboardPage")
+const ModerationQueuePage = lazyPage(() => import("@/features/admin/ModerationQueuePage"), "ModerationQueuePage")
+const ContentListPage = lazyPage(() => import("@/features/admin/ContentListPage"), "ContentListPage")
+const ContentFormPage = lazyPage(() => import("@/features/admin/ContentFormPage"), "ContentFormPage")
 
 /**
  * Centralized route tree (Master Spec §15). Phase 1 wires navigation and the

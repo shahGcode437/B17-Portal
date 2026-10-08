@@ -222,7 +222,7 @@ One phase = one independently reviewable commit.
 | FD2 — Food Discovery | **COMPLETE** (commit `1af5cea`) |
 | FD3 — Food Detail Experience | **COMPLETE** (commit `dd28411`) |
 | FD4 — Listing / Professional / Admin Integration | **COMPLETE** (commit `3d6ba96`) |
-| FD5 — QA / Accessibility / Docs | **COMPLETE** (FD5 commit: pending) |
+| FD5 — QA / Accessibility / Docs | **COMPLETE** (FD5 commit: 431b954) |
 
 **FD1 now provides:** explicit `Business.vertical` (`general | food`) on every Business record; the optional `FoodProfile` and `MenuHighlight` types; canonical, config-backed Food categories and service options in `src/config/food.ts`; `Business.category` derived from the primary (first) Food category label; 10 demo Food businesses including the migrated Capital Bakers (`business-06`, now Food / Bakeries); Food remaining `SearchResultKind` `business`; the Search filters `vertical`, `foodCategory` and `service`; Food category labels and menu-highlight names as searchable text; predictive suggestions that resolve to actual Business results; URL state that validates the canonical Food filter values (unknown values are ignored); a general Directory currently scoped to general businesses; and Saved, Professional and Admin reused unchanged.
 

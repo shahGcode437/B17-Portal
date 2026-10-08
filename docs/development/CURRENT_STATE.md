@@ -2,7 +2,7 @@
 
 ## Last Updated
 
-2026-10-03
+2026-10-09
 
 ## Current Branch
 
@@ -20,13 +20,13 @@ d8ee414 docs: freeze Food and Dining architecture
 1af5cea FD2: add Food and Dining discovery experience
 dd28411 FD3: enrich Food and Dining business details
 3d6ba96 FD4: integrate Food listings with professional and admin flows
-FD5 commit: pending (QA complete, not yet committed)
+431b954 FD5: complete Food and Dining frontend QA
+Phase 9H commit: pending (implementation complete, not yet committed)
 
 ## Current Phase
 
-Current Phase: the Food & Dining frontend expansion (FD1–FD5) is COMPLETE; the next project phase is Phase 9H — Performance & Route Splitting, per `ROADMAP.md`.
-Food & Dining FD5 — Final QA / Accessibility / Documentation: COMPLETE, commit pending approval. FD1–FD4 are committed; the Visual Refresh sequence (V1–V6) is complete and committed.
-Next Step: Phase 9H (see Next Step below).
+Current Phase: Phase 9H — Performance & Route-Level Code Splitting: COMPLETE, commit pending approval. The Food & Dining frontend expansion (FD1–FD5) and the Visual Refresh sequence (V1–V6) are complete and committed.
+Next Step: Phase 9G — PWA / installability, per the "Planned sequence after Food & Dining" in `ROADMAP.md` (see Next Step below).
 
 ## Completed Product Work
 
@@ -59,13 +59,14 @@ Next Step: Phase 9H (see Next Step below).
 - Food & Dining FD3 — Detail Experience (see below)
 - Food & Dining FD4 — Listing / Professional / Admin Integration (see below)
 - Food & Dining FD5 — Final QA / Accessibility / Documentation (see below)
+- Phase 9H — Performance & Route-Level Code Splitting (see below)
 
 Full history is in `git log`; this file summarizes outcomes, not the blow-by-blow.
 
 ## Current Architecture
 
 - React 19 + TypeScript (strict) + Vite 8 SPA, no SSR.
-- Three route trees under `createBrowserRouter`: `ConsumerLayout` (Header/Footer/MobileNav), `ProviderLayout` (now a full Professional Workspace shell — Overview/Listings/Leads/Profile nav, Phase 9D), `AdminLayout`. All routes are statically imported — no code splitting yet.
+- Three route trees under `createBrowserRouter`: `ConsumerLayout` (Header/Footer/MobileNav), `ProviderLayout` (now a full Professional Workspace shell — Overview/Listings/Leads/Profile nav, Phase 9D), `AdminLayout`. Route pages are lazy-loaded (Phase 9H): only the three layout shells, `HomePage` and the tiny `ComingSoonPage` / `NotFoundPage` stubs are statically imported; every other page is a `React.lazy` dynamic import, rendered inside a keyed `Suspense` boundary in each layout (`RouteOutlet`).
 - `src/services/search.ts` is the single public read-data seam for all domain content (providers, businesses, tutors, properties, news, sponsored cards, plus category/subject/type tile enumeration, and — as of Visual V2.1 — `getSearchSuggestions` for predictive search). Components must not import `@/data/*` domain arrays directly — confirmed and enforced as of Phase 9A.
 - Search/Explore state contract (Visual V2.1): URL = committed state (`q`/`type`/filters/sort); the input is a local draft of `q`; the suggestion list is transient local state. No global search store.
 - Four Zustand stores: `listingsStore` (provider/business/property listing lifecycle: pending → approved/rejected, plus `archived` as of Phase 9D; `selectActiveListingsBySubmitter`/`isListingCountedTowardPlanLimit` added Phase 9E for the Free listing-limit check) and `newsStore` (draft/published) are in-memory only, reset on reload. `residentStore` (Phase 9C — saved items + request history; Phase 9D added `updateRequestStatus`) and `planStore` (Phase 9E — the mocked local Free/Premium plan) both persist to `localStorage` via Zustand's own `persist` middleware; both are cleared/reset on explicit resident Log Out (see Phase 9C/9E Results).
@@ -380,14 +381,24 @@ Food & Dining FD4 — Listing / Professional / Admin Integration = **COMPLETE** 
 
 ## Food & Dining FD5 Result
 
-Food & Dining FD5 — Final QA / Accessibility / Documentation = **COMPLETE** (FD5 commit: pending). The **Food & Dining frontend expansion (FD1–FD5) is COMPLETE**; `docs/product/FOOD_DINING.md` is the final frontend source of truth (current implementation, known limitations and reserved future work are separated there). FD5 added no route, store, data model or dependency and did not redesign FD1–FD4.
+Food & Dining FD5 — Final QA / Accessibility / Documentation = **COMPLETE** (commit `431b954`). The **Food & Dining frontend expansion (FD1–FD5) is COMPLETE**; `docs/product/FOOD_DINING.md` is the final frontend source of truth (current implementation, known limitations and reserved future work are separated there). FD5 added no route, store, data model or dependency and did not redesign FD1–FD4.
 
 - **QA coverage (all passed):** `/food` (11 categories, 3 services, preview, View all, `vertical=food` links); Search V2.1 (Food / General scoping, `foodCategory` + `service` combinations, menu-item and secondary-category matching, suggestions with keyboard / Enter / Escape, Back / Forward, filter reset, refresh preserving URL state); Food detail for every seed Food business and the general ones (no blank sections, neutral price caption, no Food sections on General); the merchant lifecycle create → pending → reject → edit → resubmit → approve → archive with `FoodProfile` preserved and `Business.category` re-derived; Professional quota; Admin queue and review (reject-reason validation, focus return); Saved (`kind: "business"`, save / unsave); the General Business lifecycle (`vertical: "general"`, no `food` key); minimal / maximal / long / name-only-menu Food profiles; form validation limits.
 - **Fix:** an inline accessible warning ("Switching to General Business will remove Food-specific details when saved.") now appears when Food details exist and General is selected. No other bug was found.
 - **Responsive / accessibility:** clean at 320 / 375 / 430 / 820 / 1024 / 1440 across the Food surfaces (including the create form with errors and 8 menu rows, Professional listings and View, Admin queue and review); one h1 and logical headings; native radios / checkboxes with real state; named Add / Remove controls; linked errors; visible focus; dialog focus return verified.
 - **Quality:** `npx tsc -b --force` clean; `npm run build` succeeds (JS 887.94 kB / gzip 264.76 kB, CSS 73.60 kB — vs FD4: +0.34 kB JS); lint at the established 8-warning baseline, no new category; fresh console 0 errors / 0 warnings; no dependency added; no automated test suite exists.
 
-**Known limitations:** see `docs/product/FOOD_DINING.md` — no backend persistence; browser-local images; free-text hours; generic Business card / Saved presentation; no restore after Food → General; archived saved items are hidden under the existing Saved rules; the large-chunk build warning remains.
+**Known limitations:** see `docs/product/FOOD_DINING.md` — no backend persistence; browser-local images; free-text hours; generic Business card / Saved presentation; no restore after Food → General; archived saved items are hidden under the existing Saved rules; the large-chunk build warning was resolved by Phase 9H.
+
+## Phase 9H Result
+
+Phase 9H — Performance & Route-Level Code Splitting = **COMPLETE** (Phase 9H commit: pending). Performance only: no route, URL, guard, redirect, auth, business-rule, Search, listing-lifecycle, visual or data change; no dependency added; no `manualChunks` / `codeSplitting` config.
+
+- **Strategy:** `router.tsx` converts every page to `React.lazy` through a small `lazyPage(() => import(...), "Name")` adapter (pages use named exports). **Eager:** the three layout shells (`ConsumerLayout`, `ProviderLayout`, `AdminLayout` — small, needed by every route in their tree), `HomePage` (the common landing screen — lazy-loading it would add a request waterfall to `/`), and the ~1 KB `ComingSoonPage` / `NotFoundPage`. **Lazy:** every other consumer page (Search, Services, Provider profile, Directory, Food, Business profile, Education, Tutor profile, Property + detail, News + article, Login/Register, Resident Overview/Saved/Requests), all nine Professional pages, and all five Admin pages. Route guards, redirects and URLs are untouched (they run inside the pages exactly as before).
+- **Loading UX:** `RouteOutlet` (`src/app/RouteOutlet.tsx`) wraps each layout's `<Outlet/>` in `Suspense` keyed by the matched route id, with the shared `RouteFallback` (`src/components/feedback/RouteFallback.tsx`: a `role="status"` "Loading page" label and a decorative spinner; no dependency, no fake progress; reserved `min-h-[50svh]` so nothing jumps; reduced motion handled by the global CSS). The key matters: React Router updates run in a transition, which would otherwise keep the previous page frozen on screen instead of showing the fallback; keying by route (not URL) shows the fallback when moving between routes while a same-route param change (e.g. `/businesses/1` → `/businesses/2`) keeps the page mounted exactly as before. The header/footer/mobile nav stay in place during loading.
+- **Result (before → after):** initial JS for Home — one 887.94 kB (gzip 264.76 kB) chunk → entry 342.31 kB + `motion` 255.47 kB + 8 tiny shared chunks ≈ 609 kB raw / ≈ 195 kB gzip (≈ −31% raw, ≈ −26% gzip); Home requests exactly 10 JS files and no Professional / Admin / form / zod code. CSS 73.60 kB → 73.76 kB (gzip 12.50 → 12.56). The Vite large-chunk (>500 kB) warning no longer appears (largest chunk 342 kB). Notable lazy chunks: `schemas` (zod + form libs) 108 kB, `PropertyListingForm` 25 kB, `SearchPage` 18 kB, `toggle-group` 17 kB (shared by Search / Admin), `ProviderProfilePage` 9 kB, `ModerationQueuePage` 8 kB, `ProfessionalListingsPage` 8 kB; ~77 JS files in total.
+- **Verification:** `npx tsc -b --force` clean; `npm run build` succeeds; lint at the established 8-warning baseline, no new category; `package.json` / lockfile unchanged. Verified on the production build served statically: direct URL / refresh of every route (37 URLs incl. details, guards, 404) loads; Search V2.1 (URL source of truth, suggestions, Food filters, Food/General separation, Back/Forward); Service, General Business, Food and Property create → preview → submit → edit → resubmit; Admin login, dashboard, moderation approve/reject, content list/new/edit; a throttled network (artificial chunk delay) shows the fallback inside the intact shell with no overflow at 320px; responsive sweep at 320 / 375 / 430 / 820 / 1024 / 1440; keyboard focus stays on the activated nav link; heading structure unchanged; production and dev consoles 0 errors / 0 warnings.
+- **Known remaining performance limitations:** `motion` (255 kB, shared by Home) is part of the initial load — trimming it (e.g. `LazyMotion`) would touch many components and is a separate optimisation; Rolldown's automatic splitting produces many tiny shared chunks (judged acceptable; a conservative grouping can be revisited if request counts matter); no route prefetching (deliberately not added); no automated bundle-size budget; images/fonts are untouched.
 
 ## Production V1 Direction
 
@@ -398,14 +409,14 @@ Food & Dining FD5 — Final QA / Accessibility / Documentation = **COMPLETE** (F
 - Free/Premium foundation (capability model, no billing yet).
 - Admin production UX (user management, verification, moderation history).
 - Food & Dining Directory expansion (bounded frontend/product vertical on the existing Business Directory/search/listing/moderation patterns; no cart, ordering, delivery or payments).
-- Performance/code splitting (route-level `React.lazy`).
+- Performance/code splitting (route-level `React.lazy`) — done in Phase 9H.
 - Mobile/PWA (manifest, service worker, installability).
 - Notifications + trust/reviews UI shells.
 - Accessibility/SEO/cleanup + final frontend QA.
 
 ## Known Technical Debt
 
-- One large, eagerly-loaded JS bundle (~888 KB) — no route-level code splitting yet.
+- Route-level code splitting is done (Phase 9H); remaining performance debt: `motion` (≈255 kB) is on the initial path, and the many small shared chunks are unmerged.
 - No PWA (manifest/service worker/icons all absent).
 - No notifications UI yet.
 - Resident state (`residentStore`) has no stable user id to scope by — demo auth is name-only, so per-account scoping is not real; explicit Log Out (not reload) is the only privacy boundary today. Real account scoping belongs to the backend/API phase (Phase 12).
@@ -448,7 +459,7 @@ Food & Dining FD5 — Final QA / Accessibility / Documentation = **COMPLETE** (F
 
 ## Next Step
 
-Phase 9H — Performance & Route Splitting (the first item of the "Planned sequence after Food & Dining" in `ROADMAP.md`), then Phase 9G (PWA / installability), Phase 9J (SEO, accessibility tooling and final frontend QA), the frontend freeze, and Phases 10–13 (backend). Phases 9F (Admin Production UX) and 9I (Notifications + Trust/Reviews UI) remain valid Production V1 items whose sequencing is to be confirmed by a product decision. Food & Dining work is closed on the frontend; ordering, cart, checkout, commission, payments, delivery logistics, reviews / ratings, premium merchant tools, sharing / deep links, PWA / native packaging and backend persistence stay out of scope until their roadmap phases.
+Phase 9G — PWA / installability (the next item of the "Planned sequence after Food & Dining" in `ROADMAP.md`), then Phase 9J (SEO, accessibility tooling and final frontend QA), the frontend freeze, and Phases 10–13 (backend). Phases 9F (Admin Production UX) and 9I (Notifications + Trust/Reviews UI) remain valid Production V1 items whose sequencing is to be confirmed by a product decision. Food & Dining and route splitting are closed; ordering, cart, checkout, commission, payments, delivery logistics, reviews / ratings, premium merchant tools, sharing / deep links and backend persistence stay out of scope until their roadmap phases.
 
 ## Resume Instructions
 
