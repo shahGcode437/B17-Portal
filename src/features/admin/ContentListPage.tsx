@@ -14,6 +14,7 @@ import { AdminRow, AdminThumb } from "@/features/admin/AdminRow"
 import { segmentItemClass, rowActionClass } from "@/features/admin/adminStyles"
 import { useNewsStore } from "@/state/newsStore"
 import { useToast } from "@/hooks/useToast"
+import { useRequireOnline } from "@/hooks/useRequireOnline"
 import { useRequireAdminAuth } from "@/hooks/useRequireAdminAuth"
 import { routes, adminContentEditPath } from "@/config/routes"
 import { fadeUp, staggerContainer, staggerItem } from "@/lib/motion"
@@ -41,6 +42,7 @@ function ContentListPage() {
   const admin = useRequireAdminAuth()
   const { items, setStatus } = useNewsStore()
   const { show } = useToast()
+  const requireOnline = useRequireOnline()
   const [filter, setFilter] = useState<NewsStatus | "all">("all")
 
   const counts = useMemo(() => {
@@ -61,6 +63,7 @@ function ContentListPage() {
   if (!admin) return null
 
   function handleToggleStatus(id: string, current: NewsStatus, title: string) {
+    if (!requireOnline()) return
     const next: NewsStatus = current === "published" ? "draft" : "published"
     setStatus(id, next)
     show(next === "published" ? `${title} published` : `${title} unpublished`)

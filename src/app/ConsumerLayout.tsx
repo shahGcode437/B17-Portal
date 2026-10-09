@@ -2,6 +2,7 @@ import { RouteOutlet } from "@/app/RouteOutlet"
 import { Header } from "@/components/navigation/Header"
 import { Footer } from "@/components/navigation/Footer"
 import { MobileNav } from "@/components/navigation/MobileNav"
+import { InstallPrompt } from "@/components/pwa/InstallPrompt"
 
 /** Shell for all public/resident-facing screens (Home, Services, Directory, …). */
 function ConsumerLayout() {
@@ -11,6 +12,7 @@ function ConsumerLayout() {
       <main className="flex-1">
         <RouteOutlet />
       </main>
+      <InstallPrompt />
       <Footer />
       <MobileNav />
     </div>

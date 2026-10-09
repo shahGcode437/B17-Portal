@@ -9,6 +9,7 @@ import { ContentForm } from "@/features/admin/ContentForm"
 import { parseContentTags, type ContentFormValues } from "@/features/admin/contentSchema"
 import { useNewsStore } from "@/state/newsStore"
 import { useToast } from "@/hooks/useToast"
+import { useRequireOnline } from "@/hooks/useRequireOnline"
 import { useRequireAdminAuth } from "@/hooks/useRequireAdminAuth"
 import { routes } from "@/config/routes"
 import { fadeUp } from "@/lib/motion"
@@ -24,6 +25,7 @@ function ContentFormPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { show } = useToast()
+  const requireOnline = useRequireOnline()
   const { items, createItem, updateItem } = useNewsStore()
 
   const isEditing = Boolean(id)
@@ -47,6 +49,7 @@ function ContentFormPage() {
   }
 
   function handleSubmit(values: ContentFormValues & { kind: NewsKind; status: NewsStatus }) {
+    if (!requireOnline()) return
     const tags = parseContentTags(values.tagsInput)
     const image = values.image.trim() || undefined
 

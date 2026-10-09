@@ -1,7 +1,12 @@
 import { createContext, useContext } from "react"
 
+export interface ToastOptions {
+  /** "error" is for a message that something did NOT happen (e.g. offline); it must not look like a success. */
+  tone?: "success" | "error"
+}
+
 export interface ToastContextValue {
-  show: (message: string) => void
+  show: (message: string, options?: ToastOptions) => void
 }
 
 export const ToastContext = createContext<ToastContextValue | null>(null)

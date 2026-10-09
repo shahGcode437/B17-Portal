@@ -172,9 +172,9 @@ V1 Shared Card Foundation → V2 Consumer Discovery → V2.1 Predictive Search �
 - Result: the Food & Dining frontend expansion is complete. Reserved future work (backend persistence, real media storage, premium merchant tools, ordering / commission / payments, delivery, sharing / deep links, PWA / native packaging, personalization / history) is NOT part of the Food phases and belongs to the later roadmap items below.
 
 ### Planned sequence after Food & Dining
-1. ~~Phase 9H — route-level code splitting / performance~~ — **COMPLETE** (Phase 9H commit: pending)
-2. Phase 9G — PWA / installability — **NEXT**
-3. Phase 9J — SEO, accessibility tooling and final frontend QA
+1. ~~Phase 9H — route-level code splitting / performance~~ — **COMPLETE** (commit `c2871f7`)
+2. ~~Phase 9G — PWA / installability~~ — **COMPLETE** (Phase 9G commit: pending)
+3. Phase 9J — SEO, accessibility tooling and final frontend QA — **NEXT**
 4. Frontend freeze
 5. Phases 10–13 — backend architecture and implementation
 
@@ -189,15 +189,16 @@ Phases 9F (Admin Production UX) and 9I (Notifications + Trust/Reviews UI) remain
 - Completion/verification: screens exist and function against mock data; existing moderation behavior unchanged.
 
 ## Phase 9G — Mobile/PWA
+**STATUS: COMPLETE** (Phase 9G commit: pending)
 
 - Objective: make the app installable and offline-tolerant for static assets.
-- Major scope: manifest, icon set, service worker (via `vite-plugin-pwa`), per-route `<title>`/meta.
-- Out of scope: push notifications (needs a backend + push provider), native apps.
-- Dependencies: none.
-- Completion/verification: app installable in Chrome/Edge, Lighthouse PWA checks pass, no change to existing routes/behavior.
+- Delivered: web app manifest; icon set built from the existing brand mark (192 / 512 / maskable / Apple touch) and a brand favicon; a dependency-free service worker emitted at build (app-shell precache only, lazy chunks cached on use, network-first navigation with a shell fallback, one cache per build, no data caching); a quiet install strip (native Install button on Chromium, Share → Add to Home Screen guidance on iOS, hidden when standalone / dismissed — 30-day local dismissal); an update prompt (user-triggered, single reload) and an offline notice / "You're offline" route state; an error boundary in `RouteOutlet`; a shared offline guard (`useRequireOnline`) so state-changing actions on business data fail closed with an error toast while offline. No dependency added (`vite-plugin-pwa` not used — see DECISIONS.md).
+- Result: installable per Chrome's own checks (no manifest or installability errors); Home initial JS +≈ 8 kB (+1.3%) vs 9H, Phase 9H splitting preserved (lazy chunks are not precached); direct URLs, auth redirects and the 404 page work under the worker; console clean.
+- Verification: `npx tsc -b --force` and `npm run build` pass; lint at the 8-warning baseline; verified on the production build in headless Chrome over CDP (the in-app browser pane cannot register service workers); real Android / iOS devices, Safari and Firefox were not tested.
+- Not done (deliberately / deferred): per-route `<title>` / meta (moved to Phase 9J); push notifications, Background Sync and offline mutation queues (need a backend); Capacitor / store packaging; sharing / deep links.
 
 ## Phase 9H — Performance & Route Splitting
-**STATUS: COMPLETE** (Phase 9H commit: pending)
+**STATUS: COMPLETE** (commit `c2871f7`)
 
 - Objective: reduce initial bundle size.
 - Delivered: `router.tsx` converted to `React.lazy` page imports (Home, the three layout shells and the tiny ComingSoon / NotFound stubs stay eager); a keyed `Suspense` boundary (`RouteOutlet`) and a shared accessible `RouteFallback` inside each layout; no URL, guard, redirect, auth, Search or listing-lifecycle change; no dependency; no `manualChunks`.

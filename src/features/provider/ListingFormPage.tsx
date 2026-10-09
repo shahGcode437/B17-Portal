@@ -20,6 +20,7 @@ import { buildProvider, buildBusiness, buildProperty } from "@/features/provider
 import { useListingsStore, selectActiveListingsBySubmitter } from "@/state/listingsStore"
 import { useRequireAuth } from "@/hooks/useRequireAuth"
 import { usePlanEntitlements } from "@/hooks/useCapability"
+import { useRequireOnline } from "@/hooks/useRequireOnline"
 import { routes } from "@/config/routes"
 import { fadeUp } from "@/lib/motion"
 
@@ -54,6 +55,7 @@ function ListingFormPage() {
   const { listings, submitListing } = useListingsStore()
   const { plan, entitlements } = usePlanEntitlements()
   const [draftId] = useState(() => crypto.randomUUID())
+  const requireOnline = useRequireOnline()
 
   const [step, setStep] = useState<Step>("type")
   const [kind, setKind] = useState<ListingKind | null>(null)
@@ -89,6 +91,7 @@ function ListingFormPage() {
   }
 
   function handleFinalSubmit() {
+    if (!requireOnline()) return
     if (!kind || !values || !user) return
     const base = {
       id: draftId,

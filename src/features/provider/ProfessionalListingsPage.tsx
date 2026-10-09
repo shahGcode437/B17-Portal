@@ -12,6 +12,7 @@ import { ListingPreviewDialog } from "@/features/provider/ListingPreviewDialog"
 import { useListingsStore, selectListingsBySubmitter, selectActiveListingsBySubmitter } from "@/state/listingsStore"
 import { useRequireAuth } from "@/hooks/useRequireAuth"
 import { useToast } from "@/hooks/useToast"
+import { useRequireOnline } from "@/hooks/useRequireOnline"
 import { usePlanEntitlements } from "@/hooks/useCapability"
 import { routes, editListingPath } from "@/config/routes"
 import { fadeUp, staggerContainer, staggerItem } from "@/lib/motion"
@@ -20,6 +21,7 @@ import type { PendingListing } from "@/types/listing"
 /** One listing's action row: View always; Edit/Archive unless already archived; a lightweight inline confirm for Archive (no new dependency). */
 function ListingActions({ listing, onPreview }: { listing: PendingListing; onPreview: () => void }) {
   const { archiveListing } = useListingsStore()
+  const requireOnline = useRequireOnline()
   const { show } = useToast()
   const [confirming, setConfirming] = useState(false)
 
@@ -40,6 +42,7 @@ function ListingActions({ listing, onPreview }: { listing: PendingListing; onPre
             variant="destructive"
             className="h-11 sm:h-7"
             onClick={() => {
+              if (!requireOnline()) return
               archiveListing(listing.id)
               show(`${title} archived (demo)`)
               setConfirming(false)

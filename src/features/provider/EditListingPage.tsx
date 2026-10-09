@@ -25,6 +25,7 @@ import type { ListingFormValues, PropertyFormValues } from "@/features/provider/
 import { useListingsStore, selectListingsBySubmitter } from "@/state/listingsStore"
 import { useToast } from "@/hooks/useToast"
 import { useRequireAuth } from "@/hooks/useRequireAuth"
+import { useRequireOnline } from "@/hooks/useRequireOnline"
 import { routes } from "@/config/routes"
 import { fadeUp } from "@/lib/motion"
 import type { Provider } from "@/types/provider"
@@ -82,6 +83,7 @@ function EditListingPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { show } = useToast()
+  const requireOnline = useRequireOnline()
   const { listings, resubmitListing } = useListingsStore()
   const [step, setStep] = useState<Step>("form")
   const [values, setValues] = useState<ListingFormValues | PropertyFormValues | null>(null)
@@ -124,6 +126,7 @@ function EditListingPage() {
   }
 
   function handleFinalSubmit() {
+    if (!requireOnline()) return
     if (!listing || !values) return
     if (listing.kind === "property") {
       resubmitListing(listing.id, buildProperty(values as PropertyFormValues, listing.id))

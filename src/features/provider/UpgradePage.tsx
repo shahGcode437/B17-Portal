@@ -6,6 +6,7 @@ import { Typography } from "@/components/foundation/Typography"
 import { Card } from "@/components/ui/card"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { useToast } from "@/hooks/useToast"
+import { useRequireOnline } from "@/hooks/useRequireOnline"
 import { useRequireAuth } from "@/hooks/useRequireAuth"
 import { usePlanStore } from "@/state/planStore"
 import { PLAN_ENTITLEMENTS } from "@/config/plans"
@@ -85,9 +86,10 @@ function UpgradePage() {
   const plan = usePlanStore((state) => state.plan)
   const setPlan = usePlanStore((state) => state.setPlan)
   const { show } = useToast()
+  const requireOnline = useRequireOnline()
 
   function handlePlanChange(next: string) {
-    if (!isPlan(next)) return
+    if (!isPlan(next) || !requireOnline()) return
     setPlan(next)
     show(next === "premium" ? "Switched to Premium (demo)" : "Switched to Free (demo)")
   }

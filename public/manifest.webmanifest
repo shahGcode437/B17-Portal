@@ -1,0 +1,17 @@
+{
+  "id": "/",
+  "name": "B-17 Portal",
+  "short_name": "B-17 Portal",
+  "description": "A hyperlocal platform for discovering services, businesses, food, education, property and local updates in B-17, Islamabad.",
+  "lang": "en",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "theme_color": "#047857",
+  "background_color": "#ffffff",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

@@ -16,6 +16,7 @@ import { RequestStatusBadge } from "@/features/resident/RequestStatusBadge"
 import { REQUEST_TRANSITIONS } from "@/features/provider/requestTransitions"
 import { useResidentStore } from "@/state/residentStore"
 import { useToast } from "@/hooks/useToast"
+import { useRequireOnline } from "@/hooks/useRequireOnline"
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" })
 
@@ -32,9 +33,10 @@ interface LeadDetailDialogProps {
 function LeadDetailDialog({ request, onOpenChange }: LeadDetailDialogProps) {
   const updateRequestStatus = useResidentStore((state) => state.updateRequestStatus)
   const { show } = useToast()
+  const requireOnline = useRequireOnline()
 
   function handleTransition(next: ServiceRequestRecord["status"], label: string) {
-    if (!request) return
+    if (!request || !requireOnline()) return
     updateRequestStatus(request.id, next)
     show(`${label}: marked as ${next.replace("-", " ")} (demo)`)
     onOpenChange(false)

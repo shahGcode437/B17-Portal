@@ -22,6 +22,7 @@ import { FoodListingSummary } from "@/features/provider/FoodListingSummary"
 import { businessTypeLabel } from "@/features/provider/listingDisplay"
 import { useListingsStore } from "@/state/listingsStore"
 import { useToast } from "@/hooks/useToast"
+import { useRequireOnline } from "@/hooks/useRequireOnline"
 
 interface ReviewPanelProps {
   listing: PendingListing | null
@@ -51,6 +52,7 @@ const dateFormatter = new Intl.DateTimeFormat("en-US", {
 function ReviewPanel({ listing, open, onOpenChange }: ReviewPanelProps) {
   const { setStatus } = useListingsStore()
   const { show } = useToast()
+  const requireOnline = useRequireOnline()
   const [showReasonInput, setShowReasonInput] = useState(false)
   const [reason, setReason] = useState("")
   const [reasonError, setReasonError] = useState<string | null>(null)
@@ -73,14 +75,14 @@ function ReviewPanel({ listing, open, onOpenChange }: ReviewPanelProps) {
   const displayName = listing.kind === "property" ? listing.data.title : listing.data.name
 
   function handleApprove() {
-    if (!listing) return
+    if (!listing || !requireOnline()) return
     setStatus(listing.id, "approved")
     show(`${displayName} approved (demo)`)
     handleOpenChange(false)
   }
 
   function handleConfirmReject() {
-    if (!listing) return
+    if (!listing || !requireOnline()) return
     const trimmed = reason.trim()
     if (trimmed.length < MIN_REASON_LENGTH) {
       setReasonError(`Please provide a specific reason (at least ${MIN_REASON_LENGTH} characters).`)

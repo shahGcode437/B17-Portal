@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button"
 import { ServiceRequestForm } from "@/features/services/ServiceRequestForm"
 import type { ServiceRequestValues } from "@/features/services/serviceRequestSchema"
 import { useToast } from "@/hooks/useToast"
+import { useRequireOnline } from "@/hooks/useRequireOnline"
 import { SIMULATED_MESSAGES } from "@/lib/simulatedActions"
 import { useResidentStore } from "@/state/residentStore"
 
@@ -36,9 +37,12 @@ const dateFormatter = new Intl.DateTimeFormat("en-US", { weekday: "short", month
 function RequestServiceDialog({ provider, requesterName, open, onOpenChange }: RequestServiceDialogProps) {
   const [submitted, setSubmitted] = useState<ServiceRequestValues | null>(null)
   const { show } = useToast()
+  const requireOnline = useRequireOnline()
   const addRequest = useResidentStore((state) => state.addRequest)
 
   function handleSubmit(values: ServiceRequestValues) {
+    // Offline: stay on the form (nothing submitted, input kept) and say why.
+    if (!requireOnline()) return
     setSubmitted(values)
     addRequest({
       id: crypto.randomUUID(),
