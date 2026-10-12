@@ -64,10 +64,6 @@ export const router = createBrowserRouter([
       { path: routes.home, element: <HomePage /> },
       { path: routes.search, element: <SearchPage /> },
       { path: routes.services, element: <ServicesPage /> },
-      {
-        path: routes.servicesConstruction,
-        element: <ComingSoonPage title="Home & Construction Services" />,
-      },
       { path: routes.providerProfile, element: <ProviderProfilePage /> },
       { path: routes.directory, element: <DirectoryPage /> },
       { path: routes.food, element: <FoodPage /> },

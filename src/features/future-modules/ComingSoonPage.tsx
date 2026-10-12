@@ -11,10 +11,9 @@ interface ComingSoonPageProps {
 }
 
 /**
- * Generic placeholder for routes/modules not yet built. Used both for
- * genuinely future (P2/P3) modules and as a temporary stub for P0/P1
- * screens that this phase only wires up navigation and layout for.
- * Never implies real transactional functionality (Master Spec §18).
+ * Placeholder for the genuinely future modules linked from the footer and Home
+ * (Marketplace, Pharmacy, Pick & Drop, Community, B-17 Vault) — all share
+ * `/coming-soon`. Never implies real transactional functionality (Master Spec §18).
  */
 function ComingSoonPage({ title = "Coming Soon" }: ComingSoonPageProps) {
   return (

@@ -44,7 +44,6 @@ const entries: RouteEntry[] = [
     path: routes.services,
     seo: publicPage(pageTitle("Home & Construction Services in B-17"), "Browse home and construction service providers in B-17, Islamabad, and contact them directly.", routes.services),
   },
-  { path: routes.servicesConstruction, seo: privatePage("Home & Construction Services") },
   {
     path: routes.providerProfile,
     seo: { title: pageTitle("Service Provider"), description: "A service provider in B-17, Islamabad.", indexing: "index", ogType: "website" },

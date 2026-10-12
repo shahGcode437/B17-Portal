@@ -174,9 +174,11 @@ V1 Shared Card Foundation → V2 Consumer Discovery → V2.1 Predictive Search �
 ### Planned sequence after Food & Dining
 1. ~~Phase 9H — route-level code splitting / performance~~ — **COMPLETE** (commit `c2871f7`)
 2. ~~Phase 9G — PWA / installability~~ — **COMPLETE** (commit `5c3e6d6`)
-3. ~~Phase 9J — SEO, accessibility tooling and final frontend QA~~ — **COMPLETE** (Phase 9J commit: pending)
-4. Frontend freeze — **NEXT**
-5. Phases 10–13 — backend architecture and implementation
+3. ~~Phase 9J — SEO, accessibility tooling and final frontend QA~~ — **COMPLETE** (commit `50e39b9`)
+4. ~~Phase 9L — frontend cleanup & technical debt closeout~~ — **COMPLETE** (Phase 9L commit: pending)
+5. Phase 9M — Automated Testing Foundation (Playwright + MCP QA, including the deferred Search UX review) — **NEXT**
+6. Frontend freeze
+7. Phases 10–13 — backend architecture and implementation
 
 Phases 9F (Admin Production UX) and 9I (Notifications + Trust/Reviews UI) remain valid Production V1 items below; their sequencing relative to the list above is to be confirmed by a product decision before the frontend freeze. Only 9H now runs before 9G.
 
@@ -215,15 +217,29 @@ Phases 9F (Admin Production UX) and 9I (Notifications + Trust/Reviews UI) remain
 - Completion/verification: shell renders and reflects mock events; no fabricated trust signals introduced.
 
 ## Phase 9J — Accessibility + SEO + Cleanup + Final Frontend QA
-**STATUS: COMPLETE** (Phase 9J commit: pending)
+**STATUS: COMPLETE** (commit `50e39b9`)
 
 - Objective: close remaining polish items before backend work begins.
 - Delivered: one dependency-free SEO mechanism (central config + route table + entity descriptors + a single head writer) giving every route a real title; descriptions, canonical, Open Graph and Twitter tags for public routes; an index / noindex strategy (public discovery routes indexable; account, Professional, Admin, utility and 404 `noindex, nofollow`; dynamic `/search` `noindex, follow` with a stable canonical); `robots.txt`; a build-time sitemap emitted only when `VITE_SITE_URL` is configured (stable top-level routes only, no invented dates); structured data deliberately skipped (no real entity data); a `VITE_SITE_URL` seam and a `VITE_SITE_NOINDEX` staging switch (`.env.example`); accessibility fixes — a skip-to-main-content link in every layout, a proper h1 on the 404, and decorative card images so names are not announced twice; plus the final audits (accessibility tree + DOM + contrast scan + keyboard / dialog / form tests over 31 routes / states, 74-link navigation audit, copy audit, 34 surfaces × 6 widths responsive matrix, PWA and performance regression).
 - Result: no accessibility blockers; Home initial JS +1.0% vs 9H (≈ 623 kB raw / 198 kB gzip), no >500 kB chunk; Phase 9G and 9H behavior preserved; no dependency added; console clean.
 - Not run: Lighthouse, axe-core and screen-reader / real-device testing (none installed or available; nothing downloaded) — recorded in CURRENT_STATE.md.
-- Not part of this phase's brief and still open (low-risk cleanup): the unlinked `/services/home-construction` Coming-Soon stub route, the orphaned demo images, moving `shadcn` out of `dependencies`.
+- Not part of this phase's brief (closed in Phase 9L): the unlinked `/services/home-construction` Coming-Soon stub route, the orphaned demo images, the `shadcn` dependency question.
 - Out of scope / deferred: anything requiring a backend — server-rendered or pre-rendered page metadata and link previews, a per-entity sitemap, structured data from real data, a real production URL.
 - Frontend freeze verdict: the frontend is ready to be treated as the baseline for backend integration.
+
+## Phase 9L — Frontend Cleanup & Technical Debt Closeout
+**STATUS: COMPLETE** (Phase 9L commit: pending)
+
+- Objective: close the remaining known frontend debt before automated testing and backend integration — cleanup only.
+- Delivered: removed the obsolete, unreferenced `/services/home-construction` stub route (router, route constant, SEO entry); removed 19 proven-unreferenced demo photos (≈ 47 MB; `public/images` 51 MB → 3.9 MB) and two dead Phase 1 hooks (`useMediaQuery`, `useReducedMotion`); audited `shadcn` and kept it (`src/index.css` imports `shadcn/tailwind.css`, which the Dialog / Sheet / ToggleGroup state variants need — build-time only); confirmed no `console.*` / `debugger` / TODO leftovers; ran `npm outdated` for information only.
+- Result: no valid route removed; no product behavior, dependency (`package.json` / lockfile unchanged), Search, PWA, SEO or performance change; `tsc` / build clean, lint at the 8-warning baseline; PWA and SEO regression suites and a smoke test re-verified; console clean.
+- Search UX refinement is intentionally deferred to Phase 9M.
+
+## Phase 9M — Automated Testing Foundation
+**STATUS: NEXT** (not started)
+
+- Objective: add an automated end-to-end test foundation (Playwright, with MCP-assisted QA) over the current frontend baseline, and use it for the deferred Search UX review.
+- Out of scope: backend, new product features, dependency upgrades beyond what the test tooling needs.
 
 ---
 

@@ -2,7 +2,7 @@
 
 ## Last Updated
 
-2026-10-09
+2026-10-12
 
 ## Current Branch
 
@@ -23,12 +23,13 @@ dd28411 FD3: enrich Food and Dining business details
 431b954 FD5: complete Food and Dining frontend QA
 c2871f7 Phase 9H: add route-level code splitting
 5c3e6d6 Phase 9G: add PWA installability and offline safety
-Phase 9J commit: pending (implementation complete, not yet committed)
+50e39b9 Phase 9J: complete SEO accessibility and frontend QA
+Phase 9L commit: pending (implementation complete, not yet committed)
 
 ## Current Phase
 
-Current Phase: Phase 9J — SEO + Accessibility Tooling + Final Frontend QA: COMPLETE, commit pending approval. This is the last frontend hardening phase: Phase 9G (PWA), Phase 9H (code splitting), the Food & Dining expansion (FD1–FD5) and the Visual Refresh (V1–V6) are complete and committed. The frontend is ready to be treated as the baseline for backend integration (see Phase 9J Result).
-Next Step: the frontend freeze, then Phase 10 — Backend Architecture/Foundation (see Next Step below).
+Current Phase: Phase 9L — Frontend Cleanup & Technical Debt Closeout: COMPLETE, commit pending approval. Phase 9J (SEO / accessibility / final frontend QA), Phase 9G (PWA), Phase 9H (code splitting), the Food & Dining expansion (FD1–FD5) and the Visual Refresh (V1–V6) are complete and committed. Search UX refinement is intentionally deferred (see Phase 9L Result).
+Next Step: Phase 9M — Automated Testing Foundation (Playwright + MCP QA), then Phase 10 — Backend Architecture/Foundation (see Next Step below).
 
 ## Completed Product Work
 
@@ -64,6 +65,7 @@ Next Step: the frontend freeze, then Phase 10 — Backend Architecture/Foundatio
 - Phase 9H — Performance & Route-Level Code Splitting (see below)
 - Phase 9G — PWA / Installability (see below)
 - Phase 9J — SEO + Accessibility Tooling + Final Frontend QA (see below)
+- Phase 9L — Frontend Cleanup & Technical Debt Closeout (see below)
 
 Full history is in `git log`; this file summarizes outcomes, not the blow-by-blow.
 
@@ -422,7 +424,7 @@ Phase 9G — PWA / Installability = **COMPLETE** (commit `5c3e6d6`). B-17 Portal
 
 ## Phase 9J Result
 
-Phase 9J — SEO + Accessibility Tooling + Final Frontend QA = **COMPLETE** (Phase 9J commit: pending). Hardening only: no new product feature, route, dependency (`package.json` / lockfile unchanged), backend, analytics / tracking, notification permission, sharing / deep link or store packaging.
+Phase 9J — SEO + Accessibility Tooling + Final Frontend QA = **COMPLETE** (commit `50e39b9`). Hardening only: no new product feature, route, dependency (`package.json` / lockfile unchanged), backend, analytics / tracking, notification permission, sharing / deep link or store packaging.
 
 - **SEO architecture (no dependency; no React Helmet):** one mechanism. `src/config/seo.ts` is the single home of the site name / description, the title helpers and the **site-URL seam**; `src/seo/routeSeo.ts` holds one table with a title / description / indexing rule for every route; `src/seo/entitySeo.ts` builds descriptors for the detail pages from fields already public on the page; `useSeo` lets a page publish its descriptor into a tiny store (`seoState.ts`); `SeoManager` (rendered once per layout inside `RouteOutlet`) is the **single writer** of `document.title`, description, robots, canonical and the Open Graph / Twitter tags (`applySeo.ts` updates the static tags in `index.html` in place, creates missing ones and removes tags that do not apply — one canonical, no duplicates).
 - **Titles / descriptions:** Home "B-17 Portal | Local Services, Property, Food & More"; landing pages "<Topic> in B-17 | B-17 Portal"; detail pages "<entity name> | B-17 Portal" with a description derived from the entity's own public text (category / area / description, truncated at a word boundary); a missing entity gets a "<thing> not found" title and `noindex`. Every route — including private ones — has a real title (also WCAG 2.4.2). No superlatives or unsupported claims.
@@ -442,8 +444,21 @@ Phase 9J — SEO + Accessibility Tooling + Final Frontend QA = **COMPLETE** (Pha
 - **Performance regression (Phase 9H):** Home initial JS ≈ 616.7 → 623.1 kB raw (+1.0%), 195.9 → 197.7 kB gzip; entry chunk 350.19 → 356.58 kB; CSS 74.05 → 75.14 kB; motion chunk unchanged; 77 JS files; largest chunk 356.6 kB; the >500 kB warning stays gone; no Admin / Professional code on Home.
 - **Quality:** `npx tsc -b --force` clean; `npm run build` succeeds (also with `VITE_SITE_URL`); lint at the established 8-warning baseline, no new category; fresh-session console 0 errors / 0 warnings in dev and production (including soft navigation across 20+ routes). **Not run:** Lighthouse, axe, real-device and screen-reader testing (VoiceOver / TalkBack / NVDA), Safari / Firefox.
 - **Security / privacy sanity:** no secrets, API keys or `.env` files committed (only `.env.example`); metadata is built from already-public page text (no contact data, submitter names or internal ids beyond the canonical URL; `blob:` images excluded); the SEO code stores nothing; no notification permission is requested; no tracking SDK; `noindex` / robots are indexing hints, not security.
-- **Remaining frontend limitations / open items:** per-page link previews and server-side title / meta need pre-rendering or SSR (hosting / backend phase); no per-entity sitemap and no structured data until real data exists; Lighthouse / axe / screen-reader / real-device testing still to be done; dark mode is not user-reachable (not audited); items listed in the original 9J roadmap scope that were NOT part of this phase's brief and remain open — the unlinked `/services/home-construction` Coming-Soon stub, the orphaned demo images, and `shadcn` sitting in `dependencies` (all low-risk, none blocking); the Phase 9F (Admin Production UX) and 9I (Notifications + Trust/Reviews UI) items remain unscheduled product decisions.
+- **Remaining frontend limitations / open items:** per-page link previews and server-side title / meta need pre-rendering or SSR (hosting / backend phase); no per-entity sitemap and no structured data until real data exists; Lighthouse / axe / screen-reader / real-device testing still to be done; dark mode is not user-reachable (not audited); the three low-risk cleanup items from the original 9J roadmap scope (the unlinked `/services/home-construction` stub, the orphaned demo images, the `shadcn` dependency) were closed in Phase 9L; the Phase 9F (Admin Production UX) and 9I (Notifications + Trust/Reviews UI) items remain unscheduled product decisions.
 - **Frontend readiness verdict:** the frontend is coherent, responsive (320–1440), accessible to the extent verified above, installable, performance-split, SEO-aware, navigationally stable and documented — **ready to be frozen as the baseline for backend integration.** No true blockers were found; the limitations above are either backend-phase concerns or low-risk cleanup.
+
+## Phase 9L Result
+
+Phase 9L — Frontend Cleanup & Technical Debt Closeout = **COMPLETE** (Phase 9L commit: pending). Cleanup only: no product feature, no UI redesign, no business-behavior change, **no dependency added, removed or upgraded** (`package.json` / lockfile unchanged), Search untouched.
+
+- **Route cleanup:** `/services/home-construction` was an obsolete Phase 1 stub — wired only in `router.tsx`, `routes.ts` (`servicesConstruction`) and the SEO route table, with no inbound link, data or search destination (`/services` is the real "Home & Construction Services" page). Removed from all three places; the URL now resolves to the normal 404 (title, `noindex`, h1). `ComingSoonPage` stays: it serves `/coming-soon`, linked from the footer / Home for the deferred modules (Marketplace, Pharmacy, Pick & Drop, Community, B-17 Vault); its doc comment was updated. No valid route was removed.
+- **Asset cleanup:** every file under `public/` was cross-checked against source, CSS, data files, `index.html`, the manifest, the SEO config, the PWA worker, `vite.config.ts` and docs (and for dynamically built paths — none exist). 19 demo photos (≈ 47 MB, tracked in git, referenced nowhere, not documented as intentional — the "19 orphaned images" already flagged in this file) were removed: `businesses/` electronics-store, hardware-store, home-improvement-store; `hero/` hero-b17-demo-02, 03, 04, 05, 06, 08, 10; `properties/furnished-apartment`; `services/` architecture, construction, electrical, interior-design, plumbing, renovation, solar; `tutors/cs-tutor`. `public/images` shrank from 51 MB to 3.9 MB (the built `dist` ≈ 5.4 MB). Kept: the favicon, Apple touch icon, all PWA icons, the manifest, `robots.txt`, the empty `images/brand/` placeholder folders, and every image any code references (30 distinct `/images/...` paths re-verified to serve as real images; 55 `<img>` elements on 21 pages all load).
+- **`shadcn` dependency audit:** the package is NOT imported by any source file, but `src/index.css` does `@import "shadcn/tailwind.css"`, which defines the Tailwind custom variants (`data-open`, `data-closed`, `data-checked`, `data-vertical`, …) that the generated `dialog.tsx`, `sheet.tsx` and `toggle-group.tsx` rely on. Removing it would silently break those components' state styling, so it was kept. It is a build-time dependency only (nothing from it ships as JavaScript); it could move to `devDependencies`, but dependency changes other than removing a proven-unused package were out of scope. Radix and the other UI dependencies were not touched.
+- **Dead code:** a reachability / export audit of `src/` found exactly two unreachable files, both unreferenced since Phase 1 and removed: `src/hooks/useMediaQuery.ts` (`useMediaQuery`, `useIsDesktopNav`) and `src/hooks/useReducedMotion.ts` (reduced motion is handled globally by `MotionConfig` and CSS). Exports used only inside their own file (the generated UI primitives' variant / part exports, small types) were deliberately left. No `console.*`, `debugger`, TODO / FIXME, commented-out code or lorem text exists in `src/`; the one `@ts-expect-error` (`zodResolver.ts`) is documented and kept; "temporary" / "mock" matches are legitimate copy or comments.
+- **Package hygiene:** `npm outdated` was run for information only (minor / patch updates available for Vite, React Router, radix-ui, lucide-react, motion, zod, react-hook-form and others; major versions available for `motion` 14, `typescript` 7, `@types/node` 26, `cn` 0.4). Nothing was upgraded.
+- **Search:** untouched (ranking, suggestions, filters, cards, layout, query semantics). **Search UX refinement is intentionally deferred** and will be reviewed during Phase 9M (Playwright + MCP) testing.
+- **Regression:** PWA (service worker controls the page, 0 manifest / installability errors, install CTA, iOS guidance, standalone hiding, dismissal, update prompt with one reload and no loop, offline browsing, offline route state, all six offline mutation blocks) and SEO (per-route titles / canonical / robots, `/search` `noindex, follow`, 404 `noindex`, robots.txt `Allow: /` only, sitemap emitted only with `VITE_SITE_URL`) re-verified on the new build. Performance: entry chunk 356.58 → 356.42 kB, Home initial JS ≈ 622.9 kB raw / 197.7 kB gzip (effectively unchanged), 77 JS files, no >500 kB warning, no Admin / Professional code on Home. Smoke test (fresh sessions, production and dev): Home, Search, Food, Property, Professional, Admin, 404 and the PWA install / offline UI — 0 console errors / warnings. `tsc` clean; lint at the established 8-warning baseline.
+- **Remaining frontend debt:** no automated test suite; no SPA-fallback hosting config; Lighthouse / axe / screen-reader / real-device testing still to be done; `shadcn` in `dependencies` (build-time only); `CategoryCard` / `NewsCard` hand-roll their card surface; per-page server-side metadata, per-entity sitemap and structured data wait for the backend; Search UX review deferred to Phase 9M.
 
 ## Production V1 Direction
 
@@ -469,17 +484,15 @@ Phase 9J — SEO + Accessibility Tooling + Final Frontend QA = **COMPLETE** (Pha
 - Archived listings have no unarchive action yet (one-way in Phase 9D).
 - Business/Property listings don't produce service leads — no request-capture flow exists for those kinds yet, only Provider's Request Service does.
 - `listingsStore` is still in-memory only (reset on reload) — unaffected by Phase 9D/9E; `residentStore` and `planStore` (Phase 9E) are the two `localStorage`-persisted stores.
-- Minor cleanup noted in Phase 9D review, not yet actioned: an unused `routes.editListing` path constant, and `resubmitListing` has no store-level status guard (archived-listing protection lives only in `EditListingPage`'s UI).
+- Minor cleanup noted in Phase 9D review, not yet actioned (the `routes.editListing` constant it also mentioned is now used by the SEO route table): `resubmitListing` has no store-level status guard (archived-listing protection lives only in `EditListingPage`'s UI).
 - Plan (Phase 9E) is demo/local only, not tied to any real account — same name-based limitation as everything else in this prototype; a determined user can switch their own plan, which is the explicit point of the demo Upgrade toggle. Real plan/subscription state belongs to the backend phase.
 - Frontend capability checks (Phase 9E) are UX only, not authorization/security — explicitly documented in `types/entitlements.ts`; the backend will be authoritative once it exists.
 - No profession-specific Premium modules built yet (Tutor/Property/Salon, etc.) — `professional.modules` capability exists, reserved and unconsumed, for exactly this future use.
 - Auth is demo-only (name string, no password, no persistence) — by design, not yet a gap to "fix," but must become real before any production launch.
 - No backend, no database — all state is static seed data + in-memory or `localStorage`-persisted Zustand.
-- No test suite of any kind.
+- No test suite of any kind (Phase 9M — Automated Testing Foundation is next).
 - Lint baseline: 8 pre-existing warnings (6× `only-export-components` in shadcn-pattern files, 2× `set-state-in-effect`) — known, unchanged across many phases.
-- 19 orphaned images (~46 MB) in `public/images` awaiting a keep/wire/remove decision.
-- Dead route `/services/home-construction` (defined, wired, but no inbound link anywhere).
-- `shadcn` CLI package sits in `dependencies` instead of `devDependencies` (zero runtime impact, hygiene only).
+- (Closed in Phase 9L) the 19 orphaned images and the dead `/services/home-construction` route were removed; the `shadcn` package was audited and kept (see Phase 9L Result). `shadcn` still sits in `dependencies` although it is only needed at build time (`src/index.css` imports `shadcn/tailwind.css`); moving it to `devDependencies` was out of scope for the cleanup phase and is optional, zero-runtime-impact hygiene.
 - No SPA-fallback hosting config (`vercel.json`/`netlify.toml`/`_redirects`) — will 404 on refresh/direct link on a real static host until added.
 - `CategoryCard` and `NewsCard` still hand-roll their own card surface styling — not yet migrated to the shared `Card` primitive; candidates for a later visual phase. (`ListingSummaryCard` moved onto `Card` `workspace` in Visual V4.)
 - `Card`'s `elevated` variant is defined (`docs/design/DESIGN_SYSTEM.md` §8) but has no consumer in production UI yet — `interactive` (V1), `featured` (V2) and `workspace` (V4) are in use.
@@ -504,7 +517,7 @@ Phase 9J — SEO + Accessibility Tooling + Final Frontend QA = **COMPLETE** (Pha
 
 ## Next Step
 
-The frontend freeze (this baseline), then Phase 10 — Backend Architecture/Foundation, followed by Phases 11–13 (backend implementation and integration), per `ROADMAP.md`. Phases 9F (Admin Production UX) and 9I (Notifications + Trust/Reviews UI) remain valid Production V1 items whose sequencing is a product decision. The backend phases should also pick up what the frontend deliberately deferred: server-side / pre-rendered per-page metadata and link previews, a per-entity sitemap, structured data from real entity data, a real production URL (`VITE_SITE_URL`), persistent data / auth, real media storage and any offline write handling. Store packaging (Capacitor / Play Store / App Store), push notifications, sharing / deep links, ordering / payments and premium merchant tools stay out of scope until their roadmap phases.
+Phase 9M — Automated Testing Foundation: introduce Playwright-based end-to-end testing (and MCP-assisted QA) over the frozen frontend baseline, including the deferred Search UX review, then Phase 10 — Backend Architecture/Foundation and the later backend phases per `ROADMAP.md`. The backend phases should also pick up what the frontend deliberately deferred: server-side / pre-rendered per-page metadata and link previews, a per-entity sitemap, structured data from real entity data, a real production URL (`VITE_SITE_URL`), persistent data / auth, real media storage and any offline write handling. Phases 9F (Admin Production UX) and 9I (Notifications + Trust/Reviews UI) remain product decisions. Store packaging, push notifications, sharing / deep links, ordering / payments and premium merchant tools stay out of scope until their roadmap phases.
 
 ## Resume Instructions
 
