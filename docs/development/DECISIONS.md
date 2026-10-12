@@ -139,3 +139,15 @@ Concise decisions only. Where the originating date isn't known, none is given ra
 **Decision:** Keep the `shadcn` package in `package.json` even though no source file imports it: `src/index.css` imports `shadcn/tailwind.css`, which defines the Tailwind custom variants (`data-open`, `data-closed`, `data-checked`, `data-vertical`, …) used by the generated `dialog`, `sheet` and `toggle-group` components. Unused-asset and unused-file cleanup is limited to items proven unreferenced (literal and dynamic paths, config, manifest, docs); generated-UI export surfaces are left intact.
 **Reason:** removing it would silently drop those components' state styling; the package is build-time only (no JavaScript ships from it), so it is a hygiene question (`devDependencies` vs `dependencies`), not a runtime or bundle one.
 **Revisit when:** the UI primitives stop using `shadcn/tailwind.css` variants, or dependency hygiene is revisited (moving it to `devDependencies` is the only change expected).
+
+---
+
+**Decision:** Browser E2E runs against the **production build** served by `vite preview` bound to explicit `127.0.0.1:4173` (`baseURL` the same), never `localhost`; functional Playwright projects block the service worker and only a dedicated serial `pwa` project allows it; tests get isolation from fresh browser contexts and the app's own in-memory reset on load — no reset endpoint, test-only flag or `window` hook is shipped. Flows that cross Professional/Admin roles use client-side navigation (`pushState` + `popstate`) in a test helper, because the in-memory sessions and listings must survive and the Admin area has no public link. No arbitrary waits; page readiness is "exactly one `<h1>`".
+**Reason:** `localhost` can resolve to IPv6 in one process and IPv4 in another on Windows (the dev server bound `::1`, the browser used IPv4); the production build is what registers the service worker and what users get; a cached worker would make functional tests order-dependent; shipping test seams would be a permanent production risk; lazy routes make time-based waits flaky.
+**Revisit when:** a backend exists (tests move to a seeded database / real auth and need a legitimate reset mechanism), more browsers/devices are added to CI, or the in-memory state is replaced.
+
+---
+
+**Decision:** Result cards are non-interactive surfaces with **one** stretched, named overlay button for the card action (`CardPreviewTrigger`, "Preview <name>") and independent Save / WhatsApp / Contact buttons layered above it; no interactive element is nested inside another. Cards without `onSelect` render no overlay.
+**Reason:** a `role="button"` card containing buttons violates WCAG 4.1.2 and gives unreliable screen-reader and keyboard behavior; the stretched-button pattern keeps the full-card click target and the existing visuals without changing Search semantics. Framer Motion adds `tabindex="0"` to press-gesture elements, so the card container sets `tabIndex={-1}` explicitly.
+**Revisit when:** a card gains a real per-entity link target — then the overlay should become an `<a>`.

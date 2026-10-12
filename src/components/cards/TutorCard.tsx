@@ -6,6 +6,7 @@ import { CardImage } from "@/components/media/CardImage"
 import { DemoBadge } from "@/components/feedback/DemoBadge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
+import { CardPreviewTrigger } from "@/components/cards/CardPreviewTrigger"
 import { SaveButton } from "@/components/inputs/SaveButton"
 import { useToast } from "@/hooks/useToast"
 import { SIMULATED_MESSAGES } from "@/lib/simulatedActions"
@@ -22,20 +23,14 @@ function TutorCard({ tutor, onSelect }: TutorCardProps) {
   return (
     <Card
       variant="interactive"
-      role="button"
-      tabIndex={0}
-      onClick={onSelect}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault()
-          onSelect?.()
-        }
-      }}
-      aria-label={`Preview ${tutor.name}`}
+      className="relative isolate"
+      // Motion adds tabindex=0 to elements with a press gesture; the card container must not be a tab stop (the preview button is).
+      tabIndex={-1}
     >
+      <CardPreviewTrigger name={tutor.name} onSelect={onSelect} />
       <div className="relative">
         <CardImage src={tutor.image} icon={GraduationCap} label={tutor.name} decorative />
-        <SaveButton kind="tutor" id={tutor.id} name={tutor.name} className="absolute right-2 top-2" />
+        <SaveButton kind="tutor" id={tutor.id} name={tutor.name} className="absolute right-2 top-2 z-20" />
       </div>
       <Stack gap={2} className="px-1">
         <Stack direction="row" justify="between" align="start" gap={2}>
@@ -55,7 +50,7 @@ function TutorCard({ tutor, onSelect }: TutorCardProps) {
           <Typography variant="caption">{tutor.area}</Typography>
         </Stack>
       </Stack>
-      <div className="px-1 pb-1">
+      <div className="relative z-20 px-1 pb-1">
         <Button
           size="sm"
           className="w-full"

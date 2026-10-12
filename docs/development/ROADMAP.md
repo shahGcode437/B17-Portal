@@ -175,8 +175,8 @@ V1 Shared Card Foundation → V2 Consumer Discovery → V2.1 Predictive Search �
 1. ~~Phase 9H — route-level code splitting / performance~~ — **COMPLETE** (commit `c2871f7`)
 2. ~~Phase 9G — PWA / installability~~ — **COMPLETE** (commit `5c3e6d6`)
 3. ~~Phase 9J — SEO, accessibility tooling and final frontend QA~~ — **COMPLETE** (commit `50e39b9`)
-4. ~~Phase 9L — frontend cleanup & technical debt closeout~~ — **COMPLETE** (Phase 9L commit: pending)
-5. Phase 9M — Automated Testing Foundation (Playwright + MCP QA, including the deferred Search UX review) — **NEXT**
+4. ~~Phase 9L — frontend cleanup & technical debt closeout~~ — **COMPLETE** (commit `5ed1799`)
+5. ~~Phase 9M — Automated Testing Foundation (Playwright + MCP QA, including the Search UX review)~~ — **COMPLETE** (Phase 9M commit: pending)
 6. Frontend freeze
 7. Phases 10–13 — backend architecture and implementation
 
@@ -236,10 +236,13 @@ Phases 9F (Admin Production UX) and 9I (Notifications + Trust/Reviews UI) remain
 - Search UX refinement is intentionally deferred to Phase 9M.
 
 ## Phase 9M — Automated Testing Foundation
-**STATUS: NEXT** (not started)
+**STATUS: COMPLETE** (Phase 9M commit: pending)
 
-- Objective: add an automated end-to-end test foundation (Playwright, with MCP-assisted QA) over the current frontend baseline, and use it for the deferred Search UX review.
-- Out of scope: backend, new product features, dependency upgrades beyond what the test tooling needs.
+- Objective: an automated test foundation over the frozen frontend baseline, plus the deferred Search UX review.
+- Delivered: Vitest + jsdom + RTL unit/component suite (168 tests); Playwright E2E (68 tests; desktop, mobile, PWA projects) against the production build on `127.0.0.1:4173`; GitHub Actions frontend CI; `docs/development/TESTING.md`; Playwright MCP exploratory Search review (`SEARCH_UX_FINDINGS.md`).
+- Bug found and fixed: nested interactive controls (Save inside Preview) in Search result cards — minimal semantic fix, regression-tested.
+- Out of scope / unchanged: backend, new product features, Search redesign/ranking, personalization, sharing, native apps, payments.
+- Known gaps (see `TESTING.md`): Chromium only, no axe/Lighthouse, no real-device or visual-regression testing.
 
 ---
 

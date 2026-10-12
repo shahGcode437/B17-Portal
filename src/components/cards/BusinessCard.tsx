@@ -7,6 +7,7 @@ import { DemoBadge } from "@/components/feedback/DemoBadge"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
+import { CardPreviewTrigger } from "@/components/cards/CardPreviewTrigger"
 import { SaveButton } from "@/components/inputs/SaveButton"
 import { useToast } from "@/hooks/useToast"
 import { SIMULATED_MESSAGES } from "@/lib/simulatedActions"
@@ -23,17 +24,11 @@ function BusinessCard({ business, onSelect }: BusinessCardProps) {
   return (
     <Card
       variant={business.featured ? "featured" : "interactive"}
-      role="button"
-      tabIndex={0}
-      onClick={onSelect}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault()
-          onSelect?.()
-        }
-      }}
-      aria-label={`Preview ${business.name}`}
+      className="relative isolate"
+      // Motion adds tabindex=0 to elements with a press gesture; the card container must not be a tab stop (the preview button is).
+      tabIndex={-1}
     >
+      <CardPreviewTrigger name={business.name} onSelect={onSelect} />
       <div className="relative">
         <CardImage src={business.image} icon={Building2} label={business.name} tone="accent" decorative />
         {business.featured && (
@@ -42,7 +37,7 @@ function BusinessCard({ business, onSelect }: BusinessCardProps) {
             Featured
           </Badge>
         )}
-        <SaveButton kind="business" id={business.id} name={business.name} className="absolute right-2 top-2" />
+        <SaveButton kind="business" id={business.id} name={business.name} className="absolute right-2 top-2 z-20" />
       </div>
       <Stack gap={2} className="px-1">
         <Stack direction="row" justify="between" align="start" gap={2}>
@@ -62,7 +57,7 @@ function BusinessCard({ business, onSelect }: BusinessCardProps) {
           <Typography variant="caption">{business.area}</Typography>
         </Stack>
       </Stack>
-      <Stack direction="row" gap={2} className="px-1 pb-1">
+      <Stack direction="row" gap={2} className="relative z-20 px-1 pb-1">
         <Button
           size="sm"
           variant="outline"

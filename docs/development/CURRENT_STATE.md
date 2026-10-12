@@ -24,12 +24,13 @@ dd28411 FD3: enrich Food and Dining business details
 c2871f7 Phase 9H: add route-level code splitting
 5c3e6d6 Phase 9G: add PWA installability and offline safety
 50e39b9 Phase 9J: complete SEO accessibility and frontend QA
-Phase 9L commit: pending (implementation complete, not yet committed)
+5ed1799 Phase 9L: clean frontend technical debt
+Phase 9M commit: pending (implementation complete, not yet committed)
 
 ## Current Phase
 
-Current Phase: Phase 9L — Frontend Cleanup & Technical Debt Closeout: COMPLETE, commit pending approval. Phase 9J (SEO / accessibility / final frontend QA), Phase 9G (PWA), Phase 9H (code splitting), the Food & Dining expansion (FD1–FD5) and the Visual Refresh (V1–V6) are complete and committed. Search UX refinement is intentionally deferred (see Phase 9L Result).
-Next Step: Phase 9M — Automated Testing Foundation (Playwright + MCP QA), then Phase 10 — Backend Architecture/Foundation (see Next Step below).
+Current Phase: Phase 9M — Automated Testing Foundation + Playwright E2E + MCP-assisted QA: COMPLETE, commit pending approval. Phase 9L (cleanup), Phase 9J (SEO / accessibility / final frontend QA), Phase 9G (PWA), Phase 9H (code splitting), the Food & Dining expansion (FD1–FD5) and the Visual Refresh (V1–V6) are complete and committed. Search UX refinement remains deferred; the Search review is in `SEARCH_UX_FINDINGS.md`.
+Next Step: Phase 10 — Backend Architecture/Foundation (see Next Step below).
 
 ## Completed Product Work
 
@@ -66,6 +67,7 @@ Next Step: Phase 9M — Automated Testing Foundation (Playwright + MCP QA), then
 - Phase 9G — PWA / Installability (see below)
 - Phase 9J — SEO + Accessibility Tooling + Final Frontend QA (see below)
 - Phase 9L — Frontend Cleanup & Technical Debt Closeout (see below)
+- Phase 9M — Automated Testing Foundation (see below and `TESTING.md`)
 
 Full history is in `git log`; this file summarizes outcomes, not the blow-by-blow.
 
@@ -460,6 +462,20 @@ Phase 9L — Frontend Cleanup & Technical Debt Closeout = **COMPLETE** (Phase 9L
 - **Regression:** PWA (service worker controls the page, 0 manifest / installability errors, install CTA, iOS guidance, standalone hiding, dismissal, update prompt with one reload and no loop, offline browsing, offline route state, all six offline mutation blocks) and SEO (per-route titles / canonical / robots, `/search` `noindex, follow`, 404 `noindex`, robots.txt `Allow: /` only, sitemap emitted only with `VITE_SITE_URL`) re-verified on the new build. Performance: entry chunk 356.58 → 356.42 kB, Home initial JS ≈ 622.9 kB raw / 197.7 kB gzip (effectively unchanged), 77 JS files, no >500 kB warning, no Admin / Professional code on Home. Smoke test (fresh sessions, production and dev): Home, Search, Food, Property, Professional, Admin, 404 and the PWA install / offline UI — 0 console errors / warnings. `tsc` clean; lint at the established 8-warning baseline.
 - **Remaining frontend debt:** no automated test suite; no SPA-fallback hosting config; Lighthouse / axe / screen-reader / real-device testing still to be done; `shadcn` in `dependencies` (build-time only); `CategoryCard` / `NewsCard` hand-roll their card surface; per-page server-side metadata, per-entity sitemap and structured data wait for the backend; Search UX review deferred to Phase 9M.
 
+## Phase 9M Result
+
+Phase 9M — Automated Testing Foundation + Playwright E2E + MCP-Assisted QA = **COMPLETE** (Phase 9M commit: pending). Phase 9L is committed as `5ed1799`.
+
+- **Tooling (devDependencies only):** Vitest 5 + jsdom + React Testing Library + user-event + jest-dom, and `@playwright/test`. No Jest/Cypress/Selenium. Scripts: `test`, `test:run`, `test:watch`, `test:e2e`, `test:e2e:headed`, `test:e2e:ui`, `test:e2e:report`. Commands, strategy and gaps: `docs/development/TESTING.md`.
+- **Unit + component:** 14 files / 168 tests (Search service, Food config, listing builders/schemas, SEO, stores, SearchBar, FilterControls, FoodListingFields, ListingForm, result-card accessibility, offline guard, InstallPrompt, route fallback/error, PwaStatus).
+- **E2E:** 9 spec files / 68 tests — desktop 58, mobile (Pixel 7) 6, PWA 4 — against the production build served by `vite preview` on explicit `127.0.0.1:4173` (never `localhost`, which can resolve to IPv6). No arbitrary waits. Functional projects block the service worker; only the `pwa` project allows it. Isolation by fresh contexts; no test-only code ships.
+- **Journeys covered:** Home→Search→detail→Save→Saved→unsave; Search (URL source of truth, suggestions, Food vs General, empty state, nested-interactive regression); Professional create→Admin reject with reason→edit & resubmit→approve→Search→Food detail; General and Service listings; Property lifecycle; route guards and role separation; SEO/robots/canonical/404; every public route by direct URL; mobile nav/filters/forms; PWA manifest, service worker, offline browsing and blocked offline mutations.
+- **Bug found and fixed by 9M:** Search result cards exposed a Save button nested inside a "Preview X" button (nested interactive controls, WCAG 4.1.2). Reproduced with a failing test, fixed with the smallest semantic change (non-interactive card surface + one stretched named overlay button, `CardPreviewTrigger`, with independent Save/action buttons above it) in `BusinessCard`, `ProviderCard`, `TutorCard`, `PropertyCard`; no visual change, no Search-semantics change; regression-tested in Vitest and Playwright.
+- **MCP review:** Playwright MCP exploratory Search review (desktop + mobile) recorded in `SEARCH_UX_FINDINGS.md` — one blocker (above, fixed), two LOW open items (32 px Save touch target; suggestion list overlays filters until dismissed), the rest verified and pinned by tests.
+- **CI:** `.github/workflows/frontend-ci.yml` (push/PR to `master`): tsc → lint → Vitest → build → Playwright Chromium; no secrets, no deploy; report/traces uploaded. Not yet run on GitHub (it only runs after the commit is pushed).
+- **Verification at completion:** `tsc -b --force` clean; lint 8 warnings (baseline); Vitest 168/168; build OK; Playwright 68/68 (two consecutive full runs, no retries).
+- **Unchanged:** product behavior, Search ranking/semantics, routes, data, PWA, SEO; no backend.
+
 ## Production V1 Direction
 
 - Complete the frontend before the backend.
@@ -490,7 +506,7 @@ Phase 9L — Frontend Cleanup & Technical Debt Closeout = **COMPLETE** (Phase 9L
 - No profession-specific Premium modules built yet (Tutor/Property/Salon, etc.) — `professional.modules` capability exists, reserved and unconsumed, for exactly this future use.
 - Auth is demo-only (name string, no password, no persistence) — by design, not yet a gap to "fix," but must become real before any production launch.
 - No backend, no database — all state is static seed data + in-memory or `localStorage`-persisted Zustand.
-- No test suite of any kind (Phase 9M — Automated Testing Foundation is next).
+- Automated tests exist since Phase 9M (see `TESTING.md` → Known gaps): Chromium-only E2E, no axe/Lighthouse, no real-device or visual-regression testing, several flows (Education/Tutor, News admin CRUD, Leads/Requests lifecycle, Premium toggle) not covered by E2E.
 - Lint baseline: 8 pre-existing warnings (6× `only-export-components` in shadcn-pattern files, 2× `set-state-in-effect`) — known, unchanged across many phases.
 - (Closed in Phase 9L) the 19 orphaned images and the dead `/services/home-construction` route were removed; the `shadcn` package was audited and kept (see Phase 9L Result). `shadcn` still sits in `dependencies` although it is only needed at build time (`src/index.css` imports `shadcn/tailwind.css`); moving it to `devDependencies` was out of scope for the cleanup phase and is optional, zero-runtime-impact hygiene.
 - No SPA-fallback hosting config (`vercel.json`/`netlify.toml`/`_redirects`) — will 404 on refresh/direct link on a real static host until added.
@@ -517,7 +533,7 @@ Phase 9L — Frontend Cleanup & Technical Debt Closeout = **COMPLETE** (Phase 9L
 
 ## Next Step
 
-Phase 9M — Automated Testing Foundation: introduce Playwright-based end-to-end testing (and MCP-assisted QA) over the frozen frontend baseline, including the deferred Search UX review, then Phase 10 — Backend Architecture/Foundation and the later backend phases per `ROADMAP.md`. The backend phases should also pick up what the frontend deliberately deferred: server-side / pre-rendered per-page metadata and link previews, a per-entity sitemap, structured data from real entity data, a real production URL (`VITE_SITE_URL`), persistent data / auth, real media storage and any offline write handling. Phases 9F (Admin Production UX) and 9I (Notifications + Trust/Reviews UI) remain product decisions. Store packaging, push notifications, sharing / deep links, ordering / payments and premium merchant tools stay out of scope until their roadmap phases.
+Phase 10 — Backend Architecture/Foundation and the later backend phases per `ROADMAP.md`. The backend phases should also pick up what the frontend deliberately deferred: server-side / pre-rendered per-page metadata and link previews, a per-entity sitemap, structured data from real entity data, a real production URL (`VITE_SITE_URL`), persistent data / auth, real media storage and any offline write handling. Phases 9F (Admin Production UX) and 9I (Notifications + Trust/Reviews UI) remain product decisions. Store packaging, push notifications, sharing / deep links, ordering / payments and premium merchant tools stay out of scope until their roadmap phases.
 
 ## Resume Instructions
 
