@@ -13,6 +13,8 @@ import { DetailSection } from "@/components/detail/DetailSection"
 import { DetailFacts } from "@/components/detail/DetailFacts"
 import { DetailTagList } from "@/components/detail/DetailTagList"
 import { getTutorById } from "@/services/search"
+import { useSeo } from "@/hooks/useSeo"
+import { tutorSeo } from "@/seo/entitySeo"
 import { useToast } from "@/hooks/useToast"
 import { SIMULATED_MESSAGES } from "@/lib/simulatedActions"
 import { routes } from "@/config/routes"
@@ -28,6 +30,7 @@ function TutorProfilePage() {
   const navigate = useNavigate()
   const { show } = useToast()
   const tutor = id ? getTutorById(id) : undefined
+  useSeo(tutorSeo(tutor))
 
   if (!tutor) {
     return (

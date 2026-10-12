@@ -4,6 +4,7 @@ import { RouteOutlet } from "@/app/RouteOutlet"
 import { Container } from "@/components/foundation/Container"
 import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
+import { SkipLink } from "@/components/navigation/SkipLink"
 import { ProfessionalNav } from "@/features/provider/ProfessionalNav"
 import { routes } from "@/config/routes"
 
@@ -17,6 +18,7 @@ import { routes } from "@/config/routes"
 function ProviderLayout() {
   return (
     <div className="flex min-h-svh flex-col bg-secondary/30">
+      <SkipLink />
       <header className="border-b border-border bg-background">
         <Container>
           <Stack direction="row" align="center" justify="between" gap={4} className="h-14">
@@ -34,7 +36,7 @@ function ProviderLayout() {
       <Container className="pt-3">
         <ProfessionalNav />
       </Container>
-      <main className="flex-1">
+      <main id="main-content" tabIndex={-1} className="flex-1 outline-none">
         <RouteOutlet />
       </main>
     </div>

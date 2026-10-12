@@ -15,6 +15,8 @@ import { DetailFacts } from "@/components/detail/DetailFacts"
 import { DetailTagList } from "@/components/detail/DetailTagList"
 import { FeaturedBadge } from "@/components/detail/FeaturedBadge"
 import { getProviderById } from "@/services/search"
+import { useSeo } from "@/hooks/useSeo"
+import { providerSeo } from "@/seo/entitySeo"
 import { useToast } from "@/hooks/useToast"
 import { useAuth } from "@/hooks/useAuth"
 import { SIMULATED_MESSAGES } from "@/lib/simulatedActions"
@@ -39,6 +41,7 @@ function ProviderProfilePage() {
   const { user } = useAuth()
   const [isRequestOpen, setIsRequestOpen] = useState(false)
   const provider = id ? getProviderById(id) : undefined
+  useSeo(providerSeo(provider))
 
   // Resume an interrupted Request Service intent after returning from login.
   // Clearing the location state below makes this effect's second run a

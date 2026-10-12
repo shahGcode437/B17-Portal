@@ -173,9 +173,9 @@ V1 Shared Card Foundation → V2 Consumer Discovery → V2.1 Predictive Search �
 
 ### Planned sequence after Food & Dining
 1. ~~Phase 9H — route-level code splitting / performance~~ — **COMPLETE** (commit `c2871f7`)
-2. ~~Phase 9G — PWA / installability~~ — **COMPLETE** (Phase 9G commit: pending)
-3. Phase 9J — SEO, accessibility tooling and final frontend QA — **NEXT**
-4. Frontend freeze
+2. ~~Phase 9G — PWA / installability~~ — **COMPLETE** (commit `5c3e6d6`)
+3. ~~Phase 9J — SEO, accessibility tooling and final frontend QA~~ — **COMPLETE** (Phase 9J commit: pending)
+4. Frontend freeze — **NEXT**
 5. Phases 10–13 — backend architecture and implementation
 
 Phases 9F (Admin Production UX) and 9I (Notifications + Trust/Reviews UI) remain valid Production V1 items below; their sequencing relative to the list above is to be confirmed by a product decision before the frontend freeze. Only 9H now runs before 9G.
@@ -189,13 +189,13 @@ Phases 9F (Admin Production UX) and 9I (Notifications + Trust/Reviews UI) remain
 - Completion/verification: screens exist and function against mock data; existing moderation behavior unchanged.
 
 ## Phase 9G — Mobile/PWA
-**STATUS: COMPLETE** (Phase 9G commit: pending)
+**STATUS: COMPLETE** (commit `5c3e6d6`)
 
 - Objective: make the app installable and offline-tolerant for static assets.
 - Delivered: web app manifest; icon set built from the existing brand mark (192 / 512 / maskable / Apple touch) and a brand favicon; a dependency-free service worker emitted at build (app-shell precache only, lazy chunks cached on use, network-first navigation with a shell fallback, one cache per build, no data caching); a quiet install strip (native Install button on Chromium, Share → Add to Home Screen guidance on iOS, hidden when standalone / dismissed — 30-day local dismissal); an update prompt (user-triggered, single reload) and an offline notice / "You're offline" route state; an error boundary in `RouteOutlet`; a shared offline guard (`useRequireOnline`) so state-changing actions on business data fail closed with an error toast while offline. No dependency added (`vite-plugin-pwa` not used — see DECISIONS.md).
 - Result: installable per Chrome's own checks (no manifest or installability errors); Home initial JS +≈ 8 kB (+1.3%) vs 9H, Phase 9H splitting preserved (lazy chunks are not precached); direct URLs, auth redirects and the 404 page work under the worker; console clean.
 - Verification: `npx tsc -b --force` and `npm run build` pass; lint at the 8-warning baseline; verified on the production build in headless Chrome over CDP (the in-app browser pane cannot register service workers); real Android / iOS devices, Safari and Firefox were not tested.
-- Not done (deliberately / deferred): per-route `<title>` / meta (moved to Phase 9J); push notifications, Background Sync and offline mutation queues (need a backend); Capacitor / store packaging; sharing / deep links.
+- Not done (deliberately / deferred): per-route `<title>` / meta (done in Phase 9J); push notifications, Background Sync and offline mutation queues (need a backend); Capacitor / store packaging; sharing / deep links.
 
 ## Phase 9H — Performance & Route Splitting
 **STATUS: COMPLETE** (commit `c2871f7`)
@@ -215,12 +215,15 @@ Phases 9F (Admin Production UX) and 9I (Notifications + Trust/Reviews UI) remain
 - Completion/verification: shell renders and reflects mock events; no fabricated trust signals introduced.
 
 ## Phase 9J — Accessibility + SEO + Cleanup + Final Frontend QA
+**STATUS: COMPLETE** (Phase 9J commit: pending)
 
 - Objective: close remaining polish items before backend work begins.
-- Major scope: automated a11y tooling pass, resolve the dead `servicesConstruction` route, decide/act on the 19 orphaned images, move `shadcn` to `devDependencies`, final full-app QA pass.
-- Out of scope: anything requiring a backend.
-- Dependencies: none — good "cool-down" phase.
-- Completion/verification: clean audit re-run, no known regressions across all Phase 9 work.
+- Delivered: one dependency-free SEO mechanism (central config + route table + entity descriptors + a single head writer) giving every route a real title; descriptions, canonical, Open Graph and Twitter tags for public routes; an index / noindex strategy (public discovery routes indexable; account, Professional, Admin, utility and 404 `noindex, nofollow`; dynamic `/search` `noindex, follow` with a stable canonical); `robots.txt`; a build-time sitemap emitted only when `VITE_SITE_URL` is configured (stable top-level routes only, no invented dates); structured data deliberately skipped (no real entity data); a `VITE_SITE_URL` seam and a `VITE_SITE_NOINDEX` staging switch (`.env.example`); accessibility fixes — a skip-to-main-content link in every layout, a proper h1 on the 404, and decorative card images so names are not announced twice; plus the final audits (accessibility tree + DOM + contrast scan + keyboard / dialog / form tests over 31 routes / states, 74-link navigation audit, copy audit, 34 surfaces × 6 widths responsive matrix, PWA and performance regression).
+- Result: no accessibility blockers; Home initial JS +1.0% vs 9H (≈ 623 kB raw / 198 kB gzip), no >500 kB chunk; Phase 9G and 9H behavior preserved; no dependency added; console clean.
+- Not run: Lighthouse, axe-core and screen-reader / real-device testing (none installed or available; nothing downloaded) — recorded in CURRENT_STATE.md.
+- Not part of this phase's brief and still open (low-risk cleanup): the unlinked `/services/home-construction` Coming-Soon stub route, the orphaned demo images, moving `shadcn` out of `dependencies`.
+- Out of scope / deferred: anything requiring a backend — server-rendered or pre-rendered page metadata and link previews, a per-entity sitemap, structured data from real data, a real production URL.
+- Frontend freeze verdict: the frontend is ready to be treated as the baseline for backend integration.
 
 ---
 

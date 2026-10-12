@@ -34,7 +34,7 @@ function TutorCard({ tutor, onSelect }: TutorCardProps) {
       aria-label={`Preview ${tutor.name}`}
     >
       <div className="relative">
-        <CardImage src={tutor.image} icon={GraduationCap} label={tutor.name} />
+        <CardImage src={tutor.image} icon={GraduationCap} label={tutor.name} decorative />
         <SaveButton kind="tutor" id={tutor.id} name={tutor.name} className="absolute right-2 top-2" />
       </div>
       <Stack gap={2} className="px-1">

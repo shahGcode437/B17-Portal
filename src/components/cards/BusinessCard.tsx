@@ -35,7 +35,7 @@ function BusinessCard({ business, onSelect }: BusinessCardProps) {
       aria-label={`Preview ${business.name}`}
     >
       <div className="relative">
-        <CardImage src={business.image} icon={Building2} label={business.name} tone="accent" />
+        <CardImage src={business.image} icon={Building2} label={business.name} tone="accent" decorative />
         {business.featured && (
           <Badge className="absolute left-2 top-2 gap-1 bg-brand-accent text-brand-accent-foreground">
             <Star className="size-3" aria-hidden="true" />

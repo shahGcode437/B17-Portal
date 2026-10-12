@@ -51,7 +51,7 @@ function ListingSummaryCard({ listing, actions }: ListingSummaryCardProps) {
 
   return (
     <Card variant="workspace" className="sm:flex-row">
-      <CardImage src={listing.data.image} icon={Icon} label={title} tone="accent" className="sm:w-32 sm:shrink-0" />
+      <CardImage src={listing.data.image} icon={Icon} label={title} tone="accent" className="sm:w-32 sm:shrink-0" decorative />
       <Stack gap={2} className="min-w-0 flex-1">
         <Stack direction="row" align="start" justify="between" gap={3}>
           <Stack gap={1} className="min-w-0">

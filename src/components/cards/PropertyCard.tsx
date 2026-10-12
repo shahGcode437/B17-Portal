@@ -35,7 +35,7 @@ function PropertyCard({ property, onSelect }: PropertyCardProps) {
       aria-label={`Preview ${property.title}`}
     >
       <div className="relative">
-        <CardImage src={property.image} icon={KeyRound} label={property.title} tone="accent" />
+        <CardImage src={property.image} icon={KeyRound} label={property.title} tone="accent" decorative />
         <Badge
           className="absolute left-2 top-2"
           variant={property.listingType === "sale" ? "default" : "secondary"}

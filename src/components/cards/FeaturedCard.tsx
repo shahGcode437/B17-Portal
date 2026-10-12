@@ -21,7 +21,7 @@ function FeaturedCard({ sponsored }: FeaturedCardProps) {
       {...cardHover}
       className="flex flex-col gap-3 rounded-xl border border-dashed border-brand-accent/40 bg-brand-accent/5 p-3 shadow-subtle"
     >
-      <CardImage src={sponsored.image} icon={Megaphone} label={sponsored.title} tone="accent" />
+      <CardImage src={sponsored.image} icon={Megaphone} label={sponsored.title} tone="accent" decorative />
       <Stack gap={2} className="px-1 pb-1">
         <Badge className="w-fit gap-1 bg-brand-accent text-brand-accent-foreground">
           <Megaphone className="size-3" aria-hidden="true" />

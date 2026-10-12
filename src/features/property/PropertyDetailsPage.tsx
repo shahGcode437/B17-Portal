@@ -14,6 +14,8 @@ import { DetailSection } from "@/components/detail/DetailSection"
 import { DetailFacts, type DetailFact } from "@/components/detail/DetailFacts"
 import { DetailTagList } from "@/components/detail/DetailTagList"
 import { getPropertyById } from "@/services/search"
+import { useSeo } from "@/hooks/useSeo"
+import { propertySeo } from "@/seo/entitySeo"
 import { useToast } from "@/hooks/useToast"
 import { SIMULATED_MESSAGES } from "@/lib/simulatedActions"
 import { routes } from "@/config/routes"
@@ -29,6 +31,7 @@ function PropertyDetailsPage() {
   const navigate = useNavigate()
   const { show } = useToast()
   const property = id ? getPropertyById(id) : undefined
+  useSeo(propertySeo(property))
 
   if (!property) {
     return (

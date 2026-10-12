@@ -2,6 +2,7 @@ import { Component, Suspense, type ReactNode } from "react"
 import { Outlet, useMatches } from "react-router-dom"
 import { RouteError } from "@/components/feedback/RouteError"
 import { RouteFallback } from "@/components/feedback/RouteFallback"
+import { SeoManager } from "@/components/seo/SeoManager"
 
 /** Catches a page that fails to load/render (e.g. a lazy chunk while offline) so the layout shell stays usable. */
 class RouteErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean; error: unknown }> {
@@ -30,11 +31,14 @@ function RouteOutlet() {
   const routeId = matches[matches.length - 1]?.id
 
   return (
-    <RouteErrorBoundary key={routeId}>
-      <Suspense fallback={<RouteFallback />}>
-        <Outlet />
-      </Suspense>
-    </RouteErrorBoundary>
+    <>
+      <SeoManager />
+      <RouteErrorBoundary key={routeId}>
+        <Suspense fallback={<RouteFallback />}>
+          <Outlet />
+        </Suspense>
+      </RouteErrorBoundary>
+    </>
   )
 }
 

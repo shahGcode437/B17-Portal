@@ -7,6 +7,8 @@ interface PlaceholderImageProps extends React.ComponentProps<"div"> {
   tone?: "primary" | "accent"
   /** "hero" is the larger, captioned treatment for detail-page cover regions; "card" (default) is the compact icon used in card grids. */
   size?: "card" | "hero"
+  /** The image only decorates text that already names the thing (e.g. a card title right beside it): hide it from assistive tech. */
+  decorative?: boolean
 }
 
 /**
@@ -19,13 +21,13 @@ function PlaceholderImage({
   label,
   tone = "primary",
   size = "card",
+  decorative = false,
   className,
   ...props
 }: PlaceholderImageProps) {
   return (
     <div
-      role="img"
-      aria-label={`Demo image placeholder for ${label}`}
+      {...(decorative ? { "aria-hidden": true } : { role: "img", "aria-label": `Demo image placeholder for ${label}` })}
       className={cn(
         "flex aspect-video w-full items-center justify-center rounded-lg",
         tone === "primary" ? "bg-accent text-accent-foreground" : "bg-secondary text-muted-foreground",

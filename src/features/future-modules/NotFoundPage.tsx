@@ -18,7 +18,9 @@ function NotFoundPage() {
         <span className="flex size-12 items-center justify-center rounded-full bg-accent text-accent-foreground">
           <SearchX className="size-6" aria-hidden="true" />
         </span>
-        <Typography variant="h2">Page Not Found</Typography>
+        <Typography as="h1" variant="h2">
+          Page Not Found
+        </Typography>
         <Typography variant="body" className="text-muted-foreground">
           The page you're looking for doesn't exist or may have been moved.
         </Typography>

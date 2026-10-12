@@ -18,6 +18,8 @@ import { FoodDetailSections } from "@/features/directory/FoodDetailSections"
 import { FOOD_VERTICAL_LABEL, foodCategoryLabel } from "@/config/food"
 import type { DetailFact } from "@/components/detail/DetailFacts"
 import { getBusinessById } from "@/services/search"
+import { useSeo } from "@/hooks/useSeo"
+import { businessSeo } from "@/seo/entitySeo"
 import { useToast } from "@/hooks/useToast"
 import { SIMULATED_MESSAGES } from "@/lib/simulatedActions"
 import { routes } from "@/config/routes"
@@ -34,6 +36,7 @@ function BusinessProfilePage() {
   const navigate = useNavigate()
   const { show } = useToast()
   const business = id ? getBusinessById(id) : undefined
+  useSeo(businessSeo(business))
 
   if (!business) {
     return (

@@ -38,7 +38,7 @@ function ProviderCard({ provider, onSelect }: ProviderCardProps) {
       aria-label={`Preview ${provider.name}`}
     >
       <div className="relative">
-        <CardImage src={provider.image} icon={Wrench} label={provider.name} />
+        <CardImage src={provider.image} icon={Wrench} label={provider.name} decorative />
         {provider.featured && (
           <Badge className="absolute left-2 top-2 gap-1 bg-brand-accent text-brand-accent-foreground">
             <Star className="size-3" aria-hidden="true" />

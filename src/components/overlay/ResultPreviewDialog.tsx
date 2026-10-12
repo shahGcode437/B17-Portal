@@ -84,7 +84,7 @@ function ResultPreviewDialog({ result, onOpenChange }: ResultPreviewDialogProps)
       <DialogContent className="sm:max-w-md">
         {result && (
           <>
-            <CardImage src={result.image} icon={result.icon} label={result.title} className="-mt-2" />
+            <CardImage src={result.image} icon={result.icon} label={result.title} className="-mt-2" decorative />
             <DialogHeader>
               <Stack direction="row" justify="between" align="start" gap={2}>
                 <DialogTitle>{result.title}</DialogTitle>

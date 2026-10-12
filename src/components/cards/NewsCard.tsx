@@ -31,7 +31,7 @@ function NewsCard({ article, onSelect }: NewsCardProps) {
       className="flex cursor-pointer flex-col gap-3 rounded-xl border border-border bg-card p-3 text-left shadow-subtle transition-colors hover:border-primary/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       aria-label={`Read ${article.title}`}
     >
-      <CardImage src={article.image} icon={Newspaper} label={article.title} tone="accent" />
+      <CardImage src={article.image} icon={Newspaper} label={article.title} tone="accent" decorative />
       <Stack gap={2} className="px-1 pb-1">
         <Stack direction="row" align="center" gap={2}>
           <Badge variant={article.kind === "update" ? "secondary" : "default"}>{article.category}</Badge>

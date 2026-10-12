@@ -4,6 +4,7 @@ import { RouteOutlet } from "@/app/RouteOutlet"
 import { Container } from "@/components/foundation/Container"
 import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
+import { SkipLink } from "@/components/navigation/SkipLink"
 import { cn } from "@/lib/utils"
 import { routes } from "@/config/routes"
 import { headerFocusClass } from "@/features/admin/adminStyles"
@@ -25,6 +26,7 @@ function AdminLayout() {
 
   return (
     <div className="flex min-h-svh flex-col bg-secondary/30">
+      <SkipLink />
       <header className="border-b border-border bg-foreground text-background">
         <Container>
           <Stack direction="row" align="center" justify="between" gap={4} className="h-14">
@@ -77,7 +79,7 @@ function AdminLayout() {
           </Stack>
         </Container>
       </header>
-      <main className="flex-1">
+      <main id="main-content" tabIndex={-1} className="flex-1 outline-none">
         <RouteOutlet />
       </main>
     </div>

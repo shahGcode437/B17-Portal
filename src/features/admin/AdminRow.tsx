@@ -49,7 +49,7 @@ interface AdminThumbProps {
  */
 function AdminThumb({ src, icon: Icon, label }: AdminThumbProps) {
   if (src) {
-    return <CardImage src={src} icon={Icon} label={label} tone="accent" className="aspect-square size-14 shrink-0" />
+    return <CardImage src={src} icon={Icon} label={label} tone="accent" className="aspect-square size-14 shrink-0" decorative />
   }
   return (
     <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-foreground">

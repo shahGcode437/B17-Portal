@@ -1,0 +1,6 @@
+# B-17 Portal — crawl guidance only. robots.txt is NOT access control and is not used to keep pages out of
+# search: private / utility routes (login, register, Resident, Professional, Admin, 404) are kept out of the
+# index by the page-level `noindex, nofollow` metadata, which crawlers can only see if they may fetch the page.
+# The `Sitemap:` line is appended at build time only when a production URL is configured (VITE_SITE_URL).
+User-agent: *
+Allow: /

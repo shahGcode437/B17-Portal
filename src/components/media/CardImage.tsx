@@ -11,6 +11,8 @@ interface CardImageProps extends React.ComponentProps<"img"> {
   tone?: "primary" | "accent"
   /** Passed to PlaceholderImage — "hero" for detail-page cover regions. */
   placeholderSize?: "card" | "hero"
+  /** Set when a visible title sits right beside the image, so the image adds nothing to a screen reader (empty alt; placeholder hidden). */
+  decorative?: boolean
   className?: string
 }
 
@@ -20,17 +22,17 @@ interface CardImageProps extends React.ComponentProps<"img"> {
  * missing/invalid paths (typo, asset not yet supplied) fail gracefully by
  * falling back to PlaceholderImage rather than a broken image icon.
  */
-function CardImage({ src, icon, label, tone, placeholderSize, className, ...imgProps }: CardImageProps) {
+function CardImage({ src, icon, label, tone, placeholderSize, decorative = false, className, ...imgProps }: CardImageProps) {
   const [failed, setFailed] = React.useState(false)
 
   if (!src || failed) {
-    return <PlaceholderImage icon={icon} label={label} tone={tone} size={placeholderSize} className={className} />
+    return <PlaceholderImage icon={icon} label={label} tone={tone} size={placeholderSize} decorative={decorative} className={className} />
   }
 
   return (
     <img
       src={src}
-      alt={label}
+      alt={decorative ? "" : label}
       loading="lazy"
       decoding="async"
       onError={() => setFailed(true)}

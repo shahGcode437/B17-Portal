@@ -9,6 +9,8 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { EmptyState } from "@/components/feedback/EmptyState"
 import { getNewsById } from "@/services/search"
+import { useSeo } from "@/hooks/useSeo"
+import { newsSeo } from "@/seo/entitySeo"
 import { routes } from "@/config/routes"
 import { fadeUp } from "@/lib/motion"
 
@@ -27,6 +29,7 @@ function NewsArticlePage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const article = id ? getNewsById(id) : undefined
+  useSeo(newsSeo(article))
 
   if (!article) {
     return (
