@@ -27,7 +27,7 @@ Discover → Explore → Compare → Trust → Connect → Request → Return/Tr
 - `react-hook-form` + `zod` (via a hand-rolled resolver bridge)
 - `motion` (animation), `lucide-react` (icons)
 - No database, no real auth. Automated tests (Vitest + Playwright) exist since Phase 9M — see `docs/development/TESTING.md`
-- Backend: a FastAPI foundation exists in `backend/` since Phase 10B (health endpoint, settings, CORS, error envelope — see `docs/backend/`). PostgreSQL and all domain/auth APIs are NOT implemented yet, and the frontend does not call the backend yet — do not assume either exists
+- Backend: FastAPI + PostgreSQL exist in `backend/` (Phase 10B/10C: health/readiness, settings, CORS, error envelope, a 15-table schema with Alembic migrations — see `docs/backend/`). No product/read/search/auth API exists yet and the frontend does not call the backend — do not assume either does
 
 ## Engineering Workflow
 

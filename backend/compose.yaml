@@ -1,0 +1,46 @@
+# Local development services. Development-only credentials — never reuse them anywhere real.
+#
+#   docker compose up -d db                 # PostgreSQL only (the usual workflow: API runs on the host)
+#   docker compose --profile api up --build # PostgreSQL + the API container (optional)
+#
+# The host port defaults to 54329, not 5432, so it never collides with a PostgreSQL installed on the
+# machine itself (set POSTGRES_PORT to change it).
+#
+# Two databases are created on first start: `b17_dev` (the application) and `b17_test`
+# (automated tests only; see docker/initdb/). Data lives in the named volume `b17-postgres-data`.
+name: b17-portal
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: b17
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-b17_dev_password}
+      POSTGRES_DB: b17_dev
+    ports:
+      # Loopback only: the dev database is never exposed to the network.
+      - "127.0.0.1:${POSTGRES_PORT:-54329}:5432"
+    volumes:
+      - b17-postgres-data:/var/lib/postgresql/data
+      - ./docker/initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U b17 -d b17_dev"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    profiles: ["api"]
+    build: .
+    environment:
+      ENVIRONMENT: development
+      DATABASE_URL: postgresql+psycopg://b17:${POSTGRES_PASSWORD:-b17_dev_password}@db:5432/b17_dev
+      FRONTEND_ORIGINS: http://localhost:5173,http://127.0.0.1:5173
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  b17-postgres-data:

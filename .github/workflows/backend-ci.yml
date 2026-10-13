@@ -1,6 +1,7 @@
 name: Backend CI
 
-# Quality gate for the FastAPI backend. No secrets, no database yet, no deployment.
+# Quality gate for the FastAPI backend. No secrets and no deployment: it uses a disposable
+# PostgreSQL service container with throwaway credentials that exist only inside this job.
 # Independent of the frontend workflow: it only runs when backend/** or this workflow file changes.
 on:
   push:
@@ -24,10 +25,30 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: backend
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: b17
+          POSTGRES_PASSWORD: b17_ci_password
+          POSTGRES_DB: b17_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U b17 -d b17_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      # The "application" database: used to verify migrations and the reference seed.
+      DATABASE_URL: postgresql+psycopg://b17:b17_ci_password@localhost:5432/b17_ci
+      # A separate database for the test suite (its name must end in `_test`; the harness enforces it).
+      TEST_DATABASE_URL: postgresql+psycopg://b17:b17_ci_password@localhost:5432/b17_test
+      PGPASSWORD: b17_ci_password
     steps:
       - uses: actions/checkout@v4
 
@@ -49,5 +70,28 @@ jobs:
       - name: Type-check (mypy, strict)
         run: mypy
 
-      - name: Tests (pytest)
+      - name: Create the test database
+        run: psql -h localhost -U b17 -d b17_ci -c 'CREATE DATABASE b17_test'
+
+      - name: Apply migrations to a fresh database (alembic upgrade head)
+        run: alembic upgrade head
+
+      - name: Check models and migrations have not drifted (alembic check)
+        run: alembic check
+
+      - name: Seed reference data twice (must be idempotent)
+        run: |
+          python -m app.db.seed
+          python -m app.db.seed
+
+      - name: Tests (pytest, including the PostgreSQL suite)
         run: pytest
+
+  docker-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the API image (not pushed anywhere)
+        run: docker build --tag b17-portal-api:ci backend

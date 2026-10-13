@@ -259,17 +259,21 @@ Phases 9F (Admin Production UX) and 9I (Notifications + Trust/Reviews UI) remain
 This re-sequences the earlier placeholders (old 10 "Backend Architecture", 11 "PostgreSQL/Data Layer", 12 "Frontend/API Integration", 13 "Security/Auth/RBAC/Storage/Deployment"): architecture is now 10A, the data layer is 10C, authentication is pulled out of 13 into its own Phase 11, and media/deployment form Phase 13.
 
 ## Phase 10B — FastAPI Project Foundation
-**STATUS: COMPLETE** (Phase 10B commit: pending)
+**STATUS: COMPLETE** (commit `4d73c59`)
 
 - Delivered: `backend/` Python project (`pyproject.toml`), app factory, typed settings, `GET /api/v1/health`, request-ID middleware, structured JSON logging, the `{data}` / `{error}` envelopes (validation, 404/405 and unhandled-error normalization), explicit-origin CORS, OpenAPI/docs (not published in production), pytest suite (75 tests, no database), ruff + mypy (strict), and `.github/workflows/backend-ci.yml`.
 - Moved out of 10B (scope decision, see `DECISIONS.md`): the API Dockerfile and Compose PostgreSQL now belong to 10C with the data layer they serve; the readiness check (`/health/ready`) arrives with the database.
 - **No domain tables, no database, no auth, no frontend change.**
 
-## Phase 10C — PostgreSQL Data Layer
-SQLAlchemy models, Alembic baseline, constraints and indexes, reference-taxonomy seed script, dev fixtures with fixed UUIDs, repository and constraint tests, **API Dockerfile + Compose PostgreSQL**, `/health/ready`, and the Postgres service container + migration-drift check in backend CI. Not started.
+## Phase 10C — PostgreSQL / SQLAlchemy / Alembic Data Layer Foundation
+**STATUS: COMPLETE** (Phase 10C commit: pending)
+
+- Delivered: 15-table PostgreSQL schema (`docs/backend/DATA_MODEL.md`) with Alembic baseline `0001`, database-level integrity (Food↔business-vertical composite FK, menu/category limits, Saved uniqueness, history consistency, …), typed SQLAlchemy 2 models, session/transaction infrastructure, taxonomy + listing repositories, `ListingCreationService` (all-or-nothing multi-table create), reference-taxonomy seed (39 categories) and dev fixtures (fixed UUIDv5 ids), `GET /api/v1/health/ready`, API Dockerfile + Compose PostgreSQL, strict test-database safety, 291 tests (166 on real PostgreSQL), and PostgreSQL + migration/drift/seed checks in backend CI.
+- Deferred (per DATA_MODEL.md): `search_document` / `pg_trgm` / `GIN(tags)`, `service_requests`, `media_assets`, content-version history.
+- **No product API, no auth, no frontend change.**
 
 ## Phase 10D — Read APIs
-Categories, public search/suggestions, listing detail, news reads — parity with `services/search.ts` semantics. Not started.
+Categories, public search/suggestions, listing detail, news reads — parity with `services/search.ts` semantics. Includes the search schema deferred from 10C (`listings.search_document` with its maintenance, `pg_trgm`, `GIN(tags)`). **NEXT.** Not started.
 
 ## Phase 11 — Authentication, OAuth & RBAC
 Real accounts, email/password, Google (and Facebook/Apple as decided), token/session mechanism, roles and permission enforcement. Not started.

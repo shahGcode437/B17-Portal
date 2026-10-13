@@ -110,3 +110,49 @@ def test_docs_are_enabled_everywhere_except_production() -> None:
     assert load(environment="test").docs_enabled
     assert load(environment="staging").docs_enabled
     assert not load(environment="production").docs_enabled
+
+
+# -- database settings ------------------------------------------------------------------------
+
+
+def test_the_database_url_is_optional_and_an_empty_value_means_unset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert load().database_url is None
+    monkeypatch.setenv("DATABASE_URL", "   ")
+
+    assert load().database_url is None
+
+
+def test_the_database_url_must_be_a_psycopg_postgresql_url() -> None:
+    ok = load(database_url="postgresql+psycopg://u:p@127.0.0.1:5432/app")
+    assert ok.database_url is not None
+
+    for bad in ("postgresql://u:p@h/db", "sqlite:///x.db", "mysql://u:p@h/db", "postgres://u@h/db"):
+        with pytest.raises(ValidationError):
+            load(database_url=bad)
+
+
+def test_the_database_url_is_a_secret_and_never_appears_in_repr_or_dumps() -> None:
+    settings = load(database_url="postgresql+psycopg://user:hunter2@127.0.0.1:5432/app")
+
+    assert "hunter2" not in repr(settings)
+    assert "hunter2" not in str(settings.model_dump())
+    assert settings.database_url is not None
+    assert "hunter2" in settings.database_url.get_secret_value()  # available only on request
+
+
+def test_database_url_is_read_from_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://u:p@127.0.0.1:54329/b17_dev")
+
+    settings = load()
+
+    assert settings.database_url is not None
+    assert settings.database_url.get_secret_value().endswith("/b17_dev")
+
+
+@pytest.mark.parametrize("seconds", [0, -1, 61])
+def test_the_connect_timeout_is_bounded(seconds: int) -> None:
+    with pytest.raises(ValidationError):
+        load(db_connect_timeout_seconds=seconds)
+    assert load().db_connect_timeout_seconds == 5

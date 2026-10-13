@@ -25,11 +25,11 @@ Each environment has its own database, secrets, storage bucket and allowed CORS 
 
 ## 3. Local development (Docker direction)
 
-Design — implemented in Phase 10C (with the database it serves; Phase 10B has no Docker files):
+Implemented in Phase 10C:
 
 - **Docker Compose** provides PostgreSQL (and, optionally, the API container). `docker compose up db` is enough to develop; the API and tests can also run directly on the host.
 - The **Vite frontend stays host-run**. Docker is not required for frontend work, for running backend **unit** tests, or for any command that does not need a database.
-- The API `Dockerfile` is multi-stage and runs as a non-root user; it contains no secrets and no `.env`.
+- The API `Dockerfile` (`backend/Dockerfile`) is a single-stage `python:3.12-slim` image: third-party runtime dependencies are installed from `pyproject.toml` in their own cached layer, no dev tools or tests are copied in, it runs as a non-root user (`b17`, uid 10001), has no `.env`, defaults to `ENVIRONMENT=production`, and has a liveness `HEALTHCHECK`. Migrations are **not** run on boot: `docker run --rm -e DATABASE_URL=… <image> alembic upgrade head` is the release step.
 - `.env.example` documents every variable with safe placeholders; the real `.env` is git-ignored. A separate `TEST_DATABASE_URL` is mandatory for tests, and the test harness refuses to run against anything else.
 - Local CORS allows the explicit dev origins listed in `BACKEND_ARCHITECTURE.md` §7 (`localhost`/`127.0.0.1` on 5173 and the 4173 preview origin used by E2E).
 
@@ -57,7 +57,7 @@ Design — implemented in Phase 10C (with the database it serves; Phase 10B has 
 
 ## 7. CI/CD direction
 
-Existing frontend CI (`.github/workflows/frontend-ci.yml`) is unchanged. Backend CI (`.github/workflows/backend-ci.yml`, Phase 10B) runs ruff, ruff format check, mypy (strict) and pytest with no database. Phase 10C adds a Postgres **service container** for integration/API tests, an `alembic upgrade head` + drift check, and a container build. Deployment automation is a separate, later decision (no provider chosen); production deploys require the CI gates plus a manual approval and the migration step above.
+Existing frontend CI (`.github/workflows/frontend-ci.yml`) is unchanged. Backend CI (`.github/workflows/backend-ci.yml`) runs ruff, ruff format check and mypy (strict), then — against a disposable PostgreSQL 17 **service container** with throw-away credentials that exist only inside the job — creates the `_test` database, `alembic upgrade head` on a fresh database, `alembic check` (model/migration drift), the reference seed **twice** (idempotency), and `pytest` (with `CI` set, so the PostgreSQL suite can never be silently skipped). A second job builds the API image (never pushed). Deployment automation is a separate, later decision (no provider chosen); production deploys require the CI gates plus a manual approval and the migration step above.
 
 ## 8. Not decided here
 

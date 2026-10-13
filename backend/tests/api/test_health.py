@@ -70,7 +70,7 @@ def test_openapi_document_loads_and_describes_the_health_endpoint(client: TestCl
     assert document["openapi"].startswith("3.")
     assert document["info"]["title"] == "B-17 Portal API"
     assert document["info"]["version"] == "0.0.0-test"
-    assert list(document["paths"]) == ["/api/v1/health"]
+    assert list(document["paths"]) == ["/api/v1/health", "/api/v1/health/ready"]
     operation = document["paths"]["/api/v1/health"]["get"]
     assert operation["summary"] == "Application health check"
     ok = operation["responses"]["200"]["content"]["application/json"]["schema"]

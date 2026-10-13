@@ -39,7 +39,7 @@ flowchart LR
 Text form: `request → authenticate (user id) → authorize (roles + ownership + plan) → service`.
 
 **`users`** — `id uuid`, `email` (case-insensitively unique), `email_verified_at`, `display_name` (2–60; the only profile field the frontend collects today), `password_hash` (nullable: a social-only account has none), `status` (`active|suspended|deleted`), `created_at`, `updated_at`, `last_login_at`.
-**`auth_identities`** — `id`, `user_id → users`, `provider` (`google|facebook|apple`), `provider_user_id` (the provider's stable subject id), `provider_email` (informational), `created_at`; `UNIQUE(provider, provider_user_id)`. One user may have several identities plus a password.
+**`auth_identities`** — `id`, `user_id → users`, `provider` (`google|facebook|apple`), `provider_subject` (the provider's stable subject id), `provider_email` (informational), `created_at`; `UNIQUE(provider, provider_user_id)`. One user may have several identities plus a password.
 **`user_roles`** — `(user_id, role)` explicit grants only (`admin` now; room for `moderator`/`support`), with `granted_by`/`granted_at`.
 **Sessions/refresh tokens** — a store of refresh-token records (hashed) for revocation, if the Phase 11 decision uses them (§6). Email-verification and password-reset tokens are single-use, hashed, expiring records.
 

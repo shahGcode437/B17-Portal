@@ -85,7 +85,7 @@ backend/
         health.py  auth.py  users.py  categories.py  listings.py
         search.py  news.py  saved.py  requests.py  admin.py
     core/                    # config (Pydantic settings), logging, errors, security, request_id
-    db/                      # engine, session, Base + naming convention
+    db/                      # engine/session factory, Base + naming convention, ids, reference data + seed command
     models/                  # SQLAlchemy models (one module per aggregate)
     schemas/                 # Pydantic request/response models, mirroring models/
     services/                # business logic (listings, moderation, taxonomy, accounts, saved, news, requests, search)
@@ -123,6 +123,8 @@ Services own the unit of work: open it, call repositories, commit once on succes
 
 Read endpoints use no explicit transaction beyond the session's default.
 
+**Implemented (10C):** `app.db.session.transaction(session)` is the one place a business transaction ends (commit on success, rollback and re-raise on any error); repositories (`app/repositories/`) only `add` / query / `flush`, and `ListingStatusHistory` has no update or delete at all. A `Session` is created per request by the `get_db_session` dependency and always closed (closing rolls back anything uncommitted); the `Engine` is a process-level lazy pool created by the app factory, so the API starts and `/health` stays up even when PostgreSQL is down. `ListingCreationService` (Food + General business) proves the pattern against real PostgreSQL: listing, subtype, Food profile, menu items, categories and the initial history row commit together or not at all.
+
 ## 6. Concurrency and consistency (no distributed locking)
 
 Prefer, in order: **database constraints**, **guarded single-statement updates**, **row locks inside a transaction**, **optimistic concurrency tokens**.
@@ -137,7 +139,7 @@ Prefer, in order: **database constraints**, **guarded single-statement updates**
 ## 7. Cross-cutting concerns
 
 ### Configuration
-Pydantic settings, loaded from the environment. Variables (implemented in 10B): `ENVIRONMENT` (`development|test|staging|production`), `DEBUG`, `APP_NAME`, `APP_VERSION`, `API_V1_PREFIX`, `FRONTEND_ORIGINS`, `LOG_LEVEL`. Planned: `DATABASE_URL`, `TEST_DATABASE_URL` (10C), later auth settings (`SECRET_KEY`, token lifetimes, OAuth client ids/secrets) and object-storage settings. `.env.example` is committed with placeholders; the real `.env` is git-ignored; **no secret is ever committed**; production secrets come from the host's secret store (`DEPLOYMENT.md`). Settings fail fast on startup if required values are missing.
+Pydantic settings, loaded from the environment. Variables (implemented in 10B): `ENVIRONMENT` (`development|test|staging|production`), `DEBUG`, `APP_NAME`, `APP_VERSION`, `API_V1_PREFIX`, `FRONTEND_ORIGINS`, `LOG_LEVEL`. `DATABASE_URL` (a secret, never logged; optional so the API starts without a database) and `DB_CONNECT_TIMEOUT_SECONDS` (10C). `TEST_DATABASE_URL` is read **only by the test harness**, never by the application. Planned: later auth settings (`SECRET_KEY`, token lifetimes, OAuth client ids/secrets) and object-storage settings. `.env.example` is committed with placeholders; the real `.env` is git-ignored; **no secret is ever committed**; production secrets come from the host's secret store (`DEPLOYMENT.md`). Settings fail fast on startup if required values are missing.
 
 ### CORS
 Explicit allow-list, never `*`, and never a wildcard together with credentials.
@@ -160,12 +162,12 @@ Password hashing with a modern memory-hard algorithm (Argon2id preferred) · sec
 | Layer | What | How |
 |---|---|---|
 | Unit | State machine, quota rules, category-count/primary rules, Food validation, visibility rules | pytest, no database (fake repositories or pure functions). |
-| Integration | Repositories, constraints, indexes, transactions | pytest against a **dedicated test PostgreSQL**, schema built from the real Alembic migrations; each test runs in a transaction that is rolled back, or on a freshly truncated schema. |
+| Integration | Repositories, constraints, indexes, transactions, migrations | pytest against a **dedicated test PostgreSQL** (never SQLite — the constraints under test are PostgreSQL behavior). Once per session the harness validates the database, drops/recreates its `public` schema, runs `alembic upgrade head` and seeds the reference taxonomy; each test runs in a connection-level transaction with SAVEPOINTs (a service's `commit()` releases a savepoint; the whole test rolls back), so there is no test-order dependence and nothing to clean up. Migration tests use a throw-away `<name>_migrations_test` database. |
 | API | Endpoints, status codes, envelopes, pagination/filter semantics | `httpx`/FastAPI test client over the real app and the test DB. |
 | Authorization | Every endpoint × {anonymous, resident, professional-owner, professional-other, admin} | Parametrized matrix; a new endpoint without a matrix row fails review. |
 | Migration | `alembic upgrade head` on an empty DB; downgrade/upgrade round trip where meaningful; autogenerate shows no drift | CI job. |
 
-**Isolation rule:** tests run only against `TEST_DATABASE_URL`; the test harness refuses to start if `ENVIRONMENT != "test"` or the URL equals the dev/production URL. The production database is never reachable from tests. CI provisions Postgres as a service container.
+**Isolation rule (implemented in `tests/db_safety.py`):** a database is reset only if **all** hold — it comes from an explicit `TEST_DATABASE_URL` (never a fallback to `DATABASE_URL`); its name **ends in `_test`**; its host is `localhost`, `127.0.0.1`, `::1` or the Compose service `db`; its name differs from the application `DATABASE_URL`'s; and `SELECT current_database()` confirms it after connecting. Otherwise the DB suite **fails loudly** (it is never silently run elsewhere). With no `TEST_DATABASE_URL`, DB tests skip locally but **fail when `CI` is set**, so a CI misconfiguration cannot turn the suite off. The production database is unreachable from tests by construction.
 
 **Frontend E2E later:** the Playwright suite (see `docs/development/TESTING.md`) is re-pointed at the real backend with a seeded **test/staging** database. That will require deterministic fixture ids (UUIDs fixed in fixtures) because today's specs use prototype ids such as `business-01`.
 
@@ -180,7 +182,7 @@ Password hashing with a modern memory-hard algorithm (Argon2id preferred) · sec
 
 ## 10. Local development direction
 
-Docker Compose may provide PostgreSQL (and optionally the API); the Vite frontend can remain host-run. Docker must not be mandatory for every action (running unit tests needs no Docker). Details in `DEPLOYMENT.md`.
+Docker Compose provides PostgreSQL (`backend/compose.yaml`, `postgres:17-alpine`, named volume, healthcheck, loopback-only port **54329** by default so it never collides with a PostgreSQL installed on the machine) and, behind the optional `api` profile, the API image; the Vite frontend and the API itself normally stay host-run. Docker is not required for frontend work or for the 125 database-free backend tests. Commands: see `backend/README.md`.
 
 ## 11. Extension seams — documented, not built
 
@@ -201,7 +203,7 @@ Docker Compose may provide PostgreSQL (and optionally the API); the Vite fronten
 |---|---|
 | **10A** | This architecture/contract freeze (docs only). |
 | **10B** | FastAPI project foundation (**complete**): app factory, settings, health, error envelope, logging/request-ID, CORS, pytest harness, ruff + mypy, backend CI. No database, no domain tables. |
-| **10C** | PostgreSQL data layer: SQLAlchemy models, Alembic baseline, constraints/indexes, taxonomy seed, repository + constraint tests, **Dockerfile + Compose PostgreSQL**, `/health/ready`, Postgres service container in CI. |
+| **10C** | PostgreSQL data layer (**complete**): 15-table schema, Alembic baseline + drift check, constraints/indexes, reference seed, dev fixtures, repositories + constraint/transaction tests, Dockerfile + Compose PostgreSQL, `/health/ready`, PostgreSQL service in backend CI. |
 | **10D** | First read APIs: categories, public listing/search/news reads (parity with `services/search.ts`). |
 | **11** | Authentication, OAuth, roles/permissions enforcement (`AUTH_RBAC.md`). |
 | **12** | Write APIs (owner listing lifecycle, moderation, saved, requests, news admin) and frontend/API integration. |

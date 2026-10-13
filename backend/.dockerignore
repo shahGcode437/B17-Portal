@@ -1,0 +1,23 @@
+# Keep the build context small and free of local state or secrets.
+.venv/
+**/__pycache__/
+**/*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+.coverage
+htmlcov/
+
+# Secrets / local configuration — never baked into an image.
+.env
+.env.*
+
+# Not needed at runtime.
+tests/
+scripts/
+docker/
+compose.yaml
+Dockerfile
+.dockerignore
+README.md

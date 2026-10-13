@@ -6,7 +6,9 @@ Isolation rules for the backend suite:
   * variables the settings read are removed from the environment for each test;
   * ``app.main`` (which builds an app from the real environment at import time) is not imported
     here; it is only exercised in a subprocess with a controlled environment.
-There is no database in this phase, so there is nothing else to guard yet.
+Database tests (``tests/db``) additionally require an explicit, validated ``TEST_DATABASE_URL`` —
+see ``tests/db_safety.py`` and ``tests/db/conftest.py``. ``DATABASE_URL`` (the application
+database) is removed from the environment for every test.
 """
 
 from collections.abc import Callable, Iterator
@@ -27,6 +29,8 @@ SETTINGS_ENV_VARS = (
     "API_V1_PREFIX",
     "FRONTEND_ORIGINS",
     "LOG_LEVEL",
+    "DATABASE_URL",
+    "DB_CONNECT_TIMEOUT_SECONDS",
 )
 
 

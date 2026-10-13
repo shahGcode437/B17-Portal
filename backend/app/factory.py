@@ -4,6 +4,9 @@ Kept separate from ``app.main`` so importing it has no side effects: tests (and 
 build an app from explicit ``Settings`` without touching the real environment or ``.env``.
 """
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from starlette.middleware.cors import CORSMiddleware
 
@@ -11,6 +14,7 @@ from app.api.error_handlers import register_exception_handlers
 from app.api.v1.router import api_router
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging
+from app.db.session import create_db_engine, create_session_factory
 from app.middleware.request_id import REQUEST_ID_HEADER, RequestIdMiddleware
 from app.middleware.request_log import RequestLogMiddleware
 
@@ -29,9 +33,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
     configure_logging(settings.effective_log_level)
 
+    # The engine is a lazy connection pool: creating it opens no connection, so the API starts (and
+    # /health stays up) even when the database is down. /health/ready is what reports on it.
+    engine = create_db_engine(settings) if settings.database_url is not None else None
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        yield
+        if engine is not None:
+            engine.dispose()
+
     prefix = settings.api_v1_prefix
     docs = settings.docs_enabled
     app = FastAPI(
+        lifespan=lifespan,
         title=settings.app_name,
         version=settings.app_version,
         # Interactive docs and the OpenAPI document are published outside production only.
@@ -40,6 +55,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         openapi_url=f"{prefix}/openapi.json" if docs else None,
     )
     app.state.settings = settings
+    app.state.db_engine = engine
+    app.state.db_session_factory = create_session_factory(engine) if engine is not None else None
 
     register_exception_handlers(app)
 

@@ -27,12 +27,13 @@ c2871f7 Phase 9H: add route-level code splitting
 5ed1799 Phase 9L: clean frontend technical debt
 d586f45 Phase 9M: add automated frontend testing foundation
 e60a0b6 Phase 10A: define backend architecture and contracts
-Phase 10B commit: pending (implementation complete, not yet committed)
+4d73c59 Phase 10B: add FastAPI project foundation
+Phase 10C commit: pending (implementation complete, not yet committed)
 
 ## Current Phase
 
-Current Phase: Phase 10B — FastAPI Project Foundation: COMPLETE, commit pending approval. Phase 10A (backend architecture, `e60a0b6`), Phase 9M (testing foundation, `d586f45`), Phase 9L (cleanup), Phase 9J (SEO / accessibility / final frontend QA), Phase 9G (PWA), Phase 9H (code splitting), the Food & Dining expansion (FD1–FD5) and the Visual Refresh (V1–V6) are complete and committed. Search UX refinement remains deferred; the Search review is in `SEARCH_UX_FINDINGS.md`.
-Next Step: Phase 10C — PostgreSQL / SQLAlchemy / Alembic Data Layer Foundation (see Next Step below).
+Current Phase: Phase 10C — PostgreSQL / SQLAlchemy / Alembic Data Layer Foundation: COMPLETE, commit pending approval. Phase 10B (FastAPI foundation, `4d73c59`), Phase 10A (backend architecture, `e60a0b6`), Phase 9M (testing foundation, `d586f45`), Phase 9L (cleanup), Phase 9J (SEO / accessibility / final frontend QA), Phase 9G (PWA), Phase 9H (code splitting), the Food & Dining expansion (FD1–FD5) and the Visual Refresh (V1–V6) are complete and committed. Search UX refinement remains deferred; the Search review is in `SEARCH_UX_FINDINGS.md`.
+Next Step: Phase 10D — Backend Read APIs (see Next Step below).
 
 ## Completed Product Work
 
@@ -72,6 +73,7 @@ Next Step: Phase 10C — PostgreSQL / SQLAlchemy / Alembic Data Layer Foundation
 - Phase 9M — Automated Testing Foundation (see below and `TESTING.md`)
 - Phase 10A — Backend Architecture & Contract Freeze (see below and `docs/backend/`)
 - Phase 10B — FastAPI Project Foundation (see below and `backend/`)
+- Phase 10C — PostgreSQL / SQLAlchemy / Alembic Data Layer Foundation (see below and `docs/backend/DATA_MODEL.md` §14)
 
 Full history is in `git log`; this file summarizes outcomes, not the blow-by-blow.
 
@@ -494,7 +496,7 @@ Phase 10A — Backend Architecture & Contract Freeze = **COMPLETE** (commit `e60
 
 ## Phase 10B Result
 
-Phase 10B — FastAPI Project Foundation = **COMPLETE** (Phase 10B commit: pending). The first backend implementation phase. **No database, SQLAlchemy, Alembic, Docker, auth or domain API, and no frontend change.**
+Phase 10B — FastAPI Project Foundation = **COMPLETE** (commit `4d73c59`). The first backend implementation phase. **No database, SQLAlchemy, Alembic, Docker, auth or domain API, and no frontend change.**
 
 - **Project:** `backend/` — `pyproject.toml` (setuptools; Python ≥3.12; runtime deps `fastapi`, `uvicorn`, `pydantic-settings`; dev deps `pytest`, `httpx`, `ruff`, `mypy`), project-local `backend/.venv` (git-ignored), `.env.example`, short `README.md`.
 - **Application:** `app/factory.py` (`create_app(settings)`, import-side-effect-free) + `app/main.py` (`app = create_app()` for `uvicorn app.main:app`); `app/core/{config,errors,logging}.py`; `app/middleware/{request_id,request_log}.py`; `app/api/{routing,error_handlers}.py`, `app/api/v1/{router,health}.py`; `app/schemas/envelope.py`; `app/dependencies/settings.py`.
@@ -502,6 +504,20 @@ Phase 10B — FastAPI Project Foundation = **COMPLETE** (Phase 10B commit: pendi
 - **Tooling:** pytest (75 tests, no database, isolated from the real `.env`/environment), ruff (lint + format), mypy strict — all clean; `.github/workflows/backend-ci.yml` runs them on `backend/**` changes. Frontend CI unchanged.
 - **Scope changes recorded:** the API Dockerfile and Compose PostgreSQL moved from 10B to 10C (the roadmap text said 10B; the 10B brief excluded Docker); `/health/ready` moved to 10C (needs the database); environment names are `development|test|staging|production` and the CORS variable is `FRONTEND_ORIGINS` (the 10A draft said `local` and `CORS_ALLOWED_ORIGINS`) — backend docs updated.
 - **Known limitations:** Starlette 1.8's TestClient prefers `httpx2`; the suite keeps `httpx` (as specified) with a scoped warning filter — revisit when `httpx` support is removed. `DEBUG`/`ENVIRONMENT` are unprefixed environment variable names (per the 10A docs), so an unrelated shell `DEBUG` value that is not a boolean fails startup validation with a clear message.
+
+## Phase 10C Result
+
+Phase 10C — PostgreSQL / SQLAlchemy / Alembic Data Layer Foundation = **COMPLETE** (Phase 10C commit: pending). Real PostgreSQL 17 (Docker Compose), synchronous SQLAlchemy 2.1, psycopg 3, Alembic 1.20. **No product CRUD/read/search/auth API, no frontend change, no frontend/npm dependency.**
+
+- **Schema (`0001_initial_schema`, 15 tables):** `users`, `user_roles`, `auth_identities`, `professional_profiles`; `listings` + subtypes `business_profiles`, `property_profiles`, `tutor_profiles` (no provider subtype); Food as a Business vertical (`food_profiles`, `food_menu_items`); `categories` + `listing_categories`; `listing_status_history`; `saved_items`; `news_articles`. Authentication behavior is **not** implemented — only the relational schema.
+- **Integrity in the database (tested on real PostgreSQL):** UUID keys; constrained values as `VARCHAR(32)` + named `CHECK` (not native enums); a Food profile cannot attach to a General business (composite FK) and a business cannot stop being Food while a Food profile exists; ≤ 8 menu items with unique positions; category slugs unique per module, a parent in the same module, no duplicate category or position on a listing, `position >= 1` (Food's 1..3 maximum is a service rule); one Saved row per `(user, listing)`; `(provider, provider_subject)` unique; history row consistency (creation has no previous status, the action fixes the resulting status, a rejection needs a ≥ 10-character reason); `revision >= 1`. Subtype↔kind, parent↔module and news↔`news`-module are also database-enforced (additive, see `docs/backend/DATA_MODEL.md` §14). Cross-row rules (at least one category, contiguous positions, module matching, the status state machine, quota) remain **service** rules by design — no triggers.
+- **Infrastructure:** `app/db/` (declarative `Base` with a deterministic `pk_/fk_/uq_/ck_/ix_` naming convention, UUIDv4 ids, engine/session factory, `transaction()`), `app/models/`, `app/repositories/` (taxonomy, listings — add/query/flush only), `app/services/listing_creation.py` (proves the all-or-nothing multi-table create), `app/dependencies/db.py` (session per request, always closed), Alembic (`alembic.ini`, `alembic/env.py` reading `DATABASE_URL` from settings, no credentials in files).
+- **Readiness:** `GET /api/v1/health/ready` runs `SELECT 1` (200, or a safe 503 that never names the host, URL or credentials); `/api/v1/health` stays liveness-only and 200 while the database is down — verified by stopping PostgreSQL under the running container and bringing it back.
+- **Data:** reference taxonomy (39 categories from the real frontend sources, `python -m app.db.seed`, insert-only and idempotent) is separate from development fixtures (`python -m scripts.dev_fixtures`, name-based UUIDv5 ids, refuses `ENVIRONMENT=production`).
+- **Docker:** `backend/Dockerfile` (single-stage slim, non-root, runtime dependencies only, liveness HEALTHCHECK) and `backend/compose.yaml` (`postgres:17-alpine`, named volume, healthcheck, loopback port **54329**, creates `b17_dev` and `b17_test`; optional `api` profile). Image built and run against the Compose database.
+- **Tests:** 291 (125 database-free + 166 PostgreSQL) — constraints, Food integrity, taxonomy, history, Saved, News, transaction rollback, seeds/fixtures, migrations (fresh upgrade → downgrade → re-upgrade, `alembic check` drift, offline SQL), readiness, session lifecycle. **Test-database safety:** explicit `TEST_DATABASE_URL`, name must end in `_test`, local host only, different from `DATABASE_URL`, `current_database()` verified; unsafe URL fails loudly; no URL → skip locally, **fail in CI**; PostgreSQL only (never SQLite); per-test SAVEPOINT rollback.
+- **CI:** `backend-ci.yml` now runs lint, format, mypy strict, `alembic upgrade head` on a fresh PostgreSQL service database, `alembic check`, the seed twice, `pytest` (PostgreSQL suite included), plus a Docker image build job. Path filter unchanged (`backend/**` + the workflow file).
+- **Deferred on purpose:** `search_document`/`pg_trgm`/`GIN(tags)` (with the 10D search service that maintains them), `service_requests`, `media_assets`, `listing_revisions`, any API beyond health. Open product questions (area model, contact channel, demo content in production, takedown semantics) remain in `docs/backend/DATA_MODEL.md` §13.
 
 ## Production V1 Direction
 
@@ -532,7 +548,7 @@ Phase 10B — FastAPI Project Foundation = **COMPLETE** (Phase 10B commit: pendi
 - Frontend capability checks (Phase 9E) are UX only, not authorization/security — explicitly documented in `types/entitlements.ts`; the backend will be authoritative once it exists.
 - No profession-specific Premium modules built yet (Tutor/Property/Salon, etc.) — `professional.modules` capability exists, reserved and unconsumed, for exactly this future use.
 - Auth is demo-only (name string, no password, no persistence) — by design, not yet a gap to "fix," but must become real before any production launch.
-- A backend foundation exists (Phase 10B: `GET /api/v1/health` only) but there is no database and no domain/auth API, and the frontend does not call it — all frontend state is still static seed data + in-memory or `localStorage`-persisted Zustand.
+- A backend exists (Phase 10B/10C: liveness/readiness, a 15-table PostgreSQL schema with Alembic migrations, reference seed and a tested data layer) but there is no domain/read/search/auth API and the frontend does not call it — all frontend state is still static seed data + in-memory or `localStorage`-persisted Zustand.
 - Automated tests exist since Phase 9M (see `TESTING.md` → Known gaps): Chromium-only E2E, no axe/Lighthouse, no real-device or visual-regression testing, several flows (Education/Tutor, News admin CRUD, Leads/Requests lifecycle, Premium toggle) not covered by E2E.
 - Backend contract open questions (area normalization, General-business category taxonomy, listing contact channel, demo content in production, admin takedown semantics) are recorded in `docs/backend/DATA_MODEL.md` §13 and need product decisions before the write APIs (Phase 12).
 - Lint baseline: 8 pre-existing warnings (6× `only-export-components` in shadcn-pattern files, 2× `set-state-in-effect`) — known, unchanged across many phases.
@@ -561,7 +577,7 @@ Phase 10B — FastAPI Project Foundation = **COMPLETE** (Phase 10B commit: pendi
 
 ## Next Step
 
-Phase 10C — PostgreSQL / SQLAlchemy / Alembic Data Layer Foundation (including the API Dockerfile and Compose PostgreSQL, which moved here from 10B), then 10D (read APIs), 11 (auth/RBAC), 12 (write APIs + frontend integration) and 13 (media + deployment) per `ROADMAP.md` and `docs/backend/BACKEND_ARCHITECTURE.md` §12. The backend phases should also pick up what the frontend deliberately deferred: server-side / pre-rendered per-page metadata and link previews, a per-entity sitemap, structured data from real entity data, a real production URL (`VITE_SITE_URL`), persistent data / auth, real media storage and any offline write handling. Phases 9F (Admin Production UX) and 9I (Notifications + Trust/Reviews UI) remain product decisions. Store packaging, push notifications, sharing / deep links, ordering / payments and premium merchant tools stay out of scope until their roadmap phases.
+Phase 10D — Backend Read APIs (categories, public search/suggestions with the `search_document` / `pg_trgm` mechanism, listing detail, news — parity with `services/search.ts`), then 11 (auth/RBAC), 12 (write APIs + frontend integration) and 13 (media + deployment) per `ROADMAP.md` and `docs/backend/BACKEND_ARCHITECTURE.md` §12. The backend phases should also pick up what the frontend deliberately deferred: server-side / pre-rendered per-page metadata and link previews, a per-entity sitemap, structured data from real entity data, a real production URL (`VITE_SITE_URL`), persistent data / auth, real media storage and any offline write handling. Phases 9F (Admin Production UX) and 9I (Notifications + Trust/Reviews UI) remain product decisions. Store packaging, push notifications, sharing / deep links, ordering / payments and premium merchant tools stay out of scope until their roadmap phases.
 
 ## Resume Instructions
 

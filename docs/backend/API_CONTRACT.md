@@ -160,7 +160,7 @@ Legend — **Auth:** A anonymous · R signed-in · O owner · P professional · 
 
 | Group | Representative operations | Auth | Why this shape | Owner phase |
 |---|---|---|---|---|
-| `/health` | `GET /health` (liveness — **implemented in 10B**, no dependency checks), `GET /health/ready` (DB reachable — arrives with the database) | A | Operability, container probes | 10B / 10C |
+| `/health` | `GET /health` (liveness — **implemented in 10B**, no dependency checks), `GET /health/ready` (**implemented in 10C**: `SELECT 1`; `200 {"data":{"status":"ready","checks":{"database":"ok"}}}`, otherwise a `503 service_unavailable` envelope that never names the host, URL or credentials) | A | Operability, container probes | 10B / 10C |
 | `/categories` | `GET /categories?module=&active=` | A | Feeds forms, filters, discovery pages (replaces hard-coded config) | 10D |
 | `/search` | `GET /search` (mixed kinds, `meta.total`), `GET /search/suggestions?q=&type=&limit=` | A | **The seam `services/search.ts` was built for**; returns `SearchHit` = `{kind, item}` and the existing flat `SearchSuggestion` shape | 10D |
 | `/listings` | `GET /listings/{id}`, `POST /listings`, `PATCH /listings/{id}`, `POST /listings/{id}/archive` | A (detail, approved only) / P,O (writes) | One canonical detail route for all kinds (mirrors the frontend's single detail per kind) | 10D (read), 12 (write) |

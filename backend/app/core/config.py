@@ -10,7 +10,7 @@ from functools import lru_cache
 from typing import Annotated, Literal, Self
 from urllib.parse import urlsplit
 
-from pydantic import field_validator, model_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from app import __version__
@@ -50,6 +50,12 @@ class Settings(BaseSettings):
     frontend_origins: Annotated[list[str], NoDecode] = []
     #: Overrides the default level (``DEBUG`` when ``debug`` is true, otherwise ``INFO``).
     log_level: str | None = None
+    #: PostgreSQL URL for the application, ``postgresql+psycopg://user:password@host:port/dbname``.
+    #: Optional so the API can start (and its non-database tests run) without a database; the
+    #: readiness endpoint reports 503 until it is configured. Never logged.
+    database_url: SecretStr | None = None
+    #: Seconds to wait when opening a database connection (keeps readiness checks fast to fail).
+    db_connect_timeout_seconds: int = Field(default=5, ge=1, le=60)
 
     @field_validator("frontend_origins", mode="before")
     @classmethod
@@ -72,6 +78,18 @@ class Settings(BaseSettings):
     def _validate_prefix(cls, value: str) -> str:
         if not value.startswith("/") or value.endswith("/") or " " in value:
             raise ValueError("must start with '/' and must not end with '/' (e.g. '/api/v1')")
+        return value
+
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def _empty_database_url_is_unset(cls, value: object) -> object:
+        return None if isinstance(value, str) and not value.strip() else value
+
+    @field_validator("database_url")
+    @classmethod
+    def _validate_database_url(cls, value: SecretStr | None) -> SecretStr | None:
+        if value is not None and not value.get_secret_value().startswith("postgresql+psycopg://"):
+            raise ValueError("must be a PostgreSQL URL for psycopg 3: postgresql+psycopg://...")
         return value
 
     @field_validator("log_level")
