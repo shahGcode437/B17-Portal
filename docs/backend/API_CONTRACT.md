@@ -115,6 +115,7 @@ One shape for every non-2xx response:
 | 403 | `forbidden` | Authenticated but not allowed |
 | 403 | `plan_limit_reached` | Active-listing quota exceeded (Free plan) |
 | 404 | `not_found` | Unknown **or not visible to the caller** |
+| 405 | `method_not_allowed` | Known path, unsupported method (keeps the `Allow` header) |
 | 409 | `conflict` | Duplicate slug, concurrent modification |
 | 409 | `invalid_state_transition` | e.g. approving a non-pending listing; stale `revision` |
 | 422 | `validation_error` | Schema/business-validation failure |
@@ -159,7 +160,7 @@ Legend — **Auth:** A anonymous · R signed-in · O owner · P professional · 
 
 | Group | Representative operations | Auth | Why this shape | Owner phase |
 |---|---|---|---|---|
-| `/health` | `GET /health` (liveness), `GET /health/ready` (DB reachable) | A | Operability, container probes | 10B |
+| `/health` | `GET /health` (liveness — **implemented in 10B**, no dependency checks), `GET /health/ready` (DB reachable — arrives with the database) | A | Operability, container probes | 10B / 10C |
 | `/categories` | `GET /categories?module=&active=` | A | Feeds forms, filters, discovery pages (replaces hard-coded config) | 10D |
 | `/search` | `GET /search` (mixed kinds, `meta.total`), `GET /search/suggestions?q=&type=&limit=` | A | **The seam `services/search.ts` was built for**; returns `SearchHit` = `{kind, item}` and the existing flat `SearchSuggestion` shape | 10D |
 | `/listings` | `GET /listings/{id}`, `POST /listings`, `PATCH /listings/{id}`, `POST /listings/{id}/archive` | A (detail, approved only) / P,O (writes) | One canonical detail route for all kinds (mirrors the frontend's single detail per kind) | 10D (read), 12 (write) |
@@ -220,7 +221,7 @@ General business / provider / property / tutor use `category` (a **slug**) inste
 - **Caching:** public reads may send `Cache-Control`/`ETag`; authenticated and owner/admin responses are `no-store`.
 - **Rate limiting:** auth, request creation and suggestions get limits (`429` + `Retry-After`) — implemented with Phase 11/12, no Redis assumed.
 - **Offline PWA:** the service worker does not cache API responses; the frontend's existing "offline mutation blocked" rule is unchanged.
-- **Versioned OpenAPI** is published from the app (`/api/v1/openapi.json`) and is the basis for contract tests and, optionally, a generated TypeScript client.
+- **Versioned OpenAPI** is published from the app (`/api/v1/openapi.json`, with `/docs` and `/redoc`) **outside production only** (`ENVIRONMENT=production` disables all three) and is the basis for contract tests and, optionally, a generated TypeScript client.
 
 ## 8. Mapping the frontend seams (for Phase 12)
 

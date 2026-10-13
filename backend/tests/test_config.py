@@ -1,0 +1,112 @@
+import pytest
+from pydantic import ValidationError
+
+from app import __version__
+from app.core.config import DEVELOPMENT_FRONTEND_ORIGINS, Settings
+
+
+def load(**overrides: object) -> Settings:
+    return Settings(_env_file=None, **overrides)  # type: ignore[arg-type]
+
+
+def test_defaults_are_safe_and_nothing_secret_is_configured() -> None:
+    settings = load(environment="production")
+
+    assert settings.environment == "production"
+    assert settings.debug is False
+    assert settings.api_v1_prefix == "/api/v1"
+    assert settings.app_version == __version__
+    assert settings.frontend_origins == []  # explicit origins are required outside development
+    assert not any("secret" in name or "password" in name for name in Settings.model_fields)
+
+
+def test_settings_are_read_from_environment_variables(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ENVIRONMENT", "staging")
+    monkeypatch.setenv("DEBUG", "true")
+    monkeypatch.setenv("APP_NAME", "Custom API")
+    monkeypatch.setenv("APP_VERSION", "9.9.9")
+    monkeypatch.setenv("API_V1_PREFIX", "/api/v9")
+    monkeypatch.setenv("FRONTEND_ORIGINS", "https://app.example.org")
+
+    settings = load()
+
+    assert (settings.environment, settings.debug) == ("staging", True)
+    assert (settings.app_name, settings.app_version) == ("Custom API", "9.9.9")
+    assert settings.api_v1_prefix == "/api/v9"
+    assert settings.frontend_origins == ["https://app.example.org"]
+
+
+def test_initialisation_values_win_over_environment_variables(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ENVIRONMENT", "production")
+
+    assert load(environment="test").environment == "test"
+
+
+def test_unknown_environment_is_rejected() -> None:
+    with pytest.raises(ValidationError):
+        load(environment="prod")
+
+
+def test_development_defaults_to_the_vite_origins_only_when_unset() -> None:
+    assert load(environment="development").frontend_origins == DEVELOPMENT_FRONTEND_ORIGINS
+    assert load(environment="development", frontend_origins=[]).frontend_origins == []
+    assert load(environment="test").frontend_origins == []
+    assert load(environment="staging").frontend_origins == []
+
+
+def test_origins_accept_a_comma_separated_list(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("FRONTEND_ORIGINS", " http://localhost:5173 , http://127.0.0.1:4173 ,")
+
+    assert load().frontend_origins == ["http://localhost:5173", "http://127.0.0.1:4173"]
+
+
+def test_origins_accept_a_json_list(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("FRONTEND_ORIGINS", '["https://a.example.org","https://b.example.org"]')
+
+    assert load().frontend_origins == ["https://a.example.org", "https://b.example.org"]
+
+
+def test_origins_are_normalized_and_deduplicated() -> None:
+    settings = load(frontend_origins=["http://localhost:5173/", "http://localhost:5173"])
+
+    assert settings.frontend_origins == ["http://localhost:5173"]
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "*",
+        "https://*.example.org",
+        "localhost:5173",  # no scheme
+        "ftp://example.org",
+        "https://example.org/app",  # path
+        "https://example.org?x=1",
+        "https://user:pass@example.org",
+    ],
+)
+def test_wildcard_and_malformed_origins_are_rejected(bad: str) -> None:
+    with pytest.raises(ValidationError):
+        load(frontend_origins=[bad])
+
+
+@pytest.mark.parametrize("bad", ["api/v1", "/api/v1/", "/api v1", ""])
+def test_api_prefix_must_be_a_clean_path(bad: str) -> None:
+    with pytest.raises(ValidationError):
+        load(api_v1_prefix=bad)
+
+
+def test_log_level_defaults_follow_debug_and_can_be_overridden() -> None:
+    assert load().effective_log_level == "INFO"
+    assert load(debug=True).effective_log_level == "DEBUG"
+    assert load(debug=True, log_level="warning").effective_log_level == "WARNING"
+    with pytest.raises(ValidationError):
+        load(log_level="loud")
+
+
+def test_docs_are_enabled_everywhere_except_production() -> None:
+    assert load(environment="development").docs_enabled
+    assert load(environment="test").docs_enabled
+    assert load(environment="staging").docs_enabled
+    assert not load(environment="production").docs_enabled

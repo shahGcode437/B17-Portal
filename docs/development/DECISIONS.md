@@ -199,3 +199,27 @@ Concise decisions only. Where the originating date isn't known, none is given ra
 **Decision:** Backend work is sequenced 10A (architecture, docs only) → 10B (FastAPI foundation) → 10C (PostgreSQL data layer) → 10D (read APIs) → 11 (auth/RBAC) → 12 (write APIs + frontend integration) → 13 (media + deployment). This replaces the earlier placeholders (old 10/11/12/13), pulling authentication into its own phase and putting the data layer ahead of any endpoint.
 **Reason:** each phase is independently verifiable and committable; reads can ship and be integrated before the riskier write/auth paths; auth deserves its own security review.
 **Revisit when:** the open product decisions in `docs/backend/DATA_MODEL.md` §13 force a different order.
+
+---
+
+**Decision:** Backend quality tooling is adopted from day one and enforced in CI: **pytest**, **ruff** (lint + format check, one tool, no Black/Flake8/isort) and **mypy in strict mode** (with the pydantic plugin), all configured in `backend/pyproject.toml`, with a separate `.github/workflows/backend-ci.yml` that only runs when `backend/**` changes. Dependencies are declared only in `pyproject.toml` (no `requirements.txt`), with tested lower bounds and a next-major upper bound. The app is built by `create_app(settings)` in `app/factory.py` with **no import-time side effects**; `app/main.py` is only the ASGI entry point, so tests always construct apps from explicit `Settings(_env_file=None, environment="test")` and never touch the developer's `.env`.
+**Reason:** the frontend already enforces strict types and lint in CI; a small typed backend is cheapest to keep clean from the first commit; ruff covers lint/import-order/format in one fast tool; an import-side-effect-free factory is what makes the test environment genuinely isolated.
+**Revisit when:** the suite or codebase grows enough that type-check time or rule noise matters, or a dependency (e.g. Starlette's `httpx2` migration) forces a test-client change.
+
+---
+
+**Decision:** Error handling is layered: `AppError` / `ErrorCode` and the envelope builder live in `core/errors.py`; FastAPI exception handlers (`api/error_handlers.py`) normalize `AppError`, HTTP errors (404/405/…), and request validation into the envelope using **fixed, safe messages** (never the framework's own text, the input value or pydantic internals; malformed JSON is `400 bad_request`, field errors are `422 validation_error` with `{field, code, message}` details); unexpected exceptions are caught by `RequestLogMiddleware`, which logs them once with the request ID and answers with the generic `internal_error` envelope — no traceback ever reaches a client. The request ID is a pure-ASGI middleware (valid incoming `X-Request-ID` kept, otherwise UUID4), every response and every error carries it, and each request writes one structured JSON log line (path only, never the query string, headers or bodies). Responses use a `ContractRoute` that always sets `exclude_none`, so the "omit absent optionals" contract cannot be forgotten per route.
+**Reason:** one place decides what an error looks like, internals cannot leak, logs and responses can be correlated by one ID, and the null/omitted rule is enforced by construction instead of by convention.
+**Revisit when:** an auth phase needs richer error headers, an error needs an `Idempotency`/retry hint, or tracing infrastructure replaces the home-grown request ID.
+
+---
+
+**Decision:** Settings are one typed Pydantic `Settings` source (`ENVIRONMENT` = `development|test|staging|production`, `DEBUG`, `APP_NAME`, `APP_VERSION`, `API_V1_PREFIX`, `FRONTEND_ORIGINS`, `LOG_LEVEL`), read from the environment and an optional git-ignored `.env`, with **no secret defaults**. CORS allows exactly the configured origins (comma-separated or JSON list; wildcards, paths and credentials in origins are rejected at startup), uses `allow_credentials=False` until Phase 11 decides cookie vs bearer auth, exposes `X-Request-ID`, and only the Vite dev origins are defaulted — and only in `development` when the variable is unset. Interactive docs and the OpenAPI document (`/docs`, `/redoc`, `/api/v1/openapi.json`) are published outside production only.
+**Reason:** an implicit or wildcard origin in staging/production is a security defect; production should not advertise its API surface by default; credentials need exact origins and an auth decision that belongs to Phase 11.
+**Revisit when:** Phase 11 enables cookie auth (credentials + exact origins), the API contract needs public OpenAPI for generated clients, or deployment needs finer docs access control.
+
+---
+
+**Decision:** Phase 10B stays limited to the application foundation. The API **Dockerfile and Compose PostgreSQL move to Phase 10C**, and **`/health/ready`** (database reachability) arrives with the database; the 10B health endpoint is liveness only and checks no dependency.
+**Reason:** the 10B brief excluded Docker while the 10A roadmap text listed it for 10B; a Compose database and container image have no purpose until the data layer exists, and a readiness endpoint that cannot check anything would be misleading.
+**Revisit when:** a deployment need (before the data layer) requires a container image earlier.

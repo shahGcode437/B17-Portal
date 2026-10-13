@@ -67,7 +67,8 @@ Text form: `Frontend → REST /api/v1 → routers → services → repositories 
 | **Repositories** (`repositories`) | Persistence: all queries and writes for one aggregate/area, filters/sorting/pagination, row locking helpers. Return model objects or plain data. | Commit, enforce business policy, or call other modules' repositories. |
 | **Models** (`models`) | SQLAlchemy tables, relationships, DB-level constraints and indexes. | Hold business logic. |
 | **Dependencies** (`dependencies`) | `Depends(...)` providers: DB session, current user, role/permission guards, pagination params. | Contain business rules. |
-| **Core** (`core`) | Settings, logging setup, error types and handlers, security primitives (later), request-ID middleware, constants. | Import from domain layers. |
+| **Core** (`core`) | Settings, logging setup, error types / codes and the error-envelope builder, security primitives (later), constants. | Import from domain layers. |
+| **Middleware** (`middleware`) | Pure-ASGI cross-cutting behavior: request ID, request logging + the unexpected-exception boundary. | Contain business logic or touch the database. |
 | **DB** (`db`) | Engine/session factory, base metadata, naming convention for constraints, migration wiring. | Define domain tables (those are in `models`). |
 
 **Module boundary rule:** a service may call another module's **service**, never its repository or models' internals. Example: `listings` service asks `taxonomy` service to validate categories; it does not query the categories table itself. This keeps the monolith extractable and testable.
@@ -98,7 +99,7 @@ backend/
   alembic/                   # env.py + versions/
   alembic.ini
   Dockerfile
-  pyproject.toml             # dependencies + tool config (tooling choice finalized in 10B)
+  pyproject.toml             # dependencies + tool config (pytest, ruff, mypy-strict adopted in 10B)
   .env.example               # documented variables, no secrets
 ```
 
@@ -136,12 +137,12 @@ Prefer, in order: **database constraints**, **guarded single-statement updates**
 ## 7. Cross-cutting concerns
 
 ### Configuration
-Pydantic settings, loaded from the environment. Planned variables (names indicative, finalized in 10B): `ENVIRONMENT` (`local|test|staging|production`), `DATABASE_URL`, `TEST_DATABASE_URL`, `CORS_ALLOWED_ORIGINS`, `LOG_LEVEL`, later auth settings (`SECRET_KEY`, token lifetimes, OAuth client ids/secrets) and object-storage settings. `.env.example` is committed with placeholders; the real `.env` is git-ignored; **no secret is ever committed**; production secrets come from the host's secret store (`DEPLOYMENT.md`). Settings fail fast on startup if required values are missing.
+Pydantic settings, loaded from the environment. Variables (implemented in 10B): `ENVIRONMENT` (`development|test|staging|production`), `DEBUG`, `APP_NAME`, `APP_VERSION`, `API_V1_PREFIX`, `FRONTEND_ORIGINS`, `LOG_LEVEL`. Planned: `DATABASE_URL`, `TEST_DATABASE_URL` (10C), later auth settings (`SECRET_KEY`, token lifetimes, OAuth client ids/secrets) and object-storage settings. `.env.example` is committed with placeholders; the real `.env` is git-ignored; **no secret is ever committed**; production secrets come from the host's secret store (`DEPLOYMENT.md`). Settings fail fast on startup if required values are missing.
 
 ### CORS
 Explicit allow-list, never `*`, and never a wildcard together with credentials.
 - **Local:** the known dev origins, listed explicitly — `http://localhost:5173` and `http://127.0.0.1:5173` (Vite dev) and `http://127.0.0.1:4173` (the Playwright production-preview origin used by E2E).
-- **Staging / production:** the exact deployed frontend origin(s) only, from `CORS_ALLOWED_ORIGINS`.
+- **Staging / production:** the exact deployed frontend origin(s) only, from `FRONTEND_ORIGINS` (comma-separated or JSON list; wildcards and paths are rejected at startup; nothing is implicit outside `development`).
 - Allowed methods/headers are the minimal set the contract uses (`Authorization`, `Content-Type`, `X-Request-ID`, `If-Match`, `Idempotency-Key`). If cookie auth is chosen in Phase 11, `allow_credentials` is enabled only with exact origins (see `AUTH_RBAC.md` §6). Implemented in 10B.
 
 ### Logging and observability (lightweight)
@@ -199,8 +200,8 @@ Docker Compose may provide PostgreSQL (and optionally the API); the Vite fronten
 | Phase | Scope |
 |---|---|
 | **10A** | This architecture/contract freeze (docs only). |
-| **10B** | FastAPI project foundation: app factory, settings, health, error envelope, logging/request-ID, CORS, pytest harness, Dockerfile, Compose Postgres. No domain tables. |
-| **10C** | PostgreSQL data layer: SQLAlchemy models, Alembic baseline, constraints/indexes, taxonomy seed, repository + constraint tests. |
+| **10B** | FastAPI project foundation (**complete**): app factory, settings, health, error envelope, logging/request-ID, CORS, pytest harness, ruff + mypy, backend CI. No database, no domain tables. |
+| **10C** | PostgreSQL data layer: SQLAlchemy models, Alembic baseline, constraints/indexes, taxonomy seed, repository + constraint tests, **Dockerfile + Compose PostgreSQL**, `/health/ready`, Postgres service container in CI. |
 | **10D** | First read APIs: categories, public listing/search/news reads (parity with `services/search.ts`). |
 | **11** | Authentication, OAuth, roles/permissions enforcement (`AUTH_RBAC.md`). |
 | **12** | Write APIs (owner listing lifecycle, moderation, saved, requests, news admin) and frontend/API integration. |

@@ -25,7 +25,7 @@ Each environment has its own database, secrets, storage bucket and allowed CORS 
 
 ## 3. Local development (Docker direction)
 
-Design — implemented in Phase 10B:
+Design — implemented in Phase 10C (with the database it serves; Phase 10B has no Docker files):
 
 - **Docker Compose** provides PostgreSQL (and, optionally, the API container). `docker compose up db` is enough to develop; the API and tests can also run directly on the host.
 - The **Vite frontend stays host-run**. Docker is not required for frontend work, for running backend **unit** tests, or for any command that does not need a database.
@@ -57,7 +57,7 @@ Design — implemented in Phase 10B:
 
 ## 7. CI/CD direction
 
-Existing frontend CI (`.github/workflows/frontend-ci.yml`) is unchanged. Backend CI (Phase 10B) adds: lint/type-check, unit tests, Postgres **service container** for integration/API tests, an `alembic upgrade head` + drift check, and a container build. Deployment automation is a separate, later decision (no provider chosen); production deploys require the CI gates plus a manual approval and the migration step above.
+Existing frontend CI (`.github/workflows/frontend-ci.yml`) is unchanged. Backend CI (`.github/workflows/backend-ci.yml`, Phase 10B) runs ruff, ruff format check, mypy (strict) and pytest with no database. Phase 10C adds a Postgres **service container** for integration/API tests, an `alembic upgrade head` + drift check, and a container build. Deployment automation is a separate, later decision (no provider chosen); production deploys require the CI gates plus a manual approval and the migration step above.
 
 ## 8. Not decided here
 

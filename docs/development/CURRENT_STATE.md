@@ -26,12 +26,13 @@ c2871f7 Phase 9H: add route-level code splitting
 50e39b9 Phase 9J: complete SEO accessibility and frontend QA
 5ed1799 Phase 9L: clean frontend technical debt
 d586f45 Phase 9M: add automated frontend testing foundation
-Phase 10A commit: pending (documentation complete, not yet committed)
+e60a0b6 Phase 10A: define backend architecture and contracts
+Phase 10B commit: pending (implementation complete, not yet committed)
 
 ## Current Phase
 
-Current Phase: Phase 10A — Backend Architecture & Contract Freeze: COMPLETE (documentation only), commit pending approval. Phase 9M (testing foundation, `d586f45`), Phase 9L (cleanup), Phase 9J (SEO / accessibility / final frontend QA), Phase 9G (PWA), Phase 9H (code splitting), the Food & Dining expansion (FD1–FD5) and the Visual Refresh (V1–V6) are complete and committed. Search UX refinement remains deferred; the Search review is in `SEARCH_UX_FINDINGS.md`.
-Next Step: Phase 10B — FastAPI Project Foundation (see Next Step below).
+Current Phase: Phase 10B — FastAPI Project Foundation: COMPLETE, commit pending approval. Phase 10A (backend architecture, `e60a0b6`), Phase 9M (testing foundation, `d586f45`), Phase 9L (cleanup), Phase 9J (SEO / accessibility / final frontend QA), Phase 9G (PWA), Phase 9H (code splitting), the Food & Dining expansion (FD1–FD5) and the Visual Refresh (V1–V6) are complete and committed. Search UX refinement remains deferred; the Search review is in `SEARCH_UX_FINDINGS.md`.
+Next Step: Phase 10C — PostgreSQL / SQLAlchemy / Alembic Data Layer Foundation (see Next Step below).
 
 ## Completed Product Work
 
@@ -70,6 +71,7 @@ Next Step: Phase 10B — FastAPI Project Foundation (see Next Step below).
 - Phase 9L — Frontend Cleanup & Technical Debt Closeout (see below)
 - Phase 9M — Automated Testing Foundation (see below and `TESTING.md`)
 - Phase 10A — Backend Architecture & Contract Freeze (see below and `docs/backend/`)
+- Phase 10B — FastAPI Project Foundation (see below and `backend/`)
 
 Full history is in `git log`; this file summarizes outcomes, not the blow-by-blow.
 
@@ -480,7 +482,7 @@ Phase 9M — Automated Testing Foundation + Playwright E2E + MCP-Assisted QA = *
 
 ## Phase 10A Result
 
-Phase 10A — Backend Architecture & Contract Freeze = **COMPLETE** (Phase 10A commit: pending). **Documentation only** — no backend code, FastAPI scaffold, Python dependency, database, migration, Docker file, auth, API or frontend change; no npm dependency added.
+Phase 10A — Backend Architecture & Contract Freeze = **COMPLETE** (commit `e60a0b6`). **Documentation only** — no backend code, FastAPI scaffold, Python dependency, database, migration, Docker file, auth, API or frontend change; no npm dependency added.
 
 - **Documents (new, `docs/backend/`):** `BACKEND_ARCHITECTURE.md` (stack, layers, folder design, transactions, concurrency, config/CORS/logging/security baseline, testing, migrations policy, phase map), `DATA_MODEL.md` (frontend contract audit, entities, listing subtype model, categories, lifecycle/history, constraints, indexes, delete policy, open questions), `API_CONTRACT.md` (REST conventions, envelopes, errors, pagination/filtering, resource groups), `AUTH_RBAC.md`, `MEDIA_STORAGE.md`, `DEPLOYMENT.md`.
 - **Architecture frozen:** modular monolith (FastAPI + Pydantic v2 + synchronous SQLAlchemy 2.x + Alembic + PostgreSQL + pytest, REST under `/api/v1`); routers → services → repositories → models; services own transactions. No Redis, queues, search engine or microservices.
@@ -489,6 +491,17 @@ Phase 10A — Backend Architecture & Contract Freeze = **COMPLETE** (Phase 10A c
 - **Frontend-vs-backend conflicts found (all documented, none changed):** admin UI allows Approve/Reject on any status including archived (backend stricter); an edit takes an approved listing offline (preserved); no contact data exists anywhere in the model; `submittedBy` is a name, not an id; `blob:` image URLs can never be stored; `Provider.category` is a slug but `Business.category` a label; General-business category and news category are free text (taxonomy needed); area is free text with an exact-match filter; Food spec's `food_category` vs the shipped `foodCategory` URL key.
 - **Deferred on purpose:** token/session mechanism, OAuth provider setup, email provider, hosting provider, media implementation, notifications, personalization, payments, content-version history (full snapshots of past listing content — the simple `revision` counter is current, not deferred), `draft` status, professional verification.
 - **Roadmap:** backend phases re-sequenced as 10A → 10B (FastAPI foundation) → 10C (data layer) → 10D (read APIs) → 11 (auth/RBAC) → 12 (write APIs + integration) → 13 (media + deployment); see `ROADMAP.md`.
+
+## Phase 10B Result
+
+Phase 10B — FastAPI Project Foundation = **COMPLETE** (Phase 10B commit: pending). The first backend implementation phase. **No database, SQLAlchemy, Alembic, Docker, auth or domain API, and no frontend change.**
+
+- **Project:** `backend/` — `pyproject.toml` (setuptools; Python ≥3.12; runtime deps `fastapi`, `uvicorn`, `pydantic-settings`; dev deps `pytest`, `httpx`, `ruff`, `mypy`), project-local `backend/.venv` (git-ignored), `.env.example`, short `README.md`.
+- **Application:** `app/factory.py` (`create_app(settings)`, import-side-effect-free) + `app/main.py` (`app = create_app()` for `uvicorn app.main:app`); `app/core/{config,errors,logging}.py`; `app/middleware/{request_id,request_log}.py`; `app/api/{routing,error_handlers}.py`, `app/api/v1/{router,health}.py`; `app/schemas/envelope.py`; `app/dependencies/settings.py`.
+- **Behavior:** `GET /api/v1/health` → `{"data": {"status": "ok", "service": "b17-portal-api", "version": "…"}}` (liveness only; `meta` omitted per the null/omitted rule); every response carries `X-Request-ID` (valid incoming ids are kept, others replaced with a UUID4); all errors use `{"error": {code, message, details?, requestId}}` — validation (422 with `{field, code, message}` details, never the input), malformed JSON (400), unknown routes (404), wrong method (405), application errors (`AppError`) and unexpected exceptions (generic 500; traceback logged server-side only); one structured JSON log line per request (path without query string); explicit-origin CORS from `FRONTEND_ORIGINS` (wildcards rejected, credentials off until Phase 11); OpenAPI + `/docs` + `/redoc` outside production only.
+- **Tooling:** pytest (75 tests, no database, isolated from the real `.env`/environment), ruff (lint + format), mypy strict — all clean; `.github/workflows/backend-ci.yml` runs them on `backend/**` changes. Frontend CI unchanged.
+- **Scope changes recorded:** the API Dockerfile and Compose PostgreSQL moved from 10B to 10C (the roadmap text said 10B; the 10B brief excluded Docker); `/health/ready` moved to 10C (needs the database); environment names are `development|test|staging|production` and the CORS variable is `FRONTEND_ORIGINS` (the 10A draft said `local` and `CORS_ALLOWED_ORIGINS`) — backend docs updated.
+- **Known limitations:** Starlette 1.8's TestClient prefers `httpx2`; the suite keeps `httpx` (as specified) with a scoped warning filter — revisit when `httpx` support is removed. `DEBUG`/`ENVIRONMENT` are unprefixed environment variable names (per the 10A docs), so an unrelated shell `DEBUG` value that is not a boolean fails startup validation with a clear message.
 
 ## Production V1 Direction
 
@@ -519,7 +532,7 @@ Phase 10A — Backend Architecture & Contract Freeze = **COMPLETE** (Phase 10A c
 - Frontend capability checks (Phase 9E) are UX only, not authorization/security — explicitly documented in `types/entitlements.ts`; the backend will be authoritative once it exists.
 - No profession-specific Premium modules built yet (Tutor/Property/Salon, etc.) — `professional.modules` capability exists, reserved and unconsumed, for exactly this future use.
 - Auth is demo-only (name string, no password, no persistence) — by design, not yet a gap to "fix," but must become real before any production launch.
-- No backend, no database — all state is static seed data + in-memory or `localStorage`-persisted Zustand.
+- A backend foundation exists (Phase 10B: `GET /api/v1/health` only) but there is no database and no domain/auth API, and the frontend does not call it — all frontend state is still static seed data + in-memory or `localStorage`-persisted Zustand.
 - Automated tests exist since Phase 9M (see `TESTING.md` → Known gaps): Chromium-only E2E, no axe/Lighthouse, no real-device or visual-regression testing, several flows (Education/Tutor, News admin CRUD, Leads/Requests lifecycle, Premium toggle) not covered by E2E.
 - Backend contract open questions (area normalization, General-business category taxonomy, listing contact channel, demo content in production, admin takedown semantics) are recorded in `docs/backend/DATA_MODEL.md` §13 and need product decisions before the write APIs (Phase 12).
 - Lint baseline: 8 pre-existing warnings (6× `only-export-components` in shadcn-pattern files, 2× `set-state-in-effect`) — known, unchanged across many phases.
@@ -548,7 +561,7 @@ Phase 10A — Backend Architecture & Contract Freeze = **COMPLETE** (Phase 10A c
 
 ## Next Step
 
-Phase 10B — FastAPI Project Foundation, then 10C (PostgreSQL data layer), 10D (read APIs), 11 (auth/RBAC), 12 (write APIs + frontend integration) and 13 (media + deployment) per `ROADMAP.md` and `docs/backend/BACKEND_ARCHITECTURE.md` §12. The backend phases should also pick up what the frontend deliberately deferred: server-side / pre-rendered per-page metadata and link previews, a per-entity sitemap, structured data from real entity data, a real production URL (`VITE_SITE_URL`), persistent data / auth, real media storage and any offline write handling. Phases 9F (Admin Production UX) and 9I (Notifications + Trust/Reviews UI) remain product decisions. Store packaging, push notifications, sharing / deep links, ordering / payments and premium merchant tools stay out of scope until their roadmap phases.
+Phase 10C — PostgreSQL / SQLAlchemy / Alembic Data Layer Foundation (including the API Dockerfile and Compose PostgreSQL, which moved here from 10B), then 10D (read APIs), 11 (auth/RBAC), 12 (write APIs + frontend integration) and 13 (media + deployment) per `ROADMAP.md` and `docs/backend/BACKEND_ARCHITECTURE.md` §12. The backend phases should also pick up what the frontend deliberately deferred: server-side / pre-rendered per-page metadata and link previews, a per-entity sitemap, structured data from real entity data, a real production URL (`VITE_SITE_URL`), persistent data / auth, real media storage and any offline write handling. Phases 9F (Admin Production UX) and 9I (Notifications + Trust/Reviews UI) remain product decisions. Store packaging, push notifications, sharing / deep links, ordering / payments and premium merchant tools stay out of scope until their roadmap phases.
 
 ## Resume Instructions
 

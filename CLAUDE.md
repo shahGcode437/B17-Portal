@@ -26,8 +26,8 @@ Discover → Explore → Compare → Trust → Connect → Request → Return/Tr
 - Zustand 5 (two stores: listings, news) — no persistence, in-memory only
 - `react-hook-form` + `zod` (via a hand-rolled resolver bridge)
 - `motion` (animation), `lucide-react` (icons)
-- No backend, no database, no real auth. Automated tests (Vitest + Playwright) exist since Phase 9M — see `docs/development/TESTING.md`
-- Planned FUTURE backend direction: FastAPI + PostgreSQL — not implemented yet, do not assume it exists
+- No database, no real auth. Automated tests (Vitest + Playwright) exist since Phase 9M — see `docs/development/TESTING.md`
+- Backend: a FastAPI foundation exists in `backend/` since Phase 10B (health endpoint, settings, CORS, error envelope — see `docs/backend/`). PostgreSQL and all domain/auth APIs are NOT implemented yet, and the frontend does not call the backend yet — do not assume either exists
 
 ## Engineering Workflow
 

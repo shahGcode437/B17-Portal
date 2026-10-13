@@ -178,7 +178,7 @@ V1 Shared Card Foundation → V2 Consumer Discovery → V2.1 Predictive Search �
 4. ~~Phase 9L — frontend cleanup & technical debt closeout~~ — **COMPLETE** (commit `5ed1799`)
 5. ~~Phase 9M — Automated Testing Foundation (Playwright + MCP QA, including the Search UX review)~~ — **COMPLETE** (commit `d586f45`)
 6. Frontend freeze
-7. ~~Phase 10A — Backend Architecture & Contract Freeze~~ — **COMPLETE** (Phase 10A commit: pending)
+7. ~~Phase 10A — Backend Architecture & Contract Freeze~~ — **COMPLETE** (commit `e60a0b6`)
 8. Phases 10B–13 — backend implementation (sequencing below)
 
 Phases 9F (Admin Production UX) and 9I (Notifications + Trust/Reviews UI) remain valid Production V1 items below; their sequencing relative to the list above is to be confirmed by a product decision before the frontend freeze. Only 9H now runs before 9G.
@@ -248,7 +248,7 @@ Phases 9F (Admin Production UX) and 9I (Notifications + Trust/Reviews UI) remain
 ---
 
 ## Phase 10A — Backend Architecture & Contract Freeze
-**STATUS: COMPLETE** (Phase 10A commit: pending)
+**STATUS: COMPLETE** (commit `e60a0b6`)
 
 - Objective: design and freeze the backend architecture and API/data contracts against the **actual** frontend source, before any backend code.
 - Delivered: `docs/backend/` — `BACKEND_ARCHITECTURE.md`, `DATA_MODEL.md`, `API_CONTRACT.md`, `AUTH_RBAC.md`, `MEDIA_STORAGE.md`, `DEPLOYMENT.md`.
@@ -259,10 +259,14 @@ Phases 9F (Admin Production UX) and 9I (Notifications + Trust/Reviews UI) remain
 This re-sequences the earlier placeholders (old 10 "Backend Architecture", 11 "PostgreSQL/Data Layer", 12 "Frontend/API Integration", 13 "Security/Auth/RBAC/Storage/Deployment"): architecture is now 10A, the data layer is 10C, authentication is pulled out of 13 into its own Phase 11, and media/deployment form Phase 13.
 
 ## Phase 10B — FastAPI Project Foundation
-App factory, settings, health endpoints, error envelope, structured logging + request ID, CORS, pytest harness, Dockerfile, Compose PostgreSQL, backend CI. **No domain tables, no auth.** Not started.
+**STATUS: COMPLETE** (Phase 10B commit: pending)
+
+- Delivered: `backend/` Python project (`pyproject.toml`), app factory, typed settings, `GET /api/v1/health`, request-ID middleware, structured JSON logging, the `{data}` / `{error}` envelopes (validation, 404/405 and unhandled-error normalization), explicit-origin CORS, OpenAPI/docs (not published in production), pytest suite (75 tests, no database), ruff + mypy (strict), and `.github/workflows/backend-ci.yml`.
+- Moved out of 10B (scope decision, see `DECISIONS.md`): the API Dockerfile and Compose PostgreSQL now belong to 10C with the data layer they serve; the readiness check (`/health/ready`) arrives with the database.
+- **No domain tables, no database, no auth, no frontend change.**
 
 ## Phase 10C — PostgreSQL Data Layer
-SQLAlchemy models, Alembic baseline, constraints and indexes, reference-taxonomy seed script, dev fixtures with fixed UUIDs, repository and constraint tests. Not started.
+SQLAlchemy models, Alembic baseline, constraints and indexes, reference-taxonomy seed script, dev fixtures with fixed UUIDs, repository and constraint tests, **API Dockerfile + Compose PostgreSQL**, `/health/ready`, and the Postgres service container + migration-drift check in backend CI. Not started.
 
 ## Phase 10D — Read APIs
 Categories, public search/suggestions, listing detail, news reads — parity with `services/search.ts` semantics. Not started.
