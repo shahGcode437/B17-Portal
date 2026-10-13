@@ -176,9 +176,10 @@ V1 Shared Card Foundation → V2 Consumer Discovery → V2.1 Predictive Search �
 2. ~~Phase 9G — PWA / installability~~ — **COMPLETE** (commit `5c3e6d6`)
 3. ~~Phase 9J — SEO, accessibility tooling and final frontend QA~~ — **COMPLETE** (commit `50e39b9`)
 4. ~~Phase 9L — frontend cleanup & technical debt closeout~~ — **COMPLETE** (commit `5ed1799`)
-5. ~~Phase 9M — Automated Testing Foundation (Playwright + MCP QA, including the Search UX review)~~ — **COMPLETE** (Phase 9M commit: pending)
+5. ~~Phase 9M — Automated Testing Foundation (Playwright + MCP QA, including the Search UX review)~~ — **COMPLETE** (commit `d586f45`)
 6. Frontend freeze
-7. Phases 10–13 — backend architecture and implementation
+7. ~~Phase 10A — Backend Architecture & Contract Freeze~~ — **COMPLETE** (Phase 10A commit: pending)
+8. Phases 10B–13 — backend implementation (sequencing below)
 
 Phases 9F (Admin Production UX) and 9I (Notifications + Trust/Reviews UI) remain valid Production V1 items below; their sequencing relative to the list above is to be confirmed by a product decision before the frontend freeze. Only 9H now runs before 9G.
 
@@ -236,7 +237,7 @@ Phases 9F (Admin Production UX) and 9I (Notifications + Trust/Reviews UI) remain
 - Search UX refinement is intentionally deferred to Phase 9M.
 
 ## Phase 9M — Automated Testing Foundation
-**STATUS: COMPLETE** (Phase 9M commit: pending)
+**STATUS: COMPLETE** (commit `d586f45`)
 
 - Objective: an automated test foundation over the frozen frontend baseline, plus the deferred Search UX review.
 - Delivered: Vitest + jsdom + RTL unit/component suite (168 tests); Playwright E2E (68 tests; desktop, mobile, PWA projects) against the production build on `127.0.0.1:4173`; GitHub Actions frontend CI; `docs/development/TESTING.md`; Playwright MCP exploratory Search review (`SEARCH_UX_FINDINGS.md`).
@@ -246,14 +247,31 @@ Phases 9F (Admin Production UX) and 9I (Notifications + Trust/Reviews UI) remain
 
 ---
 
-## Phase 10 — Backend Architecture/Foundation
-Backend project setup and architecture (FastAPI, planned). Not started.
+## Phase 10A — Backend Architecture & Contract Freeze
+**STATUS: COMPLETE** (Phase 10A commit: pending)
 
-## Phase 11 — PostgreSQL/Data Layer
-Real schema/data layer design and implementation. Not started.
+- Objective: design and freeze the backend architecture and API/data contracts against the **actual** frontend source, before any backend code.
+- Delivered: `docs/backend/` — `BACKEND_ARCHITECTURE.md`, `DATA_MODEL.md`, `API_CONTRACT.md`, `AUTH_RBAC.md`, `MEDIA_STORAGE.md`, `DEPLOYMENT.md`.
+- Out of scope / unchanged: any code, dependency, database, migration, Docker file, auth, API or frontend change.
 
-## Phase 12 — Frontend/API Integration
-Replace `search.ts`'s mock implementation and the Zustand stores' local mutations with real API calls, using the boundaries established in Phase 9A onward. Not started.
+## Backend phase sequence (approved in the Phase 10A review)
 
-## Phase 13 — Security/Auth/RBAC/Storage/Deployment
-Real authentication, authorization/RBAC, media/object storage, and production deployment. Not started.
+This re-sequences the earlier placeholders (old 10 "Backend Architecture", 11 "PostgreSQL/Data Layer", 12 "Frontend/API Integration", 13 "Security/Auth/RBAC/Storage/Deployment"): architecture is now 10A, the data layer is 10C, authentication is pulled out of 13 into its own Phase 11, and media/deployment form Phase 13.
+
+## Phase 10B — FastAPI Project Foundation
+App factory, settings, health endpoints, error envelope, structured logging + request ID, CORS, pytest harness, Dockerfile, Compose PostgreSQL, backend CI. **No domain tables, no auth.** Not started.
+
+## Phase 10C — PostgreSQL Data Layer
+SQLAlchemy models, Alembic baseline, constraints and indexes, reference-taxonomy seed script, dev fixtures with fixed UUIDs, repository and constraint tests. Not started.
+
+## Phase 10D — Read APIs
+Categories, public search/suggestions, listing detail, news reads — parity with `services/search.ts` semantics. Not started.
+
+## Phase 11 — Authentication, OAuth & RBAC
+Real accounts, email/password, Google (and Facebook/Apple as decided), token/session mechanism, roles and permission enforcement. Not started.
+
+## Phase 12 — Write APIs & Frontend/API Integration
+Owner listing lifecycle, moderation, Saved, requests, news admin, category admin; replace `search.ts` and the Zustand stores' local mutations with API calls; full-stack Playwright. Requires the open product decisions in `docs/backend/DATA_MODEL.md` §13. Not started.
+
+## Phase 13 — Media Storage & Production Deployment
+S3-compatible media upload, hosting, backups, monitoring, SPA-fallback hosting config. Not started.

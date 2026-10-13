@@ -2,7 +2,7 @@
 
 ## Last Updated
 
-2026-10-12
+2026-10-13
 
 ## Current Branch
 
@@ -25,12 +25,13 @@ c2871f7 Phase 9H: add route-level code splitting
 5c3e6d6 Phase 9G: add PWA installability and offline safety
 50e39b9 Phase 9J: complete SEO accessibility and frontend QA
 5ed1799 Phase 9L: clean frontend technical debt
-Phase 9M commit: pending (implementation complete, not yet committed)
+d586f45 Phase 9M: add automated frontend testing foundation
+Phase 10A commit: pending (documentation complete, not yet committed)
 
 ## Current Phase
 
-Current Phase: Phase 9M — Automated Testing Foundation + Playwright E2E + MCP-assisted QA: COMPLETE, commit pending approval. Phase 9L (cleanup), Phase 9J (SEO / accessibility / final frontend QA), Phase 9G (PWA), Phase 9H (code splitting), the Food & Dining expansion (FD1–FD5) and the Visual Refresh (V1–V6) are complete and committed. Search UX refinement remains deferred; the Search review is in `SEARCH_UX_FINDINGS.md`.
-Next Step: Phase 10 — Backend Architecture/Foundation (see Next Step below).
+Current Phase: Phase 10A — Backend Architecture & Contract Freeze: COMPLETE (documentation only), commit pending approval. Phase 9M (testing foundation, `d586f45`), Phase 9L (cleanup), Phase 9J (SEO / accessibility / final frontend QA), Phase 9G (PWA), Phase 9H (code splitting), the Food & Dining expansion (FD1–FD5) and the Visual Refresh (V1–V6) are complete and committed. Search UX refinement remains deferred; the Search review is in `SEARCH_UX_FINDINGS.md`.
+Next Step: Phase 10B — FastAPI Project Foundation (see Next Step below).
 
 ## Completed Product Work
 
@@ -68,6 +69,7 @@ Next Step: Phase 10 — Backend Architecture/Foundation (see Next Step below).
 - Phase 9J — SEO + Accessibility Tooling + Final Frontend QA (see below)
 - Phase 9L — Frontend Cleanup & Technical Debt Closeout (see below)
 - Phase 9M — Automated Testing Foundation (see below and `TESTING.md`)
+- Phase 10A — Backend Architecture & Contract Freeze (see below and `docs/backend/`)
 
 Full history is in `git log`; this file summarizes outcomes, not the blow-by-blow.
 
@@ -464,7 +466,7 @@ Phase 9L — Frontend Cleanup & Technical Debt Closeout = **COMPLETE** (Phase 9L
 
 ## Phase 9M Result
 
-Phase 9M — Automated Testing Foundation + Playwright E2E + MCP-Assisted QA = **COMPLETE** (Phase 9M commit: pending). Phase 9L is committed as `5ed1799`.
+Phase 9M — Automated Testing Foundation + Playwright E2E + MCP-Assisted QA = **COMPLETE** (commit `d586f45`). Phase 9L is committed as `5ed1799`.
 
 - **Tooling (devDependencies only):** Vitest 5 + jsdom + React Testing Library + user-event + jest-dom, and `@playwright/test`. No Jest/Cypress/Selenium. Scripts: `test`, `test:run`, `test:watch`, `test:e2e`, `test:e2e:headed`, `test:e2e:ui`, `test:e2e:report`. Commands, strategy and gaps: `docs/development/TESTING.md`.
 - **Unit + component:** 14 files / 168 tests (Search service, Food config, listing builders/schemas, SEO, stores, SearchBar, FilterControls, FoodListingFields, ListingForm, result-card accessibility, offline guard, InstallPrompt, route fallback/error, PwaStatus).
@@ -472,9 +474,21 @@ Phase 9M — Automated Testing Foundation + Playwright E2E + MCP-Assisted QA = *
 - **Journeys covered:** Home→Search→detail→Save→Saved→unsave; Search (URL source of truth, suggestions, Food vs General, empty state, nested-interactive regression); Professional create→Admin reject with reason→edit & resubmit→approve→Search→Food detail; General and Service listings; Property lifecycle; route guards and role separation; SEO/robots/canonical/404; every public route by direct URL; mobile nav/filters/forms; PWA manifest, service worker, offline browsing and blocked offline mutations.
 - **Bug found and fixed by 9M:** Search result cards exposed a Save button nested inside a "Preview X" button (nested interactive controls, WCAG 4.1.2). Reproduced with a failing test, fixed with the smallest semantic change (non-interactive card surface + one stretched named overlay button, `CardPreviewTrigger`, with independent Save/action buttons above it) in `BusinessCard`, `ProviderCard`, `TutorCard`, `PropertyCard`; no visual change, no Search-semantics change; regression-tested in Vitest and Playwright.
 - **MCP review:** Playwright MCP exploratory Search review (desktop + mobile) recorded in `SEARCH_UX_FINDINGS.md` — one blocker (above, fixed), two LOW open items (32 px Save touch target; suggestion list overlays filters until dismissed), the rest verified and pinned by tests.
-- **CI:** `.github/workflows/frontend-ci.yml` (push/PR to `master`): tsc → lint → Vitest → build → Playwright Chromium; no secrets, no deploy; report/traces uploaded. Not yet run on GitHub (it only runs after the commit is pushed).
+- **CI:** `.github/workflows/frontend-ci.yml` (push/PR to `master`): tsc → lint → Vitest → build → Playwright Chromium; no secrets, no deploy; report/traces uploaded. Frontend CI run #1 on `d586f45` passed (every step green).
 - **Verification at completion:** `tsc -b --force` clean; lint 8 warnings (baseline); Vitest 168/168; build OK; Playwright 68/68 (two consecutive full runs, no retries).
 - **Unchanged:** product behavior, Search ranking/semantics, routes, data, PWA, SEO; no backend.
+
+## Phase 10A Result
+
+Phase 10A — Backend Architecture & Contract Freeze = **COMPLETE** (Phase 10A commit: pending). **Documentation only** — no backend code, FastAPI scaffold, Python dependency, database, migration, Docker file, auth, API or frontend change; no npm dependency added.
+
+- **Documents (new, `docs/backend/`):** `BACKEND_ARCHITECTURE.md` (stack, layers, folder design, transactions, concurrency, config/CORS/logging/security baseline, testing, migrations policy, phase map), `DATA_MODEL.md` (frontend contract audit, entities, listing subtype model, categories, lifecycle/history, constraints, indexes, delete policy, open questions), `API_CONTRACT.md` (REST conventions, envelopes, errors, pagination/filtering, resource groups), `AUTH_RBAC.md`, `MEDIA_STORAGE.md`, `DEPLOYMENT.md`.
+- **Architecture frozen:** modular monolith (FastAPI + Pydantic v2 + synchronous SQLAlchemy 2.x + Alembic + PostgreSQL + pytest, REST under `/api/v1`); routers → services → repositories → models; services own transactions. No Redis, queues, search engine or microservices.
+- **Data model frozen:** UUID ids; one `listings` base table + shared-PK subtype tables (`business_profiles`, `property_profiles`, `tutor_profiles`; no empty provider subtype); Food stays **business + vertical** (`food_profiles` tied to a food-vertical business by composite FK; `food_menu_items` capped at 8 by constraint); one `categories` table keyed by a code-defined module with `listing_categories` (position 1 = primary, max 3); `listing_status_history` (append-only, with an `action` column); one `saved_items` table; `news_articles` separate from listings.
+- **Contracts frozen:** camelCase JSON matching the frontend types, omitted-not-null optionals, `{data, meta}` / `{error}` envelopes, offset pagination (default 12, with total), query keys identical to the Search URL keys, state changes as actions (never a `status` write), `listings.revision` as the integer concurrency/version counter that guards moderation and conflicting updates (current requirement); `PATCH` semantics: omitted = unchanged, explicit `null` = clear (only for fields the domain allows clearing).
+- **Frontend-vs-backend conflicts found (all documented, none changed):** admin UI allows Approve/Reject on any status including archived (backend stricter); an edit takes an approved listing offline (preserved); no contact data exists anywhere in the model; `submittedBy` is a name, not an id; `blob:` image URLs can never be stored; `Provider.category` is a slug but `Business.category` a label; General-business category and news category are free text (taxonomy needed); area is free text with an exact-match filter; Food spec's `food_category` vs the shipped `foodCategory` URL key.
+- **Deferred on purpose:** token/session mechanism, OAuth provider setup, email provider, hosting provider, media implementation, notifications, personalization, payments, content-version history (full snapshots of past listing content — the simple `revision` counter is current, not deferred), `draft` status, professional verification.
+- **Roadmap:** backend phases re-sequenced as 10A → 10B (FastAPI foundation) → 10C (data layer) → 10D (read APIs) → 11 (auth/RBAC) → 12 (write APIs + integration) → 13 (media + deployment); see `ROADMAP.md`.
 
 ## Production V1 Direction
 
@@ -507,6 +521,7 @@ Phase 9M — Automated Testing Foundation + Playwright E2E + MCP-Assisted QA = *
 - Auth is demo-only (name string, no password, no persistence) — by design, not yet a gap to "fix," but must become real before any production launch.
 - No backend, no database — all state is static seed data + in-memory or `localStorage`-persisted Zustand.
 - Automated tests exist since Phase 9M (see `TESTING.md` → Known gaps): Chromium-only E2E, no axe/Lighthouse, no real-device or visual-regression testing, several flows (Education/Tutor, News admin CRUD, Leads/Requests lifecycle, Premium toggle) not covered by E2E.
+- Backend contract open questions (area normalization, General-business category taxonomy, listing contact channel, demo content in production, admin takedown semantics) are recorded in `docs/backend/DATA_MODEL.md` §13 and need product decisions before the write APIs (Phase 12).
 - Lint baseline: 8 pre-existing warnings (6× `only-export-components` in shadcn-pattern files, 2× `set-state-in-effect`) — known, unchanged across many phases.
 - (Closed in Phase 9L) the 19 orphaned images and the dead `/services/home-construction` route were removed; the `shadcn` package was audited and kept (see Phase 9L Result). `shadcn` still sits in `dependencies` although it is only needed at build time (`src/index.css` imports `shadcn/tailwind.css`); moving it to `devDependencies` was out of scope for the cleanup phase and is optional, zero-runtime-impact hygiene.
 - No SPA-fallback hosting config (`vercel.json`/`netlify.toml`/`_redirects`) — will 404 on refresh/direct link on a real static host until added.
@@ -533,7 +548,7 @@ Phase 9M — Automated Testing Foundation + Playwright E2E + MCP-Assisted QA = *
 
 ## Next Step
 
-Phase 10 — Backend Architecture/Foundation and the later backend phases per `ROADMAP.md`. The backend phases should also pick up what the frontend deliberately deferred: server-side / pre-rendered per-page metadata and link previews, a per-entity sitemap, structured data from real entity data, a real production URL (`VITE_SITE_URL`), persistent data / auth, real media storage and any offline write handling. Phases 9F (Admin Production UX) and 9I (Notifications + Trust/Reviews UI) remain product decisions. Store packaging, push notifications, sharing / deep links, ordering / payments and premium merchant tools stay out of scope until their roadmap phases.
+Phase 10B — FastAPI Project Foundation, then 10C (PostgreSQL data layer), 10D (read APIs), 11 (auth/RBAC), 12 (write APIs + frontend integration) and 13 (media + deployment) per `ROADMAP.md` and `docs/backend/BACKEND_ARCHITECTURE.md` §12. The backend phases should also pick up what the frontend deliberately deferred: server-side / pre-rendered per-page metadata and link previews, a per-entity sitemap, structured data from real entity data, a real production URL (`VITE_SITE_URL`), persistent data / auth, real media storage and any offline write handling. Phases 9F (Admin Production UX) and 9I (Notifications + Trust/Reviews UI) remain product decisions. Store packaging, push notifications, sharing / deep links, ordering / payments and premium merchant tools stay out of scope until their roadmap phases.
 
 ## Resume Instructions
 
