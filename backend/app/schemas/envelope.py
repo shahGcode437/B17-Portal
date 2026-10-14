@@ -21,3 +21,16 @@ class ApiModel(BaseModel):
 class Envelope(ApiModel, Generic[T]):  # noqa: UP046 - classic Generic keeps pydantic + mypy simple
     data: T
     meta: dict[str, Any] | None = None
+
+
+class PageMeta(ApiModel):
+    """Offset pagination (docs/backend/API_CONTRACT.md §4)."""
+
+    total: int
+    limit: int
+    offset: int
+
+
+class PagedEnvelope(ApiModel, Generic[T]):  # noqa: UP046
+    data: list[T]
+    meta: PageMeta

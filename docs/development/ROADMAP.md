@@ -266,17 +266,20 @@ This re-sequences the earlier placeholders (old 10 "Backend Architecture", 11 "P
 - **No domain tables, no database, no auth, no frontend change.**
 
 ## Phase 10C — PostgreSQL / SQLAlchemy / Alembic Data Layer Foundation
-**STATUS: COMPLETE** (Phase 10C commit: pending)
+**STATUS: COMPLETE** (commit `d0c02dd`)
 
 - Delivered: 15-table PostgreSQL schema (`docs/backend/DATA_MODEL.md`) with Alembic baseline `0001`, database-level integrity (Food↔business-vertical composite FK, menu/category limits, Saved uniqueness, history consistency, …), typed SQLAlchemy 2 models, session/transaction infrastructure, taxonomy + listing repositories, `ListingCreationService` (all-or-nothing multi-table create), reference-taxonomy seed (39 categories) and dev fixtures (fixed UUIDv5 ids), `GET /api/v1/health/ready`, API Dockerfile + Compose PostgreSQL, strict test-database safety, 291 tests (166 on real PostgreSQL), and PostgreSQL + migration/drift/seed checks in backend CI.
-- Deferred (per DATA_MODEL.md): `search_document` / `pg_trgm` / `GIN(tags)`, `service_requests`, `media_assets`, content-version history.
+- Deferred (per DATA_MODEL.md): `search_document` / `pg_trgm` (delivered in 10D), `service_requests`, `media_assets`, content-version history.
 - **No product API, no auth, no frontend change.**
 
 ## Phase 10D — Read APIs
-Categories, public search/suggestions, listing detail, news reads — parity with `services/search.ts` semantics. Includes the search schema deferred from 10C (`listings.search_document` with its maintenance, `pg_trgm`, `GIN(tags)`). **NEXT.** Not started.
+**STATUS: COMPLETE** (Phase 10D commit: pending)
+
+- Delivered: `GET /categories`, `/search`, `/search/suggestions`, `/listings/{id}`, `/news`, `/news/{id}` on real PostgreSQL; migration `0002` (`pg_trgm`, maintained `listings.search_document`, GIN trigram + partial area indexes); `SearchIndexer` + `python -m app.db.search_index`; deterministic title-first ranking; kind-aware filters with the frontend's semantics; ranked suggestions; public visibility (approved/published only, one shared `404`); extended fixtures; 539 tests; parity notes in `docs/backend/READ_API_PARITY.md`.
+- **No writes, no auth, no frontend change.** The two LOW Search UX findings remain deferred.
 
 ## Phase 11 — Authentication, OAuth & RBAC
-Real accounts, email/password, Google (and Facebook/Apple as decided), token/session mechanism, roles and permission enforcement. Not started.
+Real accounts, email/password, Google (and Facebook/Apple as decided), token/session mechanism, roles and permission enforcement. **NEXT.** Not started.
 
 ## Phase 12 — Write APIs & Frontend/API Integration
 Owner listing lifecycle, moderation, Saved, requests, news admin, category admin; replace `search.ts` and the Zustand stores' local mutations with API calls; full-stack Playwright. Requires the open product decisions in `docs/backend/DATA_MODEL.md` §13. Not started.

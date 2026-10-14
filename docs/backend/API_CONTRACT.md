@@ -1,6 +1,6 @@
 # B-17 Portal — API Contract
 
-**Status:** conventions frozen by Phase 10A. **Individual endpoints are frozen only in principle** — the phase that implements each group owns its exact schema (§9). Once implemented, the generated **OpenAPI document is the machine-readable source of truth**; this file stays the human contract for conventions and intent.
+**Status:** conventions frozen by Phase 10A. **Individual endpoints are frozen only in principle** — the phase that implements each group owns its exact schema (§9). Once implemented, the generated **OpenAPI document is the machine-readable source of truth**; this file stays the human contract for conventions and intent. **Implemented so far:** `/health`, `/health/ready` (10B/10C) and the public **read** group — `/categories`, `/search`, `/search/suggestions`, `/listings/{id}`, `/news`, `/news/{id}` (Phase 10D; details in §6 and [`READ_API_PARITY.md`](READ_API_PARITY.md)). There are no write, auth or owner/admin endpoints yet.
 **Owns:** REST conventions, versioning, naming, response/error envelopes, pagination/filter/sort conventions, the planned resource groups and why they are shaped as they are.
 **Does not own:** table design → [`DATA_MODEL.md`](DATA_MODEL.md) · role/permission rules → [`AUTH_RBAC.md`](AUTH_RBAC.md) · layering/CORS/logging → [`BACKEND_ARCHITECTURE.md`](BACKEND_ARCHITECTURE.md).
 
@@ -145,12 +145,12 @@ Default `limit` **12** (the frontend's `PAGE_SIZE`), maximum 50. *Why offset, no
 | `category` | provider/business/news/… | **category slug** (the frontend currently passes a *label* for business/news; moves to slugs with the taxonomy — a Phase 12 frontend change) |
 | `subject`, `grade` | tutor | `subject` = category slug |
 | `listingType`, `propertyType`, `bedrooms` (= minimum), `furnished` | property | `propertyType` = category slug |
-| `vertical` | business | `general` · `food` |
-| `foodCategory`, `service` | business (Food) | canonical slugs / option values; unknown values are **ignored**, never trusted (current frontend behavior) |
+| `vertical`, `service` | business / business (Food) | **closed sets** — `vertical` ∈ `general · food`, `service` ∈ `dine-in · takeaway · delivery`; an unknown value is a `422 validation_error`, never ignored (an ignored value would silently broaden the query) |
+| `foodCategory` | business (Food) | a category **slug** from the admin-managed taxonomy (open data): an unknown slug is a normal filter that matches nothing |
 | `sort` | all | `default` · `newest` |
 | `status` | owner/admin views only | never on public reads |
 
-**Sorting:** `sort=default` is a **deterministic** order (type order, then creation time, then id) that reproduces today's "natural order" without pretending to be relevance; `newest` orders by `publishedAt` for news (extendable to listings by `createdAt` later). **No relevance ranking** is introduced (matches the frontend); *suggestions* are ranked (exact → starts-with → word-prefix → contains → shorter → alphabetical), as today.
+**Sorting:** without `q`, `sort=default` is a **deterministic** order (type order, then creation time, then id) that reproduces today's "natural order"; `newest` orders by `publishedAt` for news first (extendable to listings by `createdAt` later). **With `q` (Phase 10D, a deliberate change from the 10A draft, which kept the frontend's "no relevance"):** results are ranked deterministically by the title — exact → starts-with → word-prefix → contains → matched only elsewhere — then shorter title, kind order, lower-cased title, id; *suggestions* are ranked likewise (exact → starts-with → word-prefix → contains → shorter → alphabetical). See `READ_API_PARITY.md` §3.
 
 PostgreSQL is sufficient initially (`pg_trgm` + B-tree/GIN; see `DATA_MODEL.md` §9). No Elasticsearch/OpenSearch.
 
@@ -161,10 +161,10 @@ Legend — **Auth:** A anonymous · R signed-in · O owner · P professional · 
 | Group | Representative operations | Auth | Why this shape | Owner phase |
 |---|---|---|---|---|
 | `/health` | `GET /health` (liveness — **implemented in 10B**, no dependency checks), `GET /health/ready` (**implemented in 10C**: `SELECT 1`; `200 {"data":{"status":"ready","checks":{"database":"ok"}}}`, otherwise a `503 service_unavailable` envelope that never names the host, URL or credentials) | A | Operability, container probes | 10B / 10C |
-| `/categories` | `GET /categories?module=&active=` | A | Feeds forms, filters, discovery pages (replaces hard-coded config) | 10D |
-| `/search` | `GET /search` (mixed kinds, `meta.total`), `GET /search/suggestions?q=&type=&limit=` | A | **The seam `services/search.ts` was built for**; returns `SearchHit` = `{kind, item}` and the existing flat `SearchSuggestion` shape | 10D |
-| `/listings` | `GET /listings/{id}`, `POST /listings`, `PATCH /listings/{id}`, `POST /listings/{id}/archive` | A (detail, approved only) / P,O (writes) | One canonical detail route for all kinds (mirrors the frontend's single detail per kind) | 10D (read), 12 (write) |
-| `/news` | `GET /news`, `GET /news/{id}`; admin writes under `/admin/news` | A / M | News is not a listing; no moderation | 10D / 12 |
+| `/categories` | `GET /categories?module=` (**implemented in 10D**; active categories only — there is no `active` parameter) | A | Feeds forms, filters, discovery pages (replaces hard-coded config) | 10D |
+| `/search` | `GET /search` (mixed kinds, `meta.total`), `GET /search/suggestions?q=&type=&limit=` (**implemented in 10D**) | A | **The seam `services/search.ts` was built for**; returns `SearchHit` = `{kind, item}` and the existing flat `SearchSuggestion` shape | 10D |
+| `/listings` | `GET /listings/{id}`, `POST /listings`, `PATCH /listings/{id}`, `POST /listings/{id}/archive` | A (detail, approved only) / P,O (writes) | One canonical detail route for all kinds (mirrors the frontend's single detail per kind) | 10D (read — **implemented**), 12 (write) |
+| `/news` | `GET /news`, `GET /news/{id}` (**implemented in 10D**; published only); admin writes under `/admin/news` | A / M | News is not a listing; no moderation | 10D (read) / 12 (write) |
 | `/users` | `GET /users/me`, `GET /users/me/listings?status=`, `PATCH /users/me` | R | Owner's own view of all statuses (the Professional "My Listings") | 11 / 12 |
 | `/saved` | `GET /saved`, `PUT /saved/{listingId}`, `DELETE /saved/{listingId}` | R | `PUT`/`DELETE` are idempotent (duplicate Saved is impossible and harmless) | 12 |
 | `/requests` | `POST /requests`, `GET /requests`, incoming leads for owners, status transitions | R / P | Request Service + Leads; transitions follow `REQUEST_TRANSITIONS`; **detail deferred** | 12 |
@@ -214,6 +214,16 @@ General business / provider / property / tutor use `category` (a **slug**) inste
 ## 6. Search contract (the seam for `services/search.ts`)
 
 `GET /search?q=&type=&area=&category=&…&sort=&limit=&offset=` → `data: SearchHit[]` where `SearchHit = { kind, item }` and `item` is the per-kind DTO of §2; `meta: { total, limit, offset }`. Only publicly visible content is returned (approved listings, published news). `GET /search/suggestions?q=&type=&limit=` → `data: SearchSuggestion[]` with the existing flat shape (`id`, `label`, `secondaryLabel`, `type`, `value`); minimum query length 2; suggestions are built only from fields the search matches on, so selecting one always yields results (the V2.1 rule). Filter option lists (areas, categories) come from `/categories` and a lightweight facets read when needed, not from client-side scanning of all data.
+
+### 6.1 As implemented in Phase 10D
+
+* **`GET /search`** — parameters (all optional): `q` (≤ 100 chars, trimmed, case-insensitive substring), `type` (`all|provider|business|tutor|property|news`), `area`, `category`, `subject`, `grade`, `bedrooms` (minimum, 1–20), `furnished` (`Furnished|Unfurnished|Semi-Furnished`), `listingType` (`sale|rent`), `propertyType`, `vertical`, `foodCategory`, `service`, `sort` (`default|newest`), `limit` (1–50, default 12), `offset` (0–100000). Filters are **kind-aware** (a filter only narrows kinds that have the field). Finite-choice filters are **validated**: absent (or blank) = no filter, a known value = apply it, an unknown value = `422 validation_error` (`details[].field` names the parameter) — never a silently broader query. This covers `type`, `sort`, `furnished`, `listingType`, `vertical` and `service`; free-text and open-data parameters (`q`, `area`, `grade`, and the slug filters `category`, `subject`, `propertyType`, `foodCategory`) are never rejected for being unknown — they simply match nothing. Response `data` is `SearchHit[]` (`{kind, item}`), `meta` is `{total, limit, offset}`. Search cards omit the Food menu.
+* **`GET /search/suggestions`** — `q` (< 2 characters → `[]`), `type`, `limit` (1–20, default 8) → `{id, label, secondaryLabel, type, value}[]`, built only from public searchable content, ranked and de-duplicated, one SQL statement.
+* **`GET /listings/{id}`** — the public detail, discriminated on `kind` (`provider|business|tutor|property`); Food businesses include `food` (`categories`, `serviceOptions`, `hoursNote?`, `menuHighlights?`, `menuImage?`) and every listing carries `categories: [{slug, name, isPrimary}]`.
+* **`GET /news`**, **`GET /news/{id}`** — `{id, kind: news|update, status: "published", title, category, categorySlug, summary, image?, publishedAt, tags}`; `kind` filter, newest first.
+* **`GET /categories?module=`** — `{id, module, slug, name, parentId?, displayOrder}[]`, active only.
+* **Visibility:** approved listings and published news only. Hidden, unknown and malformed ids all return the same `404 not_found` envelope. Invalid query values return the `422 validation_error` envelope with `details[].field`.
+* All responses use camelCase and omit null fields; `meta` appears only on paginated reads. Verified example (`GET /api/v1/search?q=biryani&limit=1`): `{"data":[{"kind":"business","item":{"id":"…","name":"Karachi Biryani House","vertical":"food","category":"Biryani / Rice","food":{"categories":["biryani-rice","desi-food"],"serviceOptions":["dine-in","delivery"],"hoursNote":"Daily, 12 PM–11 PM"}, …}}],"meta":{"total":1,"limit":1,"offset":0}}`.
 
 ## 7. Cross-cutting HTTP behavior
 

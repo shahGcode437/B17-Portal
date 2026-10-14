@@ -40,6 +40,22 @@ Implemented in Phase 10C:
 - Every migration is reviewed; a failed migration blocks the release. Take/confirm a fresh backup before schema changes that rewrite data.
 - Never run ad-hoc DDL on staging/production. Reference data (e.g. initial categories) is loaded by an idempotent script, not by hand.
 
+### 4.1 Upgrading a populated database to Phase 10D (migration `0002`) — required reindex
+
+Migration `0002_search_foundation` adds `listings.search_document` with an empty default, so listings that already exist are **not searchable until their documents are built**. This is a required, one-time data step for every database that already holds listings (staging, production, a long-lived dev database). Run, in this order, as part of the release (release environment, before the new version takes traffic):
+
+```bash
+alembic upgrade head
+python -m app.db.search_index rebuild     # fills search_document for every existing listing (idempotent)
+python -m app.db.search_index check       # must print "all documents are current" (exit 0)
+```
+
+* `check` exits `1` and lists the stale ids while any document is missing or out of date; run it any time you suspect drift.
+* A fresh database, or one filled by `python -m scripts.dev_fixtures`, already has complete documents (the creation service and the fixtures index as they write). That must not be mistaken for "no reindex is ever needed": a **populated** database always needs the rebuild.
+* The rebuild is deliberately **not** run on API startup (it is an O(listings) write; migrations and data steps are explicit release steps). Re-running it is safe.
+* The path is covered by an automated test that creates listings at revision `0001`, upgrades to `0002`, shows the audit failing and search returning nothing, rebuilds, and then finds the old listings (`backend/tests/db/test_search_upgrade_path.py`).
+
+
 ## 5. Hosting requirements (provider-neutral)
 
 - **Frontend:** static hosting for the Vite build with **HTTPS** and an **SPA fallback** (every unknown path serves `index.html` — currently missing: direct links/refresh would 404 on a plain static host; recorded in `CURRENT_STATE.md`), correct cache headers (hashed assets immutable; `index.html` and `sw.js` revalidated), and the PWA requirements already met (manifest, service worker scope `/`). The production URL feeds `VITE_SITE_URL`; staging sets `VITE_SITE_NOINDEX=true`.

@@ -1,6 +1,5 @@
 """The migrated database matches the models and the documented schema decisions."""
 
-import pytest
 from sqlalchemy import Engine, text
 from sqlalchemy.orm import Session
 
@@ -143,30 +142,23 @@ def test_every_timestamp_is_timezone_aware_and_every_id_is_a_uuid(db_session: Se
     assert non_uuid_ids == []
 
 
-def test_no_optional_extensions_are_installed_yet(db_session: Session) -> None:
-    """pg_trgm arrives with the search work (Phase 10D); PostGIS only if location search needs it."""
+def test_only_the_approved_extensions_are_installed(db_session: Session) -> None:
+    """pg_trgm arrived with the search work (Phase 10D); PostGIS only if location search needs it."""
     extensions = set(db_session.scalars(text("SELECT extname FROM pg_extension")).all())
 
-    assert extensions == {"plpgsql"}
+    assert extensions == {"plpgsql", "pg_trgm"}
 
 
-@pytest.mark.parametrize(
-    ("table", "column"),
-    [("listings", "search_document")],
-)
-def test_the_search_document_column_is_deferred_with_the_search_mechanism(
-    db_session: Session, table: str, column: str
-) -> None:
-    """A half-working denormalized column is worse than none: it lands with its maintenance."""
-    found = db_session.scalar(
+def test_the_search_document_column_exists_and_is_never_null(db_session: Session) -> None:
+    row = db_session.execute(
         text(
-            "SELECT count(*) FROM information_schema.columns "
-            "WHERE table_name = :table AND column_name = :column"
-        ),
-        {"table": table, "column": column},
-    )
+            "SELECT is_nullable, column_default FROM information_schema.columns "
+            "WHERE table_name = 'listings' AND column_name = 'search_document'"
+        )
+    ).one()
 
-    assert found == 0
+    assert row.is_nullable == "NO"
+    assert row.column_default is not None and "''" in row.column_default
 
 
 def test_the_engine_fixture_points_at_the_validated_test_database(db_engine: Engine) -> None:

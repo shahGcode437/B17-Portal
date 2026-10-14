@@ -94,6 +94,13 @@ class Listing(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     submitted_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+    #: Lower-cased public text the search matches against (Phase 10D). APPLICATION-MAINTAINED by
+    #: ``app.services.search_index`` — every code path that writes listing content must refresh it
+    #: in the same transaction; ``find_stale`` / ``python -m app.db.search_index check`` audit it.
+    #: Composition: ``app.services.search_document``. ``''`` means "not indexed yet".
+    search_document: Mapped[str] = mapped_column(
+        Text, nullable=False, default="", server_default=text("''")
+    )
 
     business: Mapped["BusinessProfile | None"] = relationship(
         back_populates="listing", uselist=False, cascade="all, delete-orphan", passive_deletes=True
@@ -130,6 +137,15 @@ class Listing(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         UniqueConstraint("id", "kind", name="uq_listings_id_kind"),
         Index("ix_listings_status_kind_created_at", "status", "kind", "created_at"),
         Index("ix_listings_owner_id_status", "owner_id", "status"),
+        # Substring search (`search_document LIKE '%q%'`) is served by a trigram GIN index.
+        Index(
+            "ix_listings_search_document_trgm",
+            "search_document",
+            postgresql_using="gin",
+            postgresql_ops={"search_document": "gin_trgm_ops"},
+        ),
+        # The public `area=` filter only ever looks at approved listings.
+        Index("ix_listings_approved_area", "area", postgresql_where=text("status = 'approved'")),
     )
 
 

@@ -132,7 +132,7 @@ def test_fixture_ids_are_deterministic_genuine_uuids() -> None:
 def test_fixtures_load_a_coherent_demo_dataset(db_session: Session) -> None:
     result = load_dev_fixtures(db_session)
 
-    assert (result.users, result.listings, result.news) == (3, 5, 1)
+    assert (result.users, result.listings, result.news) == (3, 15, 3)
     bakers = db_session.get(Listing, BAKERS_ID)
     assert bakers is not None and bakers.status is ListingStatus.APPROVED
     assert bakers.business is not None and bakers.business.food is not None
@@ -142,7 +142,7 @@ def test_fixtures_load_a_coherent_demo_dataset(db_session: Session) -> None:
     assert [h.action.value for h in bakers.status_history] == ["submitted", "approved"]
     assert db_session.get(UserRole, (ADMIN_ID, RoleName.ADMIN)) is not None
     assert db_session.get(SavedItem, (RESIDENT_ID, BAKERS_ID)) is not None
-    assert total(db_session, FoodMenuItem) == 3
+    assert total(db_session, FoodMenuItem) == 8
 
 
 def test_fixtures_are_idempotent_and_keep_their_ids(db_session: Session) -> None:
@@ -151,7 +151,7 @@ def test_fixtures_are_idempotent_and_keep_their_ids(db_session: Session) -> None
     again = load_dev_fixtures(db_session)
 
     assert (again.users, again.listings, again.news) == (0, 0, 0)
-    assert total(db_session, Listing) == 5 and total(db_session, User) == 3
+    assert total(db_session, Listing) == 15 and total(db_session, User) == 3
 
 
 def test_fixtures_refuse_to_run_in_production() -> None:

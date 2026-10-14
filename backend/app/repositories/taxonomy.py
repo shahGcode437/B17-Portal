@@ -37,6 +37,21 @@ class CategoryRepository:
             self._session.scalars(statement.order_by(Category.display_order, Category.slug))
         )
 
+    def list_public(self, module: CategoryModule | None = None) -> list[Category]:
+        """Active categories for public clients, optionally of one module.
+
+        Deterministic: module, then ``display_order``, then slug. Inactive categories are never
+        returned here (only a future admin API may list them).
+        """
+        statement = select(Category).where(Category.is_active.is_(True))
+        if module is not None:
+            statement = statement.where(Category.module == module)
+        return list(
+            self._session.scalars(
+                statement.order_by(Category.module, Category.display_order, Category.slug)
+            )
+        )
+
     def list_for_listing(self, listing_id: uuid.UUID) -> list[tuple[int, CategoryModule]]:
         """A listing's ``(position, category module)`` pairs as stored, ordered by position."""
         rows = self._session.execute(

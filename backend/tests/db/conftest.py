@@ -22,6 +22,7 @@ import pytest
 from alembic import command
 from alembic.config import Config
 from dotenv import dotenv_values
+from fastapi.testclient import TestClient
 from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.engine import URL
 from sqlalchemy.exc import OperationalError
@@ -117,3 +118,46 @@ def db_session(db_engine: Engine) -> Iterator[Session]:
 @pytest.fixture(scope="session")
 def reference_category_count() -> int:
     return len(REFERENCE_CATEGORIES)
+
+
+@pytest.fixture(scope="module")
+def committed_fixtures(db_engine: Engine) -> Iterator[None]:
+    """The development fixtures, committed ONCE per test module (loading them costs ~150 queries).
+
+    For modules that only read them. Whatever a single test changes happens inside that test's
+    rolled-back savepoint, so the module-level data is never altered. The tables are emptied again
+    when the module ends (the reference taxonomy stays), so no other module ever sees them.
+    """
+    from scripts.dev_fixtures import load_dev_fixtures
+
+    with Session(db_engine) as session:
+        load_dev_fixtures(session)
+        session.commit()
+    try:
+        yield
+    finally:
+        with db_engine.begin() as connection:
+            connection.execute(text("TRUNCATE users, listings, news_articles CASCADE"))
+
+
+@pytest.fixture
+def fixtures_session(committed_fixtures: None, db_session: Session) -> Session:
+    """``db_session`` over the committed development fixtures (idempotent, so no extra cost)."""
+    return db_session
+
+
+@pytest.fixture
+def read_client(fixtures_session: Session) -> Iterator[TestClient]:
+    """An API client whose request sessions ARE the test's session, so requests see the fixtures.
+
+    The read endpoints never commit, so sharing one savepoint-isolated session is faithful. Errors
+    come back as the 500 envelope (``raise_server_exceptions=False``), as for a real client.
+    """
+    from app.core.config import Settings
+    from app.dependencies.db import get_db_session
+    from app.factory import create_app
+
+    app = create_app(Settings(_env_file=None, environment="test", app_version="0.0.0-test"))
+    app.dependency_overrides[get_db_session] = lambda: fixtures_session
+    with TestClient(app, raise_server_exceptions=False) as client:
+        yield client

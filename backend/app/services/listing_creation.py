@@ -48,6 +48,7 @@ from app.models.enums import (
 )
 from app.repositories.listings import ListingRepository
 from app.repositories.taxonomy import CategoryRepository
+from app.services.search_index import SearchIndexer
 
 
 @dataclass(frozen=True)
@@ -132,6 +133,7 @@ class ListingCreationService:
         self._session = session
         self._listings = ListingRepository(session)
         self._categories = CategoryRepository(session)
+        self._search_index = SearchIndexer(session)
 
     def create_business_listing(self, data: BusinessListingInput) -> Listing:
         """Create a pending business listing (General or Food & Dining) atomically."""
@@ -139,6 +141,8 @@ class ListingCreationService:
             listing = self._build(data)
             self._listings.add(listing)
             self.verify_category_structure(listing)
+            # Same transaction: the searchable document can never lag the listing it describes.
+            self._search_index.refresh(listing)
         return listing
 
     def verify_category_structure(self, listing: Listing) -> None:

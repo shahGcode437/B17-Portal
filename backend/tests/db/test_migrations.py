@@ -65,7 +65,7 @@ def test_a_fresh_database_upgrades_to_head(scratch_url: str) -> None:
     command.upgrade(alembic_config(scratch_url), "head")
 
     assert tables(scratch_url) == EXPECTED_TABLES | {"alembic_version"}
-    assert version(scratch_url) == "0001"
+    assert version(scratch_url) == "0002"
 
 
 def test_it_downgrades_to_base_and_upgrades_again(scratch_url: str) -> None:
@@ -90,8 +90,8 @@ def test_the_models_and_the_migrations_have_not_drifted(scratch_url: str) -> Non
 def test_there_is_a_single_linear_migration_history(scratch_url: str) -> None:
     script = ScriptDirectory.from_config(alembic_config(scratch_url))
 
-    assert script.get_heads() == ["0001"]
-    assert len(list(script.walk_revisions())) == 1
+    assert script.get_heads() == ["0002"]
+    assert [revision.revision for revision in script.walk_revisions()] == ["0002", "0001"]
 
 
 def test_the_migration_can_be_rendered_as_sql_without_a_database_connection(
@@ -106,3 +106,94 @@ def test_the_migration_can_be_rendered_as_sql_without_a_database_connection(
     sql = buffer.getvalue()
     assert "CREATE TABLE listings" in sql and "CREATE TABLE food_profiles" in sql
     assert "CONSTRAINT fk_food_profiles_listing_id_vertical_business_profiles" in sql
+
+
+# -- 0002: the search foundation -------------------------------------------------------------------
+
+
+def columns(url: str, table: str) -> set[str]:
+    engine = create_engine(url)
+    try:
+        with engine.connect() as connection:
+            return set(
+                connection.execute(
+                    text(
+                        "SELECT column_name FROM information_schema.columns WHERE table_name = :t"
+                    ),
+                    {"t": table},
+                ).scalars()
+            )
+    finally:
+        engine.dispose()
+
+
+def extensions(url: str) -> set[str]:
+    engine = create_engine(url)
+    try:
+        with engine.connect() as connection:
+            return set(connection.execute(text("SELECT extname FROM pg_extension")).scalars())
+    finally:
+        engine.dispose()
+
+
+def test_0002_adds_the_search_column_the_extension_and_the_indexes(scratch_url: str) -> None:
+    config = alembic_config(scratch_url)
+    command.upgrade(config, "0001")
+    assert "search_document" not in columns(scratch_url, "listings")
+    assert "pg_trgm" not in extensions(scratch_url)
+
+    command.upgrade(config, "0002")
+
+    assert "search_document" in columns(scratch_url, "listings")
+    assert "pg_trgm" in extensions(scratch_url)
+
+
+def test_0002_downgrades_cleanly_to_0001_and_upgrades_again(scratch_url: str) -> None:
+    config = alembic_config(scratch_url)
+    command.upgrade(config, "head")
+
+    command.downgrade(config, "0001")
+
+    assert version(scratch_url) == "0001"
+    assert "search_document" not in columns(scratch_url, "listings")
+    assert "pg_trgm" not in extensions(scratch_url)
+    command.upgrade(config, "head")
+    assert version(scratch_url) == "0002"
+    command.check(config)
+
+
+def test_0002_leaves_existing_rows_with_an_empty_document_ready_for_a_rebuild(
+    scratch_url: str,
+) -> None:
+    config = alembic_config(scratch_url)
+    command.upgrade(config, "0001")
+    engine = create_engine(scratch_url)
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO users (id, email, display_name) "
+                    "VALUES (gen_random_uuid(), 'old@example.test', 'Old')"
+                )
+            )
+            owner = connection.execute(text("SELECT id FROM users")).scalar_one()
+            connection.execute(
+                text(
+                    "INSERT INTO listings (id, kind, owner_id, status, title, area, tags, "
+                    "is_featured, revision) VALUES (gen_random_uuid(), 'provider', :o, 'approved', "
+                    "'Old Listing', 'B-17', '{}', false, 1)"
+                ),
+                {"o": owner},
+            )
+    finally:
+        engine.dispose()
+
+    command.upgrade(config, "0002")
+
+    engine = create_engine(scratch_url)
+    try:
+        with engine.connect() as connection:
+            stored = connection.execute(text("SELECT search_document FROM listings")).scalar_one()
+            assert stored == ""
+    finally:
+        engine.dispose()

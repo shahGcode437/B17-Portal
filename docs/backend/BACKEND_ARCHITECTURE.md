@@ -204,7 +204,7 @@ Docker Compose provides PostgreSQL (`backend/compose.yaml`, `postgres:17-alpine`
 | **10A** | This architecture/contract freeze (docs only). |
 | **10B** | FastAPI project foundation (**complete**): app factory, settings, health, error envelope, logging/request-ID, CORS, pytest harness, ruff + mypy, backend CI. No database, no domain tables. |
 | **10C** | PostgreSQL data layer (**complete**): 15-table schema, Alembic baseline + drift check, constraints/indexes, reference seed, dev fixtures, repositories + constraint/transaction tests, Dockerfile + Compose PostgreSQL, `/health/ready`, PostgreSQL service in backend CI. |
-| **10D** | First read APIs: categories, public listing/search/news reads (parity with `services/search.ts`). |
+| **10D** | Public read APIs (**complete**): categories, search/suggestions, listing detail, news; migration `0002` search foundation (`pg_trgm`, maintained `search_document`); read services + repositories + explicit read schemas; extended fixtures; parity notes in `READ_API_PARITY.md`. |
 | **11** | Authentication, OAuth, roles/permissions enforcement (`AUTH_RBAC.md`). |
 | **12** | Write APIs (owner listing lifecycle, moderation, saved, requests, news admin) and frontend/API integration. |
 | **13** | Media storage and production deployment/hardening. |

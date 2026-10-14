@@ -2,7 +2,7 @@
 
 ## Last Updated
 
-2026-10-13
+2026-10-14
 
 ## Current Branch
 
@@ -28,12 +28,13 @@ c2871f7 Phase 9H: add route-level code splitting
 d586f45 Phase 9M: add automated frontend testing foundation
 e60a0b6 Phase 10A: define backend architecture and contracts
 4d73c59 Phase 10B: add FastAPI project foundation
-Phase 10C commit: pending (implementation complete, not yet committed)
+d0c02dd Phase 10C: add PostgreSQL data layer foundation
+Phase 10D commit: pending (implementation complete, not yet committed)
 
 ## Current Phase
 
-Current Phase: Phase 10C — PostgreSQL / SQLAlchemy / Alembic Data Layer Foundation: COMPLETE, commit pending approval. Phase 10B (FastAPI foundation, `4d73c59`), Phase 10A (backend architecture, `e60a0b6`), Phase 9M (testing foundation, `d586f45`), Phase 9L (cleanup), Phase 9J (SEO / accessibility / final frontend QA), Phase 9G (PWA), Phase 9H (code splitting), the Food & Dining expansion (FD1–FD5) and the Visual Refresh (V1–V6) are complete and committed. Search UX refinement remains deferred; the Search review is in `SEARCH_UX_FINDINGS.md`.
-Next Step: Phase 10D — Backend Read APIs (see Next Step below).
+Current Phase: Phase 10D — Backend Read APIs: COMPLETE, commit pending approval. Phase 10C (data layer, `d0c02dd`), Phase 10B (FastAPI foundation, `4d73c59`), Phase 10A (backend architecture, `e60a0b6`), Phase 9M (testing foundation, `d586f45`), Phase 9L (cleanup), Phase 9J (SEO / accessibility / final frontend QA), Phase 9G (PWA), Phase 9H (code splitting), the Food & Dining expansion (FD1–FD5) and the Visual Refresh (V1–V6) are complete and committed. Search UX refinement remains deferred; the Search review is in `SEARCH_UX_FINDINGS.md`.
+Next Step: Phase 11 — Authentication, OAuth & RBAC (see Next Step below).
 
 ## Completed Product Work
 
@@ -74,6 +75,7 @@ Next Step: Phase 10D — Backend Read APIs (see Next Step below).
 - Phase 10A — Backend Architecture & Contract Freeze (see below and `docs/backend/`)
 - Phase 10B — FastAPI Project Foundation (see below and `backend/`)
 - Phase 10C — PostgreSQL / SQLAlchemy / Alembic Data Layer Foundation (see below and `docs/backend/DATA_MODEL.md` §14)
+- Phase 10D — Backend Read APIs (see below, `docs/backend/API_CONTRACT.md` §6.1 and `docs/backend/READ_API_PARITY.md`)
 
 Full history is in `git log`; this file summarizes outcomes, not the blow-by-blow.
 
@@ -507,7 +509,7 @@ Phase 10B — FastAPI Project Foundation = **COMPLETE** (commit `4d73c59`). The 
 
 ## Phase 10C Result
 
-Phase 10C — PostgreSQL / SQLAlchemy / Alembic Data Layer Foundation = **COMPLETE** (Phase 10C commit: pending). Real PostgreSQL 17 (Docker Compose), synchronous SQLAlchemy 2.1, psycopg 3, Alembic 1.20. **No product CRUD/read/search/auth API, no frontend change, no frontend/npm dependency.**
+Phase 10C — PostgreSQL / SQLAlchemy / Alembic Data Layer Foundation = **COMPLETE** (commit `d0c02dd`). Real PostgreSQL 17 (Docker Compose), synchronous SQLAlchemy 2.1, psycopg 3, Alembic 1.20. **No product CRUD/read/search/auth API, no frontend change, no frontend/npm dependency.**
 
 - **Schema (`0001_initial_schema`, 15 tables):** `users`, `user_roles`, `auth_identities`, `professional_profiles`; `listings` + subtypes `business_profiles`, `property_profiles`, `tutor_profiles` (no provider subtype); Food as a Business vertical (`food_profiles`, `food_menu_items`); `categories` + `listing_categories`; `listing_status_history`; `saved_items`; `news_articles`. Authentication behavior is **not** implemented — only the relational schema.
 - **Integrity in the database (tested on real PostgreSQL):** UUID keys; constrained values as `VARCHAR(32)` + named `CHECK` (not native enums); a Food profile cannot attach to a General business (composite FK) and a business cannot stop being Food while a Food profile exists; ≤ 8 menu items with unique positions; category slugs unique per module, a parent in the same module, no duplicate category or position on a listing, `position >= 1` (Food's 1..3 maximum is a service rule); one Saved row per `(user, listing)`; `(provider, provider_subject)` unique; history row consistency (creation has no previous status, the action fixes the resulting status, a rejection needs a ≥ 10-character reason); `revision >= 1`. Subtype↔kind, parent↔module and news↔`news`-module are also database-enforced (additive, see `docs/backend/DATA_MODEL.md` §14). Cross-row rules (at least one category, contiguous positions, module matching, the status state machine, quota) remain **service** rules by design — no triggers.
@@ -517,7 +519,18 @@ Phase 10C — PostgreSQL / SQLAlchemy / Alembic Data Layer Foundation = **COMPLE
 - **Docker:** `backend/Dockerfile` (single-stage slim, non-root, runtime dependencies only, liveness HEALTHCHECK) and `backend/compose.yaml` (`postgres:17-alpine`, named volume, healthcheck, loopback port **54329**, creates `b17_dev` and `b17_test`; optional `api` profile). Image built and run against the Compose database.
 - **Tests:** 291 (125 database-free + 166 PostgreSQL) — constraints, Food integrity, taxonomy, history, Saved, News, transaction rollback, seeds/fixtures, migrations (fresh upgrade → downgrade → re-upgrade, `alembic check` drift, offline SQL), readiness, session lifecycle. **Test-database safety:** explicit `TEST_DATABASE_URL`, name must end in `_test`, local host only, different from `DATABASE_URL`, `current_database()` verified; unsafe URL fails loudly; no URL → skip locally, **fail in CI**; PostgreSQL only (never SQLite); per-test SAVEPOINT rollback.
 - **CI:** `backend-ci.yml` now runs lint, format, mypy strict, `alembic upgrade head` on a fresh PostgreSQL service database, `alembic check`, the seed twice, `pytest` (PostgreSQL suite included), plus a Docker image build job. Path filter unchanged (`backend/**` + the workflow file).
-- **Deferred on purpose:** `search_document`/`pg_trgm`/`GIN(tags)` (with the 10D search service that maintains them), `service_requests`, `media_assets`, `listing_revisions`, any API beyond health. Open product questions (area model, contact channel, demo content in production, takedown semantics) remain in `docs/backend/DATA_MODEL.md` §13.
+- **Deferred on purpose:** `search_document`/`pg_trgm` (delivered in 10D), `service_requests`, `media_assets`, `listing_revisions`, any API beyond health. Open product questions (area model, contact channel, demo content in production, takedown semantics) remain in `docs/backend/DATA_MODEL.md` §13.
+
+## Phase 10D Result
+
+Phase 10D — Backend Read APIs = **COMPLETE** (Phase 10D commit: pending). Public, read-only HTTP APIs on real PostgreSQL: `GET /api/v1/categories`, `/search`, `/search/suggestions`, `/listings/{id}`, `/news`, `/news/{id}`. **No writes, no auth/RBAC, no frontend change (`src/`, `e2e/`, `package*.json` untouched), no new dependency, no Redis/PostGIS/search engine.** The two LOW Search UX findings stay deferred.
+
+- **Architecture:** Router → read service (`app/services/public_reads.py`) → repository (`app/repositories/{search,listing_reads,news,taxonomy}.py`) → SQLAlchemy → PostgreSQL. Explicit read schemas (`app/schemas/read.py`, never ORM objects), mappers in `app/services/read_mappers.py`, camelCase, null fields omitted, `PagedEnvelope` with `meta.total/limit/offset`, the 10B error envelope with `requestId`.
+- **Search foundation (migration `0002`):** `pg_trgm`; `listings.search_document` (application-maintained by `SearchIndexer`, called from `ListingCreationService` in the same transaction); GIN trigram index; partial approved-area index. `python -m app.db.search_index rebuild|check`. Rebuild is a required release step after migrating a **populated** database (`alembic upgrade head` → `python -m app.db.search_index rebuild` → `check`; `DEPLOYMENT.md` §4.1) and is proven by an upgrade-path test from populated `0001` data.
+- **Behavior:** case-insensitive substring search with deterministic title-first ranking, kind-aware composable filters that mirror `matchesFilters` (Food filters never match General businesses; closed-set filters such as `vertical`/`service` return 422 for unknown values instead of being ignored), bounded ranked de-duplicated suggestions, offset pagination (limit 12, max 50), and a fixed number of SQL statements per request (no N+1). Only approved listings / published news are public; hidden, unknown and malformed ids share one `404`. Differences from the frontend are listed in `docs/backend/READ_API_PARITY.md`.
+- **Fixtures:** the deterministic fixed-UUIDv5 dev/test data grew to 15 listings (11 public, plus pending/rejected/archived/pending-Food records) and 3 news (2 published, 1 draft), all search documents indexed.
+- **Tests:** 539 (126 database-free + 413 PostgreSQL): search (matching, ranking, scopes, every filter, composition, visibility, pagination, validation), suggestions, detail per kind, news, categories, search-document composition and staleness/reindex, indexes + `EXPLAIN`, statement-count (N+1) guards, migration `0002` (upgrade, downgrade, re-upgrade, drift, and a populated 0001 → 0002 upgrade with audit, rebuild and search), strict validation of closed-set filters. Fixture-heavy modules load the fixtures once per module and truncate afterwards.
+- **Verified:** `ruff check`, `ruff format --check`, `mypy --strict app tests scripts`, `alembic upgrade head` + `alembic check`, `0002` downgrade → re-upgrade, seed twice, fixtures twice (idempotent; refuse production), Docker image build, Compose API + PostgreSQL readiness, manual endpoint smoke tests against the container.
 
 ## Production V1 Direction
 
@@ -548,7 +561,7 @@ Phase 10C — PostgreSQL / SQLAlchemy / Alembic Data Layer Foundation = **COMPLE
 - Frontend capability checks (Phase 9E) are UX only, not authorization/security — explicitly documented in `types/entitlements.ts`; the backend will be authoritative once it exists.
 - No profession-specific Premium modules built yet (Tutor/Property/Salon, etc.) — `professional.modules` capability exists, reserved and unconsumed, for exactly this future use.
 - Auth is demo-only (name string, no password, no persistence) — by design, not yet a gap to "fix," but must become real before any production launch.
-- A backend exists (Phase 10B/10C: liveness/readiness, a 15-table PostgreSQL schema with Alembic migrations, reference seed and a tested data layer) but there is no domain/read/search/auth API and the frontend does not call it — all frontend state is still static seed data + in-memory or `localStorage`-persisted Zustand.
+- A backend exists (Phase 10B–10D: liveness/readiness, a 15-table PostgreSQL schema with Alembic migrations `0001`–`0002`, reference seed, a tested data layer and public read/search APIs) but there is no write/auth API and the frontend does not call it — all frontend state is still static seed data + in-memory or `localStorage`-persisted Zustand.
 - Automated tests exist since Phase 9M (see `TESTING.md` → Known gaps): Chromium-only E2E, no axe/Lighthouse, no real-device or visual-regression testing, several flows (Education/Tutor, News admin CRUD, Leads/Requests lifecycle, Premium toggle) not covered by E2E.
 - Backend contract open questions (area normalization, General-business category taxonomy, listing contact channel, demo content in production, admin takedown semantics) are recorded in `docs/backend/DATA_MODEL.md` §13 and need product decisions before the write APIs (Phase 12).
 - Lint baseline: 8 pre-existing warnings (6× `only-export-components` in shadcn-pattern files, 2× `set-state-in-effect`) — known, unchanged across many phases.
@@ -577,7 +590,7 @@ Phase 10C — PostgreSQL / SQLAlchemy / Alembic Data Layer Foundation = **COMPLE
 
 ## Next Step
 
-Phase 10D — Backend Read APIs (categories, public search/suggestions with the `search_document` / `pg_trgm` mechanism, listing detail, news — parity with `services/search.ts`), then 11 (auth/RBAC), 12 (write APIs + frontend integration) and 13 (media + deployment) per `ROADMAP.md` and `docs/backend/BACKEND_ARCHITECTURE.md` §12. The backend phases should also pick up what the frontend deliberately deferred: server-side / pre-rendered per-page metadata and link previews, a per-entity sitemap, structured data from real entity data, a real production URL (`VITE_SITE_URL`), persistent data / auth, real media storage and any offline write handling. Phases 9F (Admin Production UX) and 9I (Notifications + Trust/Reviews UI) remain product decisions. Store packaging, push notifications, sharing / deep links, ordering / payments and premium merchant tools stay out of scope until their roadmap phases.
+Phase 11 (auth/RBAC), then 12 (write APIs + frontend integration — which must call `SearchIndexer` for every listing/category write) and 13 (media + deployment) per `ROADMAP.md` and `docs/backend/BACKEND_ARCHITECTURE.md` §12. The backend phases should also pick up what the frontend deliberately deferred: server-side / pre-rendered per-page metadata and link previews, a per-entity sitemap, structured data from real entity data, a real production URL (`VITE_SITE_URL`), persistent data / auth, real media storage and any offline write handling. Phases 9F (Admin Production UX) and 9I (Notifications + Trust/Reviews UI) remain product decisions. Store packaging, push notifications, sharing / deep links, ordering / payments and premium merchant tools stay out of scope until their roadmap phases.
 
 ## Resume Instructions
 

@@ -15,11 +15,12 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.dialects.postgresql import ARRAY
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 from app.db.types import in_values, str_enum
 from app.models.enums import CategoryModule, NewsKind, NewsStatus
+from app.models.taxonomy import Category
 
 
 class NewsArticle(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -46,6 +47,7 @@ class NewsArticle(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     tags: Mapped[list[str]] = mapped_column(
         ARRAY(Text), nullable=False, default=list, server_default=text("'{}'::text[]")
     )
+    category: Mapped[Category] = relationship(viewonly=True)
     #: Authorship survives the author's account being tombstoned/removed.
     created_by: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("users.id", ondelete="SET NULL")
