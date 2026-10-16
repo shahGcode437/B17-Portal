@@ -4,20 +4,33 @@ from pydantic import ValidationError
 from app import __version__
 from app.core.config import DEVELOPMENT_FRONTEND_ORIGINS, Settings
 
+ORIGIN = "https://app.example.org"
+#: What a staging/production deployment must configure (Phase 11B fail-fast validation).
+HOSTED: dict[str, object] = {"frontend_origins": [ORIGIN], "frontend_base_url": ORIGIN}
+
 
 def load(**overrides: object) -> Settings:
     return Settings(_env_file=None, **overrides)  # type: ignore[arg-type]
 
 
 def test_defaults_are_safe_and_nothing_secret_is_configured() -> None:
-    settings = load(environment="production")
+    settings = load(
+        environment="production",
+        frontend_origins=[ORIGIN],
+        frontend_base_url=ORIGIN,
+    )
 
     assert settings.environment == "production"
     assert settings.debug is False
     assert settings.api_v1_prefix == "/api/v1"
     assert settings.app_version == __version__
-    assert settings.frontend_origins == []  # explicit origins are required outside development
-    assert not any("secret" in name or "password" in name for name in Settings.model_fields)
+    assert settings.frontend_origins == [ORIGIN]  # explicit origins are required when hosted
+    assert settings.auth_cookie_secure is True and settings.email_backend == "disabled"
+    # no secrets configured by name (the Argon2 tuning knobs are not secrets)
+    assert not any(
+        "secret" in name or ("password" in name and "password_hash" not in name)
+        for name in Settings.model_fields
+    )
 
 
 def test_settings_are_read_from_environment_variables(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -27,6 +40,7 @@ def test_settings_are_read_from_environment_variables(monkeypatch: pytest.Monkey
     monkeypatch.setenv("APP_VERSION", "9.9.9")
     monkeypatch.setenv("API_V1_PREFIX", "/api/v9")
     monkeypatch.setenv("FRONTEND_ORIGINS", "https://app.example.org")
+    monkeypatch.setenv("FRONTEND_BASE_URL", "https://app.example.org")
 
     settings = load()
 
@@ -53,7 +67,7 @@ def test_development_defaults_to_the_vite_origins_only_when_unset() -> None:
     assert load(environment="development").frontend_origins == DEVELOPMENT_FRONTEND_ORIGINS
     assert load(environment="development", frontend_origins=[]).frontend_origins == []
     assert load(environment="test").frontend_origins == []
-    assert load(environment="staging").frontend_origins == []
+    assert load(environment="staging", **HOSTED).frontend_origins == [ORIGIN]
 
 
 def test_origins_accept_a_comma_separated_list(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -108,8 +122,8 @@ def test_log_level_defaults_follow_debug_and_can_be_overridden() -> None:
 def test_docs_are_enabled_everywhere_except_production() -> None:
     assert load(environment="development").docs_enabled
     assert load(environment="test").docs_enabled
-    assert load(environment="staging").docs_enabled
-    assert not load(environment="production").docs_enabled
+    assert load(environment="staging", **HOSTED).docs_enabled
+    assert not load(environment="production", **HOSTED).docs_enabled
 
 
 # -- database settings ------------------------------------------------------------------------

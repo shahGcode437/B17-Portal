@@ -113,3 +113,47 @@ class NewsKind(StrEnum):
 class NewsStatus(StrEnum):
     DRAFT = "draft"
     PUBLISHED = "published"
+
+
+class AuthTokenPurpose(StrEnum):
+    """What a one-time ``auth_tokens`` row may be redeemed for (docs/backend/AUTH_RBAC.md §8)."""
+
+    EMAIL_VERIFICATION = "email_verification"
+    PASSWORD_RESET = "password_reset"
+
+
+class SessionRevokeReason(StrEnum):
+    """Why a session was revoked (AUTH_RBAC.md §4.2). Never user-supplied."""
+
+    LOGOUT = "logout"
+    LOGOUT_ALL = "logout_all"
+    PASSWORD_RESET = "password_reset"
+    PASSWORD_CHANGE = "password_change"
+    ADMIN_ACTION = "admin_action"
+    SUSPENDED = "suspended"
+    ROLE_CHANGE = "role_change"
+    SESSION_CAP = "session_cap"
+    ACCOUNT_CLAIMED = "account_claimed"
+
+
+class AuthEventType(StrEnum):
+    """The closed audit vocabulary (AUTH_RBAC.md §13.2); identity/claim events are used by 11C."""
+
+    REGISTER = "register"
+    LOGIN_SUCCESS = "login_success"
+    LOGIN_FAILURE = "login_failure"
+    LOGOUT = "logout"
+    LOGOUT_ALL = "logout_all"
+    SESSION_REVOKED = "session_revoked"
+    PASSWORD_CHANGED = "password_changed"
+    PASSWORD_RESET_REQUESTED = "password_reset_requested"
+    PASSWORD_RESET_COMPLETED = "password_reset_completed"
+    EMAIL_VERIFICATION_SENT = "email_verification_sent"
+    EMAIL_VERIFIED = "email_verified"
+    IDENTITY_LINKED = "identity_linked"
+    IDENTITY_UNLINKED = "identity_unlinked"
+    ACCOUNT_CLAIMED = "account_claimed"
+    ROLE_GRANTED = "role_granted"
+    ROLE_REVOKED = "role_revoked"
+    ACCOUNT_SUSPENDED = "account_suspended"
+    ACCOUNT_REACTIVATED = "account_reactivated"

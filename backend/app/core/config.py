@@ -24,6 +24,16 @@ SERVICE_NAME = "b17-portal-api"
 #: is not set at all; every other environment must configure its origins explicitly.
 DEVELOPMENT_FRONTEND_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
 
+#: The deterministic development auth topology (AUTH_RBAC.md §5.1): never mix localhost/127.0.0.1.
+DEVELOPMENT_FRONTEND_BASE_URL = "http://127.0.0.1:5173"
+
+#: Environments served over HTTPS behind a real hostname.
+HOSTED_ENVIRONMENTS = frozenset({"staging", "production"})
+
+#: The OWASP Argon2id floor (m=19 MiB, t=2, p=1) that hosted environments may not go below.
+ARGON2_MIN_MEMORY_KIB = 19456
+ARGON2_MIN_TIME_COST = 2
+
 
 def _normalize_origin(raw: str) -> str:
     """Validate one CORS origin: ``scheme://host[:port]`` only. Wildcards are never accepted."""
@@ -56,6 +66,32 @@ class Settings(BaseSettings):
     database_url: SecretStr | None = None
     #: Seconds to wait when opening a database connection (keeps readiness checks fast to fail).
     db_connect_timeout_seconds: int = Field(default=5, ge=1, le=60)
+
+    # --- Authentication (Phase 11B; docs/backend/AUTH_RBAC.md §14) -----------------------------
+    #: ``Secure`` flag of the session cookie. Defaults to true outside development/test and can
+    #: never be false in staging/production.
+    auth_cookie_secure: bool | None = None
+    session_idle_days: int = Field(default=14, ge=1, le=90)
+    session_absolute_days: int = Field(default=30, ge=1, le=365)
+    #: Admin actions additionally need a recent session (AUTH_RBAC.md §4.4).
+    admin_session_idle_minutes: int = Field(default=120, ge=5, le=1440)
+    admin_session_max_hours: int = Field(default=12, ge=1, le=72)
+    max_sessions_per_user: int = Field(default=10, ge=1, le=50)
+    #: Exact frontend origin used in email links (verification/reset). Must be a configured
+    #: frontend origin in staging/production; defaults to the Vite origin in development.
+    frontend_base_url: str | None = None
+    #: Public base URL of this API (reserved for the OAuth redirect URI, Phase 11C).
+    api_public_base_url: str | None = None
+    #: ``memory`` (tests), ``console`` (development) or ``disabled`` (no provider chosen yet).
+    #: Staging/production can only be ``disabled`` until a provider exists.
+    email_backend: Literal["memory", "console", "disabled"] | None = None
+    email_from: str = "B-17 Portal <no-reply@localhost>"
+    #: Argon2id parameters (one place: ``app.core.security.passwords``). Staging/production
+    #: refuse values below the OWASP floor (m >= 19 MiB, t >= 2, p >= 1).
+    password_hash_time_cost: int = Field(default=3, ge=1, le=10)
+    password_hash_memory_cost_kib: int = Field(default=65536, ge=8, le=1048576)
+    password_hash_parallelism: int = Field(default=4, ge=1, le=16)
+    max_concurrent_password_hashes: int = Field(default=4, ge=1, le=32)
 
     @field_validator("frontend_origins", mode="before")
     @classmethod
@@ -109,6 +145,69 @@ class Settings(BaseSettings):
         if self.environment == "development" and "frontend_origins" not in self.model_fields_set:
             self.frontend_origins = list(DEVELOPMENT_FRONTEND_ORIGINS)
         return self
+
+    @field_validator("frontend_base_url", "api_public_base_url", mode="before")
+    @classmethod
+    def _normalize_base_urls(cls, value: object) -> object:
+        if value is None or (isinstance(value, str) and not value.strip()):
+            return None
+        if not isinstance(value, str):
+            return value
+        return _normalize_origin(value)
+
+    @model_validator(mode="after")
+    def _apply_and_check_auth_settings(self) -> Self:
+        hosted = self.environment in HOSTED_ENVIRONMENTS
+        if self.auth_cookie_secure is None:
+            self.auth_cookie_secure = hosted
+        if self.email_backend is None:
+            if self.environment == "development":
+                self.email_backend = "console"
+            elif self.environment == "test":
+                self.email_backend = "memory"
+            else:
+                self.email_backend = "disabled"
+        if self.frontend_base_url is None and self.environment == "development":
+            self.frontend_base_url = DEVELOPMENT_FRONTEND_BASE_URL
+        if self.session_absolute_days < self.session_idle_days:
+            raise ValueError("SESSION_ABSOLUTE_DAYS must not be shorter than SESSION_IDLE_DAYS")
+        if hosted:
+            if not self.auth_cookie_secure:
+                raise ValueError("AUTH_COOKIE_SECURE cannot be false in staging/production")
+            if not self.frontend_origins:
+                raise ValueError(
+                    "FRONTEND_ORIGINS is required in staging/production (cookie auth needs "
+                    "exact origins)"
+                )
+            if (
+                self.frontend_base_url is None
+                or self.frontend_base_url not in self.frontend_origins
+            ):
+                raise ValueError(
+                    "FRONTEND_BASE_URL is required in staging/production and must be one of "
+                    "FRONTEND_ORIGINS"
+                )
+            if self.email_backend != "disabled":
+                raise ValueError(
+                    "EMAIL_BACKEND must be 'disabled' in staging/production until a delivery "
+                    "provider is implemented (console/memory must never run there)"
+                )
+            if (
+                self.password_hash_memory_cost_kib < ARGON2_MIN_MEMORY_KIB
+                or self.password_hash_time_cost < ARGON2_MIN_TIME_COST
+            ):
+                raise ValueError(
+                    "password hashing parameters are below the OWASP Argon2id floor "
+                    f"(memory >= {ARGON2_MIN_MEMORY_KIB} KiB, time cost >= {ARGON2_MIN_TIME_COST})"
+                )
+        if self.password_hash_memory_cost_kib < 8 * self.password_hash_parallelism:
+            raise ValueError("PASSWORD_HASH_MEMORY_COST_KIB must be at least 8 x parallelism")
+        return self
+
+    @property
+    def auth_cookie_name(self) -> str:
+        """``__Host-`` prefixed (Secure, Path=/, no Domain) where the site is served over HTTPS."""
+        return "__Host-b17_session" if self.environment in HOSTED_ENVIRONMENTS else "b17_session"
 
     @property
     def effective_log_level(self) -> str:

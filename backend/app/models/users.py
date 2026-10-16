@@ -36,7 +36,7 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     email: Mapped[str] = mapped_column(Text, nullable=False)
     email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     display_name: Mapped[str] = mapped_column(String(60), nullable=False)
-    #: NULL for a social-only account. Hashing is a Phase 11 concern.
+    #: Argon2id PHC string; NULL for a social-only account (AUTH_RBAC.md §3, §7.3).
     password_hash: Mapped[str | None] = mapped_column(Text)
     status: Mapped[UserStatus] = mapped_column(
         str_enum(UserStatus), nullable=False, default=UserStatus.ACTIVE, server_default="active"
@@ -47,6 +47,9 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         in_values("status", UserStatus, name="status_valid"),
         CheckConstraint("char_length(btrim(display_name)) >= 2", name="display_name_length"),
         CheckConstraint("position('@' in email) > 1", name="email_has_at_sign"),
+        # Phase 11B: the stored address is always trimmed and lower-cased (AUTH_RBAC.md §7.2).
+        CheckConstraint("email = lower(btrim(email))", name="email_normalized"),
+        CheckConstraint("char_length(email) <= 254", name="email_length"),
     )
 
 

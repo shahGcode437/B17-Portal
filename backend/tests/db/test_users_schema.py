@@ -39,11 +39,27 @@ def test_users_get_application_generated_uuid4_ids(db_session: Session) -> None:
     assert user.password_hash is None  # a social-only account has no password
 
 
+def test_email_is_stored_normalized_so_case_variants_cannot_exist(db_session: Session) -> None:
+    """Phase 11B: the address is trimmed and lower-cased; the database refuses anything else."""
+    make_user(db_session, email="ayesha@example.test")
+
+    with violates(db_session, "ck_users_email_normalized"):
+        db_session.add(User(email="Ayesha@Example.test", display_name="Someone Else"))
+    with violates(db_session, "ck_users_email_normalized"):
+        db_session.add(User(email=" ayesha2@example.test ", display_name="Someone Else"))
+
+
 def test_email_is_unique_case_insensitively(db_session: Session) -> None:
-    make_user(db_session, email="Ayesha@Example.test")
+    """The unique index on ``lower(email)`` stays the authority (also for any future writer)."""
+    make_user(db_session, email="ayesha@example.test")
 
     with violates(db_session, "uq_users_email_lower"):
-        db_session.add(User(email="ayesha@example.TEST", display_name="Someone Else"))
+        db_session.add(User(email="ayesha@example.test", display_name="Someone Else"))
+
+
+def test_email_length_is_bounded(db_session: Session) -> None:
+    with violates(db_session, "ck_users_email_length"):
+        db_session.add(User(email="a" * 250 + "@example.test", display_name="Long Address"))
 
 
 def test_email_must_look_like_an_address_and_names_must_not_be_blank(db_session: Session) -> None:

@@ -1,6 +1,6 @@
 # B-17 Portal — Authentication, Authorization & Roles
 
-**Status:** **frozen by Phase 11A** (security architecture and contract; supersedes the 10A direction). **Nothing here is implemented yet** — Phase 11B/11C implement it without making new fundamental security decisions. Where a number is marked *tunable*, 11B/11C may adjust it inside the stated bounds; every other statement is binding.
+**Status:** **frozen by Phase 11A; email/password authentication, sessions, CSRF and the RBAC foundation are IMPLEMENTED in Phase 11B** (§20 lists exactly what was built and the few as-built refinements). Google OAuth, account linking/claiming and the OAuth schema (§10, migration `0004`) are **Phase 11C — not implemented**. Where a number is marked *tunable*, 11B/11C may adjust it inside the stated bounds; every other statement is binding.
 **Owns:** the identity model, session/cookie/CSRF design, password and token handling, email verification and reset, Google OAuth and account linking, roles and authorization architecture, the auth API contract, the auth schema plan, the threat review and the security test matrix.
 **Does not own:** general table design → [`DATA_MODEL.md`](DATA_MODEL.md) · HTTP conventions/envelopes → [`API_CONTRACT.md`](API_CONTRACT.md) · layering/logging/CORS baseline → [`BACKEND_ARCHITECTURE.md`](BACKEND_ARCHITECTURE.md) · hosting/secrets/ops → [`DEPLOYMENT.md`](DEPLOYMENT.md).
 
@@ -205,7 +205,7 @@ Input `{ email, password, displayName }`. **No** `role`, `plan`, `status`, `emai
 
 ### 7.3 Passwords and hashing (D6)
 
-- **Policy (length-based, per NIST SP 800-63B):** 10 ≤ length ≤ **128** Unicode code points (NFKC-normalized before hashing; spaces allowed; no trimming; no composition rules). Rejected: entries on a **bundled common-password denylist** (top ~10k, lower-cased compare; a data file, no dependency) and passwords equal to the email or its local part or the display name. A breached-password online check (k-anonymity API) is a deferred option — it adds an external call. The 128 cap (and a request-size limit) bounds hashing cost.
+- **Policy (length-based, per NIST SP 800-63B):** 10 ≤ length ≤ **128** Unicode code points (NFKC-normalized before hashing; spaces allowed; no trimming; no composition rules). Rejected: entries on a **bundled common-password denylist** — the SecLists `10k-most-common.txt` corpus (10,001 entries, MIT, stored byte-identical under `app/core/security/data/` with its pinned commit, checksum and license in `data/README.md`), read from disk on first use, **NFKC-normalized and case-folded on both sides before lookup**, with no network call — and passwords equal to the email or its local part or the display name. A breached-password online check (k-anonymity API) is a deferred option — it adds an external call. The 128 cap (and a request-size limit) bounds hashing cost.
 - **Hash: Argon2id** via `argon2-cffi` (new runtime dependency in 11B). Parameters are defined **in one module** (`app/core/security/passwords.py`), starting from RFC 9106's low-memory profile (`t=3, m=64 MiB, p=4`); 11B benchmarks them on the production container size and may lower `p`/`m`, **never below** the OWASP floor (`m=19 MiB, t=2, p=1`). PHC-format hashes carry their own parameters, so verification keeps working when parameters change.
 - **Rehash on login:** after a successful verification, if `check_needs_rehash` is true the hash is recomputed and stored in the same transaction.
 - **Capacity:** hashing is CPU- and memory-heavy and the API is synchronous (threadpool). A process-wide semaphore bounds concurrent hashes (default 4) so a login burst cannot exhaust memory.
@@ -380,7 +380,7 @@ All under `/api/v1/auth`; request/response bodies use the standard `{data}` / `{
 | `POST /resend-verification` | session | ✔ | `204`; `429` |
 | `POST /forgot-password` `{email}` | — | — | always `202 {data:{status:"accepted"}}`; `429` |
 | `POST /reset-password` `{token,newPassword}` | — | — | `204`; `400 token_*`; `422` |
-| `POST /change-password` | session | ✔ | `204`; `401 invalid_credentials` (wrong current password) ; `422` |
+| `POST /change-password` | session | ✔ | **`200` me-shape with the rotated cookie and the new `csrfToken`** (as built; the 11A draft said `204`); `401 invalid_credentials` (wrong current password); `429`; `422` |
 | *11C* `POST /oauth/google/start` `{purpose, returnTo?}` | none / session for `link` | ✔ for `link` | `200 {data:{authorizationUrl}}` |
 | *11C* `GET /oauth/google/callback` | flow cookie | — (state-bound) | `302` to the frontend (cookie set) |
 | *11C* `DELETE /oauth/google` | session | ✔ | `204`; `409` if it is the last sign-in method |
@@ -432,7 +432,12 @@ Auth routes never log request/response bodies. The app request log already omits
 
 ### 13.5 Retention and cleanup
 
-No scheduler or background-job system is introduced. (1) Opportunistic: login deletes that user's expired sessions. (2) `python -m app.cli.auth_maintenance purge` (run from the host's cron/scheduled task, documented in `DEPLOYMENT.md`) deletes sessions 7 days past expiry/revocation, consumed or expired tokens older than 7 days, expired `oauth_flows`, stale rate-limit windows and audit events beyond retention. Correctness never depends on cleanup: validity is always checked against `expires_at`/`consumed_at`.
+No scheduler or background-job system is introduced. **One interpretation (frozen):**
+
+* **Expired sessions have no retention guarantee.** An `auth_sessions` row is only a live credential; once its idle or absolute expiry has passed it is garbage and may be deleted at any time. The durable security record is `auth_events`, never an expired session row.
+* **Opportunistic deletion:** creating a session (register, login, and later OAuth login) deletes *that user's* already-expired sessions in the same transaction. Expired (and revoked) sessions never count toward the 10-session cap.
+* **The sweep:** `python -m app.cli.auth_maintenance purge` (run from the host's cron/scheduled task, `DEPLOYMENT.md`) is a **safety net for rows nobody's login ever cleaned up**. Its 7-day threshold is a sweep threshold, not a retention promise: it deletes sessions whose idle/absolute expiry — or whose revocation — is more than 7 days old, one-time tokens expired or consumed more than 7 days ago, expired `oauth_flows` (11C), rate-limit windows older than 2 days, and audit events older than 400 days. A revoked-but-unexpired session is simply kept until it expires or the sweep reaches it.
+* **Correctness never depends on cleanup:** validity is always checked against `expires_at`/`absolute_expires_at`/`revoked_at`/`consumed_at`, so an expired row that is still present authenticates nothing.
 
 ## 14. Email seam and configuration
 
@@ -446,7 +451,7 @@ No scheduler or background-job system is introduced. (1) Opportunistic: login de
 | `SESSION_IDLE_DAYS` (14), `SESSION_ABSOLUTE_DAYS` (30), `ADMIN_SESSION_IDLE_MINUTES` (120), `ADMIN_SESSION_MAX_HOURS` (12), `MAX_SESSIONS_PER_USER` (10) | 11B | tunable |
 | `FRONTEND_BASE_URL` | 11B | exact origin used in email links and OAuth redirects; must be one of `FRONTEND_ORIGINS` |
 | `EMAIL_BACKEND` (`console`/`memory`/provider), `EMAIL_FROM`, provider credentials | 11B | `console` rejected outside development/test |
-| `PASSWORD_HASH_TIME_COST` / `MEMORY_COST` / `PARALLELISM` | 11B | optional overrides, floor-validated |
+| `PASSWORD_HASH_TIME_COST` / `PASSWORD_HASH_MEMORY_COST_KIB` / `PASSWORD_HASH_PARALLELISM` / `MAX_CONCURRENT_PASSWORD_HASHES` | 11B | optional overrides; staging/production refuse values below the OWASP floor (memory ≥ 19456 KiB, time ≥ 2) |
 | `API_PUBLIC_BASE_URL` | 11C | builds the exact OAuth redirect URI |
 | `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET` (`SecretStr`) | 11C | OAuth endpoints answer `503 service_unavailable` if unset |
 
@@ -549,3 +554,28 @@ Full-stack Playwright against real auth is Phase 12.
 **Deferred on purpose:** MFA/step-up · remember-me · session-management UI · email change · account deletion/export flows · professional verification workflow · breached-password API · Facebook/Apple adapters · native bearer tokens · Redis · a database-driven permission model · admin role-management UI.
 
 **Confirmed in the Phase 11A review:** the narrow unverified-account claim (§10.4), the explicit `email_already_registered` registration conflict (§7.1, §13.1), fragment-delivered tokens (§8), the 11A/11B/11C split, and the 127.0.0.1 development topology (§5.1). **Still required before auth is enabled outside development:** a production email provider and a custom domain that makes frontend and API same-site (§5.1).
+
+## 20. Implementation notes — Phase 11B as built
+
+Source: `backend/app/{core/security,models/auth.py,repositories/auth.py,services/auth*.py,services/email.py,services/rate_limit.py,dependencies/auth.py,middleware/auth_security.py,api/v1/auth.py,cli}/` and migration `0003_auth_sessions_tokens_events_rate_limits`. Everything in §1–§19 that is marked 11B is implemented; this section records the *as-built* detail and the few refinements. Nothing frozen was changed.
+
+**Refinements and clarifications**
+
+1. **`change-password` returns `200` with the me-shape** (rotated session cookie + new `csrfToken`), not `204`, because the rotated session needs a new CSRF token. Wrong current password → `401 invalid_credentials`, and counts against the same per-email failure budget as login (a stolen session cannot guess it); a password-less (social-only) account → the same `401`.
+2. **`resend-verification` is authenticated + CSRF** (11A §12) — not a pre-session endpoint (the 11B brief listed it among them; the frozen contract wins). Throttled 1/min and 5/day per account; a no-op `204` for a verified account.
+3. **Active-session cap:** `SessionService.create` locks the user row (`SELECT … FOR UPDATE`), deletes that user's already-expired sessions, and if the user already has 10 active sessions revokes the oldest (`created_at`, then `id` for ties) with reason `session_cap` and one `session_revoked` audit event each — in the same transaction as the insert.
+4. **`last_seen_at`** is written at most every 5 minutes inside `SessionService.authenticate`, which owns that one tiny, explicit transaction; the cookie is re-issued only when the session slid.
+5. **Admin freshness** (`require_admin`) evaluates the session's *pre-touch* `last_seen_at`, and a request refused as stale **restores** the previous `last_seen_at` — a refused attempt must not count as activity, otherwise a retry would pass. The session stays valid for ordinary use.
+6. **Token redemption** locks the token row (`FOR UPDATE`) and then performs the guarded `UPDATE … WHERE consumed_at IS NULL AND expires_at > now RETURNING`: exactly one concurrent redeemer wins (covered by a multi-thread PostgreSQL test). A weak new password on reset raises *before* consuming (the error rolls back), so it never burns the token.
+7. **CSRF is one ASGI middleware** (`AuthSecurityMiddleware`) over every route under the API prefix: mandatory exact `Origin` on unsafe methods (no `Referer` fallback), `Sec-Fetch-Site` as defence in depth, `X-CSRF-Token` for cookie-carrying requests except the five pre-session endpoints (`register`, `login`, `forgot-password`, `reset-password`, `verify-email`), `415` for non-JSON bodies on `/auth/` only, and `Cache-Control: no-store` on every `/auth/` response. It sits inside CORS and the request log, so a browser can read the 403 and it is logged.
+8. **Sessions** are looked up by `SHA-256(cookie)`; an unknown/malformed cookie is `401 unauthenticated` (cookie left alone), a known-but-dead one (expired, revoked, or the account no longer `active`) is `401 session_expired` and the cookie is cleared.
+9. **Rate limiter:** `PostgresRateLimiter` writes each count in its own small transaction (so a failed login still counts). Login failures are keyed by the normalized email and are checked *before* verifying the password (`429` even for a correct one while the window is exhausted).
+10. **Email:** `EmailSender` with `memory` (tests), `console` (development) and `disabled` (staging/production; a message is dropped with a logged *event*, never its content). Settings refuse `console`/`memory` when hosted. Messages are sent after the commit via a background task; a failure is logged without the link.
+11. **Audit:** `AuthAuditService` writes inside the caller's transaction and keeps only `provider`, `reason`, `session_id` (≤ 64 chars) in `details`; `occurred_at` and every session/token timestamp come from the application clock (`app.state.clock`).
+12. **Common-password list:** exactly the frozen requirement — the upstream SecLists top-10k file, unmodified (an earlier 11B draft shipped a ~210-entry hand-curated list instead; that deviation was corrected before commit). Honest note: with a 10-character minimum only **51** of its 10,001 entries have 10+ characters and can ever be the deciding reason (the rest are already refused by the length rule), so a larger corpus — e.g. SecLists' `100k-most-used-passwords-NCSC.txt` — would be a separate, data-only decision. A breached-password API remains deferred.
+13. **Account status comparisons** use `==` against `UserStatus` (robust to plain-string values).
+14. **No Google/OAuth, no `oauth_flows`, no account claiming, no `auth_identities` changes** are present; `authMethods.providers` simply lists any existing identity rows.
+
+**Operator commands** (standard library only): `python -m app.cli.admin grant|revoke EMAIL` (requires an existing, active, verified account for `grant`; audited; revokes all of the user's sessions; idempotent) and `python -m app.cli.auth_maintenance purge` (a safety-net sweep, §13.5: sessions/tokens expired, revoked or consumed more than 7 days ago, rate-limit windows > 2 days, audit events > 400 days; never required for correctness, and expired sessions have no retention guarantee).
+
+**Security matrix (§17) status:** S1–S13 are implemented and tested in 11B (cookie flags, no secrets in bodies, hash-only storage, CSRF/Origin, expiry/revocation, fixation, enumeration, one-time tokens, redaction, role/verification guards, escalation, CORS credentials). **S14 (OAuth) is Phase 11C; S15 (owner A vs owner B) is Phase 12.**

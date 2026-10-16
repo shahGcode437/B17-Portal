@@ -12,16 +12,21 @@ from starlette.middleware.cors import CORSMiddleware
 
 from app.api.error_handlers import register_exception_handlers
 from app.api.v1.router import api_router
+from app.core.clock import utcnow
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging
+from app.core.security.passwords import PasswordService
 from app.db.session import create_db_engine, create_session_factory
+from app.middleware.auth_security import AuthSecurityMiddleware
 from app.middleware.request_id import REQUEST_ID_HEADER, RequestIdMiddleware
 from app.middleware.request_log import RequestLogMiddleware
+from app.services.email import create_email_sender
 
 # The request headers the API contract uses (docs/backend/API_CONTRACT.md); others are refused.
 CORS_ALLOWED_HEADERS = [
     "Authorization",
     "Content-Type",
+    "X-CSRF-Token",
     REQUEST_ID_HEADER,
     "If-Match",
     "Idempotency-Key",
@@ -57,17 +62,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = settings
     app.state.db_engine = engine
     app.state.db_session_factory = create_session_factory(engine) if engine is not None else None
+    # Authentication collaborators (Phase 11B). Tests replace ``clock`` / ``email_sender``.
+    app.state.clock = utcnow
+    app.state.password_service = PasswordService.from_settings(settings)
+    app.state.email_sender = create_email_sender(settings)
 
     register_exception_handlers(app)
 
     # Middleware order: the LAST one added is the outermost. Request ID wraps everything (so every
     # response, CORS preflights included, carries it); CORS wraps the error boundary so even 500
     # responses are readable by the browser; the log/error boundary sits closest to the routes.
+    app.add_middleware(
+        AuthSecurityMiddleware,
+        api_prefix=prefix,
+        allowed_origins=settings.frontend_origins,
+        cookie_name=settings.auth_cookie_name,
+    )
     app.add_middleware(RequestLogMiddleware)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.frontend_origins,  # explicit origins only, never "*"
-        allow_credentials=False,  # cookie auth is a Phase 11 decision (needs exact origins)
+        allow_credentials=True,  # cookie sessions (Phase 11B); safe only with exact origins
         allow_methods=CORS_ALLOWED_METHODS,
         allow_headers=CORS_ALLOWED_HEADERS,
         expose_headers=[REQUEST_ID_HEADER],

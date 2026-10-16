@@ -282,15 +282,15 @@ This re-sequences the earlier placeholders (old 10 "Backend Architecture", 11 "P
 Split into three phases (split approved in the 11A review) because the security surface genuinely differs (design → credentials/sessions → third-party OAuth). The full frozen design is `docs/backend/AUTH_RBAC.md`.
 
 ### Phase 11A — Authentication Security & Contract Freeze
-**STATUS: COMPLETE** (docs only; Phase 11A commit: pending)
+**STATUS: COMPLETE** (docs only; commit `3c10c1a`)
 - Delivered: server-side session cookie strategy (PostgreSQL, hashed tokens, multi-device, no Redis, no JWT), cookie and CSRF contract, session lifetimes, Argon2id password policy, verification/reset token design, Google OAuth + account-linking rules, Facebook/Apple compatibility, role model (Resident / Professional capability / Admin grant), authorization dependencies, ownership and 401/403/404 policy, account status, rate-limit seam, audit events, logging redaction, retention, planned schema (`0003`/`0004`), exact endpoints and error codes, test plan, security matrix and threat review.
 - **No code, no migration, no dependency, no frontend change.**
 
 ### Phase 11B — Email/Password Authentication + Sessions
-**NEXT.** Migration `0003`; Argon2id + `email-validator`; sessions, cookie, CSRF/Origin enforcement, CORS credentials switch; register / login / logout / logout-all / me / verify-email / resend-verification / forgot- / reset- / change-password; authorization dependencies + permission map; email seam (console/memory); PostgreSQL identity-keyed rate limiter; `auth_events`; `app.cli.admin` and `app.cli.auth_maintenance`; tests per `AUTH_RBAC.md` §17. Not started. **No frontend change.**
+**STATUS: COMPLETE** (Phase 11B commit: pending). Delivered: migration `0003`; Argon2id + `email-validator`; sessions, cookie, CSRF/Origin enforcement, CORS credentials switch; register / login / logout / logout-all / me / verify-email / resend-verification / forgot- / reset- / change-password; authorization dependencies + permission map; email seam (console/memory); PostgreSQL identity-keyed rate limiter; `auth_events`; `app.cli.admin` and `app.cli.auth_maintenance`; tests per `AUTH_RBAC.md` §17. Not started. **No frontend change.**
 
 ### Phase 11C — Google OAuth + RBAC Hardening
-Migration `0004`; Google provider behind an `OAuthProvider` interface; start / callback / connect / disconnect; linking cases A–D and the narrow unverified-account claim (C2, approved); mock-provider tests; admin-recency and authorization-matrix hardening. Not started. **No frontend change.**
+**NEXT.** Migration `0004`; Google provider behind an `OAuthProvider` interface; start / callback / connect / disconnect; linking cases A–D and the narrow unverified-account claim (C2, approved); mock-provider tests; admin-recency and authorization-matrix hardening. Not started. **No frontend change.**
 
 ## Phase 12 — Write APIs & Frontend/API Integration
 Owner listing lifecycle, moderation, Saved, requests, news admin, category admin; replace `search.ts` and the Zustand stores' local mutations with API calls; full-stack Playwright. Requires the open product decisions in `docs/backend/DATA_MODEL.md` §13. Not started.

@@ -2,7 +2,7 @@
 
 FastAPI + PostgreSQL backend. Architecture, data model and contracts are specified in [`docs/backend/`](../docs/backend/BACKEND_ARCHITECTURE.md) — this file only covers day-to-day commands.
 
-**Current scope (Phase 10D):** application foundation, the PostgreSQL data layer (15-table schema, Alembic migrations `0001`–`0002`, reference taxonomy seed, dev fixtures), health/readiness and the **public read APIs** — categories, search, suggestions, listing detail and news (`docs/backend/READ_API_PARITY.md`). No write, auth or owner/admin APIs yet (Phase 11 onward), and the frontend does not call the backend.
+**Current scope (Phase 11B):** application foundation, the PostgreSQL data layer (Alembic migrations `0001`–`0003`, reference taxonomy seed, dev fixtures), health/readiness, the **public read APIs** (categories, search, suggestions, listing detail, news — `docs/backend/READ_API_PARITY.md`) and **email/password authentication** (`/api/v1/auth/*`: register, login, me, logout, logout-all, verify-email, resend-verification, forgot-/reset-/change-password) with PostgreSQL sessions in an `HttpOnly` cookie, CSRF protection and an RBAC foundation (`docs/backend/AUTH_RBAC.md`). No Google/OAuth (Phase 11C), no write or owner/admin APIs yet, and the frontend does not call the backend.
 
 ## Setup (once)
 
@@ -62,6 +62,18 @@ uvicorn app.main:app --reload
   ```
 
   Pending, rejected, archived and draft records, unknown ids and malformed ids all answer the same `404`.
+- Authentication (run the API with `uvicorn app.main:app` and use **`127.0.0.1` everywhere** — never mix in `localhost`; the verified examples below were run against that topology; browsers must send an allowed `Origin`, curl needs it explicitly):
+
+  ```bash
+  B=http://127.0.0.1:8000/api/v1; O="Origin: http://127.0.0.1:5173"; J="Content-Type: application/json"
+  curl -i -c jar.txt -H "$O" -H "$J" -X POST $B/auth/register \
+       -d '{"email":"me@example.org","password":"a long passphrase","displayName":"Me"}'   # 201 + Set-Cookie: b17_session
+  curl -b jar.txt $B/auth/me                                                              # 200, includes csrfToken
+  curl -b jar.txt -H "$O" -X POST $B/auth/logout                                          # 403 csrf_failed (no token)
+  curl -b jar.txt -H "$O" -H "X-CSRF-Token: <csrfToken from /auth/me>" -X POST $B/auth/logout   # 204
+  ```
+
+  In development the email backend is `console`: verification/reset links (with the token in the URL fragment) are printed by the server. Make the first admin with `python -m app.cli.admin grant me@example.org` (needs a verified account) and purge expired auth data with `python -m app.cli.auth_maintenance purge`. Settings and the cookie/CSRF/session rules are in `.env.example` and `docs/backend/AUTH_RBAC.md`.
 - Interactive docs: <http://127.0.0.1:8000/docs> (OpenAPI at `/api/v1/openapi.json`; none of it is published when `ENVIRONMENT=production`).
 - Run from `backend/` so `.env` is found. `.env.example` documents every variable.
 
@@ -75,7 +87,7 @@ docker compose run --rm api alembic upgrade head          # migrations are an ex
 ## Test and check
 
 ```bash
-pytest                    # 126 database-free tests always run; the 413 PostgreSQL tests need TEST_DATABASE_URL
+pytest                    # 242 database-free tests always run; the 606 PostgreSQL tests need TEST_DATABASE_URL
 ruff check .              # lint
 ruff format --check .     # formatting (use `ruff format .` to fix)
 mypy                      # strict type check (app, tests, scripts)

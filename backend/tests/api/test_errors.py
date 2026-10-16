@@ -21,6 +21,7 @@ from app.core.errors import (
     error_response,
 )
 from app.factory import create_app
+from tests.conftest import ALLOWED_ORIGIN
 
 
 class FoodBody(BaseModel):
@@ -102,7 +103,8 @@ def test_unknown_route_outside_the_api_prefix_uses_the_same_envelope(client: Tes
 def test_wrong_method_returns_method_not_allowed_and_keeps_the_allow_header(
     client: TestClient,
 ) -> None:
-    response = client.post("/api/v1/health")
+    # An unsafe request must carry an allowed Origin (Phase 11B) before routing is even reached.
+    response = client.post("/api/v1/health", headers={"Origin": ALLOWED_ORIGIN})
 
     assert_error(response, 405, "method_not_allowed")
     assert "GET" in response.headers["allow"]

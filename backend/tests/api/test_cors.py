@@ -19,7 +19,8 @@ def test_preflight_from_a_configured_origin_is_allowed(client: TestClient) -> No
     assert response.headers["access-control-allow-origin"] == ALLOWED_ORIGIN  # echoed, never "*"
     assert "POST" in response.headers["access-control-allow-methods"]
     assert "authorization" in response.headers["access-control-allow-headers"].lower()
-    assert "access-control-allow-credentials" not in response.headers
+    # Phase 11B: cookie sessions need credentialed CORS — only ever with an exact echoed origin.
+    assert response.headers["access-control-allow-credentials"] == "true"
     assert "x-request-id" in response.headers  # request ID wraps CORS responses too
 
 

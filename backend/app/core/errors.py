@@ -20,6 +20,15 @@ class ErrorCode(StrEnum):
     BAD_REQUEST = "bad_request"
     UNAUTHENTICATED = "unauthenticated"
     FORBIDDEN = "forbidden"
+    # Authentication (Phase 11B; docs/backend/AUTH_RBAC.md §12)
+    INVALID_CREDENTIALS = "invalid_credentials"
+    SESSION_EXPIRED = "session_expired"
+    EMAIL_NOT_VERIFIED = "email_not_verified"
+    ACCOUNT_DISABLED = "account_disabled"
+    CSRF_FAILED = "csrf_failed"
+    EMAIL_ALREADY_REGISTERED = "email_already_registered"
+    TOKEN_INVALID = "token_invalid"
+    TOKEN_EXPIRED = "token_expired"
     PLAN_LIMIT_REACHED = "plan_limit_reached"
     NOT_FOUND = "not_found"
     METHOD_NOT_ALLOWED = "method_not_allowed"
@@ -35,6 +44,14 @@ DEFAULT_MESSAGES: dict[ErrorCode, str] = {
     ErrorCode.BAD_REQUEST: "The request could not be understood.",
     ErrorCode.UNAUTHENTICATED: "Authentication is required.",
     ErrorCode.FORBIDDEN: "You do not have permission to do this.",
+    ErrorCode.INVALID_CREDENTIALS: "Incorrect email or password.",
+    ErrorCode.SESSION_EXPIRED: "Your session has ended. Please sign in again.",
+    ErrorCode.EMAIL_NOT_VERIFIED: "Verify your email address to do this.",
+    ErrorCode.ACCOUNT_DISABLED: "This account is not available.",
+    ErrorCode.CSRF_FAILED: "The request could not be verified.",
+    ErrorCode.EMAIL_ALREADY_REGISTERED: "An account with this email already exists.",
+    ErrorCode.TOKEN_INVALID: "This link is invalid or has already been used.",
+    ErrorCode.TOKEN_EXPIRED: "This link has expired. Request a new one.",
     ErrorCode.PLAN_LIMIT_REACHED: "Your plan's listing limit has been reached.",
     ErrorCode.NOT_FOUND: "Resource not found.",
     ErrorCode.METHOD_NOT_ALLOWED: "Method not allowed.",

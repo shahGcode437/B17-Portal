@@ -65,7 +65,7 @@ def test_a_fresh_database_upgrades_to_head(scratch_url: str) -> None:
     command.upgrade(alembic_config(scratch_url), "head")
 
     assert tables(scratch_url) == EXPECTED_TABLES | {"alembic_version"}
-    assert version(scratch_url) == "0002"
+    assert version(scratch_url) == "0003"
 
 
 def test_it_downgrades_to_base_and_upgrades_again(scratch_url: str) -> None:
@@ -90,8 +90,8 @@ def test_the_models_and_the_migrations_have_not_drifted(scratch_url: str) -> Non
 def test_there_is_a_single_linear_migration_history(scratch_url: str) -> None:
     script = ScriptDirectory.from_config(alembic_config(scratch_url))
 
-    assert script.get_heads() == ["0002"]
-    assert [revision.revision for revision in script.walk_revisions()] == ["0002", "0001"]
+    assert script.get_heads() == ["0003"]
+    assert [revision.revision for revision in script.walk_revisions()] == ["0003", "0002", "0001"]
 
 
 def test_the_migration_can_be_rendered_as_sql_without_a_database_connection(
@@ -158,7 +158,7 @@ def test_0002_downgrades_cleanly_to_0001_and_upgrades_again(scratch_url: str) ->
     assert "search_document" not in columns(scratch_url, "listings")
     assert "pg_trgm" not in extensions(scratch_url)
     command.upgrade(config, "head")
-    assert version(scratch_url) == "0002"
+    assert version(scratch_url) == "0003"
     command.check(config)
 
 
@@ -195,5 +195,83 @@ def test_0002_leaves_existing_rows_with_an_empty_document_ready_for_a_rebuild(
         with engine.connect() as connection:
             stored = connection.execute(text("SELECT search_document FROM listings")).scalar_one()
             assert stored == ""
+    finally:
+        engine.dispose()
+
+
+# -- 0003: authentication state ------------------------------------------------------------------
+
+AUTH_TABLES = {"auth_sessions", "auth_tokens", "auth_events", "auth_rate_limits"}
+
+
+def user_checks(url: str) -> set[str]:
+    engine = create_engine(url)
+    try:
+        with engine.connect() as connection:
+            return set(
+                connection.execute(
+                    text(
+                        "SELECT conname FROM pg_constraint "
+                        "WHERE conrelid = 'users'::regclass AND contype = 'c'"
+                    )
+                ).scalars()
+            )
+    finally:
+        engine.dispose()
+
+
+def test_0003_upgrades_a_0002_database_with_the_auth_tables_and_user_checks(
+    scratch_url: str,
+) -> None:
+    config = alembic_config(scratch_url)
+    command.upgrade(config, "0002")
+    assert tables(scratch_url).isdisjoint(AUTH_TABLES)
+    assert "ck_users_email_normalized" not in user_checks(scratch_url)
+
+    command.upgrade(config, "0003")
+
+    assert version(scratch_url) == "0003"
+    assert tables(scratch_url) >= AUTH_TABLES
+    assert {"ck_users_email_normalized", "ck_users_email_length"} <= user_checks(scratch_url)
+    command.check(config)  # no drift between the models and the migrations
+
+
+def test_0003_downgrades_to_0002_and_upgrades_again(scratch_url: str) -> None:
+    config = alembic_config(scratch_url)
+    command.upgrade(config, "head")
+
+    command.downgrade(config, "0002")
+
+    assert version(scratch_url) == "0002"
+    assert tables(scratch_url).isdisjoint(AUTH_TABLES)
+    assert "ck_users_email_normalized" not in user_checks(scratch_url)
+    command.upgrade(config, "head")
+    assert version(scratch_url) == "0003"
+    assert tables(scratch_url) >= AUTH_TABLES
+
+
+def test_0003_keeps_existing_normalized_users(scratch_url: str) -> None:
+    config = alembic_config(scratch_url)
+    command.upgrade(config, "0002")
+    engine = create_engine(scratch_url)
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO users (id, email, display_name) "
+                    "VALUES (gen_random_uuid(), 'kept@example.test', 'Kept User')"
+                )
+            )
+    finally:
+        engine.dispose()
+
+    command.upgrade(config, "0003")
+
+    engine = create_engine(scratch_url)
+    try:
+        with engine.connect() as connection:
+            assert connection.execute(text("SELECT email FROM users")).scalar_one() == (
+                "kept@example.test"
+            )
     finally:
         engine.dispose()

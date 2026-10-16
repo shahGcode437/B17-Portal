@@ -2,7 +2,7 @@
 
 ## Last Updated
 
-2026-10-15
+2026-10-17
 
 ## Current Branch
 
@@ -30,12 +30,13 @@ e60a0b6 Phase 10A: define backend architecture and contracts
 4d73c59 Phase 10B: add FastAPI project foundation
 d0c02dd Phase 10C: add PostgreSQL data layer foundation
 2e73ebf Phase 10D: add PostgreSQL-backed read APIs
-Phase 11A commit: pending (design complete, not yet committed)
+3c10c1a Phase 11A: freeze authentication security architecture
+Phase 11B commit: pending (implementation complete, not yet committed)
 
 ## Current Phase
 
-Current Phase: Phase 11A — Authentication Security & Contract Freeze: COMPLETE (docs only), commit pending approval. Phase 10D (read APIs, `2e73ebf`), Phase 10C (data layer, `d0c02dd`), Phase 10B (FastAPI foundation, `4d73c59`), Phase 10A (backend architecture, `e60a0b6`), Phase 9M (testing foundation, `d586f45`), Phase 9L (cleanup), Phase 9J (SEO / accessibility / final frontend QA), Phase 9G (PWA), Phase 9H (code splitting), the Food & Dining expansion (FD1–FD5) and the Visual Refresh (V1–V6) are complete and committed. Search UX refinement remains deferred; the Search review is in `SEARCH_UX_FINDINGS.md`.
-Next Step: Phase 11B — Email/Password Authentication + Sessions (see Next Step below).
+Current Phase: Phase 11B — Email/Password Authentication + PostgreSQL Sessions + CSRF + RBAC Foundation: COMPLETE, commit pending approval. Phase 11A (auth design freeze, `3c10c1a`), Phase 10D (read APIs, `2e73ebf`), Phase 10C (data layer, `d0c02dd`), Phase 10B (FastAPI foundation, `4d73c59`), Phase 10A (backend architecture, `e60a0b6`), Phase 9M (testing foundation, `d586f45`), Phase 9L (cleanup), Phase 9J (SEO / accessibility / final frontend QA), Phase 9G (PWA), Phase 9H (code splitting), the Food & Dining expansion (FD1–FD5) and the Visual Refresh (V1–V6) are complete and committed. Search UX refinement remains deferred; the Search review is in `SEARCH_UX_FINDINGS.md`.
+Next Step: Phase 11C — Google OAuth + Account Linking + Auth Hardening (see Next Step below).
 
 ## Completed Product Work
 
@@ -78,6 +79,7 @@ Next Step: Phase 11B — Email/Password Authentication + Sessions (see Next Step
 - Phase 10C — PostgreSQL / SQLAlchemy / Alembic Data Layer Foundation (see below and `docs/backend/DATA_MODEL.md` §14)
 - Phase 10D — Backend Read APIs (see below, `docs/backend/API_CONTRACT.md` §6.1 and `docs/backend/READ_API_PARITY.md`)
 - Phase 11A — Authentication Security & Contract Freeze (see below and `docs/backend/AUTH_RBAC.md`)
+- Phase 11B — Email/Password Authentication + Sessions + CSRF + RBAC Foundation (see below and `docs/backend/AUTH_RBAC.md` §20)
 
 Full history is in `git log`; this file summarizes outcomes, not the blow-by-blow.
 
@@ -536,7 +538,7 @@ Phase 10D — Backend Read APIs = **COMPLETE** (commit `2e73ebf`). Public, read-
 
 ## Phase 11A Result
 
-Phase 11A — Authentication Security & Contract Freeze = **COMPLETE** (Phase 11A commit: pending). **Architecture and security design only: no code, no migration, no dependency installed, no frontend change.** The authoritative document is `docs/backend/AUTH_RBAC.md` (rewritten); `API_CONTRACT.md`, `DATA_MODEL.md` §15, `BACKEND_ARCHITECTURE.md`, `DEPLOYMENT.md` §9, `ROADMAP.md` and `DECISIONS.md` were updated to match.
+Phase 11A — Authentication Security & Contract Freeze = **COMPLETE** (commit `3c10c1a`). **Architecture and security design only: no code, no migration, no dependency installed, no frontend change.** The authoritative document is `docs/backend/AUTH_RBAC.md` (rewritten); `API_CONTRACT.md`, `DATA_MODEL.md` §15, `BACKEND_ARCHITECTURE.md`, `DEPLOYMENT.md` §9, `ROADMAP.md` and `DECISIONS.md` were updated to match.
 
 - **Sessions:** opaque server-side sessions in PostgreSQL (`auth_sessions`, SHA-256 of a 256-bit token), one `HttpOnly; Secure; SameSite=Lax` host-only cookie (`__Host-b17_session` in staging/production); idle 14 d / absolute 30 d, multiple devices (cap 10), admin recency 2 h / 12 h; no JWT, no refresh tokens, no Redis, no `localStorage`, no signing secret.
 - **CSRF:** `SameSite=Lax` + mandatory exact `Origin` (+ `Sec-Fetch-Site` as defence in depth) + a stateless session-bound `X-CSRF-Token`; JSON bodies normally, multipart only on explicit upload endpoints without weaker protection; development topology `127.0.0.1:5173` ↔ `127.0.0.1:8000`; CORS credentials switched on in 11B with exact origins. Same-site frontend/API topology (custom domain) is a prerequisite.
@@ -545,6 +547,22 @@ Phase 11A — Authentication Security & Contract Freeze = **COMPLETE** (Phase 11
 - **Authorization:** Resident = every account, Professional = a profile row (capability), Admin = explicit out-of-band grant; central dependencies (`get_optional_user`, `get_current_user`, `require_verified_user`, `require_professional`, `require_admin`) + service-level ownership with 401/403/404 rules; unverified users may browse/save but not write listings or requests.
 - **Schema plan:** migration `0003` (11B: users CHECKs, `auth_sessions`, `auth_tokens`, `auth_events`, `auth_rate_limits`) and `0004` (11C: `oauth_flows`, `UNIQUE(user_id, provider)`). Phasing: 11B email/password + sessions, 11C Google OAuth + hardening.
 - **Conflicts resolved:** the 10A doc listed `provider_user_id` (the model correctly uses `provider_subject`); 10A deferred the session mechanism (now chosen); error names `authentication_required`/`permission_denied` were mapped onto the existing `unauthenticated`/`forbidden`; `GET /users/me` as identity source replaced by `GET /auth/me`; the stale "10D commit: pending" notes were corrected to `2e73ebf`.
+
+## Phase 11B Result
+
+Phase 11B — Email/Password Authentication + PostgreSQL Sessions + CSRF + RBAC Foundation = **COMPLETE** (Phase 11B commit: pending). Implements the Phase 11A design (`docs/backend/AUTH_RBAC.md`; as-built notes in §20). **No Google/OAuth, no account linking/claiming, no migration `0004`, no frontend change (`src/`, `e2e/`, `package*.json` untouched), no Redis/JWT/MFA.** Dependencies added: `argon2-cffi`, `email-validator` (runtime) only.
+
+- **Endpoints (10):** `POST /api/v1/auth/register · login · logout · logout-all · verify-email · resend-verification · forgot-password · reset-password · change-password` and `GET /api/v1/auth/me`. All responses are `Cache-Control: no-store`; the raw session token exists only in the cookie; `csrfToken` (derived from it) is the only token in a body.
+- **Sessions:** opaque 256-bit tokens, SHA-256 stored in `auth_sessions`; cookie `b17_session` (development) / `__Host-b17_session` (staging/production), `HttpOnly; SameSite=Lax; Path=/`, `Secure` when hosted (cannot be disabled), no `Domain`; idle 14 d (sliding, `last_seen` written ≤ every 5 min) / absolute 30 d; multi-device with an atomic cap of 10 (oldest revoked, audited); logout/logout-all/password reset/password change/role change/suspension all revoke server-side; a session whose account is not `active` is rejected immediately.
+- **CSRF / CORS:** `AuthSecurityMiddleware` — mandatory exact `Origin` on unsafe requests, `Sec-Fetch-Site` defence in depth, session-derived `X-CSRF-Token` on cookie-authenticated mutations (pre-session endpoints exempt), JSON-only bodies on `/auth/`; `allow_credentials=True` with exact origins; `X-CSRF-Token` allowed.
+- **Credentials:** Argon2id (centralised parameters, rehash on login, bounded concurrency, dummy verification for unknown/password-less accounts); length-based policy (10–128) with the offline SecLists top-10k denylist (NFKC + case-fold lookup, no network); email stored lower-cased (DB CHECK).
+- **Tokens / flows:** one `auth_tokens` table (hashed, purpose-tagged, single-use with an atomic guarded consume, 24 h verification / 60 min reset); fragment links; neutral forgot-password; reset revokes all sessions and does not sign in; change-password rotates the current session and revokes the others.
+- **Authorization:** `get_optional_user`, `get_current_user`, `require_verified_user`, `require_professional`, `require_admin` (verified + `admin` role + a session used within 2 h and created within 12 h; a refused stale request does not count as activity); Resident is implicit, Professional is a profile capability, Admin is an explicit `user_roles` row only grantable by `python -m app.cli.admin`.
+- **Supporting:** `PostgresRateLimiter` (login failures 10/15 min, register 5/h, forgot 3/h, resend 1/min + 5/day), `auth_events` audit (allow-listed details), `EmailSender` (memory / console / disabled), `python -m app.cli.auth_maintenance purge`, uvicorn `--no-access-log` in the Docker image.
+- **Migration `0003`:** `users` CHECKs (`email_normalized`, `email_length`) + `auth_sessions`, `auth_tokens`, `auth_events`, `auth_rate_limits`; upgrade, `0003 → 0002 → 0003` and drift verified.
+- **Tests:** 848 (242 database-free + 606 PostgreSQL), including register/login/me/logout, sessions (idle/absolute/revoked/suspended/cap/ties), tokens (single-use, expiry, concurrency), CSRF/Origin/`Sec-Fetch-Site`, cookie flags (dev and hosted), enumeration, redaction, the authorization matrix via a test-only router, admin freshness, rate limiter, retention, CLIs, and concurrent logins/redemptions/grants on separate connections.
+- **Verified:** ruff, ruff format, `mypy --strict app tests scripts`, `alembic upgrade head` + `alembic check`, Docker build, Compose API + PostgreSQL healthy, and a manual curl smoke test (register → cookie → me → CSRF rejection → logout → login → verify/reset via the dev console link → no secrets in the server log).
+- **Production prerequisites unchanged:** a custom same-site domain and an email provider (delivery is `disabled` when hosted).
 
 ## Production V1 Direction
 
@@ -574,8 +592,8 @@ Phase 11A — Authentication Security & Contract Freeze = **COMPLETE** (Phase 11
 - Plan (Phase 9E) is demo/local only, not tied to any real account — same name-based limitation as everything else in this prototype; a determined user can switch their own plan, which is the explicit point of the demo Upgrade toggle. Real plan/subscription state belongs to the backend phase.
 - Frontend capability checks (Phase 9E) are UX only, not authorization/security — explicitly documented in `types/entitlements.ts`; the backend will be authoritative once it exists.
 - No profession-specific Premium modules built yet (Tutor/Property/Salon, etc.) — `professional.modules` capability exists, reserved and unconsumed, for exactly this future use.
-- Auth is demo-only (name string, no password, no persistence) — by design, not yet a gap to "fix," but must become real before any production launch. The real design is frozen in `docs/backend/AUTH_RBAC.md` (Phase 11A); implementation is Phases 11B/11C, frontend integration Phase 12 (the route guards also need a *loading* state because auth will be asynchronous).
-- A backend exists (Phase 10B–10D: liveness/readiness, a 15-table PostgreSQL schema with Alembic migrations `0001`–`0002`, reference seed, a tested data layer and public read/search APIs) but there is no write/auth API and the frontend does not call it — all frontend state is still static seed data + in-memory or `localStorage`-persisted Zustand.
+- Auth is demo-only (name string, no password, no persistence) — by design, not yet a gap to "fix," but must become real before any production launch. The real design is frozen in `docs/backend/AUTH_RBAC.md` (Phase 11A); implemented in Phase 11B (email/password) and 11C (Google), frontend integration Phase 12 (the route guards also need a *loading* state because auth will be asynchronous).
+- A backend exists (Phase 10B–11B: liveness/readiness, a 19-table PostgreSQL schema with Alembic migrations `0001`–`0003`, reference seed, a tested data layer, public read/search APIs and email/password authentication with PostgreSQL sessions) but there is no write API, no Google/OAuth yet, and the frontend does not call it — all frontend state is still static seed data + in-memory or `localStorage`-persisted Zustand.
 - Automated tests exist since Phase 9M (see `TESTING.md` → Known gaps): Chromium-only E2E, no axe/Lighthouse, no real-device or visual-regression testing, several flows (Education/Tutor, News admin CRUD, Leads/Requests lifecycle, Premium toggle) not covered by E2E.
 - Backend contract open questions (area normalization, General-business category taxonomy, listing contact channel, demo content in production, admin takedown semantics) are recorded in `docs/backend/DATA_MODEL.md` §13 and need product decisions before the write APIs (Phase 12).
 - Lint baseline: 8 pre-existing warnings (6× `only-export-components` in shadcn-pattern files, 2× `set-state-in-effect`) — known, unchanged across many phases.
@@ -604,7 +622,7 @@ Phase 11A — Authentication Security & Contract Freeze = **COMPLETE** (Phase 11
 
 ## Next Step
 
-Phase 11B (email/password authentication + sessions, then 11C Google OAuth + RBAC hardening — frozen in `docs/backend/AUTH_RBAC.md`), then 12 (write APIs + frontend integration — which must call `SearchIndexer` for every listing/category write) and 13 (media + deployment) per `ROADMAP.md` and `docs/backend/BACKEND_ARCHITECTURE.md` §12. The backend phases should also pick up what the frontend deliberately deferred: server-side / pre-rendered per-page metadata and link previews, a per-entity sitemap, structured data from real entity data, a real production URL (`VITE_SITE_URL`), persistent data / auth, real media storage and any offline write handling. Phases 9F (Admin Production UX) and 9I (Notifications + Trust/Reviews UI) remain product decisions. Store packaging, push notifications, sharing / deep links, ordering / payments and premium merchant tools stay out of scope until their roadmap phases.
+Phase 11C (Google OAuth + account linking + auth hardening — frozen in `docs/backend/AUTH_RBAC.md`), then 12 (write APIs + frontend integration — which must call `SearchIndexer` for every listing/category write) and 13 (media + deployment) per `ROADMAP.md` and `docs/backend/BACKEND_ARCHITECTURE.md` §12. The backend phases should also pick up what the frontend deliberately deferred: server-side / pre-rendered per-page metadata and link previews, a per-entity sitemap, structured data from real entity data, a real production URL (`VITE_SITE_URL`), persistent data / auth, real media storage and any offline write handling. Phases 9F (Admin Production UX) and 9I (Notifications + Trust/Reviews UI) remain product decisions. Store packaging, push notifications, sharing / deep links, ordering / payments and premium merchant tools stay out of scope until their roadmap phases.
 
 ## Resume Instructions
 

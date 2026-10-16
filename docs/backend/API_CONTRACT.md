@@ -1,6 +1,6 @@
 # B-17 Portal — API Contract
 
-**Status:** conventions frozen by Phase 10A. **Individual endpoints are frozen only in principle** — the phase that implements each group owns its exact schema (§9). Once implemented, the generated **OpenAPI document is the machine-readable source of truth**; this file stays the human contract for conventions and intent. **Implemented so far:** `/health`, `/health/ready` (10B/10C) and the public **read** group — `/categories`, `/search`, `/search/suggestions`, `/listings/{id}`, `/news`, `/news/{id}` (Phase 10D; details in §6 and [`READ_API_PARITY.md`](READ_API_PARITY.md)). There are no write, auth or owner/admin endpoints yet. **The auth contract (cookie sessions, CSRF, error codes, endpoint list, `/auth/me` shape) is frozen by Phase 11A in [`AUTH_RBAC.md`](AUTH_RBAC.md) §5–§6 and §12 and is implemented in Phases 11B/11C.**
+**Status:** conventions frozen by Phase 10A. **Individual endpoints are frozen only in principle** — the phase that implements each group owns its exact schema (§9). Once implemented, the generated **OpenAPI document is the machine-readable source of truth**; this file stays the human contract for conventions and intent. **Implemented so far:** `/health`, `/health/ready` (10B/10C), the public **read** group — `/categories`, `/search`, `/search/suggestions`, `/listings/{id}`, `/news`, `/news/{id}` (Phase 10D; details in §6 and [`READ_API_PARITY.md`](READ_API_PARITY.md)) — and the **email/password auth** group under `/auth` (Phase 11B: `register`, `login`, `me`, `logout`, `logout-all`, `verify-email`, `resend-verification`, `forgot-password`, `reset-password`, `change-password`). There are no write, Google/OAuth or owner/admin endpoints yet. **The auth contract (cookie sessions, CSRF, error codes, endpoint list, `/auth/me` shape) is frozen by Phase 11A in [`AUTH_RBAC.md`](AUTH_RBAC.md) §5–§6 and §12 and is implemented in Phases 11B/11C.**
 **Owns:** REST conventions, versioning, naming, response/error envelopes, pagination/filter/sort conventions, the planned resource groups and why they are shaped as they are.
 **Does not own:** table design → [`DATA_MODEL.md`](DATA_MODEL.md) · role/permission rules → [`AUTH_RBAC.md`](AUTH_RBAC.md) · layering/CORS/logging → [`BACKEND_ARCHITECTURE.md`](BACKEND_ARCHITECTURE.md).
 
@@ -119,7 +119,7 @@ One shape for every non-2xx response:
 | 409 | `conflict` | Duplicate slug, concurrent modification |
 | 409 | `invalid_state_transition` | e.g. approving a non-pending listing; stale `revision` |
 | 422 | `validation_error` | Schema/business-validation failure |
-| 401 | `session_expired` | A session existed but is expired/revoked (cookie cleared); *Phase 11* |
+| 401 | `session_expired` | A session existed but is expired/revoked, its account is no longer active, or an admin action needs a fresher session (cookie cleared where the session is dead); *implemented 11B* |
 | 401 | `invalid_credentials` | Login failed — one fixed message for every cause; *Phase 11* |
 | 403 | `email_not_verified` | A verified email is required for this action; *Phase 11* |
 | 403 | `account_disabled` | Correct credentials on a suspended account; *Phase 11* |
@@ -127,6 +127,7 @@ One shape for every non-2xx response:
 | 409 | `email_already_registered` | Registration with an existing email (documented enumeration trade-off); *Phase 11* |
 | 409 | `identity_conflict` | A social identity belongs to another account / email collision; *Phase 11C* |
 | 400 | `token_invalid` · `token_expired` | Verification/reset token unknown, used or past its expiry; *Phase 11* |
+| 415 | `bad_request` | A non-JSON body on an `/auth/` endpoint (11B; future upload routes may use multipart) |
 | 429 | `rate_limited` | With `Retry-After` |
 | 500 | `internal_error` | Unexpected |
 | 503 | `service_unavailable` | Dependency down (e.g. DB) |
@@ -176,7 +177,7 @@ Legend — **Auth:** A anonymous · R signed-in · O owner · P professional · 
 | `/users` | `GET /users/me/listings?status=`, `PATCH /users/me` (profile) | R | Owner's own view of all statuses (the Professional "My Listings"); **identity, roles and plan come from `GET /auth/me`** | 12 |
 | `/saved` | `GET /saved`, `PUT /saved/{listingId}`, `DELETE /saved/{listingId}` | R | `PUT`/`DELETE` are idempotent (duplicate Saved is impossible and harmless) | 12 |
 | `/requests` | `POST /requests`, `GET /requests`, incoming leads for owners, status transitions | R / P | Request Service + Leads; transitions follow `REQUEST_TRANSITIONS`; **detail deferred** | 12 |
-| `/auth` | `register`, `login`, `logout`, `logout-all`, `me`, `verify-email`, `resend-verification`, `forgot-password`, `reset-password`, `change-password` (**11B**); `oauth/google/start`, `oauth/google/callback`, `DELETE oauth/google` (**11C**). **No `refresh`** — sessions are server-side. | A / R | Frozen in `AUTH_RBAC.md` §12 | 11B / 11C |
+| `/auth` | `register`, `login`, `logout`, `logout-all`, `me`, `verify-email`, `resend-verification`, `forgot-password`, `reset-password`, `change-password` (**implemented in 11B**; `change-password` returns `200` with the rotated session's me-shape); `oauth/google/start`, `oauth/google/callback`, `DELETE oauth/google` (**11C**). **No `refresh`** — sessions are server-side. | A / R | Frozen in `AUTH_RBAC.md` §12 | 11B / 11C |
 | `/admin` | `GET /admin/listings?status=` (+ counts in `meta`), `POST /admin/listings/{id}/approve`, `…/reject`, `/admin/categories` CRUD, `/admin/news` | M | Admin surface is separate so authorization is by prefix + dependency, never per-field | 12 |
 
 ### Why these (and not others)

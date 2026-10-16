@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 
 from app.core.config import Settings
 from app.factory import create_app
+from tests.conftest import ALLOWED_ORIGIN
 
 UUID_PATTERN = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 
@@ -73,6 +74,16 @@ def test_openapi_document_loads_and_describes_the_health_endpoint(client: TestCl
     assert list(document["paths"]) == [
         "/api/v1/health",
         "/api/v1/health/ready",
+        "/api/v1/auth/register",
+        "/api/v1/auth/login",
+        "/api/v1/auth/me",
+        "/api/v1/auth/logout",
+        "/api/v1/auth/logout-all",
+        "/api/v1/auth/verify-email",
+        "/api/v1/auth/resend-verification",
+        "/api/v1/auth/forgot-password",
+        "/api/v1/auth/reset-password",
+        "/api/v1/auth/change-password",
         "/api/v1/categories",
         "/api/v1/search",
         "/api/v1/search/suggestions",
@@ -96,7 +107,7 @@ def test_interactive_docs_are_served_outside_production(client: TestClient) -> N
 def test_docs_and_openapi_are_not_published_in_production(
     make_settings: Callable[..., Settings],
 ) -> None:
-    app = create_app(make_settings(environment="production"))
+    app = create_app(make_settings(environment="production", frontend_base_url=ALLOWED_ORIGIN))
     with TestClient(app) as client:
         assert client.get("/docs").status_code == 404
         assert client.get("/redoc").status_code == 404

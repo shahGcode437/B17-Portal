@@ -6,7 +6,11 @@ from sqlalchemy.orm import Session
 from app.db.base import Base
 
 EXPECTED_TABLES = {
+    "auth_events",
     "auth_identities",
+    "auth_rate_limits",
+    "auth_sessions",
+    "auth_tokens",
     "business_profiles",
     "categories",
     "food_menu_items",
@@ -134,7 +138,8 @@ def test_every_timestamp_is_timezone_aware_and_every_id_is_a_uuid(db_session: Se
         text(
             "SELECT table_name || '.' || column_name FROM information_schema.columns "
             "WHERE table_schema = 'public' AND (column_name = 'id' OR column_name LIKE '%\\_id') "
-            "AND table_name <> 'alembic_version' AND data_type <> 'uuid'"
+            "AND table_name <> 'alembic_version' AND data_type <> 'uuid' "
+            "AND NOT (table_name = 'auth_events' AND column_name = 'request_id')"  # request id text
         )
     ).all()
 

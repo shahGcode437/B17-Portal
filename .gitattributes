@@ -1,0 +1,2 @@
+# The password corpus is checksummed (see its README): never let git rewrite its line endings.
+backend/app/core/security/data/10k-most-common.txt -text

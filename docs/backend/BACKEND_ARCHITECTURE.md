@@ -145,7 +145,7 @@ Pydantic settings, loaded from the environment. Variables (implemented in 10B): 
 Explicit allow-list, never `*`, and never a wildcard together with credentials.
 - **Local:** the known dev origins, listed explicitly — `http://localhost:5173` and `http://127.0.0.1:5173` (Vite dev) and `http://127.0.0.1:4173` (the Playwright production-preview origin used by E2E). **Auth development and tests use `127.0.0.1` for both frontend and API and never mix it with `localhost`** (`AUTH_RBAC.md` §5.1).
 - **Staging / production:** the exact deployed frontend origin(s) only, from `FRONTEND_ORIGINS` (comma-separated or JSON list; wildcards and paths are rejected at startup; nothing is implicit outside `development`).
-- Allowed methods/headers are the minimal set the contract uses (`Authorization`, `Content-Type`, `X-Request-ID`, `If-Match`, `Idempotency-Key`). **Cookie auth is chosen (Phase 11A):** `allow_credentials` becomes `True` in Phase 11B in the same change that ships the first cookie-authenticated endpoint, only with a non-empty exact `FRONTEND_ORIGINS`, and `X-CSRF-Token` joins the allowed headers (`AUTH_RBAC.md` §6). Until then (10B–10D) credentials stay disabled.
+- Allowed methods/headers are the minimal set the contract uses (`Authorization`, `Content-Type`, `X-Request-ID`, `If-Match`, `Idempotency-Key`). **Cookie auth (implemented in Phase 11B):** `allow_credentials=True` together with exact `FRONTEND_ORIGINS` only (staging/production refuse to start without them; wildcards are rejected at config validation) and `X-CSRF-Token` in the allowed headers (`AUTH_RBAC.md` §6, §20). An `AuthSecurityMiddleware` enforces Origin/`Sec-Fetch-Site`/CSRF-token rules centrally for every unsafe API request.
 
 ### Logging and observability (lightweight)
 - Structured (JSON) application logs via the standard `logging` module, one line per request: method, path template, status, duration, request ID, user id (if any).
@@ -206,7 +206,7 @@ Docker Compose provides PostgreSQL (`backend/compose.yaml`, `postgres:17-alpine`
 | **10C** | PostgreSQL data layer (**complete**): 15-table schema, Alembic baseline + drift check, constraints/indexes, reference seed, dev fixtures, repositories + constraint/transaction tests, Dockerfile + Compose PostgreSQL, `/health/ready`, PostgreSQL service in backend CI. |
 | **10D** | Public read APIs (**complete**): categories, search/suggestions, listing detail, news; migration `0002` search foundation (`pg_trgm`, maintained `search_document`); read services + repositories + explicit read schemas; extended fixtures; parity notes in `READ_API_PARITY.md`. |
 | **11A** | Authentication security & contract freeze (**complete**, docs only): sessions, cookies, CSRF, passwords, tokens, OAuth, linking, RBAC, schema plan, threat review (`AUTH_RBAC.md`). |
-| **11B** | Email/password authentication + server-side sessions + CSRF + verification/reset + RBAC dependencies + audit + rate-limit seam (migration `0003`). |
+| **11B** | Email/password authentication + server-side sessions + CSRF + verification/reset + RBAC dependencies + audit + PostgreSQL rate limiter + admin/maintenance CLIs (migration `0003`) — **complete**. |
 | **11C** | Google OAuth + account linking + authorization hardening (migration `0004`). |
 | **12** | Write APIs (owner listing lifecycle, moderation, saved, requests, news admin) and frontend/API integration. |
 | **13** | Media storage and production deployment/hardening. |

@@ -17,6 +17,7 @@ CI misconfiguration can never silently turn the database suite off.
 import os
 from collections.abc import Iterator
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 from alembic import command
@@ -31,6 +32,9 @@ from sqlalchemy.orm import Session
 from app.db.reference_data import REFERENCE_CATEGORIES
 from app.db.seed import seed_reference_data
 from tests.db_safety import UnsafeTestDatabaseError, assert_connected_to, assert_safe_test_database
+
+if TYPE_CHECKING:
+    from tests.db.auth_helpers import AuthEnv
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 
@@ -161,3 +165,15 @@ def read_client(fixtures_session: Session) -> Iterator[TestClient]:
     app.dependency_overrides[get_db_session] = lambda: fixtures_session
     with TestClient(app, raise_server_exceptions=False) as client:
         yield client
+
+
+@pytest.fixture
+def auth_env(db_session: Session) -> Iterator["AuthEnv"]:
+    """The real app over the savepoint-isolated session, with a fake clock and in-memory email."""
+    from tests.db.auth_helpers import build_env
+
+    env = build_env(db_session)
+    try:
+        yield env
+    finally:
+        env.close()

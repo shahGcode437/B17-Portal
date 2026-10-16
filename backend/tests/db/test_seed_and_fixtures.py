@@ -155,8 +155,10 @@ def test_fixtures_are_idempotent_and_keep_their_ids(db_session: Session) -> None
 
 
 def test_fixtures_refuse_to_run_in_production() -> None:
-    production = Settings(_env_file=None, environment="production")
+    origin = "https://app.example.org"
+    hosted = {"frontend_origins": [origin], "frontend_base_url": origin}
+    production = Settings(_env_file=None, environment="production", **hosted)  # type: ignore[arg-type]
 
     with pytest.raises(SystemExit, match="production"):
         ensure_not_production(production)
-    ensure_not_production(Settings(_env_file=None, environment="staging"))  # allowed
+    ensure_not_production(Settings(_env_file=None, environment="staging", **hosted))  # type: ignore[arg-type]  # allowed
