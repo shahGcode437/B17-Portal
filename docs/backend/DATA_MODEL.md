@@ -337,3 +337,16 @@ Real decisions only; the migration (`backend/alembic/versions/0002_search_founda
 4. **Indexes:** `ix_listings_search_document_trgm` — GIN `gin_trgm_ops` on `search_document` (serves `LIKE '%q%'`); `ix_listings_approved_area` — partial B-tree on `area WHERE status = 'approved'` (the public area filter). Existing indexes (`status/kind/created_at`, `news_articles(status, published_at DESC)`, category and profile indexes) serve the rest; `GIN(tags)` was **not** added — tags are searched through `search_document`, and the evidence (`EXPLAIN`, tests) shows no query that needs it yet.
 5. **News has no stored document** (small, admin-authored): title, category name, summary and tags are matched in the query.
 6. **Public visibility is query logic, not a view or RLS**: `status = 'approved'` (listings) / `'published'` (news) in every public query.
+
+## 15. Planned authentication schema (Phase 11A design — implemented by migrations `0003` (11B) and `0004` (11C))
+
+Design only; nothing here exists yet and `0001`/`0002` are never edited. Full rationale: [`AUTH_RBAC.md`](AUTH_RBAC.md) §3, §4.2, §8, §10, §13, §16.
+
+**Audit of the existing identity tables — sufficient in shape:** `users` already has `email` (unique on `lower(email)`), `email_verified_at`, `display_name`, nullable `password_hash` (a social-only account has none), `status` (`active|suspended|deleted`) and `last_login_at`; `user_roles` (`admin` only; Resident is every account, Professional is a `professional_profiles` row); `auth_identities` (`provider_subject` is the stable key, `UNIQUE(provider, provider_subject)`); `professional_profiles`. **Decisions:** the password hash stays on `users` (one password per account; no credentials table); no username column; no new `users` columns; account status needs no schema change.
+
+| Migration | Change |
+|---|---|
+| `0003` (11B) | `users`: `CHECK (email = lower(btrim(email)))`, `CHECK (char_length(email) <= 254)` · **`auth_sessions`** (`id`, `user_id`, `token_hash bytea` UNIQUE, `created_at`, `last_seen_at`, `expires_at`, `absolute_expires_at`, `revoked_at`, `revoke_reason`, `user_agent`) · **`auth_tokens`** (`id`, `user_id`, `purpose` `email_verification|password_reset`, `token_hash bytea` UNIQUE, `email`, `expires_at`, `consumed_at`, `created_at`) · **`auth_events`** (audit: `occurred_at`, `user_id` SET NULL, `actor_user_id`, `event_type`, `request_id`, allow-listed `details` JSONB) · **`auth_rate_limits`** (`key_hash`, `policy`, `window_start`, `count`) |
+| `0004` (11C) | **`oauth_flows`** (`state_hash`, `flow_cookie_hash`, `nonce`, `code_verifier`, `purpose`, `user_id` NULL, `return_to`, `expires_at`, `consumed_at`) · `auth_identities`: `UNIQUE(user_id, provider)` |
+
+Raw session and token secrets are **never stored** — only their SHA-256. Closed sets use `VARCHAR + CHECK`; all timestamps `timestamptz`; constraint names follow the existing convention. Expired rows are removed by `python -m app.cli.auth_maintenance purge` and are never trusted for correctness (validity is always checked against the timestamps).

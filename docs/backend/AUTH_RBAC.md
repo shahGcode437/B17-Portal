@@ -1,116 +1,551 @@
 # B-17 Portal — Authentication, Authorization & Roles
 
-**Status:** direction frozen by Phase 10A — **design only; nothing is implemented** and several choices are deliberately left to Phase 11 after a security review.
-**Owns:** the identity model, roles and permissions, social-login direction, token/session options, admin-role rules, and what the frontend must change.
-**Does not own:** table design beyond identity columns → [`DATA_MODEL.md`](DATA_MODEL.md) · HTTP shapes → [`API_CONTRACT.md`](API_CONTRACT.md) · CORS/security checklist → [`BACKEND_ARCHITECTURE.md`](BACKEND_ARCHITECTURE.md).
+**Status:** **frozen by Phase 11A** (security architecture and contract; supersedes the 10A direction). **Nothing here is implemented yet** — Phase 11B/11C implement it without making new fundamental security decisions. Where a number is marked *tunable*, 11B/11C may adjust it inside the stated bounds; every other statement is binding.
+**Owns:** the identity model, session/cookie/CSRF design, password and token handling, email verification and reset, Google OAuth and account linking, roles and authorization architecture, the auth API contract, the auth schema plan, the threat review and the security test matrix.
+**Does not own:** general table design → [`DATA_MODEL.md`](DATA_MODEL.md) · HTTP conventions/envelopes → [`API_CONTRACT.md`](API_CONTRACT.md) · layering/logging/CORS baseline → [`BACKEND_ARCHITECTURE.md`](BACKEND_ARCHITECTURE.md) · hosting/secrets/ops → [`DEPLOYMENT.md`](DEPLOYMENT.md).
 
-> **Authentication = who the user is. Authorization = what the user may do.** They are separate mechanisms with separate failure modes (`401 unauthenticated` vs `403 forbidden`). Authorization is decided by the **backend's own data** (roles, ownership, plan), never by what an identity provider says.
+> **Authentication = who the user is. Authorization = what the user may do.** Separate mechanisms, separate failures (`401` vs `403`). Authorization is decided by the **backend's own data** (roles, ownership, plan), never by an identity provider, a client claim, or frontend state. **Public browsing stays public:** no role restricts a public module — a Professional or Admin browses Food, Property, Services and News exactly like a Resident.
 
-## 1. Where we are today (frontend prototype)
+## 1. Decision summary (what 11B/11C must implement)
 
-- `DemoUser { name }` — a free-text name, no password, no session, no id; resets on reload.
-- A **separate in-memory admin login** (`/admin/login`, "Continue as Admin (Demo)").
-- Resident and Professional are **the same login**: any signed-in user can open `/provider` and list. "Professional" is simply "has listings"; ownership is `submittedBy === user.name`.
-- Route guards (`useRequireAuth`, `useRequireAdminAuth`) and Free/Premium capability checks are **UX only** — `DECISIONS.md` already records that the backend will be authoritative.
-- Explicit Log Out clears the resident store and plan (the demo's privacy boundary).
+| # | Decision | Section |
+|---|---|---|
+| D1 | **Opaque server-side sessions in PostgreSQL**, carried by one `HttpOnly` cookie. No JWTs, no refresh tokens, no tokens in `localStorage`/response bodies. | §4 |
+| D2 | Session secret = 256-bit random token; **only its SHA-256 hash is stored**. New session id on login/register/privilege change (no fixation). | §4 |
+| D3 | Cookie `__Host-b17_session` (staging/prod) / `b17_session` (dev): `HttpOnly; Secure; SameSite=Lax; Path=/`; host-only (no `Domain`). | §5 |
+| D4 | CSRF = **layered**: `SameSite=Lax` + a mandatory exact `Origin` check (plus `Sec-Fetch-Site` as defence in depth) + a **session-bound `X-CSRF-Token`** on authenticated unsafe requests. JSON bodies for normal endpoints; multipart only on explicit upload endpoints, with **no weaker** protection. | §6 |
+| D5 | Sessions: idle 14 days (sliding), absolute 30 days, multiple devices (cap 10), admin actions need a recent session (idle 2 h, max 12 h). No remember-me. | §4.4 |
+| D6 | **Argon2id** (`argon2-cffi`), central parameters, rehash on login; password policy is **length-based** (10–128, denylist screening, no composition rules). | §7.3 |
+| D7 | Email is stored **trimmed + lower-cased** (DB `CHECK` + existing `lower(email)` unique index); Gmail-style dot/plus folding is **not** applied. | §7.2 |
+| D8 | Registration creates a **Resident** account and signs in immediately; unverified users may log in/browse/save, but **listing writes and service requests require a verified email**. | §7.1, §9 |
+| D9 | Verification/reset tokens live in **one purpose-tagged table**: 256-bit random, hashed, single-use (atomic consume), expiring (24 h / 1 h). Delivered in the URL **fragment**, redeemed by `POST`. | §8 |
+| D10 | Password reset/change revokes sessions; `forgot-password`, `resend-verification` and `login` never reveal whether an email exists. Registration returns an **explicit `409 email_already_registered` — an intentional UX/security trade-off**, rate-limited. | §8, §7.4, §13.1 |
+| D11 | **Google OAuth** = backend-driven authorization-code flow + PKCE + `state` + `nonce`, flow state in PostgreSQL bound to the browser by a short-lived cookie; identity key = `(provider, sub)`, never the email. | §10 |
+| D12 | **No automatic linking by email.** A verified existing account requires sign-in then *Connect Google*. The **only** email-match exception is the narrow, fully-specified *unverified-account claim* (account recovery / pre-hijacking defence). | §10.4 |
+| D13 | Roles: **Resident** = every account, **Professional** = a `professional_profiles` row (a capability, not a role), **Admin** = an explicit `user_roles` row granted only out-of-band. | §11.1 |
+| D14 | Authorization is centralized in dependencies (`get_optional_user`, `get_current_user`, `require_verified_user`, `require_professional`, `require_admin`) plus service-level ownership policies. Frontend guards are UX only. | §11 |
+| D15 | `401` unauthenticated / `403` authenticated-but-not-allowed / `404` for resources the caller may not know exist. | §11.5 |
+| D16 | PostgreSQL only: sessions, tokens, OAuth flows, audit events and identity-keyed rate-limit counters. **No Redis.** | §4.2, §13 |
+| D17 | Phasing (**approved**): **11A** design freeze · **11B** email/password + PostgreSQL sessions + CSRF + authorization/RBAC foundation (migration `0003`) · **11C** Google OAuth + linking + authentication hardening (migration `0004`) · then **12** write APIs + frontend integration · **13** media + production deployment. | §19 |
 
-## 2. Identity model
+## 2. Current state (audited in Phase 11A)
+
+**Frontend (prototype, unchanged by 11A):**
+- `AuthProvider` holds `DemoUser { name }` in React state — no password, session, id or persistence; `logout` also clears `residentStore` and `planStore` (the demo's privacy boundary). `AdminAuthProvider` is a **separate** in-memory context with a fixed `Demo Admin` and a "Continue as Admin (Demo)" button.
+- `useRequireAuth` / `useRequireAdminAuth` redirect to `/login` / `/admin/login` immediately when the context is empty and preserve `location.state.from`. They have **no "loading" state** (state is synchronous today).
+- Resident ≠ Professional login: any signed-in user can open `/provider`; ownership is `submittedBy === user.name`.
+- `residentStore` (saved items, requests) and `planStore` persist to **`localStorage`** — acceptable for demo data, never for credentials.
+- E2E `guards.spec.ts` pins the redirect/return UX, "a resident is still sent to Admin Login", and "an admin session does not open the Professional workspace". The last two are properties of the *demo's two contexts*; with real accounts the rule becomes "authorization decides" (§15).
+- The service worker (`pwa/sw.template.js`) handles only same-origin GETs: navigations are network-first with an offline shell fallback; `/assets/*` cache-first; **everything else is untouched**. No API response is cached.
+
+**Backend (Phases 10B–10D):**
+- Schema exists, behavior does not: `users` (`email` + unique `lower(email)`, `email_verified_at`, `display_name`, nullable `password_hash`, `status active|suspended|deleted`, `last_login_at`), `user_roles(user_id, role)` with `RoleName = {admin}`, `auth_identities` (`provider google|facebook|apple`, `provider_subject`, `provider_email`; `UNIQUE(provider, provider_subject)`), `professional_profiles(user_id, plan_code)`.
+- CORS: explicit origins, `allow_credentials=False`, headers `Authorization, Content-Type, X-Request-ID, If-Match, Idempotency-Key`.
+- Errors: `unauthenticated` (401) and `forbidden` (403) already exist; validation errors never echo input values (`validation_details` keeps only field/type/message).
+- Request log: method, path template, status, duration — **no body, no query string**. Uvicorn's own access log (not configured by the app) *does* print query strings (§13.4).
+- No auth dependency, hashing, session, cookie, token or email code exists.
+
+**Schema sufficiency:** `users`, `user_roles`, `professional_profiles` and `auth_identities` are **sufficient in shape**; Phase 11B/11C add *new* tables and three constraints (§16). Published migrations `0001`/`0002` are never edited.
+
+## 3. Identity model
 
 ```mermaid
 flowchart LR
   subgraph Identity["Who the user is"]
-    U["users<br/>(one real person/account)"]
-    P["password credential<br/>(optional, on users)"]
-    I["auth_identities<br/>(0..n social identities)"]
+    U["users (one account)"]
+    P["users.password_hash (optional)"]
+    I["auth_identities (0..1 per provider)"]
+    S["auth_sessions (0..n devices)"]
   end
   subgraph Authz["What they may do"]
-    R["user_roles<br/>(explicit grants, e.g. admin)"]
-    PP["professional_profiles<br/>(makes a user a professional)"]
-    O["ownership<br/>(listings.owner_id)"]
+    R["user_roles (explicit, e.g. admin)"]
+    PP["professional_profiles (capability)"]
+    O["ownership (listings.owner_id)"]
   end
-  U --- P
-  U --- I
-  U --- R
-  U --- PP
-  U --- O
-  Req["Request"] --> Authn["Authenticate → user_id"] --> Authz2["Authorize: roles + ownership + plan"] --> Svc["Service"]
+  U --- P & I & S & R & PP & O
+  Req["Request"] --> Authn["session cookie → principal"] --> Authz2["dependencies (coarse) + services (ownership, quota)"] --> Svc["Service"]
 ```
 
-Text form: `request → authenticate (user id) → authorize (roles + ownership + plan) → service`.
+- **One credentials system.** `password_hash` lives **on `users`** (nullable): a social-only account has none. A separate credential table was rejected — there is exactly one password per account, the table would add a join to every login for no gain, and `auth_identities` already models "other ways in". Professionals and Admins use the same account and login; there is **no second credentials table and no second login system** (the `/admin/login` *screen* is just a different entry point to the same endpoint, §15).
+- **Login identifier = email.** No usernames. `display_name` (2–60) is a label, never an identifier.
+- **A user's sign-in methods** = password (if `password_hash`) + 0..1 identity per provider. A user must always keep at least one (§10.6).
 
-**`users`** — `id uuid`, `email` (case-insensitively unique), `email_verified_at`, `display_name` (2–60; the only profile field the frontend collects today), `password_hash` (nullable: a social-only account has none), `status` (`active|suspended|deleted`), `created_at`, `updated_at`, `last_login_at`.
-**`auth_identities`** — `id`, `user_id → users`, `provider` (`google|facebook|apple`), `provider_subject` (the provider's stable subject id), `provider_email` (informational), `created_at`; `UNIQUE(provider, provider_user_id)`. One user may have several identities plus a password.
-**`user_roles`** — `(user_id, role)` explicit grants only (`admin` now; room for `moderator`/`support`), with `granted_by`/`granted_at`.
-**Sessions/refresh tokens** — a store of refresh-token records (hashed) for revocation, if the Phase 11 decision uses them (§6). Email-verification and password-reset tokens are single-use, hashed, expiring records.
+## 4. Session architecture
 
-Email is required in V1 (all three providers can supply it with the right scope); a provider that withholds it triggers a "complete your account" step in Phase 11 rather than a nullable email.
+### 4.1 Strategy: server-side session cookie (D1)
 
-## 3. Roles and capabilities (RBAC)
-
-| Role | How a user has it | Notes |
+| | **A. HttpOnly cookie + server-side session** | **B. JWT access + refresh, both in HttpOnly cookies** |
 |---|---|---|
-| **Resident** | Every authenticated account (baseline) | Not a row — being signed in *is* being a resident. |
-| **Professional** | A `professional_profiles` row exists | Created self-service the first time a user uses the professional workspace — **preserving today's behavior** (any signed-in user can list; no admin gate). A **verification** state is a future seam on the profile, not a V1 gate. |
-| **Admin** | An explicit `user_roles` row `admin` | Granted **only by backend/ops** (CLI/migration/seed, later an admin tool by an existing admin). Never self-service, never derived from an OAuth provider or email domain. |
+| Revocation / logout | Immediate (delete/mark the row) | Access tokens live until expiry; revocation needs a denylist or refresh-token rotation with reuse detection |
+| Multi-device | One row per device; revoke one/all trivially | Same, but only through the refresh-token store (i.e. a session table anyway) |
+| Moving parts | One cookie, one table | Two cookies, signing keys + rotation, refresh endpoint, reuse detection, clock skew |
+| Per-request cost | One indexed PostgreSQL lookup (the request already hits PostgreSQL) | Signature check, but role/status changes (suspend, role revoke) are not seen until expiry unless looked up anyway |
+| CSRF | Needed (cookie) | Needed (cookie) |
+| OAuth | Callback sets the same cookie | Same |
+| Native app later | Needs a bearer form — the same table can back an opaque bearer token (§15.3) | Natural |
+| XSS token theft | `HttpOnly` blocks reads | Same |
 
-A user can be resident + professional + admin at once; roles **add** capabilities and never remove public ones. **Public modules are never role-restricted:** a "Property professional" browses Food, News and Services exactly like a resident; there is no "professional-only" public content.
+**Chosen: A.** B's only real advantage — stateless verification — buys nothing for a single modular monolith that queries PostgreSQL on every request anyway, and it makes suspension, role change and logout slower and more complex. A future native client is served by an opaque bearer token backed by the same session table, not by distorting the browser model today.
 
-| Capability | Anonymous | Resident | Professional (owner) | Admin |
-|---|---|---|---|---|
-| Browse/search/read public content (approved listings, published news) | ✔ | ✔ | ✔ | ✔ |
-| Save / unsave a listing | — | ✔ | ✔ | ✔ |
-| Submit a service request | — | ✔ (not to own listing) | ✔ (not to own) | ✔ |
-| View own requests | — | ✔ | ✔ | ✔ |
-| Create a listing (quota by plan) | — | — | ✔ (creates profile on first use) | ✔ |
-| Edit / archive **own** listing | — | — | ✔ | — (moderates instead) |
-| View own listings in all statuses | — | — | ✔ | — |
-| View/advance leads for **own** provider listings | — | — | ✔ | — |
-| Approve / reject listings (`pending` only) | — | — | — | ✔ |
-| Feature a listing (`is_featured`) | — | — | — | ✔ |
-| Create/edit/publish News & Updates | — | — | — | ✔ |
-| Manage categories (create/edit/activate/reorder) | — | — | — | ✔ |
-| View users, grant/revoke roles | — | — | — | ✔ (role grants: ops/admin tool only) |
+### 4.2 Storage (D2, D16)
 
-**Enforcement:** coarse checks in FastAPI dependencies (`require_user`, `require_role("admin")`); **data-dependent checks in services** ("is this the owner of this listing?", "is the plan quota exhausted?", "is the listing visible?"). Permissions are a small **code-defined role→permission map** in V1; a database-driven permission model is deferred until roles multiply. An endpoint without an authorization-matrix test (`BACKEND_ARCHITECTURE.md` §8) does not merge.
+PostgreSQL table `auth_sessions` (no Redis — one indexed lookup per request is far below any threshold that would justify a second datastore):
 
-**Plan / entitlements** are backend-authoritative: `professional_profiles.plan_code` plus a code-level map mirroring `config/plans.ts`. The frontend `useCapability` stays as UX gating fed by `GET /users/me`. Billing is out of scope; until it exists the plan is set administratively.
+| Column | Notes |
+|---|---|
+| `id uuid PK` | internal id (UUIDv4), safe to show/log; **not** the secret |
+| `user_id → users` `ON DELETE CASCADE` | |
+| `token_hash bytea(32)` **UNIQUE** | SHA-256 of the cookie token. The token is 256 bits of `secrets.token_urlsafe(32)` randomness, so a plain SHA-256 is sufficient (no pepper, no password-style KDF, **no signing secret to manage or rotate**). The raw token exists only in the cookie. |
+| `created_at`, `last_seen_at` | `last_seen_at` is updated at most once per **5 minutes** per session (one write, not one per request) |
+| `expires_at` | *idle* expiry, slid forward from `last_seen_at`, never beyond `absolute_expires_at` |
+| `absolute_expires_at` | `created_at` + absolute lifetime |
+| `revoked_at`, `revoke_reason` | `logout · logout_all · password_reset · password_change · admin_action · suspended · role_change · session_cap · account_claimed` |
+| `user_agent varchar(200)` | truncated, informational — recognises a device in a future "your sessions" list. **No IP address is stored** (PII, and meaningless behind proxies). |
 
-## 4. Authentication methods
+A session is valid iff the row exists, `revoked_at IS NULL`, `now() < expires_at`, `now() < absolute_expires_at` **and** the joined user is `status = 'active'`. The principal (user + roles + professional summary) is loaded by **one** query/join — no lazy loading in the dependency.
 
-- **Email + password** (first-party). Hashing: a modern memory-hard algorithm — **Argon2id** preferred (scrypt/bcrypt acceptable fallback) — with per-password salts, tuned work factors, constant-time verification, transparent rehash on login. Minimum length and breached/common-password screening; no composition-rule theater. Never log or return hashes.
-- **Google** (OpenID Connect) — first social provider. **Facebook** — where appropriate for the audience. **Apple** — needed if/when native iOS ships with any third-party login (App Store policy), so keep the identity model provider-agnostic from day one. Use the **authorization-code flow with PKCE**, verify `iss`/`aud`/`exp`/`nonce`, and map the provider's stable **subject id** (not email) to `auth_identities`.
-- **Email verification** and **password reset**: single-use, hashed, short-lived tokens delivered by email (an email-sending seam is required in Phase 11; no provider chosen here). Reset and login responses must not reveal whether an email exists (anti-enumeration), and are rate-limited.
+### 4.3 Creation, rotation, fixation (D2)
 
-**Account linking rules** (account-takeover is the main risk): (1) a social login for a *known* `(provider, subject)` signs that user in; (2) an unknown identity whose provider-verified email matches an **existing verified** account is linked **only after** the user proves control of the existing account (sign in with it, or confirm via email) — never silently on an unverified email; (3) an authenticated user can explicitly link/unlink identities, but cannot remove their last way to sign in; (4) a brand-new identity with no matching account creates a new user with the provider's verified email and `email_verified_at` set. Linking and user creation are single transactions.
+- A **new** token and row are created at register, login (password or OAuth) and after any privilege elevation (admin role granted → all that user's sessions are revoked; the user signs in again). The server never accepts a client-chosen session identifier, and pre-auth requests carry no session, so there is nothing to fix.
+- On login the server also deletes that user's long-expired sessions (opportunistic cleanup, §13.5) and enforces the **cap of exactly 10 active sessions per user** (see below).
+- Password change rotates the current session (new token) and revokes the user's other sessions.
+- **Active-session cap = 10 per user (frozen).** A valid login is **never rejected** because the cap was reached. Creating a session runs in one transaction that first locks the user's row (`SELECT … FOR UPDATE`, which serializes concurrent logins for that user), counts the user's active sessions (not revoked, not expired), and — if the count is ≥ 10 — revokes the **oldest** active sessions (by `created_at`) with `revoke_reason = 'session_cap'` until at most 9 remain, then inserts the new session. The automatic revocation is atomic with the insert and each revoked session is recorded as an `auth_events` `session_revoked` event (`details.reason = session_cap`). No session-management UI is part of 11B.
 
-## 5. Admin specifics
+### 4.4 Lifetimes (D5)
 
-- The admin **role comes only from `user_roles`**. OAuth identity, email domain or a client claim never grants it.
-- The frontend keeps a separate `/admin/login` *screen* (it is a distinct entry point and unlinked from the public UI) but it authenticates through the **same** identity system; the backend checks the role on every admin request. There is no second user table.
-- Admin sessions may have **stricter policy** (shorter lifetime, re-authentication for sensitive actions, MFA as a documented future seam).
-- Sensitive admin actions (approve/reject, role changes, category changes, content publishing) are **audited** (`listing_status_history` today; a general audit table is added when a second consumer appears).
-- Initial admin accounts are provisioned out-of-band by operators (documented runbook), never by a public registration path.
-
-## 6. Token / session direction — to be decided in Phase 11
-
-Not frozen on purpose; Phase 11 must evaluate against a security review and the hosting topology.
-
-| Option | Strengths | Risks / costs |
+| | Value | Why |
 |---|---|---|
-| **Short-lived access token + rotating refresh token** (refresh in an `HttpOnly; Secure; SameSite` cookie for web, secure storage for native) | Works for SPA/PWA **and** future native clients; revocable via stored refresh records | More moving parts; careful rotation and reuse detection needed |
-| **Server-side session cookie** (opaque id) | Simplest and safest for a pure web app; trivial revocation | Cookies are awkward for native clients; needs CSRF protection |
-| Long-lived bearer JWT in `localStorage` | Easy | **Rejected:** XSS-readable, hard to revoke |
+| Idle timeout (sliding) | **14 days** | Residents open the PWA irregularly; a few-hours expiry would be hostile, an unlimited one risky |
+| Absolute lifetime | **30 days** | Bounds a stolen cookie; forces a periodic fresh login |
+| Admin recency (`require_admin`) | session `last_seen` within **2 h** and `created_at` within **12 h**, else `401 session_expired` | Stricter handling for the highest-privilege role without a second session type (a resident action by the same admin keeps the normal lifetime) |
+| Remember-me | **Deferred** — one policy for everyone | Avoid a second lifetime class without a requirement |
 
-Constraints already known: (1) **never** store tokens in `localStorage`; (2) if cookies are used, the SPA and API should be **same-site** (e.g. `app.example.org` + `api.example.org`, or a reverse proxy mapping `/api`) — a cross-site API turns the cookie into a third-party cookie that browsers increasingly block; (3) if cookies are used, `SameSite` + CSRF defenses (double-submit/origin checks) are required and CORS must list exact origins with credentials; (4) the PWA service worker must not cache authenticated API responses; (5) future native clients (store packaging, a later phase) must be able to use the same API.
+Renewal: when `last_seen_at` is refreshed the server also slides `expires_at` and re-sends `Set-Cookie` with the new `Max-Age` (only then, not on every response). A missing/unknown token → `401 unauthenticated`; a known but expired/revoked token → `401 session_expired` **and** the cookie is cleared. All tunables are settings (§14).
 
-## 7. Frontend impact (Phase 11/12, recorded now)
+### 4.5 Multi-device and revocation (D5)
 
-- `DemoUser {name}` → a real user object (`id`, `displayName`, `roles`/capabilities, plan). Ownership stops being "name equals".
-- `useRequireAuth` / `useRequireAdminAuth` keep their redirect UX but read real sessions; **they remain UX, not security**.
-- `AuthProvider.logout` still clears resident-local data; with server-side Saved/requests the stores become caches.
-- The Login/Register screen gains email, password and social buttons; the single-name form is a demo artifact.
-- Playwright E2E guard tests (`e2e/guards.spec.ts`) are rewritten against real auth and seeded accounts.
+Multiple concurrent sessions per user are supported (one row per device). Revocation triggers:
 
-## 8. Deferred to Phase 11 (explicitly)
+| Trigger | Sessions revoked |
+|---|---|
+| `POST /auth/logout` | the current one (row marked + cookie cleared — deleting the cookie alone is never sufficient) |
+| `POST /auth/logout-all` | all of the user's |
+| password **reset** | all |
+| password **change** | all others (current is rotated) |
+| account suspended / deleted | all; and a suspended user's sessions are unusable even before they are marked (status is part of validity) |
+| admin role granted/revoked | all of that user's |
+| email change (future) | all others |
 
-Token/session mechanism and lifetimes · OAuth library/provider setup and consent-screen verification · email delivery provider · MFA · account-deletion and data-export flows (policy sketched in `DATA_MODEL.md` §11) · rate-limit numbers · session management UI (devices, revoke all) · professional verification workflow · a database-driven permission model.
+Future (no UI now): `DELETE /auth/sessions/{id}` and a list endpoint — the table already supports them (`id`, `user_agent`, `last_seen_at`).
+
+## 5. Cookie contract (D3)
+
+| Attribute | Value |
+|---|---|
+| Name | `__Host-b17_session` in `staging`/`production`; `b17_session` in `development`/`test` |
+| Value | the raw random token — nothing else (no user id, no role, no JSON) |
+| `HttpOnly` | **always** — never readable from JavaScript |
+| `Secure` | always in `staging`/`production` (a setting that may not be disabled there; the `__Host-` prefix makes browsers enforce it); off only for plain-HTTP local development |
+| `SameSite` | **`Lax`** |
+| `Path` | `/` (required by `__Host-`) |
+| `Domain` | **never set** (host-only, which `__Host-` requires): the cookie belongs to the API host and is sent only to it |
+| `Max-Age` | seconds until idle expiry (persistent cookie; re-issued when the session slides) |
+| Clearing | `Set-Cookie` with an empty value, `Max-Age=0`, identical name/path/flags |
+
+**Why `Lax`, not `Strict`:** `Strict` withholds the cookie on top-level navigations arriving from other sites (an email link to the frontend, the OAuth callback), which breaks nothing important here but buys little beyond what the CSRF layers already give, and `Lax` is the browser default users' tools expect. **Why never `None`:** `SameSite=None` is only needed when the frontend and API are **cross-site** (different registrable domains) or embedded in third-party frames — exactly the topology §5.1 forbids; browsers increasingly block such third-party cookies, and `None` removes the very protection layer D4 relies on.
+
+Summary by environment:
+
+| | Development / test | Staging / production |
+|---|---|---|
+| Name | `b17_session` | `__Host-b17_session` |
+| `HttpOnly` | yes | yes |
+| `Secure` | **no** (plain `http://`) | **yes** (cannot be disabled) |
+| `SameSite` | `Lax` | `Lax` |
+| `Path` | `/` | `/` |
+| `Domain` | none | none (host-only) |
+
+A second short-lived cookie is used only by the OAuth flow (§10.2): `__Host-b17_oauth` / `b17_oauth`, `HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=600`.
+
+### 5.1 Topology (cookie-relevant; no host chosen)
+
+**Same-site** = same registrable domain (scheme + eTLD+1); **same-origin** = same scheme + host + port. `SameSite` is evaluated on *site*, CORS on *origin*.
+
+| Topology | Verdict |
+|---|---|
+| **Preferred:** `https://b17portal.pk` (frontend) + `https://api.b17portal.pk` (API) — *same-site, cross-origin* | ✔ Lax cookie is sent on the SPA's credentialed `fetch`; needs CORS with credentials + the CSRF layers (§6) |
+| **Equally valid:** one origin, a reverse proxy mapping `/api` to the API — *same-origin* | ✔ no CORS needed; the SW must exclude `/api` (§15.2); CSRF layers still apply |
+| ✘ Frontend and API on different registrable domains (e.g. `b17portal.pk` ↔ `b17-api.example.net`) | Would force `SameSite=None` third-party cookies — not supported |
+| ⚠ Default provider domains (`*.vercel.app`, `*.onrender.com`, `*.herokuapp.com`, …) are on the Public Suffix List, so two such subdomains are **cross-site** | A **custom domain** that makes both sides same-site is a prerequisite for enabling auth in staging/production |
+
+**Development (deterministic topology, frozen):** frontend `http://127.0.0.1:5173` ↔ API `http://127.0.0.1:8000` — same host, different ports ⇒ **same-site, cross-origin**, so it exercises exactly the production mechanics (credentialed CORS, `Lax` cookie, CSRF layers) with non-`Secure` cookies over plain HTTP. **Never mix `localhost` and `127.0.0.1` in auth development or tests** (`localhost` ↔ `127.0.0.1` is cross-site and the cookie would silently not be sent); `http://127.0.0.1:5173` is already in the default development `FRONTEND_ORIGINS`, and the E2E preview (`http://127.0.0.1:4173`) uses the same host. Cookies are scoped by host, not port, so all `127.0.0.1` ports share one cookie jar (harmless for development). Phase 12 starts the Vite dev server with `--host 127.0.0.1` for auth work. A Vite `/api` proxy (making dev same-origin) remains an allowed Phase 12 convenience.
+
+## 6. CSRF and CORS (D4)
+
+Cookie authentication makes state-changing requests CSRF-able. Defence in depth, all enforced centrally (a middleware/dependency, never per route):
+
+1. **`SameSite=Lax` cookie** — cross-site `POST/PUT/PATCH/DELETE` subrequests and forms do not carry the cookie.
+2. **`Origin` validation on every unsafe method** (`POST/PUT/PATCH/DELETE`) that is cookie-authenticated or targets a pre-session auth endpoint: the `Origin` header **must be present** (browsers always send it on cross-origin requests and on same-origin unsafe requests) and **must exactly match** an entry of `FRONTEND_ORIGINS`; a missing, `null` or unlisted `Origin` → `403 csrf_failed` (no `Referer` fallback). **`Sec-Fetch-Site` is defence in depth only:** if the header is present its value must be `same-origin` or `same-site`, otherwise reject; if it is absent (older browsers, proxies) nothing changes — correctness never depends on its presence, it rests on `Origin` + the token. Requests authenticated only by a future bearer token are not cookie-CSRF-able and are exempt from this layer.
+3. **Session-bound CSRF token** on every *authenticated* unsafe request: header `X-CSRF-Token` must equal `base64url(HMAC-SHA256(key = session token, msg = "b17-csrf-v1"))`, compared in constant time. Stateless (no storage, no extra secret), unforgeable without the session token, and immune to cookie-injection from sibling subdomains. The token is returned in the JSON body of `register`, `login` and `GET /auth/me`; the SPA keeps it **in memory** (never `localStorage`) and re-fetches it from `/auth/me` on load. A cross-origin attacker cannot read those responses (CORS). Failure → `403 csrf_failed`.
+4. **Content types.** Normal authentication and application mutation endpoints accept **`application/json` request bodies only** (anything else → `415`, mapped to `bad_request`), so a cross-origin request needs a CORS preflight that the allow-list refuses. **Explicit media/file-upload endpoints (Phase 13) may additionally accept `multipart/form-data`**, declared per route and nowhere else. Multipart is a CORS "simple" content type that skips the preflight, so such endpoints get **no weaker protection**: they require exact `Origin` validation, session authentication, the `X-CSRF-Token` **header** (never a form field) when cookie-authenticated, the normal authorization rules, and the file validation in `MEDIA_STORAGE.md`. The CSRF layers 1–3 are mandatory and tested for them.
+
+Pre-session unsafe endpoints (`register`, `login`, `forgot-password`, `reset-password`, `verify-email`, `oauth/*/start`) have no session to bind a token to; they rely on layers 1, 2 and 4 (this is also the login-CSRF defence). `resend-verification` is authenticated and therefore also takes the token. `GET`/`HEAD`/`OPTIONS` are safe/idempotent and never change state (the OAuth callback is the single, state-bound exception, §10).
+
+**CORS change in 11B:** `allow_credentials=True` is switched on **in the same change that ships the first cookie-authenticated endpoint**, only with a non-empty exact `FRONTEND_ORIGINS` list (startup fails otherwise; wildcards are already rejected by config validation, and `*` with credentials is forbidden). Add `X-CSRF-Token` to `allow_headers`. `Authorization` stays allowed only as the reserved seam for a future bearer form (§15.3). Responses already carry `Vary: Origin`.
+
+## 7. Email/password
+
+### 7.1 Registration — `POST /api/v1/auth/register`
+
+Input `{ email, password, displayName }`. **No** `role`, `plan`, `status`, `emailVerified` or any other field is accepted (unknown fields are rejected `422`). Output: `201` with the `/auth/me` shape, a session cookie, and a verification email queued (§8). If the normalized email already exists the answer is the **explicit `409 email_already_registered`** — an *intentional UX/security trade-off*: registration signs the user in, so a neutral reply is impossible and the user needs to be told to log in or reset; the exposure is bounded by registration rate limiting (§13.1) while `login`, `forgot-password` and `resend-verification` stay strictly neutral. The new account is a **Resident** (no `user_roles` row, no professional profile). The professional workflow is separate (§11.4).
+
+### 7.2 Email normalization (D7)
+
+`email` = NFKC-normalized, trimmed, **lower-cased**; validated with `email-validator` (syntax + length ≤ 254, no DNS lookup); stored in `users.email`. Uniqueness is guaranteed by the existing `uq_users_email_lower` unique index, and migration `0003` adds `CHECK (email = lower(btrim(email)))` so even a buggy writer cannot store a non-normalized address. No separate "display email" is kept. Gmail-style dot/`+tag` folding is **not** applied (it would merge distinct mailboxes on other providers and surprise users); `a+tag@x.org` is a distinct account.
+
+### 7.3 Passwords and hashing (D6)
+
+- **Policy (length-based, per NIST SP 800-63B):** 10 ≤ length ≤ **128** Unicode code points (NFKC-normalized before hashing; spaces allowed; no trimming; no composition rules). Rejected: entries on a **bundled common-password denylist** (top ~10k, lower-cased compare; a data file, no dependency) and passwords equal to the email or its local part or the display name. A breached-password online check (k-anonymity API) is a deferred option — it adds an external call. The 128 cap (and a request-size limit) bounds hashing cost.
+- **Hash: Argon2id** via `argon2-cffi` (new runtime dependency in 11B). Parameters are defined **in one module** (`app/core/security/passwords.py`), starting from RFC 9106's low-memory profile (`t=3, m=64 MiB, p=4`); 11B benchmarks them on the production container size and may lower `p`/`m`, **never below** the OWASP floor (`m=19 MiB, t=2, p=1`). PHC-format hashes carry their own parameters, so verification keeps working when parameters change.
+- **Rehash on login:** after a successful verification, if `check_needs_rehash` is true the hash is recomputed and stored in the same transaction.
+- **Capacity:** hashing is CPU- and memory-heavy and the API is synchronous (threadpool). A process-wide semaphore bounds concurrent hashes (default 4) so a login burst cannot exhaust memory.
+- **Constant-ish timing:** a login for an unknown email still verifies against a precomputed dummy hash.
+- Never logged, never returned, never in an exception message; auth request schemas use `SecretStr`.
+- bcrypt/scrypt were considered: both are acceptable, but Argon2id is the current OWASP first choice and `argon2-cffi` is a single well-maintained dependency; no reason to prefer an older default.
+
+### 7.4 Login — `POST /api/v1/auth/login`
+
+Input `{ email, password }`. Success: `200`, new session cookie, the `/auth/me` shape; `users.last_login_at` updated; hash upgraded if needed. Failure for **any** of unknown email, wrong password, or a social-only account: `401 invalid_credentials` with one fixed message, equal work (dummy hash) and no distinguishing detail. A suspended account that supplied the **correct** password gets `403 account_disabled` (the wrong-password case stays `invalid_credentials`, so this reveals nothing to someone who does not know the password). An unverified email is **allowed to log in** (§9). Per-account failure throttling: §13.1.
+
+### 7.5 Logout, change password
+
+- `POST /auth/logout` — requires CSRF; marks the current session revoked, clears the cookie; `204`. `POST /auth/logout-all` — all sessions, `204` (reserved in the contract, ships with 11B because it is trivial and is the "compromised account" lever).
+- `POST /auth/change-password` `{ currentPassword, newPassword }` — authenticated + CSRF; verifies the current password, applies the policy, stores the new hash, **revokes all other sessions and rotates the current one**, sends a "password changed" notice email. A social-only user who wants a password uses **forgot-password** (proof of mailbox control).
+
+## 8. Email verification and password reset (D9, D10)
+
+**Table `auth_tokens` (one table, purpose-tagged — chosen over per-purpose tables because the lifecycle, hashing, expiry, single-use rule and cleanup are identical):** `id`, `user_id → users` (cascade), `purpose` (`email_verification | password_reset`), `token_hash bytea(32)` UNIQUE, `email` (snapshot of the address the token is for — a verification token for an old address cannot verify a changed one), `expires_at`, `consumed_at`, `created_at`.
+
+- **Token:** `secrets.token_urlsafe(32)`; only the SHA-256 is stored; never logged (not even in development logs outside the console email backend); **JWT tokens are not used** (they cannot be single-use or revoked without the very table we have).
+- **TTL:** verification **24 h**, reset **60 min**. Issuing a new token of a purpose invalidates that user's older unconsumed tokens of the same purpose.
+- **Single-use, race-safe:** redeem with one atomic statement `UPDATE auth_tokens SET consumed_at = now() WHERE token_hash = :h AND purpose = :p AND consumed_at IS NULL AND expires_at > now() RETURNING …`; zero rows → `token_invalid` (unknown/used/wrong purpose, indistinguishable) or `token_expired` (known but past `expires_at`).
+- **Delivery (fragment-token policy, frozen):** the email link points at the **frontend** and carries the token in the **URL fragment** (`https://b17portal.pk/reset-password#token=…`): fragments are never sent to servers, proxies or `Referer`, so they cannot reach access logs; the token is redeemed by `POST` (a `GET` that consumes a token is triggered by email scanners and link prefetchers).
+- **Future frontend requirement (Phase 12):** the verification/reset route must (1) read the token from `location.hash`; (2) **immediately remove the fragment with `history.replaceState`** — before analytics, error-reporting or any unrelated third-party script can run (so the app must not load such scripts ahead of this route's first effect, and the token is held only in a local variable/React state); (3) `POST` the token to the backend; (4) **never persist the token** in `localStorage`, `sessionStorage`, cookies or a URL; (5) send `Referrer-Policy: no-referrer` for the page and keep the token out of any logged error context.
+
+**Verify:** `POST /auth/verify-email { token }` — no session needed; sets `email_verified_at = now()`; `204`. **Resend:** `POST /auth/resend-verification` — authenticated (+CSRF); no-op `204` if already verified; throttled (§13.1). **Forgot:** `POST /auth/forgot-password { email }` — **always** `202` with the same body and a similar code path whether or not the account exists; email dispatch happens after the response (background task), so response time does not reveal it. Only `active` accounts get an email. **Reset:** `POST /auth/reset-password { token, newPassword }` — applies the password policy, stores the hash, consumes the token and all other outstanding reset tokens, **revokes all sessions**, sets `email_verified_at` if null and the token's email equals the current email (the mailbox was just proven), writes audit events, sends a "password changed" notice. It does **not** log the user in.
+
+## 9. Verification policy (frozen)
+
+| Capability | Anonymous | Unverified user | Verified user |
+|---|---|---|---|
+| Browse/search public content | ✔ | ✔ | ✔ |
+| Register, log in, `GET /auth/me`, log out, resend verification | — | ✔ | ✔ |
+| Save / unsave listings (`/saved`) | — | ✔ | ✔ |
+| Change own password; connect/disconnect a provider | — | ✔ | ✔ |
+| Create the Professional profile; create/edit/resubmit/archive a listing | — | ✘ `403 email_not_verified` | ✔ |
+| Submit a service request (it reaches a real provider) | — | ✘ `403 email_not_verified` | ✔ |
+| Any Admin capability | — | ✘ (an admin must be verified) | ✔ + role |
+
+Enforced centrally by `require_verified_user`; a service never re-implements it. A Google account whose provider asserts `email_verified: true` is created verified; if the provider does **not** assert it, the account is created unverified and a verification email is sent (never assume a provider email is verified).
+
+## 10. Google OAuth and account linking (11C; frozen here)
+
+### 10.1 Controls (D11)
+
+OpenID Connect **authorization-code flow with PKCE (S256)**, run **entirely by the backend** (a confidential client; the client secret never leaves the server); `state` (≥ 128-bit random, one-time) and `nonce` (in the ID token); scopes `openid email profile`; the redirect URI is a single pre-registered exact value `{API_PUBLIC_BASE_URL}/api/v1/auth/oauth/google/callback`. The callback verifies, in order: the flow cookie matches a live, unconsumed `oauth_flows` row for the `state`; the code exchange (server-to-server, with the PKCE verifier and client secret) succeeds; the **ID token** signature (Google JWKS, cached), `iss`, `aud` = our client id, `exp`, `nonce`; and the `email_verified` claim. The B-17 session is then created; **Google's access/ID/refresh tokens are discarded** — never stored, never sent to the SPA (B-17 uses Google only to learn *who*; no Google API is called). Provider errors are mapped to fixed codes and never relayed.
+
+### 10.2 Flow
+
+1. SPA → `POST /auth/oauth/google/start { purpose: "login" | "link", returnTo? }` (Origin + CSRF as applicable). The server creates an `oauth_flows` row (`state_hash`, `nonce`, PKCE `code_verifier`, `purpose`, `user_id` for `link`, validated `return_to`, `expires_at` = 10 min, `consumed_at`), sets the short-lived **flow cookie** (random value whose hash is stored in the row — this binds the flow to *this browser*, defeating login-CSRF where an attacker feeds the victim the attacker's callback), and returns `{ authorizationUrl }`. The SPA does `window.location.assign(authorizationUrl)`.
+2. Google authenticates the user and redirects the browser to `GET /auth/oauth/google/callback?code&state`. The flow cookie (`SameSite=Lax`, top-level GET) arrives; the row is consumed atomically (single use).
+3. Account resolution (§10.4) → session created → `302` to `{FRONTEND_BASE_URL}{returnTo}` with the session cookie set. On any failure: `302` to `{FRONTEND_BASE_URL}/login?error=<code>` with `code ∈ {oauth_denied, oauth_failed, identity_conflict, email_not_verified, account_disabled}` — a fixed list, never provider text.
+
+### 10.3 Redirect safety (open-redirect protection)
+
+The post-login destination is never taken from the callback request. `returnTo` is supplied at **start**, stored server-side, and must be a **relative path** matching `^/[A-Za-z0-9._~!$&'()*+,;=:@%/-]*$`, not starting with `//` or `/\`, with no scheme/host, ≤ 200 chars, and not under `/api` or `/admin/login`; otherwise it is replaced by `/`. The redirect target is always `FRONTEND_BASE_URL` (a configured exact origin that must be in `FRONTEND_ORIGINS`) + that path.
+
+### 10.4 Account resolution and linking rules (D12)
+
+Identity key is **`(provider, provider_subject = sub)`** — never the email. `auth_identities.provider_email` is informational only.
+
+| Case | Situation | Result |
+|---|---|---|
+| **A** | `(google, sub)` unknown, **no** account with that email | Create a user (`email` from Google, `email_verified_at` set **only if** `email_verified=true`, `display_name` from the profile, no password) + identity, new session |
+| **B** | `(google, sub)` already linked | Log that user in (status must be `active`) |
+| **C1** | `(google, sub)` unknown; an account with the same normalized email exists and its email is **verified** (`email_verified_at` set) | **Do not link, do not claim.** Redirect with `identity_conflict`. The user signs in with their existing method, then chooses *Connect Google* (case D). Disclosing that the account exists is acceptable: the caller just proved control of that mailbox via Google |
+| **C2** | **Unverified-account claim** — see the conditions below | Link, verify, clear the password, revoke sessions, new Google session (below) |
+| **C3** | Google did **not** assert `email_verified: true` and an account with that email exists | Reject (`email_not_verified`); never link, claim or create on an unverified provider email that collides |
+| **C4** | Same-email account exists but is **`suspended`** (a `deleted` tombstone has its email scrubbed and never matches), or already holds a **different** Google identity | Reject: `account_disabled` / `identity_conflict`; never claimed |
+| **D** | Authenticated user runs *Connect Google* (`purpose: link`) | The flow row carries `user_id`; on callback the same user must still hold a valid session; link `(google, sub)` to **that** user. If `(google, sub)` belongs to another user → `identity_conflict` (never moved silently). One identity per provider per user |
+
+#### The unverified-account claim (C2) — the ONLY email-match exception
+
+It is an **account-recovery / pre-hijacking defence**, not normal email linking: someone may have registered *your* email address (and set a password) without ever proving they own the mailbox; when you then prove ownership through Google, the squatted account must not lock you out or remain controlled by them. It is allowed **only when ALL of these hold**:
+
+1. an account with the same **normalized email** exists;
+2. that account's `email_verified_at IS NULL`;
+3. the account's `status` is `active`;
+4. Google **explicitly asserts the same email as verified** (`email_verified: true` in the validated ID token);
+5. there is **no conflicting provider identity** (the account has no different Google identity, and `(google, sub)` belongs to no other user).
+
+On success — one transaction that locks the user row (`FOR UPDATE`) and **re-checks conditions 2–3 under the lock** (so a concurrent legitimate verification wins and the flow falls back to C1):
+
+- link the Google identity `(google, sub)` to that account;
+- set `email_verified_at = now()`;
+- **clear the existing `password_hash`** (set by an unverified party);
+- **revoke all existing sessions** of the account (`revoke_reason = account_claimed`) and consume its outstanding `auth_tokens`;
+- create a **new** session for the Google login and set the cookie;
+- write the audit event `account_claimed` (plus `session_revoked` rows for the revoked sessions).
+
+It is **never** applied to: suspended or deleted accounts; accounts whose email is already verified (those always require authenticated *Connect Google*, case C1/D); accounts with a conflicting provider identity; or any case where Google did not assert verification (C3). Because an unverified account cannot own listings or requests (§9), nothing of value changes hands. **No other path links an identity to an account by email.**
+
+Unlinking: `DELETE /auth/oauth/google` (authenticated + CSRF) is refused unless the user keeps another sign-in method (a password, or another identity). Linking/unlinking are single transactions and audited.
+
+### 10.5 Other providers (compatibility, not promises)
+
+`auth_identities.provider` already allows `facebook` and `apple`. Adding one later means a provider adapter (endpoints, scopes, claim mapping) behind the same flow/linking rules — no schema change. Notes: Apple returns the email only on first authorization (and may be a private relay address), requires a JWT client secret, and is **required by App Store policy** if a native iOS app offers any third-party login; Facebook is not fully OIDC-compliant (check the Limited Login/ID-token path). **Instagram is not an identity provider and is not promised.**
+
+### 10.6 Provider library
+
+The first implementation uses a maintained OIDC client (**Authlib** preferred; `PyJWT[crypto]` + `httpx` is the minimal alternative) — chosen in 11C against the criteria: JWKS verification with caching, PKCE support, no Google SDK, `httpx` as the HTTP client. The provider boundary is an interface (`OAuthProvider`: build the authorization URL, exchange the code, return validated claims) so tests inject a **mock provider** and normal CI never calls Google.
+
+## 11. Authorization architecture
+
+### 11.1 Roles (D13)
+
+| Role | How a user has it |
+|---|---|
+| **Resident** | Every authenticated account. Not stored. |
+| **Professional** | A `professional_profiles` row exists — a **capability**, not a `user_roles` value, so there is no role/profile duplication. Created self-service by a *verified* user on first use of the workspace (preserving today's "any signed-in user can list"); a professional-verification state is a future seam on the profile. |
+| **Admin** | An explicit `user_roles` row `admin`. **Never** inferred from an email domain, OAuth provider, frontend state, query parameter, `localStorage`, or any client-supplied field. |
+
+`RoleName = {admin}` and the `user_roles` table are **sufficient as built** (no change). A user can be Resident + Professional + Admin; roles only add capabilities. The capability matrix of the 10A design (who may save, list, moderate, feature, publish news, manage categories) is unchanged and is the specification for the Phase 12 authorization tests.
+
+### 11.2 Dependencies (D14) — `app/dependencies/auth.py`
+
+| Dependency | Returns / raises |
+|---|---|
+| `get_optional_user()` | the `Principal` or `None`; never raises for a missing session; used by endpoints whose answer may differ for signed-in users |
+| `get_current_user()` | the `Principal`, else `401 unauthenticated` / `401 session_expired` |
+| `require_verified_user()` | as above + `403 email_not_verified` |
+| `require_professional()` | verified user with a `professional_profiles` row, else `403 forbidden` (listing *creation* uses `require_verified_user` and the service creates the profile on first use) |
+| `require_admin()` | verified + `admin` role + the admin recency rule (§4.4), else `403 forbidden` / `401 session_expired` |
+| `csrf_protected` | applied once, centrally, to all unsafe methods (§6) |
+
+`Principal` is a frozen dataclass: `user_id`, `display_name`, `email`, `email_verified`, `roles: frozenset[RoleName]`, `professional: ProfessionalSummary | None` (`plan_code`), `session_id`, `session_created_at`, `session_last_seen_at`. Routers **declare** a dependency; no router contains `if user.role == …`. A small code-defined role→permission map (`app/core/permissions.py`) backs the dependencies and the tests; a database-driven permission model stays deferred.
+
+### 11.3 Ownership (N)
+
+Ownership is a **service-level policy** (`app/services/authorization.py`), never read from the client: services receive the `Principal`, load the resource, and call e.g. `ensure_can_edit_listing(principal, listing)`. `ownerId`/`submittedBy` in a request body are rejected. Visibility decides the failure: a resource the caller may not even know exists (someone else's `pending`/`rejected`/`archived` listing, a non-existent id) → **`404`**; a resource the caller can see but may not change (another owner's *approved* listing) → **`403 forbidden`**. Admin moderation uses separate `/admin/...` endpoints, never an owner-endpoint bypass.
+
+### 11.4 Professional onboarding
+
+Register/log in (Resident) → later `POST` to create the Professional profile (Phase 12; requires a verified email, creates `professional_profiles` with `plan_code = free`) → Professional capabilities. One account, one login, one credentials store.
+
+### 11.5 Status codes (D15)
+
+| Code | When |
+|---|---|
+| **401** `unauthenticated` | no / unknown / unparseable session cookie |
+| **401** `session_expired` | the session existed but is expired, revoked, or the admin recency rule failed (cookie cleared) |
+| **401** `invalid_credentials` | login failed (only on `/auth/login`) |
+| **403** `forbidden` | authenticated, not allowed (wrong role, not the owner of a *visible* resource) |
+| **403** `email_not_verified` · `account_disabled` · `csrf_failed` | the specific, safe-to-reveal reasons |
+| **404** `not_found` | resource not visible to the caller (existing 10D/10A rule) |
+| **409** `email_already_registered` · `identity_conflict` | conflicts |
+| **429** `rate_limited` | with `Retry-After` |
+
+The frontend treats **any** `401` as "anonymous / sign in again" and **any** `403` as "show a not-allowed state" — it never infers security from them.
+
+### 11.6 Admin security
+
+Backend-only grants (`python -m app.cli.admin grant <email>` / `revoke`, requiring an existing, active, **verified** account; every grant/revoke is audited and revokes that user's sessions); **no public admin signup, no endpoint that lets a user change roles** (an admin role-management tool is a later admin-only feature); shorter effective session (§4.4); every admin write is audited (listing moderation already writes `listing_status_history`; role/status changes write `auth_events`); `require_admin` is the single seam where **step-up auth / MFA** will be added later (the session row can gain `mfa_verified_at`) without touching routers.
+
+### 11.7 Account status
+
+`users.status` (`active | suspended | deleted`) is **sufficient** — no schema change. `suspended`: cannot log in (`account_disabled`), existing sessions invalid. `deleted`: tombstone per `DATA_MODEL.md` §11. Status changes are admin/ops actions that revoke all sessions and write an audit event. No richer suspension lifecycle now.
+
+## 12. API contract (Phase 11B/11C)
+
+All under `/api/v1/auth`; request/response bodies use the standard `{data}` / `{error}` envelopes, camelCase, null-omitted. Every response from these routes — and any response that sets or clears a cookie — carries **`Cache-Control: no-store`** (public read APIs are *not* touched: they stay cacheable).
+
+| Endpoint | Auth | CSRF token | Result |
+|---|---|---|---|
+| `POST /register` | — | — (Origin) | `201` me-shape + cookie; `409 email_already_registered`; `422` |
+| `POST /login` | — | — (Origin) | `200` me-shape + cookie; `401 invalid_credentials`; `403 account_disabled`; `429` |
+| `POST /logout` | session | ✔ | `204`, cookie cleared |
+| `POST /logout-all` | session | ✔ | `204` |
+| `GET /me` | session | — | `200` me-shape; `401` |
+| `POST /verify-email` `{token}` | — | — | `204`; `400 token_invalid\|token_expired` |
+| `POST /resend-verification` | session | ✔ | `204`; `429` |
+| `POST /forgot-password` `{email}` | — | — | always `202 {data:{status:"accepted"}}`; `429` |
+| `POST /reset-password` `{token,newPassword}` | — | — | `204`; `400 token_*`; `422` |
+| `POST /change-password` | session | ✔ | `204`; `401 invalid_credentials` (wrong current password) ; `422` |
+| *11C* `POST /oauth/google/start` `{purpose, returnTo?}` | none / session for `link` | ✔ for `link` | `200 {data:{authorizationUrl}}` |
+| *11C* `GET /oauth/google/callback` | flow cookie | — (state-bound) | `302` to the frontend (cookie set) |
+| *11C* `DELETE /oauth/google` | session | ✔ | `204`; `409` if it is the last sign-in method |
+
+Not frozen (YAGNI): session list/revoke-one endpoints, email change, display-name update (`/users/me`, Phase 12), account deletion.
+
+**Me-shape (`/auth/me`, and the body of register/login):**
+
+```json
+{ "data": {
+    "id": "…uuid…", "displayName": "Ayesha Khan", "email": "ayesha@example.org", "emailVerified": true,
+    "roles": ["admin"],
+    "professional": { "planCode": "free" },
+    "authMethods": { "password": true, "providers": ["google"] },
+    "session": { "expiresAt": "2026-11-14T10:00:00Z" },
+    "csrfToken": "…"
+} }
+```
+`roles` lists explicit grants only (a Resident has `[]`); `professional` is omitted unless a profile exists. **Never present:** password hash, provider subjects, audit fields, session token/id. The session token is **only** ever in the `Set-Cookie`.
+
+**Error codes** (stable; the first two reuse the existing 10A/10B names — `authentication_required`→`unauthenticated`, `permission_denied`→`forbidden`): `unauthenticated`, `forbidden`, `invalid_credentials`, `session_expired`, `email_not_verified`, `account_disabled`, `csrf_failed`, `email_already_registered`, `identity_conflict` (11C), `token_invalid`, `token_expired`, `rate_limited`, plus the existing `validation_error`, `bad_request`, `not_found`, `internal_error`, `service_unavailable` (OAuth not configured). Provider and internal errors never leak.
+
+## 13. Abuse resistance, audit, logging, retention
+
+### 13.1 Enumeration policy and the rate-limit seam
+
+| Surface | Policy |
+|---|---|
+| `login` | one generic failure for unknown email / wrong password / social-only; equal work |
+| `forgot-password`, `resend-verification` | identical response regardless of account existence |
+| `register` | **explicit** `409 email_already_registered` (intentional, frozen). Accepted trade-off: the user needs feedback and registration signs in immediately, so an always-neutral response is impossible; the leak is bounded by rate limiting (below) and by the fact that login/forgot stay neutral. |
+| OAuth callback | reveals an existing account only to someone who just proved control of that mailbox |
+
+**Seam:** `app/core/rate_limit.py` defines `RateLimiter.hit(key, policy) -> Decision` and an `Depends(rate_limit(policy))` helper. 11B ships a **PostgreSQL-backed fixed-window limiter** (`auth_rate_limits`, atomic `INSERT … ON CONFLICT DO UPDATE`) used for **identity-keyed** limits — correct across any number of workers/processes. **IP-based limits are an edge responsibility** (reverse proxy/CDN/WAF, `DEPLOYMENT.md`): the app does not trust `X-Forwarded-For` unless a trusted-proxy setting says so, and an in-process in-memory limiter is **not** used (it is wrong with more than one worker). Redis arrives only if measured load makes PostgreSQL counters insufficient.
+
+Initial limits (*tunable*, key = hash of the normalized email): login **10 failures / 15 min** per email (then `429` until the window passes — an accepted lock-out trade-off at this scale, backed by edge IP limits); register 5 / hour per email; forgot-password 3 / hour per email; resend-verification 1 / min and 5 / day per account; `oauth/start` limited at the edge. Every `429` carries `Retry-After`.
+
+### 13.2 Audit events (table `auth_events`, 11B)
+
+`register · login_success · login_failure (user known) · logout · logout_all · session_revoked · password_changed · password_reset_requested · password_reset_completed · email_verification_sent · email_verified · identity_linked · identity_unlinked · account_claimed · role_granted · role_revoked · account_suspended · account_reactivated`. Columns: `occurred_at`, `user_id` (SET NULL), `actor_user_id` (for admin actions), `event_type`, `request_id`, and a tiny `details` JSONB limited to an allow-listed set of keys (`provider`, `reason`, `session_id`). **Never stored:** passwords, hashes, tokens, OAuth codes, emails of unknown accounts, IP addresses, user-agents. Retention 400 days (purged by the maintenance command).
+
+### 13.3 Logging and redaction
+
+Auth routes never log request/response bodies. The app request log already omits bodies and query strings. 11B additionally: (1) auth schemas use `SecretStr`/custom validation messages so **no validation error echoes a password, token or email** (tested); (2) no log call receives a token, code or cookie; (3) the `Cookie`/`Set-Cookie`/`Authorization` headers are never logged; (4) the console email backend (dev/test only) prints links with tokens and is **forbidden** outside development/test by a settings validator.
+
+### 13.4 Access-log caveat
+
+`uvicorn`'s access log prints the request line **including the query string** — the OAuth callback carries `code` and `state` there. Production runs uvicorn with `--no-access-log` (the app's own request log replaces it) or a log filter that strips the query on `/auth/`; reverse-proxy logs must also drop the query for `/api/v1/auth/oauth/`. Email links use fragments (§8), so verification/reset tokens never appear in any URL log.
+
+### 13.5 Retention and cleanup
+
+No scheduler or background-job system is introduced. (1) Opportunistic: login deletes that user's expired sessions. (2) `python -m app.cli.auth_maintenance purge` (run from the host's cron/scheduled task, documented in `DEPLOYMENT.md`) deletes sessions 7 days past expiry/revocation, consumed or expired tokens older than 7 days, expired `oauth_flows`, stale rate-limit windows and audit events beyond retention. Correctness never depends on cleanup: validity is always checked against `expires_at`/`consumed_at`.
+
+## 14. Email seam and configuration
+
+**Transactional email seam:** `app/services/email.py` defines `EmailSender.send(message)` and typed messages (`VerificationEmail`, `PasswordResetEmail`, `PasswordChangedNotice`). Backends: `console` (dev/test only, §13.3), `memory` (tests assert on the outbox), and a production provider chosen later (SMTP or an HTTP API) behind the same interface — **no vendor is chosen in 11A**. Sending happens **after the commit** and outside the request's transaction (background task); a send failure is logged (no token) and never fails the request — the user can resend.
+
+**Settings introduced by 11B/11C** (typed `Settings`; placeholders only in `.env.example`; real values from the host's secret store; startup validation fails fast in staging/production):
+
+| Variable | Phase | Notes |
+|---|---|---|
+| `AUTH_COOKIE_SECURE` | 11B | defaults true; **cannot be false** when `ENVIRONMENT` is `staging`/`production` |
+| `SESSION_IDLE_DAYS` (14), `SESSION_ABSOLUTE_DAYS` (30), `ADMIN_SESSION_IDLE_MINUTES` (120), `ADMIN_SESSION_MAX_HOURS` (12), `MAX_SESSIONS_PER_USER` (10) | 11B | tunable |
+| `FRONTEND_BASE_URL` | 11B | exact origin used in email links and OAuth redirects; must be one of `FRONTEND_ORIGINS` |
+| `EMAIL_BACKEND` (`console`/`memory`/provider), `EMAIL_FROM`, provider credentials | 11B | `console` rejected outside development/test |
+| `PASSWORD_HASH_TIME_COST` / `MEMORY_COST` / `PARALLELISM` | 11B | optional overrides, floor-validated |
+| `API_PUBLIC_BASE_URL` | 11C | builds the exact OAuth redirect URI |
+| `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET` (`SecretStr`) | 11C | OAuth endpoints answer `503 service_unavailable` if unset |
+
+**Deliberately absent:** a session secret, token pepper or JWT signing key — session/CSRF/token security derives from per-token randomness and hashes, so there is **no signing secret to leak, rotate or mismanage**. Nothing is added to `.env.example` in 11A.
+
+## 15. Frontend integration, PWA, native clients
+
+### 15.1 React (Phase 12; recorded now)
+
+- **Auth state comes from the server.** On app load: `GET /auth/me` (`credentials: "include"`) → `status: loading | anonymous | authenticated` (+ user, `csrfToken` held in memory). Never reconstruct auth from stored tokens; the frontend may cache non-sensitive display data, never credentials.
+- **Guards wait for `loading`** before redirecting (today's guards redirect synchronously — they must gain a loading state or a reload would flash `/login`). They remain **UX only**; the backend is the authority and every guarded call still handles `401/403`.
+- Replace the demo name-login with email/password + (11C) *Continue with Google*; `/admin/login` stays as a separate screen that posts to the **same** `/auth/login`, then checks `roles.includes("admin")`.
+- On logout and on any change of authenticated user id, clear `residentStore`/`planStore` and any user-scoped caches (they currently persist to `localStorage`); once Saved/requests are server-side these stores become caches keyed by user id.
+- E2E `guards.spec.ts` is rewritten against seeded accounts and the real cookie flow.
+
+### 15.2 PWA
+
+Login, registration, reset and every mutation require the network; **no offline login** is attempted. An installed PWA uses the same cookie. The offline shell may keep showing already-loaded, read-only data. Service-worker rules (Phase 12): API responses are never cached; if the API is **same-origin** (`/api` proxy) the worker must exclude `/api/` from its navigation handler (network-only, **no shell fallback**) so OAuth callbacks and API navigations are never replaced by the app shell; with the preferred cross-origin `api.` host the worker already ignores it (`url.origin !== self.location.origin`).
+
+### 15.3 Future native clients
+
+Cookies are a web mechanism. A native app (store packaging is a later phase) would use a dedicated flow: system-browser OAuth (PKCE) against the same backend, ending in an **opaque bearer token backed by the same `auth_sessions` table** (a `client` discriminator and `Authorization: Bearer` support in `get_optional_user`). Nothing needed for it is built or exposed now, and the web model is not weakened for it (Apple sign-in rules apply to iOS, §10.5).
+
+## 16. Schema plan (no migration in 11A)
+
+**Migration `0003` (Phase 11B)** — `0001`/`0002` are never edited:
+1. `users`: `CHECK (email = lower(btrim(email)))` and `CHECK (char_length(email) <= 254)`. (`password_hash`, `email_verified_at`, `status`, `last_login_at` already exist; **no new `users` columns**.)
+2. `auth_sessions` (§4.2) — indexes: unique `token_hash`; `(user_id) WHERE revoked_at IS NULL`; `expires_at` for cleanup.
+3. `auth_tokens` (§8) — unique `token_hash`; `(user_id, purpose)`.
+4. `auth_events` (§13.2) — `(user_id, occurred_at)`, `(event_type, occurred_at)`.
+5. `auth_rate_limits` — `(key_hash, policy, window_start)` PK, `count`.
+All new tables use the `pk_/fk_/uq_/ck_/ix_` naming, VARCHAR+CHECK for closed sets, `timestamptz`, and are covered by the model-drift test.
+
+**Migration `0004` (Phase 11C):** `oauth_flows` (§10.2) and `UNIQUE(user_id, provider)` on `auth_identities`.
+
+Pre-check for `0003`: every existing `users.email` must already be lower-case and trimmed (true for all fixtures; there are no production users yet).
+
+## 17. Test plan (written before implementation)
+
+**Unit (no database):** password policy and denylist; hash/verify/needs-rehash wrapper; dummy-hash path; token generation/hashing; CSRF token derivation and constant-time comparison; Origin/Sec-Fetch-Site decision function; email normalization; redirect-path validator; role→permission map and `Principal` decisions; cookie attribute builder per environment.
+
+**PostgreSQL integration:** email case-insensitive uniqueness and the normalization CHECK; session create/validate/expire/revoke/absolute cap/10-session cap; token atomic single-use under concurrent redemption; expiry; replaced-token invalidation; cascade on user delete; (11C) identity uniqueness and per-provider uniqueness; rate-limit window atomicity; audit rows; purge command.
+
+**API:** register / login / logout / logout-all / me / verify / resend / forgot / reset / change-password happy paths and errors; suspended and unverified rules; every dependency × {anonymous, unverified, verified resident, professional, other professional, admin}; CSRF failures (no token, wrong token, wrong Origin, cross-site `Sec-Fetch-Site`); `401` vs `403` vs `404` semantics.
+
+**OAuth (11C):** a mock provider only — never Google in CI: state mismatch, missing/foreign flow cookie, replayed state, nonce mismatch, wrong `aud`/`iss`, expired/unsigned ID token, unverified provider email, cases A / B / C1 / C2 / C3 / D, identity belonging to another user, last-method unlink refusal, open-redirect attempts.
+
+**Security matrix (each is a named test):**
+
+| # | Assertion |
+|---|---|
+| S1 | session cookie is `HttpOnly`; `Secure` in staging/production settings; `SameSite=Lax`; `Path=/`; no `Domain`; `__Host-` prefix |
+| S2 | no token/secret in any response body; `Cache-Control: no-store` on auth routes; public reads stay cacheable |
+| S3 | only the SHA-256 hash is stored (the raw token is not in the database) |
+| S4 | CSRF: unsafe authenticated request without/with a wrong token → `403 csrf_failed`; bad Origin → `403`; token from another session rejected |
+| S5 | expired and revoked sessions → `401 session_expired` and the cookie is cleared; logout really revokes (replaying the old cookie fails) |
+| S6 | new session id after login/register; old pre-login cookie never becomes authenticated |
+| S7 | login: unknown email, wrong password and social-only are byte-identical failures; comparable work |
+| S8 | forgot-password / resend: identical response and status for existing and unknown emails |
+| S9 | reset/verify token: second use rejected, expired rejected, wrong purpose rejected; reset revokes all sessions; change revokes others |
+| S10 | validation errors never echo password/token/email values; no secret in logs (log capture test) |
+| S11 | a Resident gets `403` on admin endpoints; a user without a professional profile gets `403` on professional endpoints; an unverified user gets `403 email_not_verified` on writes |
+| S12 | the registration payload cannot set role/plan/status/verified; no endpoint lets a user become admin; admin recency (stale session → `401`) |
+| S13 | CORS: credentials enabled only with exact origins; an unlisted origin gets no `Access-Control-Allow-Origin`; `*` is impossible |
+| S14 | (11C) every OAuth item in the OAuth list above |
+| S15 | (Phase 12) owner A cannot edit/see-private owner B's listing (`404`/`403` per §11.3) |
+
+Full-stack Playwright against real auth is Phase 12.
+
+## 18. Threat review
+
+| Threat | Mitigation | Enforced in |
+|---|---|---|
+| XSS → token theft | `HttpOnly` cookie, no tokens in `localStorage`/bodies, CSP/escaping in the SPA; XSS can still act as the user (so CSRF token and short admin recency limit the blast radius) | 11B |
+| CSRF | `SameSite=Lax` + mandatory exact `Origin` (+ `Sec-Fetch-Site` defence in depth) + session-bound token + JSON bodies (multipart only on equally protected upload endpoints) | 11B |
+| Session fixation | server-issued random tokens only; new token on login/register/privilege change | 11B |
+| Stolen session cookie | `HttpOnly`/`Secure`/`__Host-`, idle + absolute expiry, hash-only storage, logout-all, admin recency, revocation on password change | 11B |
+| Brute force | per-account PostgreSQL counters + edge IP limits; Argon2id cost | 11B + deployment |
+| Credential stuffing | denylist + breached-password check (deferred option), edge limits, generic failures, audit of failures | 11B |
+| Account enumeration | generic login/forgot/resend; registration trade-off documented and rate-limited | 11B |
+| Password-reset abuse | 60-min single-use hashed tokens, neutral response, per-email throttle, notice email, all-session revoke | 11B |
+| OAuth state/CSRF/replay | `state` + `nonce` + PKCE + browser-bound flow cookie + one-time flow row | 11C |
+| OAuth account-linking takeover | link by `(provider, sub)`; no email auto-link (C1); authenticated *Connect* only; C2 claim only for never-verified accounts | 11C |
+| Pre-hijacking | C2 claim + unverified accounts cannot write listings/requests | 11C |
+| Open redirects | server-stored relative `returnTo`, strict validator, fixed frontend origin | 11C |
+| Privilege escalation | admin only via out-of-band grant; no client role fields (extra fields rejected); roles read live per request; sessions revoked on role change | 11B |
+| IDOR / ownership | service-level ownership policies, 404 concealment, never trust `ownerId` | Phase 12 |
+| Admin-role spoofing | role only from `user_roles`; not from email/provider/client | 11B |
+| Sensitive logging | no bodies/query logged; `SecretStr`; no token in logs; uvicorn access log disabled | 11B / deployment |
+| CORS mistakes | exact origins, credentials only with them, startup validation, `Vary: Origin` | 11B |
+| Email-scanner token burn | tokens redeemed by `POST`, delivered in the fragment | 11B |
+| Hash DoS | 128-char cap, hashing semaphore | 11B |
+
+## 19. Phasing, deferrals, open questions
+
+**11B — Authentication + sessions (email/password):** migration `0003`; `argon2-cffi` and `email-validator` (and `httpx` becoming a runtime dependency only in 11C); password/token/CSRF/cookie modules; `auth_sessions` service; register, login, logout, logout-all, me, verify-email, resend-verification, forgot/reset/change-password; the `get_*`/`require_*` dependencies and permission map; central CSRF + Origin enforcement and the CORS credentials switch; email seam with console/memory backends; PostgreSQL rate limiter; `auth_events`; `app.cli.admin grant|revoke`; `app.cli.auth_maintenance purge`; auth config and `.env.example` placeholders; the full 11B tests above; backend CI stays green. **No frontend change.**
+**11C — OAuth + RBAC hardening:** migration `0004`; Google provider behind `OAuthProvider`; start/callback/link/unlink; the flow/linking cases A–D and the narrow unverified-account claim (C2); mock-provider tests; admin-recency and authorization-matrix tests across all dependencies. **No frontend change.**
+**Phase 12** then adds write APIs (with ownership policies), the frontend integration (§15), service-worker changes and full-stack E2E.
+
+**Deferred on purpose:** MFA/step-up · remember-me · session-management UI · email change · account deletion/export flows · professional verification workflow · breached-password API · Facebook/Apple adapters · native bearer tokens · Redis · a database-driven permission model · admin role-management UI.
+
+**Confirmed in the Phase 11A review:** the narrow unverified-account claim (§10.4), the explicit `email_already_registered` registration conflict (§7.1, §13.1), fragment-delivered tokens (§8), the 11A/11B/11C split, and the 127.0.0.1 development topology (§5.1). **Still required before auth is enabled outside development:** a production email provider and a custom domain that makes frontend and API same-site (§5.1).

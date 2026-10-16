@@ -1,6 +1,6 @@
 # B-17 Portal — API Contract
 
-**Status:** conventions frozen by Phase 10A. **Individual endpoints are frozen only in principle** — the phase that implements each group owns its exact schema (§9). Once implemented, the generated **OpenAPI document is the machine-readable source of truth**; this file stays the human contract for conventions and intent. **Implemented so far:** `/health`, `/health/ready` (10B/10C) and the public **read** group — `/categories`, `/search`, `/search/suggestions`, `/listings/{id}`, `/news`, `/news/{id}` (Phase 10D; details in §6 and [`READ_API_PARITY.md`](READ_API_PARITY.md)). There are no write, auth or owner/admin endpoints yet.
+**Status:** conventions frozen by Phase 10A. **Individual endpoints are frozen only in principle** — the phase that implements each group owns its exact schema (§9). Once implemented, the generated **OpenAPI document is the machine-readable source of truth**; this file stays the human contract for conventions and intent. **Implemented so far:** `/health`, `/health/ready` (10B/10C) and the public **read** group — `/categories`, `/search`, `/search/suggestions`, `/listings/{id}`, `/news`, `/news/{id}` (Phase 10D; details in §6 and [`READ_API_PARITY.md`](READ_API_PARITY.md)). There are no write, auth or owner/admin endpoints yet. **The auth contract (cookie sessions, CSRF, error codes, endpoint list, `/auth/me` shape) is frozen by Phase 11A in [`AUTH_RBAC.md`](AUTH_RBAC.md) §5–§6 and §12 and is implemented in Phases 11B/11C.**
 **Owns:** REST conventions, versioning, naming, response/error envelopes, pagination/filter/sort conventions, the planned resource groups and why they are shaped as they are.
 **Does not own:** table design → [`DATA_MODEL.md`](DATA_MODEL.md) · role/permission rules → [`AUTH_RBAC.md`](AUTH_RBAC.md) · layering/CORS/logging → [`BACKEND_ARCHITECTURE.md`](BACKEND_ARCHITECTURE.md).
 
@@ -15,7 +15,7 @@ Design stance: **resource and business-operation APIs, not one endpoint per tabl
 - **Status codes:** 200 read/update, 201 create (+ `Location`), 204 delete/idempotent removal, 400 malformed, 401 unauthenticated, 403 forbidden, 404 not found, 409 conflict/invalid transition, 422 validation, 429 rate-limited, 500/503 server.
 - **Hidden resources return 404, not 403:** a non-owner asking for someone's `pending` listing gets `404`, so existence is not leaked.
 - **Request ID:** every response carries `X-Request-ID` (echoed or generated); error bodies repeat it.
-- **Auth:** `Authorization: Bearer …` or a cookie — decided in Phase 11 (`AUTH_RBAC.md` §6). Anonymous access is allowed for public reads.
+- **Auth (decided in Phase 11A):** an opaque **server-side session carried by one `HttpOnly; SameSite=Lax` cookie** (`AUTH_RBAC.md` §4–§5); **no bearer tokens, no tokens in bodies or `localStorage`**. Cookie-authenticated unsafe requests (`POST/PUT/PATCH/DELETE`) must send an exact allowed `Origin` and carry `X-CSRF-Token` (`AUTH_RBAC.md` §6); request bodies are `application/json` except explicit future upload endpoints (`multipart/form-data`, equally protected); the SPA calls with `credentials: "include"`. Anonymous access is allowed for public reads. `Authorization` stays only as a reserved seam for a future native client.
 
 ### Null vs omitted — responses and partial updates
 
@@ -119,6 +119,14 @@ One shape for every non-2xx response:
 | 409 | `conflict` | Duplicate slug, concurrent modification |
 | 409 | `invalid_state_transition` | e.g. approving a non-pending listing; stale `revision` |
 | 422 | `validation_error` | Schema/business-validation failure |
+| 401 | `session_expired` | A session existed but is expired/revoked (cookie cleared); *Phase 11* |
+| 401 | `invalid_credentials` | Login failed — one fixed message for every cause; *Phase 11* |
+| 403 | `email_not_verified` | A verified email is required for this action; *Phase 11* |
+| 403 | `account_disabled` | Correct credentials on a suspended account; *Phase 11* |
+| 403 | `csrf_failed` | Missing/invalid CSRF token or disallowed Origin; *Phase 11* |
+| 409 | `email_already_registered` | Registration with an existing email (documented enumeration trade-off); *Phase 11* |
+| 409 | `identity_conflict` | A social identity belongs to another account / email collision; *Phase 11C* |
+| 400 | `token_invalid` · `token_expired` | Verification/reset token unknown, used or past its expiry; *Phase 11* |
 | 429 | `rate_limited` | With `Retry-After` |
 | 500 | `internal_error` | Unexpected |
 | 503 | `service_unavailable` | Dependency down (e.g. DB) |
@@ -165,10 +173,10 @@ Legend — **Auth:** A anonymous · R signed-in · O owner · P professional · 
 | `/search` | `GET /search` (mixed kinds, `meta.total`), `GET /search/suggestions?q=&type=&limit=` (**implemented in 10D**) | A | **The seam `services/search.ts` was built for**; returns `SearchHit` = `{kind, item}` and the existing flat `SearchSuggestion` shape | 10D |
 | `/listings` | `GET /listings/{id}`, `POST /listings`, `PATCH /listings/{id}`, `POST /listings/{id}/archive` | A (detail, approved only) / P,O (writes) | One canonical detail route for all kinds (mirrors the frontend's single detail per kind) | 10D (read — **implemented**), 12 (write) |
 | `/news` | `GET /news`, `GET /news/{id}` (**implemented in 10D**; published only); admin writes under `/admin/news` | A / M | News is not a listing; no moderation | 10D (read) / 12 (write) |
-| `/users` | `GET /users/me`, `GET /users/me/listings?status=`, `PATCH /users/me` | R | Owner's own view of all statuses (the Professional "My Listings") | 11 / 12 |
+| `/users` | `GET /users/me/listings?status=`, `PATCH /users/me` (profile) | R | Owner's own view of all statuses (the Professional "My Listings"); **identity, roles and plan come from `GET /auth/me`** | 12 |
 | `/saved` | `GET /saved`, `PUT /saved/{listingId}`, `DELETE /saved/{listingId}` | R | `PUT`/`DELETE` are idempotent (duplicate Saved is impossible and harmless) | 12 |
 | `/requests` | `POST /requests`, `GET /requests`, incoming leads for owners, status transitions | R / P | Request Service + Leads; transitions follow `REQUEST_TRANSITIONS`; **detail deferred** | 12 |
-| `/auth` | register, login, logout, refresh, OAuth start/callback, verify-email, password reset | A/R | See `AUTH_RBAC.md` | 11 |
+| `/auth` | `register`, `login`, `logout`, `logout-all`, `me`, `verify-email`, `resend-verification`, `forgot-password`, `reset-password`, `change-password` (**11B**); `oauth/google/start`, `oauth/google/callback`, `DELETE oauth/google` (**11C**). **No `refresh`** — sessions are server-side. | A / R | Frozen in `AUTH_RBAC.md` §12 | 11B / 11C |
 | `/admin` | `GET /admin/listings?status=` (+ counts in `meta`), `POST /admin/listings/{id}/approve`, `…/reject`, `/admin/categories` CRUD, `/admin/news` | M | Admin surface is separate so authorization is by prefix + dependency, never per-field | 12 |
 
 ### Why these (and not others)
@@ -241,8 +249,8 @@ General business / provider / property / tutor use `category` (a **slug**) inste
 | `useListingsStore` (`submitListing`, `resubmitListing`, `archiveListing`, `setStatus`) | `POST/PATCH /listings`, `POST …/archive`, `/admin/listings/{id}/approve|reject` |
 | `useResidentStore.savedItems` | `/saved` (server-authoritative; localStorage becomes a cache) |
 | `useResidentStore.requests`, `updateRequestStatus` | `/requests` |
-| `usePlanStore`, `PLAN_ENTITLEMENTS` | `GET /users/me` returns plan + entitlements; frontend capability checks stay UX-only |
-| `AuthProvider` demo login, admin demo login | `/auth/*` |
+| `usePlanStore`, `PLAN_ENTITLEMENTS` | `GET /auth/me` returns `professional.planCode` (and roles); the frontend maps it to capabilities with its existing config; capability checks stay UX-only |
+| `AuthProvider` demo login, admin demo login | `/auth/*` — one identity system; `/admin/login` is only a different screen posting to the same `/auth/login` (`AUTH_RBAC.md` §15) |
 | `useNewsStore` | `/news`, `/admin/news` |
 
 ## 9. What is intentionally not frozen here

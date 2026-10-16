@@ -31,7 +31,7 @@ Implemented in Phase 10C:
 - The **Vite frontend stays host-run**. Docker is not required for frontend work, for running backend **unit** tests, or for any command that does not need a database.
 - The API `Dockerfile` (`backend/Dockerfile`) is a single-stage `python:3.12-slim` image: third-party runtime dependencies are installed from `pyproject.toml` in their own cached layer, no dev tools or tests are copied in, it runs as a non-root user (`b17`, uid 10001), has no `.env`, defaults to `ENVIRONMENT=production`, and has a liveness `HEALTHCHECK`. Migrations are **not** run on boot: `docker run --rm -e DATABASE_URL=… <image> alembic upgrade head` is the release step.
 - `.env.example` documents every variable with safe placeholders; the real `.env` is git-ignored. A separate `TEST_DATABASE_URL` is mandatory for tests, and the test harness refuses to run against anything else.
-- Local CORS allows the explicit dev origins listed in `BACKEND_ARCHITECTURE.md` §7 (`localhost`/`127.0.0.1` on 5173 and the 4173 preview origin used by E2E).
+- Local CORS allows the explicit dev origins listed in `BACKEND_ARCHITECTURE.md` §7 (`localhost`/`127.0.0.1` on 5173 and the 4173 preview origin used by E2E); for authentication work use `127.0.0.1` for both frontend (`:5173`) and API (`:8000`) and do not mix in `localhost` (`AUTH_RBAC.md` §5.1).
 
 ## 4. Migrations in operations
 
@@ -60,7 +60,7 @@ python -m app.db.search_index check       # must print "all documents are curren
 
 - **Frontend:** static hosting for the Vite build with **HTTPS** and an **SPA fallback** (every unknown path serves `index.html` — currently missing: direct links/refresh would 404 on a plain static host; recorded in `CURRENT_STATE.md`), correct cache headers (hashed assets immutable; `index.html` and `sw.js` revalidated), and the PWA requirements already met (manifest, service worker scope `/`). The production URL feeds `VITE_SITE_URL`; staging sets `VITE_SITE_NOINDEX=true`.
 - **Backend:** any container-capable platform (managed containers, PaaS, VM + reverse proxy). Needs: HTTPS termination, health probes (`/api/v1/health`, `/health/ready`), horizontal scaling by running more identical containers (stateless API), graceful shutdown, log shipping from stdout (structured JSON).
-- **Topology:** prefer **same-site** frontend and API (shared registrable domain, or the API reverse-proxied under `/api`) so cookie-based sessions remain first-party if Phase 11 chooses them (`AUTH_RBAC.md` §6). CORS lists the exact deployed origin(s) only.
+- **Topology:** prefer **same-site** frontend and API (shared registrable domain, or the API reverse-proxied under `/api`) so cookie-based sessions remain first-party (the Phase 11A decision, `AUTH_RBAC.md` §5.1). CORS lists the exact deployed origin(s) only.
 - **Object storage:** any S3-compatible service (`MEDIA_STORAGE.md`); bucket CORS limited to the frontend origin.
 - **Region/latency:** pick regions near B-17/Islamabad users where possible; the frontend is a PWA and tolerant of latency, but the DB and API should be co-located.
 
@@ -78,3 +78,14 @@ Existing frontend CI (`.github/workflows/frontend-ci.yml`) is unchanged. Backend
 ## 8. Not decided here
 
 Hosting provider(s) and pricing tier · domain names · email-sending provider · CDN · observability vendor · backup retention numbers · autoscaling policy · multi-region/DR. Each is an operational decision for the deployment phase and must respect §1–§6.
+
+## 9. Authentication operations (Phase 11A requirements; details in `AUTH_RBAC.md`)
+
+- **Topology prerequisite:** the frontend and API must be **same-site** — `https://b17portal.pk` + `https://api.b17portal.pk`, or one origin with `/api` reverse-proxied. Different registrable domains would need `SameSite=None` third-party cookies and are not supported. Provider-default hostnames on the Public Suffix List (`*.vercel.app`, `*.onrender.com`, …) are *cross-site* to each other, so a **custom domain is required before auth is enabled** in staging/production (`AUTH_RBAC.md` §5.1). No hosting provider is chosen here.
+- **TLS everywhere:** the session cookie is `Secure` (and `__Host-` prefixed) in staging/production; terminate HTTPS before the API and send `HSTS`.
+- **Proxy/IP handling:** per-IP rate limiting belongs at the **edge** (reverse proxy/CDN/WAF): login, register, forgot-password, resend-verification, OAuth start/callback. The app does not trust `X-Forwarded-For` unless a trusted-proxy setting is configured, and uses PostgreSQL counters only for identity-keyed limits.
+- **Logs:** run uvicorn with `--no-access-log` (the app's request log replaces it; the current `Dockerfile` `CMD` does not yet — a Phase 11B change) or strip query strings on `/api/v1/auth/oauth/*`; the same for reverse-proxy access logs. Never ship request/response bodies or `Cookie`/`Set-Cookie` headers to logs.
+- **Secrets** (from the host's secret store, never committed): `GOOGLE_OAUTH_CLIENT_ID/SECRET` (11C), email-provider credentials, `DATABASE_URL`. There is deliberately **no session secret or JWT key**. Settings validation fails fast in staging/production if `AUTH_COOKIE_SECURE` is false, the email backend is `console`, or `FRONTEND_BASE_URL` is not an allowed origin.
+- **Scheduled maintenance:** run `python -m app.cli.auth_maintenance purge` periodically (daily) from the host's scheduler; correctness never depends on it.
+- **Bootstrap runbook:** the first admin is created by an operator: register normally, verify the email, then run `python -m app.cli.admin grant <email>` against the production database (audited; revokes that user's sessions). There is no public admin signup.
+- **Caching:** the API's `/auth/*` responses are `Cache-Control: no-store`; do not add CDN caching rules that ignore it.
