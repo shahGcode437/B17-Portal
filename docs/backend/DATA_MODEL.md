@@ -277,11 +277,11 @@ Current seed data (`src/data/*`) is fictional and in-memory. For dev/staging, an
 
 ## 13. Open questions recorded (decisions deferred on purpose)
 
-- **O-1 Area normalization.** `area` is free text and the filter is exact-match, so spelling variants split the filter list. Options: keep text (V1), or an `areas` lookup / sector enum for B-17 blocks. Decide with the product owner before Phase 12.
+- **O-1 Area normalization.** `area` is free text and the filter is exact-match, so spelling variants split the filter list. Options: keep text (V1), or an `areas` lookup / sector enum for B-17 blocks. **Phase 12A decision:** for **new writes** `area` is the canonical locality (`B-17`, from the configured `LOCALITIES`) and the block is the separate optional free-text `block` column (`LOCATION_MAP.md` §4–§5); **legacy `area` text is never parsed, normalised or rewritten** (`LOCATION_MAP.md` §3.1); no block taxonomy is invented (demo `Block A–E` are labelled `(Demo Area)`); a managed lookup remains the future seam.
 - **O-2 General-business category.** Today a typed free-text string; with a managed taxonomy it must be chosen from `directory` categories (as Services/Food already are) — a small form change in Phase 12 plus seeding existing values. Alternative: keep free text and denormalize. Recommended: taxonomy.
-- **O-3 Contact channel** for listings and for request requesters (phone/WhatsApp/email) — missing from the frontend model; needed before leads are usable.
+- **O-3 Contact channel** for listings and for request requesters (phone/WhatsApp/email) — missing from the frontend model; needed before leads are usable. **Must be resolved by the product owner before the Phase 12F implementation is finalised** (12A designs nothing contact-related).
 - **O-4 Demo content in production** and any `is_demo` marker.
-- **O-5 Admin `approved → rejected`** takedown — confirm vs. an explicit "unpublish".
+- **O-5 Admin `approved → rejected`** takedown — confirm vs. an explicit "unpublish". **Resolved in 12A:** kept as `reject` with a required reason (`API_CONTRACT.md` §10.3).
 
 ## 14. Implementation notes (Phase 10C — the schema as built)
 
@@ -354,3 +354,18 @@ As built: `auth_sessions.token_hash`/`auth_tokens.token_hash` are `bytea` with `
 `oauth_flows` (as built): both hashes are `bytea` with `CHECK octet_length = 32` and the `state_hash` has a unique index (`uq_oauth_flows_state_hash`); `CHECK ((purpose = 'link') = (user_id IS NOT NULL))`; `CHECK left(return_to, 1) = '/'`; `CHECK expires_at > created_at`; `provider`/`purpose` are `VARCHAR + CHECK` closed sets; an index on `expires_at` serves the sweep. It holds **no** provider token, authorization code or raw `state`/cookie secret — only hashes plus the short-lived `nonce` and PKCE `code_verifier` that must be readable to finish the round trip (single use, 10 minutes). The `0004` upgrade fails loudly (rather than deleting anything) if existing data has two identities of one provider for one user; it adds no data. Downgrade drops the table and the constraint.
 
 Raw session and token secrets are **never stored** — only their SHA-256. Closed sets use `VARCHAR + CHECK`; all timestamps `timestamptz`; constraint names follow the existing convention. Expired rows are removed by `python -m app.cli.auth_maintenance purge` and are never trusted for correctness (validity is always checked against the timestamps).
+
+## 16. Phase 12 schema plan (frozen in Phase 12A — nothing below exists yet)
+
+Two additive migrations, each shipped with the slice that needs it (`0001`–`0004` are never edited):
+
+| Migration | Slice | Change |
+|---|---|---|
+| **`0005_listing_location`** | 12B | `listings`: `block varchar(40)`, `address varchar(200)`, `landmark varchar(100)`, `latitude numeric(9,6)`, `longitude numeric(9,6)`, `location_visibility varchar(16) NOT NULL DEFAULT 'area_only'`, and the stored generated `public_latitude` / `public_longitude numeric(9,6)`; the `ck_listings_*` constraints (valid visibility, coordinates both-or-neither, ranges, `area_only ⇔ no point`, non-blank text). No new index. **No data statement and no backfill:** existing rows become a documented legacy state (area-only, no point, `area` untouched) — `LOCATION_MAP.md` §3.1. Full rationale, privacy model and rejected alternatives: [`LOCATION_MAP.md`](LOCATION_MAP.md). |
+| **`0006_service_requests`** | 12F | `service_requests` and `service_request_status_history` (below). |
+
+**`service_requests`** (the "conceptual" table of §6, now specified): `id uuid` · `requester_id → users` (RESTRICT) · `provider_listing_id → listings` (SET NULL; `provider_name_snapshot varchar(100) NOT NULL` keeps the display) · `service varchar(80)` · `details varchar(500)` (`CHECK char_length(btrim) ≥ 10`) · `area varchar(80)` · `preferred_date date` · `preferred_time varchar(20)` · `notes varchar(500)` · `status` (`submitted|accepted|in-progress|completed|cancelled` as `VARCHAR + CHECK`) · `created_at`, `updated_at`. Indexes: `(provider_listing_id, status)`, `(requester_id, created_at DESC)`. **`service_request_status_history`**: `id`, `request_id` (CASCADE), `from_status` (NULL on creation), `to_status`, `actor_user_id` (RESTRICT), `actor_role` (`requester|provider`), `created_at`; append-only like `listing_status_history`. The service rule "the target is an approved provider listing, not the requester's own" is not a database constraint. No contact data is stored (O-3).
+
+**Phase 12 does not change:** `listing_status_history` (the narrowing edit writes no row; every other transition uses the existing actions), `professional_profiles`, `saved_items`, `categories`, `listing_categories` (its constraints already cover the category write rules), `news_articles`. The `search_document` composition gains `block` and, for `exact` listings only, `address` / `landmark` (`LOCATION_MAP.md` §9); no reindex is needed because existing rows have none of those, but `python -m app.db.search_index check` stays in the release gate.
+
+**Lifecycle refinements (supersede the wording in §7 where they differ):** the exact edit/moderation rules, the *no non-material exemption* decision, the *pure visibility narrowing* exception, the quota check on resubmitting a rejected listing, and the `409 listing_conflict` concurrency contract are in [`API_CONTRACT.md`](API_CONTRACT.md) §10.3–§10.4. §13 O-1 (area), O-3 (contact channel) and O-5 (approved → rejected takedown, now kept) are updated accordingly.

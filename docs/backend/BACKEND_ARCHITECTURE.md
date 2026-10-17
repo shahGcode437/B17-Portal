@@ -125,6 +125,24 @@ Read endpoints use no explicit transaction beyond the session's default.
 
 **Implemented (10C):** `app.db.session.transaction(session)` is the one place a business transaction ends (commit on success, rollback and re-raise on any error); repositories (`app/repositories/`) only `add` / query / `flush`, and `ListingStatusHistory` has no update or delete at all. A `Session` is created per request by the `get_db_session` dependency and always closed (closing rolls back anything uncommitted); the `Engine` is a process-level lazy pool created by the app factory, so the API starts and `/health` stays up even when PostgreSQL is down. `ListingCreationService` (Food + General business) proves the pattern against real PostgreSQL: listing, subtype, Food profile, menu items, categories and the initial history row commit together or not at all.
 
+### 5.1 Phase 12 transaction boundaries (frozen in 12A)
+
+Routers receive validated schemas and call one service method; **the service opens the transaction, repositories only query / `add` / `flush`, and nothing below a service commits.** Services never call another service's commit; they compose repositories.
+
+| Operation (service) | One transaction contains | Locks (acquired in this order) |
+|---|---|---|
+| Create listing | professional-profile lock + quota count, base row + subtype + categories + Food profile / menu + location, history `submitted`, `SearchIndexer.refresh` | `professional_profiles` row → (new listing) |
+| Edit / resubmit | guarded `UPDATE … revision = :expected`, replaced categories / menu / subtype / location, `revision`++, status → `pending`, history `resubmitted`, search refresh; quota check when the listing was `rejected` | `professional_profiles` row (only if quota applies) → `listings` row |
+| Pure visibility narrowing (`LOCATION_MAP.md` §7.4) | guarded update, visibility narrowed (point cleared only for `area_only`), `revision`++, search refresh — no status change, no history row | `listings` row |
+| Archive | guarded update, status → `archived`, history | `listings` row |
+| Approve / reject | guarded status + revision update, history (+ reason) | `listings` row |
+| Category create / patch / reorder | category row(s), and — on rename — `SearchIndexer` for every listing in the category | category rows (ordered by id) |
+| Save / unsave | one `INSERT … ON CONFLICT DO NOTHING` / `DELETE` | — |
+| Request create | the request row + history `submitted` (listing re-read as approved provider inside the transaction) | — |
+| Request action | guarded `UPDATE … WHERE status = :from` + history | the request row |
+
+The lock order (profile before listing) is the same everywhere, so two writers cannot deadlock. Anything that changes listing content, the location visibility, or a category name refreshes `search_document` in the same transaction (`DATA_MODEL.md` §14.1; `LOCATION_MAP.md` §9).
+
 ## 6. Concurrency and consistency (no distributed locking)
 
 Prefer, in order: **database constraints**, **guarded single-statement updates**, **row locks inside a transaction**, **optimistic concurrency tokens**.
@@ -139,7 +157,7 @@ Prefer, in order: **database constraints**, **guarded single-statement updates**
 ## 7. Cross-cutting concerns
 
 ### Configuration
-Pydantic settings, loaded from the environment. Variables (implemented in 10B): `ENVIRONMENT` (`development|test|staging|production`), `DEBUG`, `APP_NAME`, `APP_VERSION`, `API_V1_PREFIX`, `FRONTEND_ORIGINS`, `LOG_LEVEL`. `DATABASE_URL` (a secret, never logged; optional so the API starts without a database) and `DB_CONNECT_TIMEOUT_SECONDS` (10C). `TEST_DATABASE_URL` is read **only by the test harness**, never by the application. Auth settings are implemented (11B: cookies, session lifetimes, Argon2, email backend; 11C: `GOOGLE_OAUTH_PROVIDER` = `disabled|google|fake`, `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET` as a `SecretStr`, `API_PUBLIC_BASE_URL`; see `AUTH_RBAC.md` §21). Object-storage settings are planned. `.env.example` is committed with placeholders; the real `.env` is git-ignored; **no secret is ever committed**; production secrets come from the host's secret store (`DEPLOYMENT.md`). Settings fail fast on startup if required values are missing.
+Pydantic settings, loaded from the environment. Variables (implemented in 10B): `ENVIRONMENT` (`development|test|staging|production`), `DEBUG`, `APP_NAME`, `APP_VERSION`, `API_V1_PREFIX`, `FRONTEND_ORIGINS`, `LOG_LEVEL`. `DATABASE_URL` (a secret, never logged; optional so the API starts without a database) and `DB_CONNECT_TIMEOUT_SECONDS` (10C). `TEST_DATABASE_URL` is read **only by the test harness**, never by the application. Auth settings are implemented (11B: cookies, session lifetimes, Argon2, email backend; 11C: `GOOGLE_OAUTH_PROVIDER` = `disabled|google|fake`, `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET` as a `SecretStr`, `API_PUBLIC_BASE_URL`; see `AUTH_RBAC.md` §21). Object-storage settings are planned. Phase 12B adds one setting, `LOCALITIES` (the canonical locality list for new writes, default `B-17`; `DEPLOYMENT.md` §11). There is deliberately no geofence setting. `.env.example` is committed with placeholders; the real `.env` is git-ignored; **no secret is ever committed**; production secrets come from the host's secret store (`DEPLOYMENT.md`). Settings fail fast on startup if required values are missing.
 
 ### CORS
 Explicit allow-list, never `*`, and never a wildcard together with credentials.
@@ -208,7 +226,7 @@ Docker Compose provides PostgreSQL (`backend/compose.yaml`, `postgres:17-alpine`
 | **11A** | Authentication security & contract freeze (**complete**, docs only): sessions, cookies, CSRF, passwords, tokens, OAuth, linking, RBAC, schema plan, threat review (`AUTH_RBAC.md`). |
 | **11B** | Email/password authentication + server-side sessions + CSRF + verification/reset + RBAC dependencies + audit + PostgreSQL rate limiter + admin/maintenance CLIs (migration `0003`) — **complete**. |
 | **11C** | Google OAuth + account linking + authentication hardening (migration `0004`; `OAuthProvider` seam with a Google adapter on `PyJWT` + `httpx` and a dev/test fake) — **complete**. |
-| **12** | Write APIs (owner listing lifecycle, moderation, saved, requests, news admin) and frontend/API integration. |
+| **12** | Write APIs, Location/Map and frontend/API integration — frozen in **12A** (`LOCATION_MAP.md`, `API_CONTRACT.md` §10, `AUTH_RBAC.md` §22), delivered as **12B** location foundation (`0005`) · **12C** frontend auth · **12D** listing writes · **12E** admin + taxonomy · **12F** saved + requests (`0006`) · **12G** frontend read integration + map display · **12H** frontend write integration · **12I** full-stack E2E closeout (`ROADMAP.md`). |
 | **13** | Media storage and production deployment/hardening. |
 
 The 10A freeze deliberately fixes *contracts and structure*; endpoint-by-endpoint detail for later phases is owned by those phases (see API_CONTRACT §9).

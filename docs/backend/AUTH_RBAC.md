@@ -1,6 +1,6 @@
 # B-17 Portal — Authentication, Authorization & Roles
 
-**Status:** **frozen by Phase 11A; email/password authentication, sessions, CSRF and the RBAC foundation are IMPLEMENTED in Phase 11B** (§20 lists exactly what was built and the few as-built refinements). **Google OAuth, account linking/claiming (Connect/Disconnect) and the OAuth schema (§10, migration `0004`) are IMPLEMENTED in Phase 11C** (§21 lists exactly what was built and the few as-built refinements; the real-Google smoke test is a documented manual step). Where a number is marked *tunable*, 11B/11C may adjust it inside the stated bounds; every other statement is binding.
+**Status:** **frozen by Phase 11A; email/password authentication, sessions, CSRF and the RBAC foundation are IMPLEMENTED in Phase 11B** (§20 lists exactly what was built and the few as-built refinements). **Google OAuth, account linking/claiming (Connect/Disconnect) and the OAuth schema (§10, migration `0004`) are IMPLEMENTED in Phase 11C** (§21 lists exactly what was built and the few as-built refinements; the real-Google smoke test is a documented manual step). Phase 12A adds §22 (the authorization matrix for the write APIs and the frontend integration contract; Phase 11 behaviour is unchanged). Where a number is marked *tunable*, 11B/11C may adjust it inside the stated bounds; every other statement is binding.
 **Owns:** the identity model, session/cookie/CSRF design, password and token handling, email verification and reset, Google OAuth and account linking, roles and authorization architecture, the auth API contract, the auth schema plan, the threat review and the security test matrix.
 **Does not own:** general table design → [`DATA_MODEL.md`](DATA_MODEL.md) · HTTP conventions/envelopes → [`API_CONTRACT.md`](API_CONTRACT.md) · layering/logging/CORS baseline → [`BACKEND_ARCHITECTURE.md`](BACKEND_ARCHITECTURE.md) · hosting/secrets/ops → [`DEPLOYMENT.md`](DEPLOYMENT.md).
 
@@ -613,3 +613,64 @@ Source: `backend/app/services/oauth/{provider,google,fake,flow,__init__}.py`, `a
 **Security matrix S14 — implemented and tested** (`tests/test_oauth_unit.py`, `tests/db/test_oauth_flow_api.py`, `tests/db/test_oauth_services.py`): state required/unknown/expired/replayed/cross-browser; missing or wrong flow cookie; PKCE verifier/challenge pairing; nonce mismatch/missing; ID-token signature, `iss`, `aud`, `exp`, `alg` downgrade, unknown `kid`; `email_verified` handling; every provider/network failure → a fixed code; the redirect-hygiene matrix; no secret/code/token in logs, redirects, responses or the database; the whole A/B/C1–C4/D/Disconnect matrix including the claim's side effects; concurrency on committed rows (two callbacks for one flow → one winner; the same new subject twice → one user and one identity, no raw `IntegrityError`; one identity linked by two users → one owner; a claim racing an email verification never leaves a half-claimed account). The normal test run, CI and Docker never contact Google (a mock `httpx` transport and genuinely RS256-signed test tokens exercise the real adapter).
 
 **Not done in 11C (deliberate).** No frontend integration (Phase 12: the SPA calls `start`, navigates to `authorizationUrl`, and reads `/login?error=`); no Facebook/Apple/Instagram; no MFA, Redis, background jobs or real email provider; no write APIs. A **real-Google smoke test** needs a Google Cloud OAuth client and cannot run in CI — the checklist is in DEPLOYMENT.md ("Google sign-in").
+## 22. Phase 12 authorization matrix and frontend integration (frozen in Phase 12A — design only)
+
+Phase 11 behaviour (opaque PostgreSQL sessions, `HttpOnly` cookie, session-derived CSRF token, Origin check, Argon2id, Google OAuth, rate limiter, audit) is **unchanged**. This section only (a) assigns the existing dependencies to the Phase 12 mutations and (b) fixes how the React app replaces its demo auth. Endpoint detail: [`API_CONTRACT.md`](API_CONTRACT.md) §10.
+
+### 22.1 Guard per mutation
+
+| Mutation | Dependency | Also |
+|---|---|---|
+| Create professional profile | `VerifiedUser` | idempotent `PUT` |
+| Create / edit / archive own listing | `ProfessionalUser` (= verified + profile; the missing-profile case answers `403 professional_profile_required`) | ownership check in the service → `404`; quota lock; `revision` guard; rate limit (listing create 10/hour/user, tunable) |
+| Approve / reject / category writes | `AdminUser` (verified + `admin` role + fresh session: idle ≤ 2 h, age ≤ 12 h) | a stale admin session answers `401 session_expired` and does **not** count as activity (11B behaviour) |
+| Save / unsave | `CurrentUser` | email verification is not required (low-risk, per the product rule that browsing and low-risk actions stay available) |
+| Create a service request | `VerifiedUser` | not to own listing; rate limits (`API_CONTRACT.md` §10.8) |
+| Advance / cancel a request | `CurrentUser` + ownership (provider owner, or requester for `cancel`) | guarded status `UPDATE`; `404` for non-parties |
+| Read own listings / requests / leads | `CurrentUser` (`ProfessionalUser` for leads) | `Cache-Control: no-store` |
+
+An account whose status stops being `active` loses its session immediately (11B), so a suspended owner can neither write nor read. Roles and the professional capability are re-read from the database on every request; nothing is trusted from a client.
+
+### 22.2 Replacing demo auth in React (slice 12C)
+
+- **One identity system.** `/admin/login` is only a different screen that posts to the same `/auth/login`; the separate `AdminAuthProvider` and the name-only `AuthProvider` are removed. Admin access is `roles.includes("admin")` from `/auth/me` and is **UX only** — the API is the authority.
+- **`AuthProvider` has three states: `loading` → `anonymous` | `authenticated`.** On mount it calls `GET /auth/me` (`credentials: "include"`). While `loading`, guards render a neutral skeleton and **never redirect** (a refresh must not bounce a signed-in user to `/login`). `useRequireAuth` / `useRequireAdminAuth` become status-aware.
+- **CSRF:** the `csrfToken` from `/auth/me` and from login / register / change-password lives **only in memory** (module state / React context). A single `apiClient` wrapper adds `credentials: "include"` to every call and `X-CSRF-Token` to every unsafe call. The browser sets `Origin`. On `403 csrf_failed` the client refetches `/auth/me` once and retries once; a second failure surfaces as an error.
+- **Never** read the session cookie (it is `HttpOnly`), and **never** store session data, the CSRF token, a one-time token or any provider value in `localStorage`, `sessionStorage`, IndexedDB or the service worker cache. The service worker does not cache API responses (unchanged).
+- **Per-user client state:** Saved, requests and plan become server-authoritative. The `localStorage`-persisted `residentStore` / `planStore` are removed (or reduced to a non-authoritative cache that is keyed by user id and cleared on logout and on `401`), closing the shared-browser privacy gap noted in `CURRENT_STATE.md`.
+- `401 session_expired` anywhere → clear in-memory auth, go to `/login` preserving the intended path (`from`), show "Your session ended".
+
+### 22.3 Google sign-in in the SPA (frozen)
+
+1. The "Continue with Google" button calls `POST /auth/oauth/google/start` with `{purpose: "login", returnTo: <intended relative path>}` (the `returnTo` is validated by the server too; an unsafe value is `422` — the client sends only paths it built itself).
+2. On `200`, `window.location.assign(authorizationUrl)`. Google redirects to the **backend** callback; the backend sets the session cookie and redirects the browser to the frontend `returnTo` (or `/login?error=<code>`).
+3. The frontend lands on `returnTo`, `AuthProvider` runs `GET /auth/me`, and the user is signed in. React never sees a Google token, code or state.
+4. On `/login?error=<code>` the page reads **only** the fixed set `oauth_denied · oauth_failed · identity_conflict · email_not_verified · account_disabled`, shows fixed copy for it (unknown values show the generic failure), and immediately removes the query string with `history.replaceState`.
+5. *Connect Google* (profile page) calls `start` with `purpose: "link"` plus the CSRF token; *Disconnect* is `DELETE /auth/oauth/google` with the CSRF token and surfaces `409` as "add a password or another sign-in method first".
+
+### 22.4 Verification / reset pages and error handling
+
+- **Routes:** `/verify-email` and `/reset-password` (the backend e-mail links are `{FRONTEND_BASE_URL}/verify-email#token=…` and `…/reset-password#token=…`). The component reads `location.hash`, **immediately** calls `history.replaceState` to drop the fragment (before any analytics or third-party script — none is loaded ahead of this route's first effect), keeps the token in a local variable only, `POST`s it, and never persists or logs it. `Referrer-Policy: no-referrer` applies to these two routes (`LOCATION_MAP.md` §10.2 explains why it is per route, not site-wide).
+- **Status handling** (one shared `ApiError` with `status`, `code`, `details`):
+
+| Response | Frontend behaviour |
+|---|---|
+| `401 unauthenticated` | not signed in → `/login` with `from` |
+| `401 session_expired` | clear auth, notify, `/login` with `from`; for admin pages "sign in again to continue" |
+| `403 email_not_verified` | show the verify-email banner with "resend" (`POST /auth/resend-verification`) |
+| `403 professional_profile_required` | route to the professional onboarding step |
+| `403 plan_limit_reached` | show the plan-limit state (no silent retry) |
+| `403 csrf_failed` | refetch `/auth/me`, retry once |
+| `404 not_found` | the standard not-found view (also what a non-owner sees) |
+| `409 listing_conflict` | **never overwrite.** Dialog: "This listing changed since you opened it." Actions: *Reload latest* (refetch the owner detail and replace the form, discarding local edits) or *Cancel* (keep the form open, unsaved, so the user can copy their text). There is no "overwrite anyway" in V1. |
+| `409 invalid_state_transition` | refetch and show the current status |
+| `422 validation_error` | map `details[].field` (camelCase paths) onto form fields; focus the first invalid field |
+| `429 rate_limited` | show a retry-later message honouring `Retry-After` |
+
+### 22.5 No client-owned security state
+
+The frontend never decides the authoritative `owner`, `status`, `role`, `emailVerified`, professional capability, moderation outcome, `revision` increment, or the privacy serialization of a location. Capability checks (`useCapability`, route guards) only shape the UI; every one is re-enforced by the API.
+
+### 22.6 Write-security test matrix (extends §17; PostgreSQL + real app)
+
+For every Phase 12 write endpoint: {anonymous, unverified, verified resident, professional-owner, professional-other, admin (fresh), admin (stale session), suspended} × expected status; plus — **IDOR** (owner B reading / patching / archiving owner A's listing, request, saved item → `404`, nothing changed); **injection** (`ownerId`, `status`, `revision`-as-field, `featured`, `roles`, `emailVerified`, `kind` change on `PATCH`, `userId` on Saved → `422 not_allowed`, nothing persisted); **lifecycle** (every cell of the §10.3 table, valid and invalid, including archived → anything, double approve, approve of `rejected`); **concurrency** (two edits with the same `revision` → one `200`, one `409 listing_conflict`; approve racing an edit → `409`; two concurrent creates at quota 2/3 → exactly one succeeds; concurrent saves → one row; concurrent request `accept` → one winner); **category misuse** (module change, slug change, cross-module parent, cycle, inactive category in a new listing, Food listing with a `directory` category, 4 Food categories); **Food constraints** (Food block on a General business, > 8 menu items, `category` on a Food business); **location** (the `LOCATION_MAP.md` §16 matrix, including that a non-owner never receives exact coordinates, and `range`-only coordinate validation); **moderation-bypass via narrowing** — on an `approved` listing, a request that narrows visibility *and* changes anything else (a moved pin, `area`, `block`, `address`, `landmark` or clearing one of them, title, description, tags, image, categories, a price or subtype field, Food data, a future contact field) MUST end `pending` with exactly one `resubmitted` history row (`approved → pending`), while a *pure* narrowing (`exact → approximate`, `exact → area_only`, `approximate → area_only`, nothing else different, only the point cleared for `area_only`) MUST stay `approved` with `revision`+1 and no history row; every widening (`area_only → approximate`, `area_only → exact`, `approximate → exact`) MUST end `pending`; the same requests on `pending` / `rejected` listings never change their status; a stale `revision` is `409 listing_conflict` and a non-owner gets `404`, both writing nothing; **legacy rows** (a pre-`0005` Property edited or resubmitted without a valid location → `422`; archive and admin approve / reject of a legacy row still work); **CSRF / Origin** (missing or wrong token, missing or foreign `Origin` → `403`, nothing persisted); **sessions** (revoked or suspended session mid-flow; admin freshness boundary at exactly 2 h / 12 h); **rate limits** (the documented budgets return `429` with `Retry-After`).

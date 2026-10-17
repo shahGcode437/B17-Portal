@@ -32,12 +32,13 @@ d0c02dd Phase 10C: add PostgreSQL data layer foundation
 2e73ebf Phase 10D: add PostgreSQL-backed read APIs
 3c10c1a Phase 11A: freeze authentication security architecture
 ea57a11 Phase 11B: add secure email password authentication
-Phase 11C commit: pending (implementation complete, not yet committed)
+30736bf Phase 11C: add Google OAuth and account linking
+Phase 12A commit: pending (design freeze in review, not yet committed)
 
 ## Current Phase
 
-Current Phase: Phase 11C — Google OAuth + Account Linking + Authentication Hardening: COMPLETE, commit pending approval. Phase 11B (email/password auth, `ea57a11`), Phase 11A (auth design freeze, `3c10c1a`), Phase 10D (read APIs, `2e73ebf`), Phase 10C (data layer, `d0c02dd`), Phase 10B (FastAPI foundation, `4d73c59`), Phase 10A (backend architecture, `e60a0b6`), Phase 9M (testing foundation, `d586f45`), Phase 9L (cleanup), Phase 9J (SEO / accessibility / final frontend QA), Phase 9G (PWA), Phase 9H (code splitting), the Food & Dining expansion (FD1–FD5) and the Visual Refresh (V1–V6) are complete and committed. Search UX refinement remains deferred; the Search review is in `SEARCH_UX_FINDINGS.md`.
-Next Step: Phase 12 — Write APIs + frontend/API integration (see Next Step below).
+Current Phase: Phase 12A — Write APIs + Location/Map Architecture Freeze: IN REVIEW (docs only, commit pending approval). Phase 11C (Google OAuth, `30736bf`), Phase 11B (email/password auth, `ea57a11`), Phase 11A (auth design freeze, `3c10c1a`), Phase 10D (read APIs, `2e73ebf`), Phase 10C (data layer, `d0c02dd`), Phase 10B (FastAPI foundation, `4d73c59`), Phase 10A (backend architecture, `e60a0b6`), Phase 9M (testing foundation, `d586f45`), Phase 9L (cleanup), Phase 9J (SEO / accessibility / final frontend QA), Phase 9G (PWA), Phase 9H (code splitting), the Food & Dining expansion (FD1–FD5) and the Visual Refresh (V1–V6) are complete and committed. Search UX refinement remains deferred; the Search review is in `SEARCH_UX_FINDINGS.md`.
+Next Step: Phase 12B — database + location foundation (after the 12A review; see Next Step below).
 
 ## Completed Product Work
 
@@ -82,6 +83,7 @@ Next Step: Phase 12 — Write APIs + frontend/API integration (see Next Step bel
 - Phase 11A — Authentication Security & Contract Freeze (see below and `docs/backend/AUTH_RBAC.md`)
 - Phase 11B — Email/Password Authentication + Sessions + CSRF + RBAC Foundation (see below and `docs/backend/AUTH_RBAC.md` §20)
 - Phase 11C — Google OAuth + Account Linking + Authentication Hardening (see below and `docs/backend/AUTH_RBAC.md` §21)
+- Phase 12A — Write APIs + Location/Map Architecture Freeze (docs only; see below and `docs/backend/LOCATION_MAP.md`)
 
 Full history is in `git log`; this file summarizes outcomes, not the blow-by-blow.
 
@@ -568,7 +570,7 @@ Phase 11B — Email/Password Authentication + PostgreSQL Sessions + CSRF + RBAC 
 
 ## Phase 11C Result
 
-Phase 11C — Google OAuth + Account Linking + Authentication Hardening = **COMPLETE** (Phase 11C commit: pending). Implements `docs/backend/AUTH_RBAC.md` §10 as frozen (as-built notes in §21). **No frontend change (`src/`, `e2e/`, `package*.json` untouched), no Facebook/Apple/Instagram, no MFA/Redis/JWT/refresh tokens, no write API, no real email provider.** Dependencies: `pyjwt[crypto]` and `httpx` (now runtime). Authlib was evaluated and rejected (see `DECISIONS.md`). No Google SDK; no JWT/OIDC cryptography is hand-written.
+Phase 11C — Google OAuth + Account Linking + Authentication Hardening = **COMPLETE** (commit `30736bf`). Implements `docs/backend/AUTH_RBAC.md` §10 as frozen (as-built notes in §21). **No frontend change (`src/`, `e2e/`, `package*.json` untouched), no Facebook/Apple/Instagram, no MFA/Redis/JWT/refresh tokens, no write API, no real email provider.** Dependencies: `pyjwt[crypto]` and `httpx` (now runtime). Authlib was evaluated and rejected (see `DECISIONS.md`). No Google SDK; no JWT/OIDC cryptography is hand-written.
 
 - **Endpoints (3, `/api/v1/auth`):** `POST /oauth/google/start` (login: Origin; link: session + CSRF) → `{authorizationUrl}` + short-lived flow cookie; `GET /oauth/google/callback` → always a `302` to the configured frontend (`returnTo`, or `/login?error=<oauth_denied|oauth_failed|identity_conflict|email_not_verified|account_disabled>`); `DELETE /oauth/google` → `204` (never removes the last sign-in method).
 - **Flow:** backend-driven authorization code + PKCE S256 + `state` + `nonce`; single-use `oauth_flows` row (hashed `state` and browser-binding cookie, 10 min) consumed by one guarded `UPDATE … RETURNING` committed before any provider I/O; ID token verified with PyJWT (RS256 only, Google JWKS cached, `iss`/`aud`/`exp`/`nonce`); Google tokens discarded; the result is the same PostgreSQL session + `HttpOnly` cookie + CSRF token as a password login (10-session cap included).
@@ -579,6 +581,17 @@ Phase 11C — Google OAuth + Account Linking + Authentication Hardening = **COMP
 - **Tests:** 1141 (394 database-free + 747 PostgreSQL): redirect/PKCE/settings/fake/Google-adapter unit tests (signed RS256 tokens over a mock transport, no network), the OAuth HTTP matrix, DB constraints, single-use consumption, retention, and concurrency on committed rows.
 - **Not performed:** a real-Google smoke test (needs Google Cloud credentials; checklist in `docs/backend/DEPLOYMENT.md` §10).
 - **Production prerequisites unchanged:** a custom same-site domain, an email provider, edge rate limiting, and access-log query-string stripping on `/api/v1/auth/oauth/*`.
+
+## Phase 12A Result
+
+Phase 12A — Write APIs + Location/Map Architecture Freeze = **IN REVIEW** (Phase 12A commit: pending). **Design / contract freeze only: no code, no migration, no dependency, no frontend change.** Phase 11 authentication behaviour is untouched. Baseline `30736bf` (Backend CI and Frontend CI green).
+
+- **Location is a first-class Phase 12 requirement** with one source of truth, `docs/backend/LOCATION_MAP.md`: shared columns on `listings` (`block`, `address`, `landmark`, `latitude`/`longitude` as `numeric(9,6)`, `location_visibility`, database-generated public coordinates), three privacy modes enforced server-side (`exact`, `approximate` = a deterministic ≈ 1.1 km grid, `area_only` = no stored point), per-kind requiredness, public vs owner/admin serialization, `search_document` rules, Leaflet used directly (not `react-leaflet`, whose licence is not OSI-approved), OSM-compatible tiles by configuration (development only; production provider chosen at deployment), Get Directions as an external Google Maps URL, manual address + pin (no geocoding), and a future map-search / near-me / PostGIS path.
+- **Write contract frozen** in `API_CONTRACT.md` §10: endpoints, ownership (session-derived, `404` concealment), guards per mutation, the final listing lifecycle (no non-material exemption; the only status-preserving edit is a *pure* visibility narrowing; takedown kept), `revision` concurrency (`409 listing_conflict`), Food and category rules, Saved, the MVP request flow, quota, new error codes. Frontend auth integration, Google flow, verification-token handling and error behaviour in `AUTH_RBAC.md` §22. Schema plan: migration `0005` (location, slice 12B) and `0006` (service requests, slice 12F) in `DATA_MODEL.md` §16.
+- **Slices:** 12B location foundation → 12C frontend auth → 12D listing writes → 12E admin + taxonomy → 12F saved + requests → 12G frontend read integration + map display → 12H frontend write integration → 12I full-stack E2E (`ROADMAP.md`).
+- **Conflicts found and resolved in the docs:** the Food and design-system "no map" exclusions are scoped to their earlier phases; the 10A "stale revision = `invalid_state_transition`" becomes `listing_conflict`; the brief's "resubmit action" stays a `PATCH` (10A decision); request tables move to `0006`; `react-leaflet`'s licence; OSM tiles need a referrer while verification pages need `no-referrer` (per-route policy).
+- **Frozen in the 12A review:** approximate precision is **2 decimal places** (`round(exact, 2)` in generated columns; public behaviour uses public columns only; the map circle is illustrative with no privacy-radius claim); a status-preserving narrowing must be *pure* (`exact → approximate`, `exact → area_only`, `approximate → area_only`, nothing else changed) — any widening or combined change returns the listing to `pending` with one `resubmitted` history row; `0005` is purely additive and leaves existing rows in a documented legacy state (area-only, no point, `area` untouched, nothing parsed or invented), with new writes using `area` = canonical locality (`B-17`) and a separate `block`; fixtures get explicit demo coordinates outside the migration; **no B-17 geofence** (only latitude/longitude ranges; geofencing is a future enhancement); requester cancel (`submitted`/`accepted`) is approved.
+- **Still open (recorded, not blocking 12B):** production tile provider, `area` normalization / legacy cleanup (O-1), the local Upgrade toggle (no billing), and the **contact channel (O-3), which must be resolved before the Phase 12F implementation is finalised**.
 
 ## Production V1 Direction
 
@@ -638,7 +651,7 @@ Phase 11C — Google OAuth + Account Linking + Authentication Hardening = **COMP
 
 ## Next Step
 
-Phase 12 (write APIs + frontend integration, including the SPA side of Google sign-in: start, `/login?error=` handling, Connect/Disconnect — which must call `SearchIndexer` for every listing/category write) and 13 (media + deployment) per `ROADMAP.md` and `docs/backend/BACKEND_ARCHITECTURE.md` §12. The backend phases should also pick up what the frontend deliberately deferred: server-side / pre-rendered per-page metadata and link previews, a per-entity sitemap, structured data from real entity data, a real production URL (`VITE_SITE_URL`), persistent data / auth, real media storage and any offline write handling. Phases 9F (Admin Production UX) and 9I (Notifications + Trust/Reviews UI) remain product decisions. Store packaging, push notifications, sharing / deep links, ordering / payments and premium merchant tools stay out of scope until their roadmap phases.
+Phase 12B–12I (location foundation, then write APIs + frontend integration per the 12A freeze — `ROADMAP.md`; including the SPA side of Google sign-in: start, `/login?error=` handling, Connect/Disconnect — which must call `SearchIndexer` for every listing/category write) and 13 (media + deployment) per `ROADMAP.md` and `docs/backend/BACKEND_ARCHITECTURE.md` §12. The backend phases should also pick up what the frontend deliberately deferred: server-side / pre-rendered per-page metadata and link previews, a per-entity sitemap, structured data from real entity data, a real production URL (`VITE_SITE_URL`), persistent data / auth, real media storage and any offline write handling. Phases 9F (Admin Production UX) and 9I (Notifications + Trust/Reviews UI) remain product decisions. Store packaging, push notifications, sharing / deep links, ordering / payments and premium merchant tools stay out of scope until their roadmap phases.
 
 ## Resume Instructions
 

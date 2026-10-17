@@ -242,7 +242,19 @@ Current state (confirmed live on a Business detail page): large hero image → n
 4. **Supporting information sections** — description, tags/services, area — given clearer section separation (e.g., `Divider` + `SectionHeader`-style labels) instead of one undifferentiated text block.
 5. **Related/supporting content** — e.g., "More in this category," reusing existing card components — only if the underlying data/search seam already supports the query cheaply; this is a nice-to-have for a later visual phase, not a requirement.
 
-Do not add ratings, maps, or review features — none exist in the product today and none are approved by this document.
+Do not add ratings or review features — none exist in the product today and none are approved by this document. **Maps are approved** (Phase 12A) as a bounded location feature — see §11.1.
+
+
+### 11.1 Location and maps (decided in Phase 12A; supersedes the "no maps" lines above and in V3)
+
+Maps are now an approved, bounded feature — **location display and picking only**; ratings, reviews and "open now" remain out. One implementation serves every kind (`LOCATION_MAP.md` §11): `MapView`, `LocationPicker`, `DirectionsButton` and the composed `LocationSection`, in `src/components/location/`.
+
+- **Placement:** a "Location" `DetailSection` after "About", full column width; the map is a fixed-height block (≈ 240 px on mobile, ≈ 320 px from `md`) with the standard 16 px gutters so page scroll is never trapped; it keeps the card radius and border tokens.
+- **States:** exact (pin + address + directions), approximate (labelled circle, "Approximate location", no address / directions), area-only (text only, **no map and no fake marker**), loading (a same-size skeleton so the page does not jump), failed-to-load (the text fallback; the page never depends on the map).
+- **Marker:** a CSS `divIcon` in the primary token — no bitmap marker assets; the approximate circle uses a translucent primary fill with a primary outline.
+- **Attribution** is always visible and never covered; map controls are ≥ 44 px touch targets; the map has an accessible name and a text equivalent (address or area) next to it; a map is never the only way to learn or enter a location.
+- **Dark mode:** raster tiles are not inverted; the surrounding chrome follows the theme.
+- **Picker:** coordinate inputs, "Place pin at map centre" and "Clear pin" are always present, so the form is completable by keyboard and screen reader (`LOCATION_MAP.md` §11.2).
 
 ## 12. Professional Workspace
 
@@ -436,7 +448,7 @@ Proposed small, independently verifiable implementation phases for the visual re
 ### Visual Phase V3 — Detail Pages + Imagery
 - **Objective**: implement the richer detail-page composition (§11) and close the Business Directory imagery-coverage gap (§9) to the extent real/better placeholder assets allow.
 - **Scope**: detail-page section restructuring (cover/identity/CTA/supporting-info regions); placeholder-vs-photo policy for Featured items.
-- **Out of scope**: ratings, maps, reviews, or any feature not already in the product.
+- **Out of scope**: ratings, reviews, or any feature not already in the product *(maps were out of scope for V3; they are approved separately — §11.1)*.
 - **Verification**: every existing detail-page route still renders all current data fields; no broken layout with missing images/long text (§9 resilience requirements).
 
 ### Visual Phase V4 — Resident + Professional Workspace Polish

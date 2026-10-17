@@ -1,6 +1,6 @@
 # B-17 Portal — API Contract
 
-**Status:** conventions frozen by Phase 10A. **Individual endpoints are frozen only in principle** — the phase that implements each group owns its exact schema (§9). Once implemented, the generated **OpenAPI document is the machine-readable source of truth**; this file stays the human contract for conventions and intent. **Implemented so far:** `/health`, `/health/ready` (10B/10C), the public **read** group — `/categories`, `/search`, `/search/suggestions`, `/listings/{id}`, `/news`, `/news/{id}` (Phase 10D; details in §6 and [`READ_API_PARITY.md`](READ_API_PARITY.md)) — and the **email/password auth** group under `/auth` (Phase 11B: `register`, `login`, `me`, `logout`, `logout-all`, `verify-email`, `resend-verification`, `forgot-password`, `reset-password`, `change-password`). There are no write, Google/OAuth or owner/admin endpoints yet. **The auth contract (cookie sessions, CSRF, error codes, endpoint list, `/auth/me` shape) is frozen by Phase 11A in [`AUTH_RBAC.md`](AUTH_RBAC.md) §5–§6 and §12 and is implemented in Phases 11B/11C.**
+**Status:** conventions frozen by Phase 10A. **Individual endpoints are frozen only in principle** — the phase that implements each group owns its exact schema (§9). Once implemented, the generated **OpenAPI document is the machine-readable source of truth**; this file stays the human contract for conventions and intent. **Implemented so far:** `/health`, `/health/ready` (10B/10C), the public **read** group — `/categories`, `/search`, `/search/suggestions`, `/listings/{id}`, `/news`, `/news/{id}` (Phase 10D; details in §6 and [`READ_API_PARITY.md`](READ_API_PARITY.md)) — and the **email/password auth** group under `/auth` (Phase 11B: `register`, `login`, `me`, `logout`, `logout-all`, `verify-email`, `resend-verification`, `forgot-password`, `reset-password`, `change-password`). Google sign-in (Phase 11C: `oauth/google/start`, `oauth/google/callback`, `DELETE oauth/google`) is implemented too. There are no listing-write or owner/admin endpoints yet — **their contract is frozen in §10 (Phase 12A)**, with location fields and privacy in [`LOCATION_MAP.md`](LOCATION_MAP.md). **The auth contract (cookie sessions, CSRF, error codes, endpoint list, `/auth/me` shape) is frozen by Phase 11A in [`AUTH_RBAC.md`](AUTH_RBAC.md) §5–§6 and §12 and is implemented in Phases 11B/11C.**
 **Owns:** REST conventions, versioning, naming, response/error envelopes, pagination/filter/sort conventions, the planned resource groups and why they are shaped as they are.
 **Does not own:** table design → [`DATA_MODEL.md`](DATA_MODEL.md) · role/permission rules → [`AUTH_RBAC.md`](AUTH_RBAC.md) · layering/CORS/logging → [`BACKEND_ARCHITECTURE.md`](BACKEND_ARCHITECTURE.md).
 
@@ -69,7 +69,7 @@ PATCH /api/v1/listings/{id}
       { "slug": "cafes", "name": "Cafes", "isPrimary": false }
     ],
     "description": "Fresh bread, cakes and savouries baked daily.",
-    "area": "B-17, Block C (Demo Area)",
+    "area": "B-17",
     "image": "/images/…",
     "tags": ["bakery", "cakes"],
     "featured": true,
@@ -196,7 +196,7 @@ POST /api/v1/admin/listings/{id}/approve   { "revision": 3 }
 POST /api/v1/admin/listings/{id}/reject    { "revision": 3, "reason": "Please add opening hours." }
 ```
 
-`revision` is the integer concurrency/version counter of the listing's content (current architecture, not deferred) — here, the value the admin reviewed; a mismatch (owner edited meanwhile) or a non-`pending` status → `409 invalid_state_transition`. `reason` is required (≥10 characters) for reject. The updated listing is returned. Create endpoints may accept an optional `Idempotency-Key` header (reserved).
+`revision` is the integer concurrency/version counter of the listing's content (current architecture, not deferred) — here, the value the admin reviewed; a stale revision (owner edited meanwhile) → `409 listing_conflict`, a non-`pending` status → `409 invalid_state_transition` (refined in §10.4). `reason` is required (≥10 characters) for reject. The updated listing is returned. Create endpoints may accept an optional `Idempotency-Key` header (reserved).
 
 ### Writes: payload sketch (Food business)
 
@@ -207,7 +207,8 @@ POST /api/v1/listings
   "name": "Sweet Crumbs Bakery",
   "vertical": "food",
   "description": "Fresh cakes and bread baked every morning.",
-  "area": "B-17, Block B",
+  "area": "B-17",
+  "location": { "visibility": "exact", "block": "B", "address": "Shop 4, Main Market", "latitude": 33.123456, "longitude": 72.123456 },
   "tags": ["cakes", "bread"],
   "food": {
     "categories": ["bakeries", "cafes"],
@@ -256,4 +257,129 @@ General business / provider / property / tutor use `category` (a **slug**) inste
 
 ## 9. What is intentionally not frozen here
 
-Exact request/response schemas of `/requests`, `/auth`, `/admin/categories`, `/admin/news`, notification endpoints, media upload/signing endpoints (`MEDIA_STORAGE.md`), user profile fields, the cookie-vs-bearer decision, and rate-limit numbers. Each is owned by the phase in §5; they must follow §1–§4 (envelopes, camelCase, null/omitted, error codes, pagination, no `status` writes).
+Exact request/response schemas of `/admin/news` (the listing, `/saved`, `/requests` and `/admin/categories` write contracts are frozen in §10), notification endpoints, media upload/signing endpoints (`MEDIA_STORAGE.md`), user profile fields, the cookie-vs-bearer decision, and rate-limit numbers. Each is owned by the phase in §5; they must follow §1–§4 (envelopes, camelCase, null/omitted, error codes, pagination, no `status` writes).
+## 10. Phase 12 write contract (frozen in Phase 12A — design only; nothing here is implemented yet)
+
+Binding for slices 12D–12F (`ROADMAP.md`). It refines §5 and does not touch Phase 11 behaviour (sessions, cookie, CSRF, Origin, rate-limit seam). The generated OpenAPI document becomes the machine-readable contract when each slice lands. **Location fields and privacy:** [`LOCATION_MAP.md`](LOCATION_MAP.md). **Guards and frontend auth:** [`AUTH_RBAC.md`](AUTH_RBAC.md) §22.
+
+### 10.1 Rules that apply to every write
+
+- JSON only, camelCase, `X-CSRF-Token` + exact `Origin` on every unsafe request (11B middleware, unchanged). Every owner/admin response is `Cache-Control: no-store`.
+- **Backend-owned, never accepted from a client** (present, omitted or `null` → `422 validation_error`, `code: "not_allowed"`): `id`, `ownerId`, `status`, `revision` *(except as the concurrency token below)*, `featured`, `submittedAt`, `createdAt`, `updatedAt`, `rejectionReason`, any moderation or history field, `kind` on `PATCH`.
+- **Ownership is derived from the session.** The authenticated principal becomes `owner_id` on create; on update the service checks `owner_id = principal.user_id` and answers **`404`** (not `403`) to a non-owner — existence is never confirmed.
+- **No generic CRUD, no writable `status`.** Lifecycle changes are action endpoints (`archive`, `approve`, `reject`, request actions); content edits are `PATCH`.
+- Request validation errors use the `details[]` envelope with camelCase JSON paths (`location.latitude`, `food.categories`).
+- `Idempotency-Key` on creates stays **reserved** (not implemented).
+- **Media:** no upload exists. `image` / `menuImage` accept only a public `https://` URL or a site-relative asset path; `blob:` / `data:` and anything else → `422 invalid_media_reference`. Responses keep returning strings, so the Phase 13 switch to media asset ids (`MEDIA_STORAGE.md` §3) does not change the contract.
+
+### 10.2 Endpoints
+
+| Endpoint | Guard | Body → result |
+|---|---|---|
+| `PUT /users/me/professional-profile` | verified user | `{}` → `201` first time / `200` after, the `/auth/me` shape (`professional.planCode = "free"`). Idempotent. The plan is server-owned; no client can set it. |
+| `GET /users/me/listings` | any signed-in user | `?status=&kind=&limit=&offset=` → owner shapes, `meta: {total, limit, offset, counts:{pending,approved,rejected,archived}}` |
+| `GET /users/me/listings/{id}` | owner | the full owner shape (exact location, `status`, `revision`, current `rejectionReason?`); `404` for anyone else |
+| `POST /listings` | verified + professional profile | discriminated on `kind` (§10.6) → `201` + `Location`, owner shape, `status: "pending"`, `revision: 1` |
+| `PATCH /listings/{id}` | verified + professional + owner | `{revision, …partial fields}` → owner shape (§10.3 effect) |
+| `POST /listings/{id}/archive` | verified + professional + owner | `{revision}` → owner shape, `status: "archived"` |
+| `GET /admin/listings` | admin (fresh session) | `?status=&kind=&limit=&offset=` → admin shapes, `meta.counts` per status |
+| `GET /admin/listings/{id}` | admin | the full admin shape (exact location, submitter display name, rejection reason, history) |
+| `POST /admin/listings/{id}/approve` | admin | `{revision}` → admin shape |
+| `POST /admin/listings/{id}/reject` | admin | `{revision, reason}` (reason ≥ 10 characters) → admin shape |
+| `GET /admin/categories` | admin | `?module=` → every category including inactive |
+| `POST /admin/categories` | admin | `{module, name, slug?, parentId?, displayOrder?}` → `201` |
+| `PATCH /admin/categories/{id}` | admin | `{name?, parentId?, isActive?, displayOrder?}` |
+| `POST /admin/categories/reorder` | admin | `{module, parentId, orderedIds[]}` → the reordered siblings |
+| `GET /saved` | signed-in | `?limit=&offset=` → public card shapes of saved listings that are still approved |
+| `PUT /saved/{listingId}` | signed-in | no body → `204`, idempotent |
+| `DELETE /saved/{listingId}` | signed-in | `204`, idempotent (also when nothing was saved) |
+| `POST /requests` | verified user | §10.8 → `201` |
+| `GET /requests` · `GET /requests/{id}` | signed-in | the requester's own requests; the detail is also readable by the owner of the target listing; `404` otherwise |
+| `GET /users/me/leads` | professional | requests made to listings the caller owns (`?status=`) |
+| `POST /requests/{id}/accept` · `/start` · `/complete` · `/cancel` | provider owner; requester for `cancel` | no body → request shape (§10.8) |
+
+Not in Phase 12: featured-flag administration, listing deletion, unarchive, admin archive, news admin writes (`/admin/news` stays on its 9F-era plan), media, notifications, payment or plan-change endpoints.
+
+### 10.3 Listing lifecycle (final)
+
+States: `pending`, `approved`, `rejected`, `archived` — **no `draft`**. Every transition happens inside one service transaction, writes a `listing_status_history` row and, when content changed, refreshes `search_document`.
+
+| # | Actor | From → To | Via | Rules |
+|---|---|---|---|---|
+| 1 | Owner | ∅ → `pending` | `POST /listings` | verified; professional profile exists; quota (§10.9); `revision = 1`; history `submitted` |
+| 2 | Owner | `pending`/`approved`/`rejected` → `pending` | `PATCH` with ≥ 1 effective change | `revision`++; `submitted_at` reset; history `resubmitted` (also for `pending → pending`). A `rejected` listing re-enters quota: checked here |
+| 3 | Admin | `pending` → `approved` | `approve` | `revision` must match |
+| 4 | Admin | `pending` → `rejected` | `reject` | reason ≥ 10; `revision` must match |
+| 5 | Admin | `approved` → `rejected` | `reject` | **takedown kept** (resolves DATA_MODEL O-5): reason ≥ 10; the owner must edit and resubmit |
+| 6 | Owner | `pending`/`approved`/`rejected` → `archived` | `archive` | terminal; frees the quota slot |
+| — | anything else | | | `409 invalid_state_transition` (e.g. approving a `rejected`/`archived` listing, editing an `archived` one) |
+
+**Which edits trigger moderation again — frozen, no silent guessing:**
+
+- **Every effective content change by the owner** (any field, nested set or location change — except the *pure visibility narrowing* below) returns the listing to `pending`. There is **no "non-material" exemption** in V1: only one copy of the content exists (no version history, `DATA_MODEL.md` §7), so a live edit would publish unreviewed content. This is exactly the frontend's behaviour. Revisit with `listing_revisions`.
+- **No-op `PATCH`** (nothing changes after normalisation): `200`, status and `revision` unchanged, no history row — except on a `rejected` listing, where resubmitting without a change is refused (`422 validation_error`, `code: "no_changes"`) so unedited listings cannot loop through moderation.
+- **Pure visibility narrowing** (`exact → approximate`, `exact → area_only`, `approximate → area_only`, with *every* other moderated value unchanged and only the technical clearing of the point for `area_only` — the precise definition is `LOCATION_MAP.md` §7.4): applied immediately; status unchanged in every state (an `approved` listing stays `approved`; a `pending` one is not resubmitted; a `rejected` one stays `rejected`); `revision`++; **no status-history row**; `submitted_at` unchanged; `search_document` refreshed.
+- **Anything else changes status:** a narrowing combined with *any* other effective change (a moved pin, `area`, `block`, `address`, `landmark` — even only clearing one —, title, description, tags, image, categories, price or other subtype field, Food data, a future contact field) and every widening (`area_only → approximate`, `area_only → exact`, `approximate → exact`) is an ordinary edit: an `approved` listing becomes `pending`, `revision`++, `submitted_at` reset, and **one history row** is written — action `resubmitted`, `from_status = approved`, `to_status = pending`, the new `revision`, actor = owner.
+- There is **no separate `resubmit` endpoint** (the 10A decision stands: "clients never call a separate resubmit"); resubmitting a rejected listing is a `PATCH` that fixes the problem.
+- Admin moderation never edits content; admins cannot archive or edit someone else's listing.
+
+### 10.4 Revision and concurrency
+
+`revision` is the existing integer counter, sent in the body of `PATCH`, `archive`, `approve` and `reject`.
+
+```sql
+UPDATE listings SET …, revision = revision + 1
+ WHERE id = :id AND owner_id = :owner AND revision = :expected AND status <> 'archived'
+```
+
+(owner edits; `approve`/`reject` additionally require `status` as in §10.3, and do not change `revision` — they act *on* the reviewed revision.) Zero rows → the service distinguishes *not found / not yours* (`404`) from a stale token: **`409 listing_conflict`** with `details: [{field: "revision", code: "stale_revision", message: "…current revision is N…"}]`. A wrong *status* stays `409 invalid_state_transition`. This refines the 10A text that put a stale revision under `invalid_state_transition`; `listing_conflict` is a new stable code (`409`). Child rows (categories, Food profile, menu items, subtype) are replaced only after the guarded update succeeds, under the same row lock. **No full content snapshots.** Status history remains append-only.
+
+### 10.5 Permissions
+
+| Operation | Anonymous | Resident (signed in) | Verified Resident | Professional (verified + profile) | Admin |
+|---|---|---|---|---|---|
+| Read public search / detail / categories / news | ✔ | ✔ | ✔ | ✔ | ✔ |
+| Read own listings / own requests / saved | — | ✔ (empty) | ✔ | ✔ | ✔ |
+| Save / unsave an approved listing | — | ✔ | ✔ | ✔ | ✔ |
+| Create the professional profile | — | — (`403 email_not_verified`) | ✔ | (already) | ✔ |
+| Create / edit / archive **own** listing | — | — | — (`403 professional_profile_required`) | ✔ | ✔ only as their own account |
+| Create a service request | — | — (`403 email_not_verified`) | ✔ | ✔ (not to own listing) | ✔ |
+| Read incoming leads / advance a request | — | — | — | ✔ for listings they own | — (no admin surface in V1) |
+| Approve / reject | — | — | — | — | ✔ (verified, `admin` role, fresh session) |
+| Manage categories | — | — | — | — | ✔ |
+
+A Professional has **no** admin power; an Admin has no implicit ownership of other users' listings. Frontend guards remain UX only.
+
+### 10.6 Listing create payloads
+
+A discriminated union on `kind`; each branch carries the common fields, its own typed block, and `location`. There is no free-form JSON blob.
+
+- **Common:** `kind`; `name` (provider / business / tutor, 2–80) or `title` (property, 2–100); `description` (20–400); `area` (a canonical locality from the configured `LOCALITIES`, default `B-17` — `LOCATION_MAP.md` §4; `422 unknown_locality` otherwise); `tags[]` (normalised server-side, lowercased and trimmed); `image?` (§10.1); `location` (below).
+- **`business`:** `vertical: "general" | "food"`; General → `category` (a `directory` slug), never `food`; Food → `food` block, never `category`.
+- **`provider`:** `category` (a `services` slug). **`tutor`:** `category` (an `education` slug = subject), `grade`. **`property`:** `listingType` (`sale|rent`), `propertyType` (a `property` slug), `price` (display string, never parsed), `bedrooms?`, `furnished?`.
+- **`location`:** see [`LOCATION_MAP.md`](LOCATION_MAP.md) §8; requiredness per kind in §6 there. On `PATCH` it replaces the whole block.
+- **Food (unchanged contract, now enforced on write):** a Food profile exists only on `business` + `vertical: "food"`; `food.categories` 1–3 distinct active `food`-module slugs (first = primary, the derived `category` label); `food.serviceOptions` ≥ 1 of `dine-in|takeaway|delivery` (stored canonical); `hoursNote?` ≤ 80; `menuHighlights?` ≤ 8 (name ≤ 60, section ≤ 40, description ≤ 120, price ≤ 24 display text); `menuImage?` (§10.1). Switching Food → General deletes the Food profile, menu items and Food categories in the same transaction (`DATA_MODEL.md` §5). No ordering, cart, payment, reviews or ratings.
+- `PATCH` follows *Null vs omitted* (§1): omitted = unchanged, `null` clears only declared-clearable fields, arrays are replaced.
+
+### 10.7 Categories (admin)
+
+Categories stay inside **code-defined modules**; an admin can never create a module. Validation: `module` immutable after creation; `name` 2–60, unique per `(module, parent)` case-insensitively; `slug` lowercase `[a-z0-9-]{2,60}`, derived from `name` if omitted, **immutable after creation** (slugs are URLs and filter values); `parentId` in the same module, depth ≤ 2, no cycles, not itself; `isActive: false` hides the category from pickers but never breaks listings (`DATA_MODEL.md` §8) — there is no delete endpoint (a used category cannot be deleted). Renaming a category refreshes `search_document` for every listing in it **in the same transaction**. Reorder renumbers `displayOrder` of the siblings atomically. The seeded reference taxonomy is never overwritten by the seed script.
+
+### 10.8 Saved and service requests
+
+- **Saved:** the existing polymorphic `saved_items` table, current user only (`userId` is never accepted). Supported kinds: provider, business (incl. Food), tutor, property — **not news**. `PUT` requires an *approved* listing (`404` otherwise); both calls are idempotent. A saved listing that stops being approved is hidden from `GET /saved` and reappears if re-approved.
+- **Requests (MVP, table in migration `0006`, slice 12F):** only for **provider** listings that are approved, and never for the requester's own listing. Create requires a **verified** user. Fields mirror the frontend: `providerListingId`, `service`, `details` (10–500), `area` (2–80, the requester's own area text — private to requester and owner), `preferredDate` (date, not in the past), `preferredTime?`, `notes?` (≤ 500). `providerName` is stored as a snapshot. Status `submitted → accepted → in-progress → completed`, `cancelled` from any non-terminal state (`REQUEST_TRANSITIONS`); the provider owner drives `accept`/`start`/`complete`/`cancel`; **the requester may `cancel` while `submitted` or `accepted`** (approved in the 12A review; an addition over the frontend, which only lets providers act). Every transition is a guarded `UPDATE … WHERE status = :from` plus a history row; a wrong state is `409 invalid_state_transition`. Visibility: requester and listing owner only; there is **no admin request surface** in V1. No contact channel, booking or payment is designed or built in 12A: a request is in-app status only. **DATA_MODEL O-3 (the contact channel) must be resolved by the product owner before the Phase 12F implementation is finalised** — 12F does not start building request delivery until it is. Rate limits (tunable): create 5 per hour per user and 1 per provider per day.
+
+### 10.9 Quota
+
+Free plan: 3 active (`pending` + `approved`) listings; Premium: unlimited — a code-level entitlement map mirroring `config/plans.ts`. Checked under a `SELECT … FOR UPDATE` on the owner's `professional_profiles` row on **create** and on **resubmitting a `rejected`** listing; violation → `403 plan_limit_reached`. Plan *changes* are not part of Phase 12 (no billing): the frontend's local Upgrade toggle cannot call the backend (see `DECISIONS.md`).
+
+### 10.10 New stable error codes
+
+| HTTP | `code` | When |
+|---|---|---|
+| 409 | `listing_conflict` | stale `revision` on an owner or admin write |
+| 403 | `professional_profile_required` | a listing write by a verified user who has no professional profile |
+| 422 | `validation_error` with `details[].code` ∈ `not_allowed`, `no_changes`, `unknown_locality`, `invalid_media_reference`, `required`, `too_many`, `duplicate`, `unknown_category` | field problems |
+
+`403 plan_limit_reached`, `409 invalid_state_transition`, `404 not_found`, `429 rate_limited` are existing codes (§3). Frontend handling (401 / 403 / 404 / 409 / 422) is frozen in `AUTH_RBAC.md` §22.4.

@@ -188,6 +188,8 @@ The current release supports: business identity, Food categories, description, a
 
 ## 16. Explicitly out of scope (this expansion)
 
+> *Phase 12A note:* "map" below was out of scope for the Food expansion itself. Food businesses are Businesses and now share the platform-wide location and map model (`docs/backend/LOCATION_MAP.md`): a stored location, an optional map and Get Directions. Distance, "open now", ordering and the other exclusions below are unchanged.
+
 Cart · online ordering · checkout · payment · commission logic · settlement · refunds · order tracking · portal-managed delivery · rider management · reviews · ratings · fake popularity · delivery estimates · distance · open-now · map · structured per-day hours · gallery · logo upload · cuisine facet system · a new `SearchResultKind` · a Food-specific store · a Food-specific dashboard · a separate Food Admin · `/food/:id` · backend implementation · route-level code splitting · PWA changes.
 
 ## 17. Architectural non-negotiables
