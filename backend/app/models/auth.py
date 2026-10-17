@@ -28,7 +28,13 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, UUIDPrimaryKeyMixin
 from app.db.types import in_values, str_enum
-from app.models.enums import AuthEventType, AuthTokenPurpose, SessionRevokeReason
+from app.models.enums import (
+    AuthEventType,
+    AuthProvider,
+    AuthTokenPurpose,
+    OAuthPurpose,
+    SessionRevokeReason,
+)
 
 #: SHA-256 digests are 32 bytes.
 TOKEN_HASH_BYTES = 32
@@ -138,4 +144,47 @@ class AuthRateLimit(Base):
         CheckConstraint(f"octet_length(key_hash) = {TOKEN_HASH_BYTES}", name="key_hash_length"),
         CheckConstraint("count >= 0", name="count_non_negative"),
         Index("ix_auth_rate_limits_window_start", "window_start"),
+    )
+
+
+class OAuthFlow(UUIDPrimaryKeyMixin, Base):
+    """One temporary, single-use OAuth round trip (docs/backend/AUTH_RBAC.md §10.2, Phase 11C).
+
+    ``state_hash`` and ``flow_cookie_hash`` are SHA-256 digests: the raw ``state`` travels through
+    the provider and the raw flow-cookie secret only lives in the initiating browser, so neither
+    can be read back from the database. ``nonce`` and ``code_verifier`` are needed in clear to
+    verify the ID token / redeem the code; they are short-lived and single-use. Provider tokens and
+    authorization codes are never stored.
+    """
+
+    __tablename__ = "oauth_flows"
+
+    provider: Mapped[AuthProvider] = mapped_column(str_enum(AuthProvider), nullable=False)
+    purpose: Mapped[OAuthPurpose] = mapped_column(str_enum(OAuthPurpose), nullable=False)
+    state_hash: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    flow_cookie_hash: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    nonce: Mapped[str] = mapped_column(Text, nullable=False)
+    code_verifier: Mapped[str] = mapped_column(Text, nullable=False)
+    #: The initiating account for a ``link`` flow (NULL for ``login``).
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="CASCADE")
+    )
+    #: Validated relative path on the configured frontend; chosen at start, never from the callback.
+    return_to: Mapped[str] = mapped_column(String(200), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        in_values("provider", AuthProvider, name="provider_valid"),
+        in_values("purpose", OAuthPurpose, name="purpose_valid"),
+        CheckConstraint(f"octet_length(state_hash) = {TOKEN_HASH_BYTES}", name="state_hash_length"),
+        CheckConstraint(
+            f"octet_length(flow_cookie_hash) = {TOKEN_HASH_BYTES}", name="flow_cookie_hash_length"
+        ),
+        CheckConstraint("(purpose = 'link') = (user_id IS NOT NULL)", name="link_has_user"),
+        CheckConstraint("left(return_to, 1) = '/'", name="return_to_relative"),
+        CheckConstraint("expires_at > created_at", name="expires_after_created"),
+        Index("uq_oauth_flows_state_hash", "state_hash", unique=True),
+        Index("ix_oauth_flows_expires_at", "expires_at"),
     )

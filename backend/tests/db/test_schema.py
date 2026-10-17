@@ -17,6 +17,7 @@ EXPECTED_TABLES = {
     "food_profiles",
     "listing_categories",
     "listing_status_history",
+    "oauth_flows",
     "listings",
     "news_articles",
     "professional_profiles",

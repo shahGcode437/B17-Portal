@@ -30,6 +30,10 @@ def test_defaults_are_safe_and_nothing_secret_is_configured() -> None:
     assert not any(
         "secret" in name or ("password" in name and "password_hash" not in name)
         for name in Settings.model_fields
+        if name != "google_oauth_client_secret"  # an optional SecretStr, unset by default
+    )
+    assert (
+        settings.google_oauth_client_secret is None and settings.google_oauth_provider == "disabled"
     )
 
 

@@ -21,6 +21,7 @@ from app.middleware.auth_security import AuthSecurityMiddleware
 from app.middleware.request_id import REQUEST_ID_HEADER, RequestIdMiddleware
 from app.middleware.request_log import RequestLogMiddleware
 from app.services.email import create_email_sender
+from app.services.oauth import create_oauth_providers
 
 # The request headers the API contract uses (docs/backend/API_CONTRACT.md); others are refused.
 CORS_ALLOWED_HEADERS = [
@@ -66,6 +67,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.clock = utcnow
     app.state.password_service = PasswordService.from_settings(settings)
     app.state.email_sender = create_email_sender(settings)
+    app.state.oauth_providers = create_oauth_providers(settings)
 
     register_exception_handlers(app)
 

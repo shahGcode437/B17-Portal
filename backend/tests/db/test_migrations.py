@@ -65,7 +65,7 @@ def test_a_fresh_database_upgrades_to_head(scratch_url: str) -> None:
     command.upgrade(alembic_config(scratch_url), "head")
 
     assert tables(scratch_url) == EXPECTED_TABLES | {"alembic_version"}
-    assert version(scratch_url) == "0003"
+    assert version(scratch_url) == "0004"
 
 
 def test_it_downgrades_to_base_and_upgrades_again(scratch_url: str) -> None:
@@ -90,8 +90,13 @@ def test_the_models_and_the_migrations_have_not_drifted(scratch_url: str) -> Non
 def test_there_is_a_single_linear_migration_history(scratch_url: str) -> None:
     script = ScriptDirectory.from_config(alembic_config(scratch_url))
 
-    assert script.get_heads() == ["0003"]
-    assert [revision.revision for revision in script.walk_revisions()] == ["0003", "0002", "0001"]
+    assert script.get_heads() == ["0004"]
+    assert [revision.revision for revision in script.walk_revisions()] == [
+        "0004",
+        "0003",
+        "0002",
+        "0001",
+    ]
 
 
 def test_the_migration_can_be_rendered_as_sql_without_a_database_connection(
@@ -158,7 +163,7 @@ def test_0002_downgrades_cleanly_to_0001_and_upgrades_again(scratch_url: str) ->
     assert "search_document" not in columns(scratch_url, "listings")
     assert "pg_trgm" not in extensions(scratch_url)
     command.upgrade(config, "head")
-    assert version(scratch_url) == "0003"
+    assert version(scratch_url) == "0004"
     command.check(config)
 
 
@@ -233,7 +238,6 @@ def test_0003_upgrades_a_0002_database_with_the_auth_tables_and_user_checks(
     assert version(scratch_url) == "0003"
     assert tables(scratch_url) >= AUTH_TABLES
     assert {"ck_users_email_normalized", "ck_users_email_length"} <= user_checks(scratch_url)
-    command.check(config)  # no drift between the models and the migrations
 
 
 def test_0003_downgrades_to_0002_and_upgrades_again(scratch_url: str) -> None:
@@ -246,7 +250,7 @@ def test_0003_downgrades_to_0002_and_upgrades_again(scratch_url: str) -> None:
     assert tables(scratch_url).isdisjoint(AUTH_TABLES)
     assert "ck_users_email_normalized" not in user_checks(scratch_url)
     command.upgrade(config, "head")
-    assert version(scratch_url) == "0003"
+    assert version(scratch_url) == "0004"
     assert tables(scratch_url) >= AUTH_TABLES
 
 
@@ -275,3 +279,92 @@ def test_0003_keeps_existing_normalized_users(scratch_url: str) -> None:
             )
     finally:
         engine.dispose()
+
+
+# -- 0004: OAuth flows and one identity per provider per user ---------------------------------------
+
+
+def unique_constraints(url: str, table: str) -> set[str]:
+    engine = create_engine(url)
+    try:
+        with engine.connect() as connection:
+            return set(
+                connection.execute(
+                    text(
+                        "SELECT conname FROM pg_constraint "
+                        "WHERE conrelid = CAST(:t AS regclass) AND contype = 'u'"
+                    ),
+                    {"t": table},
+                ).scalars()
+            )
+    finally:
+        engine.dispose()
+
+
+def insert_user_with_identities(url: str, subjects: list[str]) -> None:
+    engine = create_engine(url)
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO users (id, email, display_name) "
+                    "VALUES (gen_random_uuid(), 'g@example.test', 'Google User')"
+                )
+            )
+            for subject in subjects:
+                connection.execute(
+                    text(
+                        "INSERT INTO auth_identities (id, user_id, provider, provider_subject) "
+                        "SELECT gen_random_uuid(), id, 'google', :s FROM users"
+                    ),
+                    {"s": subject},
+                )
+    finally:
+        engine.dispose()
+
+
+def test_0004_upgrades_a_0003_database_and_adds_the_flow_table_and_constraint(
+    scratch_url: str,
+) -> None:
+    config = alembic_config(scratch_url)
+    command.upgrade(config, "0003")
+    assert "oauth_flows" not in tables(scratch_url)
+    assert "uq_auth_identities_user_id_provider" not in unique_constraints(
+        scratch_url, "auth_identities"
+    )
+    insert_user_with_identities(scratch_url, ["sub-1"])
+
+    command.upgrade(config, "0004")
+
+    assert version(scratch_url) == "0004" and "oauth_flows" in tables(scratch_url)
+    assert {
+        "uq_auth_identities_user_id_provider",
+        "uq_auth_identities_provider_subject",
+    } <= unique_constraints(scratch_url, "auth_identities")
+    command.check(config)  # no drift between the models and the migrations
+
+
+def test_0004_downgrades_to_0003_and_upgrades_again(scratch_url: str) -> None:
+    config = alembic_config(scratch_url)
+    command.upgrade(config, "head")
+
+    command.downgrade(config, "0003")
+
+    assert version(scratch_url) == "0003" and "oauth_flows" not in tables(scratch_url)
+    assert "uq_auth_identities_user_id_provider" not in unique_constraints(
+        scratch_url, "auth_identities"
+    )
+    command.upgrade(config, "head")
+    assert version(scratch_url) == "0004" and "oauth_flows" in tables(scratch_url)
+
+
+def test_0004_refuses_to_run_over_duplicate_provider_identities(scratch_url: str) -> None:
+    """Loud by design: a user holding two identities of one provider must be reconciled first."""
+    config = alembic_config(scratch_url)
+    command.upgrade(config, "0003")
+    insert_user_with_identities(scratch_url, ["sub-1", "sub-2"])
+
+    with pytest.raises(Exception, match="uq_auth_identities_user_id_provider"):
+        command.upgrade(config, "0004")
+
+    assert version(scratch_url) == "0003"  # the failed migration rolled back completely

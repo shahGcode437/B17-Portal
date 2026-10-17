@@ -31,12 +31,13 @@ e60a0b6 Phase 10A: define backend architecture and contracts
 d0c02dd Phase 10C: add PostgreSQL data layer foundation
 2e73ebf Phase 10D: add PostgreSQL-backed read APIs
 3c10c1a Phase 11A: freeze authentication security architecture
-Phase 11B commit: pending (implementation complete, not yet committed)
+ea57a11 Phase 11B: add secure email password authentication
+Phase 11C commit: pending (implementation complete, not yet committed)
 
 ## Current Phase
 
-Current Phase: Phase 11B — Email/Password Authentication + PostgreSQL Sessions + CSRF + RBAC Foundation: COMPLETE, commit pending approval. Phase 11A (auth design freeze, `3c10c1a`), Phase 10D (read APIs, `2e73ebf`), Phase 10C (data layer, `d0c02dd`), Phase 10B (FastAPI foundation, `4d73c59`), Phase 10A (backend architecture, `e60a0b6`), Phase 9M (testing foundation, `d586f45`), Phase 9L (cleanup), Phase 9J (SEO / accessibility / final frontend QA), Phase 9G (PWA), Phase 9H (code splitting), the Food & Dining expansion (FD1–FD5) and the Visual Refresh (V1–V6) are complete and committed. Search UX refinement remains deferred; the Search review is in `SEARCH_UX_FINDINGS.md`.
-Next Step: Phase 11C — Google OAuth + Account Linking + Auth Hardening (see Next Step below).
+Current Phase: Phase 11C — Google OAuth + Account Linking + Authentication Hardening: COMPLETE, commit pending approval. Phase 11B (email/password auth, `ea57a11`), Phase 11A (auth design freeze, `3c10c1a`), Phase 10D (read APIs, `2e73ebf`), Phase 10C (data layer, `d0c02dd`), Phase 10B (FastAPI foundation, `4d73c59`), Phase 10A (backend architecture, `e60a0b6`), Phase 9M (testing foundation, `d586f45`), Phase 9L (cleanup), Phase 9J (SEO / accessibility / final frontend QA), Phase 9G (PWA), Phase 9H (code splitting), the Food & Dining expansion (FD1–FD5) and the Visual Refresh (V1–V6) are complete and committed. Search UX refinement remains deferred; the Search review is in `SEARCH_UX_FINDINGS.md`.
+Next Step: Phase 12 — Write APIs + frontend/API integration (see Next Step below).
 
 ## Completed Product Work
 
@@ -80,6 +81,7 @@ Next Step: Phase 11C — Google OAuth + Account Linking + Auth Hardening (see Ne
 - Phase 10D — Backend Read APIs (see below, `docs/backend/API_CONTRACT.md` §6.1 and `docs/backend/READ_API_PARITY.md`)
 - Phase 11A — Authentication Security & Contract Freeze (see below and `docs/backend/AUTH_RBAC.md`)
 - Phase 11B — Email/Password Authentication + Sessions + CSRF + RBAC Foundation (see below and `docs/backend/AUTH_RBAC.md` §20)
+- Phase 11C — Google OAuth + Account Linking + Authentication Hardening (see below and `docs/backend/AUTH_RBAC.md` §21)
 
 Full history is in `git log`; this file summarizes outcomes, not the blow-by-blow.
 
@@ -550,7 +552,7 @@ Phase 11A — Authentication Security & Contract Freeze = **COMPLETE** (commit `
 
 ## Phase 11B Result
 
-Phase 11B — Email/Password Authentication + PostgreSQL Sessions + CSRF + RBAC Foundation = **COMPLETE** (Phase 11B commit: pending). Implements the Phase 11A design (`docs/backend/AUTH_RBAC.md`; as-built notes in §20). **No Google/OAuth, no account linking/claiming, no migration `0004`, no frontend change (`src/`, `e2e/`, `package*.json` untouched), no Redis/JWT/MFA.** Dependencies added: `argon2-cffi`, `email-validator` (runtime) only.
+Phase 11B — Email/Password Authentication + PostgreSQL Sessions + CSRF + RBAC Foundation = **COMPLETE** (commit `ea57a11`). Implements the Phase 11A design (`docs/backend/AUTH_RBAC.md`; as-built notes in §20). **No Google/OAuth, no account linking/claiming, no migration `0004`, no frontend change (`src/`, `e2e/`, `package*.json` untouched), no Redis/JWT/MFA.** Dependencies added: `argon2-cffi`, `email-validator` (runtime) only.
 
 - **Endpoints (10):** `POST /api/v1/auth/register · login · logout · logout-all · verify-email · resend-verification · forgot-password · reset-password · change-password` and `GET /api/v1/auth/me`. All responses are `Cache-Control: no-store`; the raw session token exists only in the cookie; `csrfToken` (derived from it) is the only token in a body.
 - **Sessions:** opaque 256-bit tokens, SHA-256 stored in `auth_sessions`; cookie `b17_session` (development) / `__Host-b17_session` (staging/production), `HttpOnly; SameSite=Lax; Path=/`, `Secure` when hosted (cannot be disabled), no `Domain`; idle 14 d (sliding, `last_seen` written ≤ every 5 min) / absolute 30 d; multi-device with an atomic cap of 10 (oldest revoked, audited); logout/logout-all/password reset/password change/role change/suspension all revoke server-side; a session whose account is not `active` is rejected immediately.
@@ -563,6 +565,20 @@ Phase 11B — Email/Password Authentication + PostgreSQL Sessions + CSRF + RBAC 
 - **Tests:** 848 (242 database-free + 606 PostgreSQL), including register/login/me/logout, sessions (idle/absolute/revoked/suspended/cap/ties), tokens (single-use, expiry, concurrency), CSRF/Origin/`Sec-Fetch-Site`, cookie flags (dev and hosted), enumeration, redaction, the authorization matrix via a test-only router, admin freshness, rate limiter, retention, CLIs, and concurrent logins/redemptions/grants on separate connections.
 - **Verified:** ruff, ruff format, `mypy --strict app tests scripts`, `alembic upgrade head` + `alembic check`, Docker build, Compose API + PostgreSQL healthy, and a manual curl smoke test (register → cookie → me → CSRF rejection → logout → login → verify/reset via the dev console link → no secrets in the server log).
 - **Production prerequisites unchanged:** a custom same-site domain and an email provider (delivery is `disabled` when hosted).
+
+## Phase 11C Result
+
+Phase 11C — Google OAuth + Account Linking + Authentication Hardening = **COMPLETE** (Phase 11C commit: pending). Implements `docs/backend/AUTH_RBAC.md` §10 as frozen (as-built notes in §21). **No frontend change (`src/`, `e2e/`, `package*.json` untouched), no Facebook/Apple/Instagram, no MFA/Redis/JWT/refresh tokens, no write API, no real email provider.** Dependencies: `pyjwt[crypto]` and `httpx` (now runtime). Authlib was evaluated and rejected (see `DECISIONS.md`). No Google SDK; no JWT/OIDC cryptography is hand-written.
+
+- **Endpoints (3, `/api/v1/auth`):** `POST /oauth/google/start` (login: Origin; link: session + CSRF) → `{authorizationUrl}` + short-lived flow cookie; `GET /oauth/google/callback` → always a `302` to the configured frontend (`returnTo`, or `/login?error=<oauth_denied|oauth_failed|identity_conflict|email_not_verified|account_disabled>`); `DELETE /oauth/google` → `204` (never removes the last sign-in method).
+- **Flow:** backend-driven authorization code + PKCE S256 + `state` + `nonce`; single-use `oauth_flows` row (hashed `state` and browser-binding cookie, 10 min) consumed by one guarded `UPDATE … RETURNING` committed before any provider I/O; ID token verified with PyJWT (RS256 only, Google JWKS cached, `iss`/`aud`/`exp`/`nonce`); Google tokens discarded; the result is the same PostgreSQL session + `HttpOnly` cookie + CSRF token as a password login (10-session cap included).
+- **Linking rules:** identity key `(google, sub)`; Case A creates a Resident; B signs in by subject; **C1 never links by email**; C2 is the single narrow unverified-account claim (password cleared, sessions revoked, tokens retired, audited); C3/C4 refuse; D (Connect) requires the initiating session and never moves an identity between accounts.
+- **Provider seam:** `OAuthProvider` interface with `GoogleOAuthProvider` and a development/test-only `FakeOAuthProvider` (refused in staging/production). Normal pytest, CI and Docker never contact Google. Settings: `GOOGLE_OAUTH_PROVIDER` (`disabled` default), `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET` (`SecretStr`), `API_PUBLIC_BASE_URL`.
+- **Migration `0004`:** `oauth_flows` + `uq_auth_identities_user_id_provider`; upgrade, `0004 → 0003 → 0004` and drift verified. `auth_maintenance purge` also removes flows expired > 1 day.
+- **Final-review hardening:** an explicitly unsafe `returnTo` is `422 validation_error` (absent/blank → `/`); the ID-token checks are strict (single-string `aud`, required `iat`/`sub`/`email`, boolean `email_verified`, 30 s skew leeway) and an unknown `kid` refreshes the JWKS once; malformed key sets fail safely.
+- **Tests:** 1141 (394 database-free + 747 PostgreSQL): redirect/PKCE/settings/fake/Google-adapter unit tests (signed RS256 tokens over a mock transport, no network), the OAuth HTTP matrix, DB constraints, single-use consumption, retention, and concurrency on committed rows.
+- **Not performed:** a real-Google smoke test (needs Google Cloud credentials; checklist in `docs/backend/DEPLOYMENT.md` §10).
+- **Production prerequisites unchanged:** a custom same-site domain, an email provider, edge rate limiting, and access-log query-string stripping on `/api/v1/auth/oauth/*`.
 
 ## Production V1 Direction
 
@@ -593,7 +609,7 @@ Phase 11B — Email/Password Authentication + PostgreSQL Sessions + CSRF + RBAC 
 - Frontend capability checks (Phase 9E) are UX only, not authorization/security — explicitly documented in `types/entitlements.ts`; the backend will be authoritative once it exists.
 - No profession-specific Premium modules built yet (Tutor/Property/Salon, etc.) — `professional.modules` capability exists, reserved and unconsumed, for exactly this future use.
 - Auth is demo-only (name string, no password, no persistence) — by design, not yet a gap to "fix," but must become real before any production launch. The real design is frozen in `docs/backend/AUTH_RBAC.md` (Phase 11A); implemented in Phase 11B (email/password) and 11C (Google), frontend integration Phase 12 (the route guards also need a *loading* state because auth will be asynchronous).
-- A backend exists (Phase 10B–11B: liveness/readiness, a 19-table PostgreSQL schema with Alembic migrations `0001`–`0003`, reference seed, a tested data layer, public read/search APIs and email/password authentication with PostgreSQL sessions) but there is no write API, no Google/OAuth yet, and the frontend does not call it — all frontend state is still static seed data + in-memory or `localStorage`-persisted Zustand.
+- A backend exists (Phase 10B–11C: liveness/readiness, a 20-table PostgreSQL schema with Alembic migrations `0001`–`0004`, reference seed, a tested data layer, public read/search APIs, and email/password plus Google authentication with PostgreSQL sessions) but there is no write API and the frontend does not call it (the Google endpoints exist but no SPA code uses them) — all frontend state is still static seed data + in-memory or `localStorage`-persisted Zustand.
 - Automated tests exist since Phase 9M (see `TESTING.md` → Known gaps): Chromium-only E2E, no axe/Lighthouse, no real-device or visual-regression testing, several flows (Education/Tutor, News admin CRUD, Leads/Requests lifecycle, Premium toggle) not covered by E2E.
 - Backend contract open questions (area normalization, General-business category taxonomy, listing contact channel, demo content in production, admin takedown semantics) are recorded in `docs/backend/DATA_MODEL.md` §13 and need product decisions before the write APIs (Phase 12).
 - Lint baseline: 8 pre-existing warnings (6× `only-export-components` in shadcn-pattern files, 2× `set-state-in-effect`) — known, unchanged across many phases.
@@ -622,7 +638,7 @@ Phase 11B — Email/Password Authentication + PostgreSQL Sessions + CSRF + RBAC 
 
 ## Next Step
 
-Phase 11C (Google OAuth + account linking + auth hardening — frozen in `docs/backend/AUTH_RBAC.md`), then 12 (write APIs + frontend integration — which must call `SearchIndexer` for every listing/category write) and 13 (media + deployment) per `ROADMAP.md` and `docs/backend/BACKEND_ARCHITECTURE.md` §12. The backend phases should also pick up what the frontend deliberately deferred: server-side / pre-rendered per-page metadata and link previews, a per-entity sitemap, structured data from real entity data, a real production URL (`VITE_SITE_URL`), persistent data / auth, real media storage and any offline write handling. Phases 9F (Admin Production UX) and 9I (Notifications + Trust/Reviews UI) remain product decisions. Store packaging, push notifications, sharing / deep links, ordering / payments and premium merchant tools stay out of scope until their roadmap phases.
+Phase 12 (write APIs + frontend integration, including the SPA side of Google sign-in: start, `/login?error=` handling, Connect/Disconnect — which must call `SearchIndexer` for every listing/category write) and 13 (media + deployment) per `ROADMAP.md` and `docs/backend/BACKEND_ARCHITECTURE.md` §12. The backend phases should also pick up what the frontend deliberately deferred: server-side / pre-rendered per-page metadata and link previews, a per-entity sitemap, structured data from real entity data, a real production URL (`VITE_SITE_URL`), persistent data / auth, real media storage and any offline write handling. Phases 9F (Admin Production UX) and 9I (Notifications + Trust/Reviews UI) remain product decisions. Store packaging, push notifications, sharing / deep links, ordering / payments and premium merchant tools stay out of scope until their roadmap phases.
 
 ## Resume Instructions
 

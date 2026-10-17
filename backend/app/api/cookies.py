@@ -42,3 +42,35 @@ def clear_cookie_header(settings: Settings) -> str:
     carrier = Response()
     clear_session_cookie(carrier, settings)
     return carrier.headers["set-cookie"]
+
+
+#: An OAuth round trip is valid for 10 minutes (``OAUTH_FLOW_TTL``); the cookie lives as long.
+OAUTH_FLOW_COOKIE_MAX_AGE = 600
+
+
+def set_oauth_flow_cookie(response: Response, settings: Settings, token: str) -> None:
+    """The browser-binding cookie of an OAuth flow: ``HttpOnly``, ``SameSite=Lax`` (so Google's
+    top-level redirect back to the callback carries it), host-only, short-lived, and entirely
+    separate from the B-17 session cookie."""
+    response.set_cookie(
+        key=settings.oauth_cookie_name,
+        value=token,
+        max_age=OAUTH_FLOW_COOKIE_MAX_AGE,
+        path="/",
+        secure=bool(settings.auth_cookie_secure),
+        httponly=True,
+        samesite="lax",
+    )
+
+
+def clear_oauth_flow_cookie(response: Response, settings: Settings) -> None:
+    response.set_cookie(
+        key=settings.oauth_cookie_name,
+        value="",
+        max_age=0,
+        expires=0,
+        path="/",
+        secure=bool(settings.auth_cookie_secure),
+        httponly=True,
+        samesite="lax",
+    )

@@ -26,6 +26,7 @@ from app.models.enums import PlanCode, RoleName, UserStatus
 from app.services.email import MemoryEmailSender
 
 ORIGIN = "http://127.0.0.1:5173"
+API_ORIGIN = "http://127.0.0.1:8000"
 PASSWORD = "correct horse battery staple"
 OTHER_PASSWORD = "another long passphrase 42"
 START = datetime(2026, 10, 17, 12, 0, tzinfo=UTC)
@@ -57,6 +58,9 @@ def make_test_settings(**overrides: Any) -> Settings:
         "max_concurrent_password_hashes": 2,
     }
     values.update(overrides)
+    if values["environment"] == "test":  # Google sign-in on the in-process fake provider
+        values.setdefault("google_oauth_provider", "fake")
+        values.setdefault("api_public_base_url", API_ORIGIN)
     return Settings(_env_file=None, **values)
 
 
@@ -115,6 +119,7 @@ class AuthApi:
         csrf: str | None = "auto",
         headers: dict[str, str] | None = None,
         content: bytes | None = None,
+        params: dict[str, str] | None = None,
     ) -> Response:
         sent: dict[str, str] = dict(headers or {})
         if origin is not None:
@@ -124,7 +129,13 @@ class AuthApi:
         if csrf is not None:
             sent["X-CSRF-Token"] = csrf
         response: Response = self.http.request(
-            method, f"/api/v1{path}", json=json, headers=sent, content=content
+            method,
+            f"/api/v1{path}",
+            json=json,
+            headers=sent,
+            content=content,
+            params=params,
+            follow_redirects=False,  # OAuth callbacks answer 302; the tests inspect them
         )
         return response
 

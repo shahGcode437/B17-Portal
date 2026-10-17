@@ -2,7 +2,7 @@
 
 FastAPI + PostgreSQL backend. Architecture, data model and contracts are specified in [`docs/backend/`](../docs/backend/BACKEND_ARCHITECTURE.md) — this file only covers day-to-day commands.
 
-**Current scope (Phase 11B):** application foundation, the PostgreSQL data layer (Alembic migrations `0001`–`0003`, reference taxonomy seed, dev fixtures), health/readiness, the **public read APIs** (categories, search, suggestions, listing detail, news — `docs/backend/READ_API_PARITY.md`) and **email/password authentication** (`/api/v1/auth/*`: register, login, me, logout, logout-all, verify-email, resend-verification, forgot-/reset-/change-password) with PostgreSQL sessions in an `HttpOnly` cookie, CSRF protection and an RBAC foundation (`docs/backend/AUTH_RBAC.md`). No Google/OAuth (Phase 11C), no write or owner/admin APIs yet, and the frontend does not call the backend.
+**Current scope (Phase 11C):** application foundation, the PostgreSQL data layer (Alembic migrations `0001`–`0004`, reference taxonomy seed, dev fixtures), health/readiness, the **public read APIs** (categories, search, suggestions, listing detail, news — `docs/backend/READ_API_PARITY.md`) and **email/password authentication** (`/api/v1/auth/*`: register, login, me, logout, logout-all, verify-email, resend-verification, forgot-/reset-/change-password) with PostgreSQL sessions in an `HttpOnly` cookie, CSRF protection and an RBAC foundation (`docs/backend/AUTH_RBAC.md`), plus **Google sign-in** (`/api/v1/auth/oauth/google/{start,callback}`, `DELETE /api/v1/auth/oauth/google`: sign-in, Connect and Disconnect through the same sessions; a development fake provider needs no credentials). No write or owner/admin APIs yet, and the frontend does not call the backend.
 
 ## Setup (once)
 
@@ -74,6 +74,24 @@ uvicorn app.main:app --reload
   ```
 
   In development the email backend is `console`: verification/reset links (with the token in the URL fragment) are printed by the server. Make the first admin with `python -m app.cli.admin grant me@example.org` (needs a verified account) and purge expired auth data with `python -m app.cli.auth_maintenance purge`. Settings and the cookie/CSRF/session rules are in `.env.example` and `docs/backend/AUTH_RBAC.md`.
+- Google sign-in, locally and offline. Google is `disabled` by default (the endpoints answer `503`). To exercise the whole flow without Google Cloud, run the API with the in-process fake provider (development/test only — it is refused when `ENVIRONMENT` is `staging` or `production`):
+
+  ```bash
+  GOOGLE_OAUTH_PROVIDER=fake uvicorn app.main:app          # callback URL: http://127.0.0.1:8000/api/v1/auth/oauth/google/callback
+  ```
+
+  ```bash
+  B=http://127.0.0.1:8000/api/v1; O="Origin: http://127.0.0.1:5173"; J="Content-Type: application/json"
+  curl -c jar.txt -H "$O" -H "$J" -X POST $B/auth/oauth/google/start -d '{"purpose":"login","returnTo":"/saved"}'
+  #  -> {"data":{"authorizationUrl":"https://fake-google.invalid/authorize?...&state=<STATE>&..."}} and a b17_oauth flow cookie in jar.txt
+  # The fake "Google" is driven by the authorization code: fake|<scenario>|<sub>|<email>|<verified 0/1>|<name>  (scenarios: ok, denied, invalid, timeout)
+  curl -i -b jar.txt -c jar.txt -G $B/auth/oauth/google/callback \
+       --data-urlencode 'code=fake|ok|sub-1|gina@example.org|1|Gina Khan' --data-urlencode 'state=<STATE>'
+  #  -> 302 Location: http://127.0.0.1:5173/saved, Set-Cookie: b17_session=...  (the flow cookie is cleared)
+  curl -b jar.txt $B/auth/me                                    # authMethods: {"password": false, "providers": ["google"]}
+  ```
+
+  Re-sending the callback, a wrong `state`, or a different browser (no `b17_oauth` cookie) ends at `302 …/login?error=oauth_failed`. To use real Google instead, see `docs/backend/DEPLOYMENT.md` §10 (`GOOGLE_OAUTH_PROVIDER=google` plus the client id/secret and `API_PUBLIC_BASE_URL`; the secret goes in your untracked `.env`, never in `.env.example`).
 - Interactive docs: <http://127.0.0.1:8000/docs> (OpenAPI at `/api/v1/openapi.json`; none of it is published when `ENVIRONMENT=production`).
 - Run from `backend/` so `.env` is found. `.env.example` documents every variable.
 
@@ -87,7 +105,7 @@ docker compose run --rm api alembic upgrade head          # migrations are an ex
 ## Test and check
 
 ```bash
-pytest                    # 242 database-free tests always run; the 606 PostgreSQL tests need TEST_DATABASE_URL
+pytest                    # 394 database-free tests always run; the 747 PostgreSQL tests need TEST_DATABASE_URL
 ruff check .              # lint
 ruff format --check .     # formatting (use `ruff format .` to fix)
 mypy                      # strict type check (app, tests, scripts)

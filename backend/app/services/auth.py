@@ -35,7 +35,7 @@ from app.core.rate_limit import (
 )
 from app.core.security.identity import canonical_email
 from app.core.security.passwords import PasswordService, validate_password
-from app.core.security.tokens import hash_token, is_well_formed_token, new_token
+from app.core.security.tokens import hash_token, is_well_formed_token
 from app.db.session import transaction
 from app.models import AuthToken, User
 from app.models.enums import (
@@ -47,6 +47,7 @@ from app.models.enums import (
 from app.repositories.auth import TokenRepository, UserAuthRepository
 from app.services.auth_audit import AuthAuditService
 from app.services.auth_sessions import Principal, SessionService
+from app.services.auth_tokens import issue_token
 from app.services.email import (
     EmailMessage,
     password_changed_notice,
@@ -128,19 +129,7 @@ class AuthService:
         self, user: User, purpose: AuthTokenPurpose, ttl: timedelta, now: datetime
     ) -> str:
         """A new one-time token (caller's transaction). Older ones of the purpose are retired."""
-        self._tokens.invalidate_unconsumed(user.id, [purpose], now)
-        raw = new_token()
-        self._tokens.add(
-            AuthToken(
-                user_id=user.id,
-                purpose=purpose,
-                token_hash=hash_token(raw),
-                email=user.email,
-                expires_at=now + ttl,
-                created_at=now,
-            )
-        )
-        return raw
+        return issue_token(self._tokens, user, purpose, ttl, now)
 
     def account_methods(self, principal: Principal) -> AccountMethods:
         user = self._users.get_by_id(principal.user_id)

@@ -102,6 +102,8 @@ class AuthIdentity(UUIDPrimaryKeyMixin, Base):
         UniqueConstraint(
             "provider", "provider_subject", name="uq_auth_identities_provider_subject"
         ),
+        # Phase 11C: one identity per provider per user (a provider identity has one owner above).
+        UniqueConstraint("user_id", "provider", name="uq_auth_identities_user_id_provider"),
     )
 
 

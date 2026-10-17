@@ -139,7 +139,7 @@ Prefer, in order: **database constraints**, **guarded single-statement updates**
 ## 7. Cross-cutting concerns
 
 ### Configuration
-Pydantic settings, loaded from the environment. Variables (implemented in 10B): `ENVIRONMENT` (`development|test|staging|production`), `DEBUG`, `APP_NAME`, `APP_VERSION`, `API_V1_PREFIX`, `FRONTEND_ORIGINS`, `LOG_LEVEL`. `DATABASE_URL` (a secret, never logged; optional so the API starts without a database) and `DB_CONNECT_TIMEOUT_SECONDS` (10C). `TEST_DATABASE_URL` is read **only by the test harness**, never by the application. Planned: later auth settings (`SECRET_KEY`, token lifetimes, OAuth client ids/secrets) and object-storage settings. `.env.example` is committed with placeholders; the real `.env` is git-ignored; **no secret is ever committed**; production secrets come from the host's secret store (`DEPLOYMENT.md`). Settings fail fast on startup if required values are missing.
+Pydantic settings, loaded from the environment. Variables (implemented in 10B): `ENVIRONMENT` (`development|test|staging|production`), `DEBUG`, `APP_NAME`, `APP_VERSION`, `API_V1_PREFIX`, `FRONTEND_ORIGINS`, `LOG_LEVEL`. `DATABASE_URL` (a secret, never logged; optional so the API starts without a database) and `DB_CONNECT_TIMEOUT_SECONDS` (10C). `TEST_DATABASE_URL` is read **only by the test harness**, never by the application. Auth settings are implemented (11B: cookies, session lifetimes, Argon2, email backend; 11C: `GOOGLE_OAUTH_PROVIDER` = `disabled|google|fake`, `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET` as a `SecretStr`, `API_PUBLIC_BASE_URL`; see `AUTH_RBAC.md` §21). Object-storage settings are planned. `.env.example` is committed with placeholders; the real `.env` is git-ignored; **no secret is ever committed**; production secrets come from the host's secret store (`DEPLOYMENT.md`). Settings fail fast on startup if required values are missing.
 
 ### CORS
 Explicit allow-list, never `*`, and never a wildcard together with credentials.
@@ -207,7 +207,7 @@ Docker Compose provides PostgreSQL (`backend/compose.yaml`, `postgres:17-alpine`
 | **10D** | Public read APIs (**complete**): categories, search/suggestions, listing detail, news; migration `0002` search foundation (`pg_trgm`, maintained `search_document`); read services + repositories + explicit read schemas; extended fixtures; parity notes in `READ_API_PARITY.md`. |
 | **11A** | Authentication security & contract freeze (**complete**, docs only): sessions, cookies, CSRF, passwords, tokens, OAuth, linking, RBAC, schema plan, threat review (`AUTH_RBAC.md`). |
 | **11B** | Email/password authentication + server-side sessions + CSRF + verification/reset + RBAC dependencies + audit + PostgreSQL rate limiter + admin/maintenance CLIs (migration `0003`) — **complete**. |
-| **11C** | Google OAuth + account linking + authorization hardening (migration `0004`). |
+| **11C** | Google OAuth + account linking + authentication hardening (migration `0004`; `OAuthProvider` seam with a Google adapter on `PyJWT` + `httpx` and a dev/test fake) — **complete**. |
 | **12** | Write APIs (owner listing lifecycle, moderation, saved, requests, news admin) and frontend/API integration. |
 | **13** | Media storage and production deployment/hardening. |
 

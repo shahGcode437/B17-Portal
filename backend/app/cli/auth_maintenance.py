@@ -1,10 +1,10 @@
 """Authentication data sweep: ``python -m app.cli.auth_maintenance purge``.
 
 A safety net for rows that remain after login's own opportunistic cleanup. Deletes sessions and
-one-time tokens expired/revoked/consumed more than 7 days ago, rate-limit windows
-older than 2 days, and audit events older than 400 days. Safe to run any time and as often as
-wanted; the application never depends on it (docs/backend/AUTH_RBAC.md §13.5). Schedule it from the
-host (cron / scheduled task) — the application has no scheduler.
+one-time tokens expired/revoked/consumed more than 7 days ago, rate-limit windows older than
+2 days, OAuth flows expired for a day, and audit events older than 400 days. Safe to run any time
+and as often as wanted; the application never depends on it (docs/backend/AUTH_RBAC.md §13.5).
+Schedule it from the host (cron / scheduled task) — the application has no scheduler.
 """
 
 import argparse
@@ -35,7 +35,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         engine.dispose()
     print(
         f"Purged {counts.sessions} session(s), {counts.tokens} token(s), "
-        f"{counts.rate_limits} rate-limit window(s), {counts.events} audit event(s)."
+        f"{counts.rate_limits} rate-limit window(s), {counts.oauth_flows} OAuth flow(s), "
+        f"{counts.events} audit event(s)."
     )
     return 0
 

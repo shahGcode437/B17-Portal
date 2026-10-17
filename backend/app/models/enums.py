@@ -157,3 +157,10 @@ class AuthEventType(StrEnum):
     ROLE_REVOKED = "role_revoked"
     ACCOUNT_SUSPENDED = "account_suspended"
     ACCOUNT_REACTIVATED = "account_reactivated"
+
+
+class OAuthPurpose(StrEnum):
+    """What an OAuth round trip is for: sign in, or connect a provider to the signed-in account."""
+
+    LOGIN = "login"
+    LINK = "link"

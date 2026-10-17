@@ -7,8 +7,14 @@ leaves in the ``Set-Cookie`` header; ``csrfToken`` (derived from it) is the only
 """
 
 from fastapi import APIRouter, BackgroundTasks, Request, Response
+from fastapi.responses import RedirectResponse
 
-from app.api.cookies import clear_session_cookie, set_session_cookie
+from app.api.cookies import (
+    clear_oauth_flow_cookie,
+    clear_session_cookie,
+    set_oauth_flow_cookie,
+    set_session_cookie,
+)
 from app.api.routing import ContractRoute
 from app.core.config import Settings
 from app.core.errors import ErrorResponse
@@ -17,8 +23,11 @@ from app.dependencies.auth import (
     AuthServiceDep,
     CurrentUser,
     EmailSenderDep,
+    OAuthServiceDep,
+    OptionalUser,
 )
 from app.dependencies.settings import SettingsDep
+from app.models.enums import AuthProvider
 from app.schemas.auth import (
     AcceptedStatus,
     AuthMethods,
@@ -26,6 +35,8 @@ from app.schemas.auth import (
     ChangePasswordRequest,
     ForgotPasswordRequest,
     LoginRequest,
+    OAuthStarted,
+    OAuthStartRequest,
     ProfessionalSummary,
     RegisterRequest,
     ResetPasswordRequest,
@@ -36,6 +47,7 @@ from app.schemas.envelope import Envelope
 from app.services.auth import AccountMethods, AuthService, IssuedSession
 from app.services.auth_sessions import Principal
 from app.services.email import EmailMessage, EmailSender, deliver
+from app.services.oauth.flow import CALLBACK_ERROR_CODES
 
 router = APIRouter(
     prefix="/auth",
@@ -257,3 +269,94 @@ def change_password(
     )
     _schedule(background, sender, issued.emails)
     return _signed_in(issued, service=service, settings=settings, response=response)
+
+
+# -- Google sign-in (Phase 11C) --------------------------------------------------------------------
+
+
+@router.post(
+    "/oauth/google/start",
+    response_model=Envelope[OAuthStarted],
+    summary="Start a Google sign-in (or Connect Google) round trip",
+    responses={503: {"model": ErrorResponse, "description": "Google sign-in is not configured"}},
+)
+def google_start(
+    payload: OAuthStartRequest,
+    response: Response,
+    principal: OptionalUser,
+    service: OAuthServiceDep,
+    settings: SettingsDep,
+) -> Envelope[OAuthStarted]:
+    """Creates the temporary single-use flow (``state``, ``nonce``, PKCE, validated ``returnTo``),
+    binds it to this browser with a short-lived ``HttpOnly`` cookie and returns the provider URL;
+    the SPA then navigates to it. ``purpose: "link"`` (Connect Google) needs a signed-in session
+    **and** the CSRF token; ``login`` needs only an allowed ``Origin``. An absent or blank
+    ``returnTo`` means ``/``; an explicitly unsafe one is a ``422 validation_error`` and creates
+    nothing."""
+    started = service.start(AuthProvider.GOOGLE, payload.purpose, payload.return_to, principal)
+    set_oauth_flow_cookie(response, settings, started.flow_cookie)
+    return Envelope(data=OAuthStarted(authorization_url=started.authorization_url))
+
+
+def _redirect(settings: Settings, path: str) -> RedirectResponse:
+    # The origin is always the configured frontend; `path` is a validated relative path or a fixed
+    # error destination — nothing here is ever taken from the request.
+    return RedirectResponse(f"{settings.frontend_base_url}{path}", status_code=302)
+
+
+@router.get(
+    "/oauth/google/callback",
+    status_code=302,
+    response_class=RedirectResponse,
+    summary="Google redirects the browser here (not an API call)",
+)
+def google_callback(
+    request: Request,
+    background: BackgroundTasks,
+    service: OAuthServiceDep,
+    settings: SettingsDep,
+    sender: EmailSenderDep,
+) -> RedirectResponse:
+    """Protected by the OAuth ``state``, the browser-binding cookie, PKCE and the ID-token nonce —
+    not by CORS, ``Origin`` or the CSRF token (this is a provider redirect, not an XHR). Always a
+    ``302`` to the configured frontend: the validated ``returnTo`` (with the B-17 session cookie
+    for a sign-in) or ``/login?error=<code>`` with a fixed code. Provider text, codes and tokens
+    never appear in the redirect."""
+    params = request.query_params
+    outcome = service.callback(
+        AuthProvider.GOOGLE,
+        code=params.get("code"),
+        state=params.get("state"),
+        provider_error=params.get("error"),
+        flow_cookie=request.cookies.get(settings.oauth_cookie_name),
+        session_token=request.cookies.get(settings.auth_cookie_name),
+        user_agent=_user_agent(request),
+    )
+    if outcome.return_to is not None:
+        redirect = _redirect(settings, outcome.return_to)
+        if outcome.session_token is not None and outcome.session_max_age is not None:
+            set_session_cookie(redirect, settings, outcome.session_token, outcome.session_max_age)
+        _schedule(background, sender, outcome.emails)
+        redirect.background = background
+    else:
+        code = outcome.error if outcome.error in CALLBACK_ERROR_CODES else "oauth_failed"
+        redirect = _redirect(settings, f"/login?error={code}")
+    if outcome.flow_spent:  # single use: the cookie is spent only once its flow was consumed
+        clear_oauth_flow_cookie(redirect, settings)
+    return redirect
+
+
+@router.delete(
+    "/oauth/google",
+    status_code=204,
+    summary="Disconnect Google from the signed-in account",
+    responses={
+        404: {"model": ErrorResponse, "description": "No Google identity is connected"},
+        409: {"model": ErrorResponse, "description": "It is the account's last sign-in method"},
+    },
+)
+def google_disconnect(principal: CurrentUser, service: OAuthServiceDep) -> Response:
+    """Removes only the caller's own Google identity, and refuses if it is the last way to sign in
+    (a password or another identity must remain). Authenticated + CSRF."""
+    service.disconnect(principal, AuthProvider.GOOGLE)
+    return Response(status_code=204)

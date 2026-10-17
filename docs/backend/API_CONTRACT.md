@@ -125,7 +125,7 @@ One shape for every non-2xx response:
 | 403 | `account_disabled` | Correct credentials on a suspended account; *Phase 11* |
 | 403 | `csrf_failed` | Missing/invalid CSRF token or disallowed Origin; *Phase 11* |
 | 409 | `email_already_registered` | Registration with an existing email (documented enumeration trade-off); *Phase 11* |
-| 409 | `identity_conflict` | A social identity belongs to another account / email collision; *Phase 11C* |
+| 409 | `identity_conflict` | A social identity belongs to another account / email collision. In 11C it is reported only as the `/login?error=identity_conflict` redirect code of the OAuth callback (the callback never returns JSON); the registered code is reserved for the Phase 12 SPA |
 | 400 | `token_invalid` · `token_expired` | Verification/reset token unknown, used or past its expiry; *Phase 11* |
 | 415 | `bad_request` | A non-JSON body on an `/auth/` endpoint (11B; future upload routes may use multipart) |
 | 429 | `rate_limited` | With `Retry-After` |
@@ -177,7 +177,7 @@ Legend — **Auth:** A anonymous · R signed-in · O owner · P professional · 
 | `/users` | `GET /users/me/listings?status=`, `PATCH /users/me` (profile) | R | Owner's own view of all statuses (the Professional "My Listings"); **identity, roles and plan come from `GET /auth/me`** | 12 |
 | `/saved` | `GET /saved`, `PUT /saved/{listingId}`, `DELETE /saved/{listingId}` | R | `PUT`/`DELETE` are idempotent (duplicate Saved is impossible and harmless) | 12 |
 | `/requests` | `POST /requests`, `GET /requests`, incoming leads for owners, status transitions | R / P | Request Service + Leads; transitions follow `REQUEST_TRANSITIONS`; **detail deferred** | 12 |
-| `/auth` | `register`, `login`, `logout`, `logout-all`, `me`, `verify-email`, `resend-verification`, `forgot-password`, `reset-password`, `change-password` (**implemented in 11B**; `change-password` returns `200` with the rotated session's me-shape); `oauth/google/start`, `oauth/google/callback`, `DELETE oauth/google` (**11C**). **No `refresh`** — sessions are server-side. | A / R | Frozen in `AUTH_RBAC.md` §12 | 11B / 11C |
+| `/auth` | `register`, `login`, `logout`, `logout-all`, `me`, `verify-email`, `resend-verification`, `forgot-password`, `reset-password`, `change-password` (**implemented in 11B**; `change-password` returns `200` with the rotated session's me-shape); `oauth/google/start`, `oauth/google/callback`, `DELETE oauth/google` (**implemented in 11C**: `start` returns `200 {data:{authorizationUrl}}` and sets the short-lived flow cookie (a missing/blank `returnTo` means `/`; an explicitly unsafe one is `422 validation_error` and creates nothing); `callback` is a browser redirect, always `302` to the configured frontend — `{returnTo}` or `/login?error=<oauth_denied\|oauth_failed\|identity_conflict\|email_not_verified\|account_disabled>`; `DELETE` is `204`, `404` if no Google identity, `409 conflict` if it is the last sign-in method; `503 service_unavailable` when Google is not configured). **No `refresh`** — sessions are server-side. | A / R | Frozen in `AUTH_RBAC.md` §12, as built in §21 | 11B / 11C |
 | `/admin` | `GET /admin/listings?status=` (+ counts in `meta`), `POST /admin/listings/{id}/approve`, `…/reject`, `/admin/categories` CRUD, `/admin/news` | M | Admin surface is separate so authorization is by prefix + dependency, never per-field | 12 |
 
 ### Why these (and not others)

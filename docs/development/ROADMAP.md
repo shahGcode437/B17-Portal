@@ -287,10 +287,12 @@ Split into three phases (split approved in the 11A review) because the security 
 - **No code, no migration, no dependency, no frontend change.**
 
 ### Phase 11B — Email/Password Authentication + Sessions
-**STATUS: COMPLETE** (Phase 11B commit: pending). Delivered: migration `0003`; Argon2id + `email-validator`; sessions, cookie, CSRF/Origin enforcement, CORS credentials switch; register / login / logout / logout-all / me / verify-email / resend-verification / forgot- / reset- / change-password; authorization dependencies + permission map; email seam (console/memory); PostgreSQL identity-keyed rate limiter; `auth_events`; `app.cli.admin` and `app.cli.auth_maintenance`; tests per `AUTH_RBAC.md` §17. Not started. **No frontend change.**
+**STATUS: COMPLETE** (commit `ea57a11`). Delivered: migration `0003`; Argon2id + `email-validator`; sessions, cookie, CSRF/Origin enforcement, CORS credentials switch; register / login / logout / logout-all / me / verify-email / resend-verification / forgot- / reset- / change-password; authorization dependencies + permission map; email seam (console/memory); PostgreSQL identity-keyed rate limiter; `auth_events`; `app.cli.admin` and `app.cli.auth_maintenance`; tests per `AUTH_RBAC.md` §17. **No frontend change.**
 
-### Phase 11C — Google OAuth + RBAC Hardening
-**NEXT.** Migration `0004`; Google provider behind an `OAuthProvider` interface; start / callback / connect / disconnect; linking cases A–D and the narrow unverified-account claim (C2, approved); mock-provider tests; admin-recency and authorization-matrix hardening. Not started. **No frontend change.**
+### Phase 11C — Google OAuth + Account Linking + Authentication Hardening
+**STATUS: COMPLETE** (Phase 11C commit: pending). Delivered: migration `0004` (`oauth_flows`, `UNIQUE(user_id, provider)`); Google provider behind an `OAuthProvider` interface (`PyJWT` + `httpx`, no SDK) with a development/test-only fake; `POST /auth/oauth/google/start`, `GET …/callback`, `DELETE /auth/oauth/google`; PKCE + `state` + `nonce` + a browser-binding flow cookie, single-use flows; linking cases A, B, C1–C4, D and the narrow unverified-account claim (C2); redirect-safety validator; sessions/CSRF unchanged; maintenance purge of old flows; unit, HTTP, database and concurrency tests (no network). Not done: a real-Google smoke test (manual, `DEPLOYMENT.md` §10). **No frontend change.**
+
+**NEXT: Phase 12.**
 
 ## Phase 12 — Write APIs & Frontend/API Integration
 Owner listing lifecycle, moderation, Saved, requests, news admin, category admin; replace `search.ts` and the Zustand stores' local mutations with API calls; full-stack Playwright. Requires the open product decisions in `docs/backend/DATA_MODEL.md` §13. Not started.

@@ -234,5 +234,11 @@ def test_the_production_api_has_no_role_or_probe_routes(auth_env: AuthEnv) -> No
         "/api/v1/auth/forgot-password",
         "/api/v1/auth/reset-password",
         "/api/v1/auth/change-password",
+        "/api/v1/auth/oauth/google/start",
+        "/api/v1/auth/oauth/google/callback",
+        "/api/v1/auth/oauth/google",
     ]
-    assert not any("oauth" in p or "refresh" in p or "google" in p for p in paths)
+    # Google only: no other provider, no refresh endpoint, no native/bearer route
+    assert not any(
+        w in p for p in paths for w in ("facebook", "apple", "refresh", "bearer", "token")
+    )

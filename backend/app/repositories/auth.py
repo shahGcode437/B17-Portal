@@ -20,11 +20,18 @@ from app.models import (
     AuthRateLimit,
     AuthSession,
     AuthToken,
+    OAuthFlow,
     ProfessionalProfile,
     User,
     UserRole,
 )
-from app.models.enums import AuthTokenPurpose, PlanCode, RoleName, SessionRevokeReason
+from app.models.enums import (
+    AuthProvider,
+    AuthTokenPurpose,
+    PlanCode,
+    RoleName,
+    SessionRevokeReason,
+)
 
 
 class UserAuthRepository:
@@ -286,6 +293,79 @@ class RateLimitRepository:
         return int(count or 0)
 
 
+class IdentityRepository:
+    """Social identities (``auth_identities``). The key is ``(provider, provider_subject)``."""
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def get_by_subject(self, provider: AuthProvider, subject: str) -> AuthIdentity | None:
+        return self._session.scalars(
+            select(AuthIdentity).where(
+                AuthIdentity.provider == provider, AuthIdentity.provider_subject == subject
+            )
+        ).one_or_none()
+
+    def get_for_user(self, user_id: uuid.UUID, provider: AuthProvider) -> AuthIdentity | None:
+        return self._session.scalars(
+            select(AuthIdentity).where(
+                AuthIdentity.user_id == user_id, AuthIdentity.provider == provider
+            )
+        ).one_or_none()
+
+    def count_for_user(self, user_id: uuid.UUID) -> int:
+        return int(
+            self._session.scalar(
+                select(func.count())
+                .select_from(AuthIdentity)
+                .where(AuthIdentity.user_id == user_id)
+            )
+            or 0
+        )
+
+    def add(self, identity: AuthIdentity) -> None:
+        self._session.add(identity)
+        self._session.flush()
+
+    def delete(self, identity: AuthIdentity) -> None:
+        self._session.delete(identity)
+        self._session.flush()
+
+
+class OAuthFlowRepository:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def add(self, flow: OAuthFlow) -> None:
+        self._session.add(flow)
+        self._session.flush()
+
+    def consume(
+        self,
+        *,
+        state_hash: bytes,
+        flow_cookie_hash: bytes,
+        provider: AuthProvider,
+        now: datetime,
+    ) -> OAuthFlow | None:
+        """Atomic single use. One guarded ``UPDATE ... RETURNING`` that requires the state, the
+        browser-binding cookie, the provider and an unexpired, unconsumed row: of any number of
+        concurrent or replayed callbacks, at most one gets the row back."""
+        return self._session.execute(
+            update(OAuthFlow)
+            .where(
+                OAuthFlow.state_hash == state_hash,
+                OAuthFlow.flow_cookie_hash == flow_cookie_hash,
+                OAuthFlow.provider == provider,
+                OAuthFlow.consumed_at.is_(None),
+                OAuthFlow.expires_at > now,
+            )
+            .values(consumed_at=now)
+            .returning(OAuthFlow)
+            .execution_options(populate_existing=True)
+        ).scalar_one_or_none()
+
+
 class AuthMaintenanceRepository:
     """Sweep deletes (``python -m app.cli.auth_maintenance purge``; not a retention promise)."""
 
@@ -322,6 +402,10 @@ class AuthMaintenanceRepository:
 
     def purge_rate_limits(self, cutoff: datetime) -> int:
         return self._delete(delete(AuthRateLimit).where(AuthRateLimit.window_start < cutoff))
+
+    def purge_oauth_flows(self, cutoff: datetime) -> int:
+        """Flows (consumed or not) that expired before ``cutoff``."""
+        return self._delete(delete(OAuthFlow).where(OAuthFlow.expires_at < cutoff))
 
     def purge_events(self, cutoff: datetime) -> int:
         return self._delete(delete(AuthEvent).where(AuthEvent.occurred_at < cutoff))

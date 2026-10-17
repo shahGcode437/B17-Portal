@@ -85,8 +85,37 @@ Hosting provider(s) and pricing tier · domain names · email-sending provider �
 - **TLS everywhere:** the session cookie is `Secure` (and `__Host-` prefixed) in staging/production; terminate HTTPS before the API and send `HSTS`.
 - **Proxy/IP handling:** per-IP rate limiting belongs at the **edge** (reverse proxy/CDN/WAF): login, register, forgot-password, resend-verification, OAuth start/callback. The app does not trust `X-Forwarded-For` unless a trusted-proxy setting is configured, and uses PostgreSQL counters only for identity-keyed limits.
 - **Logs:** uvicorn runs with `--no-access-log` (the `Dockerfile` `CMD` has it since Phase 11B; the app's structured request log replaces it) or strip query strings on `/api/v1/auth/oauth/*`; the same for reverse-proxy access logs. Never ship request/response bodies or `Cookie`/`Set-Cookie` headers to logs.
-- **Secrets** (from the host's secret store, never committed): `GOOGLE_OAUTH_CLIENT_ID/SECRET` (11C), email-provider credentials, `DATABASE_URL`. There is deliberately **no session secret or JWT key**. Settings validation fails fast in staging/production if `AUTH_COOKIE_SECURE` is false, the email backend is `console`, or `FRONTEND_BASE_URL` is not an allowed origin.
+- **Secrets** (from the host's secret store, never committed): `GOOGLE_OAUTH_CLIENT_SECRET` (the client id is not secret but is configured the same way), email-provider credentials, `DATABASE_URL`. There is deliberately **no session secret or JWT key**. Settings validation fails fast in staging/production if `AUTH_COOKIE_SECURE` is false, the email backend is `console`, or `FRONTEND_BASE_URL` is not an allowed origin.
 - **Scheduled maintenance (implemented):** run `python -m app.cli.auth_maintenance purge` periodically (daily) from the host's scheduler; it is a safety-net sweep (login already deletes a user's own expired sessions; expired sessions have no retention guarantee), prints how many rows it removed, is idempotent, and correctness never depends on it.
 - **Bootstrap runbook (implemented):** register normally, verify the email, then run `python -m app.cli.admin grant <email>` with `DATABASE_URL` pointing at the target database (audited; revokes that user's sessions; `revoke <email>` removes the role). There is no public admin signup and no HTTP endpoint for roles.
 - **Email delivery** is `disabled` in staging/production until a provider is implemented (settings refuse `console`/`memory` there): verification and reset emails are not delivered yet, so enabling real sign-ups needs the provider and the custom domain first.
 - **Caching:** the API's `/auth/*` responses are `Cache-Control: no-store`; do not add CDN caching rules that ignore it.
+
+## 10. Google sign-in (Phase 11C)
+
+The backend does the whole OpenID Connect flow (`AUTH_RBAC.md` §10, §21); Google only tells it *who* the user is. Nothing here is needed for development or CI — `GOOGLE_OAUTH_PROVIDER=fake` runs the complete flow in-process, with no network and no credentials.
+
+**Environment (per environment; the secret only from the host's secret store):**
+
+| Variable | Value |
+|---|---|
+| `GOOGLE_OAUTH_PROVIDER` | `google` (`disabled` by default; `fake` is development/test only and refused in staging/production) |
+| `GOOGLE_OAUTH_CLIENT_ID` | the OAuth client id from Google Cloud |
+| `GOOGLE_OAUTH_CLIENT_SECRET` | the OAuth client secret — a secret: never in git, an image, a log or the SPA |
+| `API_PUBLIC_BASE_URL` | the public base URL of the API as the browser sees it, e.g. `https://api.b17portal.pk` (`https` required when hosted; no path) |
+| `FRONTEND_BASE_URL` / `FRONTEND_ORIGINS` | unchanged: the callback redirects the browser here |
+
+**Google Cloud setup (Google Cloud Console → APIs & Services):**
+
+1. **OAuth consent screen:** user type *External*; app name (e.g. "B-17 Portal"), support email, developer contact email; **scopes** only the non-sensitive `openid`, `email`, `profile` (no verification review is needed for these; add nothing else); keep the app in *Testing* with named test users while trialling, then *Publish* it for general use. Add the privacy-policy and terms URLs before publishing.
+2. **Credentials → Create credentials → OAuth client ID → application type "Web application"** (a *confidential* client — not "Desktop", not "Android/iOS", not a SPA/implicit client).
+3. **Authorized redirect URI** — exactly one per environment, character for character:
+   `{API_PUBLIC_BASE_URL}/api/v1/auth/oauth/google/callback`
+   - development smoke: `http://127.0.0.1:8000/api/v1/auth/oauth/google/callback` (Google permits `http` for loopback; use `127.0.0.1` for **both** the frontend and the API and never mix in `localhost` — cross-site cookies would not be sent)
+   - production: `https://api.<your-domain>/api/v1/auth/oauth/google/callback`
+   Leave *Authorized JavaScript origins* empty: the browser never calls Google from JavaScript.
+4. Copy the client id and secret into the host's secret store. Rotate the secret on suspicion of exposure (create a new one, deploy, delete the old).
+
+**Go-live prerequisites (still open, unchanged by 11C):** a **custom domain** that makes the frontend and API same-site (`§9`), a **production email provider** (verification and reset mail; Google users created with an unverified Google email need it), edge **per-IP rate limiting** on `/api/v1/auth/*` including `oauth/google/start` and `…/callback`, and access-log query-string stripping on `/api/v1/auth/oauth/*` (the callback URL carries the one-time `code` and `state`).
+
+**Real-Google smoke checklist (manual; not part of CI):** with a *Testing*-mode consent screen and your own Google account as a test user: set the three variables above; `POST /api/v1/auth/oauth/google/start` from the allowed origin → open `authorizationUrl` → consent → expect a `302` to the frontend with the `b17_session` cookie set and `GET /auth/me` showing `authMethods.providers: ["google"]`; repeat the sign-in (expect a login, no new account); start a second flow and replay the callback URL (expect `/login?error=oauth_failed`); sign in with a *different* Google account whose email matches a verified password account (expect `/login?error=identity_conflict`), sign in to that account and *Connect Google*; finally *Disconnect* and confirm the last-method guard. No test in the repository performs these steps.

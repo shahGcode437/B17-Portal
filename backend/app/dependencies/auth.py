@@ -28,10 +28,13 @@ from app.core.rate_limit import RateLimiter
 from app.core.security.passwords import PasswordService
 from app.dependencies.db import DbSession
 from app.dependencies.settings import SettingsDep
+from app.models.enums import AuthProvider
 from app.services.auth import AuthService
 from app.services.auth_audit import AuthAuditService
 from app.services.auth_sessions import Authentication, Principal, SessionService
 from app.services.email import EmailSender
+from app.services.oauth.flow import OAuthService
+from app.services.oauth.provider import OAuthProvider
 from app.services.rate_limit import PostgresRateLimiter
 
 
@@ -47,6 +50,10 @@ def get_email_sender(request: Request) -> EmailSender:
     return cast(EmailSender, request.app.state.email_sender)
 
 
+def get_oauth_providers(request: Request) -> dict[AuthProvider, OAuthProvider]:
+    return cast(dict[AuthProvider, OAuthProvider], request.app.state.oauth_providers)
+
+
 ClockDep = Annotated[Clock, Depends(get_clock)]
 PasswordServiceDep = Annotated[PasswordService, Depends(get_password_service)]
 EmailSenderDep = Annotated[EmailSender, Depends(get_email_sender)]
@@ -60,6 +67,18 @@ def get_auth_service(
 
 
 AuthServiceDep = Annotated[AuthService, Depends(get_auth_service)]
+
+
+def get_oauth_service(
+    db: DbSession,
+    settings: SettingsDep,
+    clock: ClockDep,
+    providers: Annotated[dict[AuthProvider, OAuthProvider], Depends(get_oauth_providers)],
+) -> OAuthService:
+    return OAuthService(db, settings, clock, providers)
+
+
+OAuthServiceDep = Annotated[OAuthService, Depends(get_oauth_service)]
 
 
 def resolve_authentication(

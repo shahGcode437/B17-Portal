@@ -26,6 +26,7 @@ DEVELOPMENT_FRONTEND_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"
 
 #: The deterministic development auth topology (AUTH_RBAC.md §5.1): never mix localhost/127.0.0.1.
 DEVELOPMENT_FRONTEND_BASE_URL = "http://127.0.0.1:5173"
+DEVELOPMENT_API_BASE_URL = "http://127.0.0.1:8000"
 
 #: Environments served over HTTPS behind a real hostname.
 HOSTED_ENVIRONMENTS = frozenset({"staging", "production"})
@@ -82,6 +83,12 @@ class Settings(BaseSettings):
     frontend_base_url: str | None = None
     #: Public base URL of this API (reserved for the OAuth redirect URI, Phase 11C).
     api_public_base_url: str | None = None
+    #: Google sign-in (Phase 11C). ``disabled`` (default: the OAuth routes answer 503), ``google``
+    #: (needs the client id/secret and ``API_PUBLIC_BASE_URL``) or ``fake`` (a deterministic
+    #: in-process provider for development/tests only; refused when hosted).
+    google_oauth_provider: Literal["disabled", "google", "fake"] = "disabled"
+    google_oauth_client_id: str | None = None
+    google_oauth_client_secret: SecretStr | None = None
     #: ``memory`` (tests), ``console`` (development) or ``disabled`` (no provider chosen yet).
     #: Staging/production can only be ``disabled`` until a provider exists.
     email_backend: Literal["memory", "console", "disabled"] | None = None
@@ -146,6 +153,11 @@ class Settings(BaseSettings):
             self.frontend_origins = list(DEVELOPMENT_FRONTEND_ORIGINS)
         return self
 
+    @field_validator("google_oauth_client_id", "google_oauth_client_secret", mode="before")
+    @classmethod
+    def _empty_google_credential_is_unset(cls, value: object) -> object:
+        return None if isinstance(value, str) and not value.strip() else value
+
     @field_validator("frontend_base_url", "api_public_base_url", mode="before")
     @classmethod
     def _normalize_base_urls(cls, value: object) -> object:
@@ -169,6 +181,9 @@ class Settings(BaseSettings):
                 self.email_backend = "disabled"
         if self.frontend_base_url is None and self.environment == "development":
             self.frontend_base_url = DEVELOPMENT_FRONTEND_BASE_URL
+        if self.api_public_base_url is None and self.environment == "development":
+            self.api_public_base_url = DEVELOPMENT_API_BASE_URL
+        self._check_google_settings(hosted)
         if self.session_absolute_days < self.session_idle_days:
             raise ValueError("SESSION_ABSOLUTE_DAYS must not be shorter than SESSION_IDLE_DAYS")
         if hosted:
@@ -203,6 +218,33 @@ class Settings(BaseSettings):
         if self.password_hash_memory_cost_kib < 8 * self.password_hash_parallelism:
             raise ValueError("PASSWORD_HASH_MEMORY_COST_KIB must be at least 8 x parallelism")
         return self
+
+    def _check_google_settings(self, hosted: bool) -> None:
+        provider = self.google_oauth_provider
+        if provider == "disabled":
+            return
+        if self.api_public_base_url is None:
+            raise ValueError("API_PUBLIC_BASE_URL is required when Google sign-in is enabled")
+        if provider == "fake" and hosted:
+            raise ValueError("GOOGLE_OAUTH_PROVIDER=fake can never run in staging/production")
+        if provider == "google":
+            if not self.google_oauth_client_id or self.google_oauth_client_secret is None:
+                raise ValueError(
+                    "GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET are required when "
+                    "GOOGLE_OAUTH_PROVIDER=google"
+                )
+            if hosted and not self.api_public_base_url.startswith("https://"):
+                raise ValueError("API_PUBLIC_BASE_URL must be https:// in staging/production")
+
+    @property
+    def google_redirect_uri(self) -> str:
+        """The one exact callback registered with Google; never taken from a request."""
+        return f"{self.api_public_base_url}{self.api_v1_prefix}/auth/oauth/google/callback"
+
+    @property
+    def oauth_cookie_name(self) -> str:
+        """The OAuth round trip's short-lived browser-binding cookie (not the session cookie)."""
+        return "__Host-b17_oauth" if self.environment in HOSTED_ENVIRONMENTS else "b17_oauth"
 
     @property
     def auth_cookie_name(self) -> str:
