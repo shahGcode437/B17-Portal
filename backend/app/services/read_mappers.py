@@ -6,13 +6,20 @@ asked for (detail), so a search page never pays for them.
 """
 
 from app.models import Category, Listing, NewsArticle
-from app.models.enums import BusinessVertical, FoodServiceOption, ListingKind
+from app.models.enums import (
+    BusinessVertical,
+    FoodServiceOption,
+    ListingKind,
+    LocationVisibility,
+)
 from app.schemas.read import (
     BusinessRead,
     CategoryRead,
     CategoryRef,
+    CoordinatesRead,
     FoodRead,
     ListingDetail,
+    LocationRead,
     MenuHighlightRead,
     NewsRead,
     PropertyRead,
@@ -47,8 +54,42 @@ def map_news(article: NewsArticle) -> NewsRead:
     )
 
 
+def map_location(listing: Listing, *, detail: bool) -> LocationRead:
+    """The PUBLIC location of a listing — the only place location leaves the backend publicly.
+
+    Reads exclusively ``block``, ``location_visibility``, the database-generated
+    ``public_latitude`` / ``public_longitude`` and, for ``exact`` listings on the detail view, the
+    SQL-guarded ``public_address`` / ``public_landmark``. The stored (private) point, ``address``
+    and ``landmark`` columns are ``deferred_raiseload`` and are never touched here: if this code
+    ever tried, it would raise instead of leaking. ``area_only`` (and every legacy row) yields no
+    coordinates.
+    """
+    # The column is NOT NULL; only a not-yet-flushed in-memory object can be None: area-only.
+    visibility = listing.location_visibility or LocationVisibility.AREA_ONLY
+    coordinates: CoordinatesRead | None = None
+    if (
+        visibility is not LocationVisibility.AREA_ONLY
+        and listing.public_latitude is not None
+        and listing.public_longitude is not None
+    ):
+        coordinates = CoordinatesRead(
+            latitude=float(listing.public_latitude),
+            longitude=float(listing.public_longitude),
+            precision="exact" if visibility is LocationVisibility.EXACT else "approximate",
+        )
+    exact_detail = detail and visibility is LocationVisibility.EXACT
+    return LocationRead(
+        visibility=visibility,
+        block=listing.block,
+        address=listing.public_address if exact_detail else None,
+        landmark=listing.public_landmark if exact_detail else None,
+        coordinates=coordinates,
+    )
+
+
 def map_listing(listing: Listing, *, include_menu: bool) -> ListingDetail:
-    """One approved listing -> its kind-specific public shape (``include_menu``: Food detail)."""
+    """One approved listing -> its kind-specific public shape (``include_menu``: the detail view,
+    which also carries the Food menu and the permitted address / landmark)."""
     refs = [
         CategoryRef(slug=link.category.slug, name=link.category.name, is_primary=link.position == 1)
         for link in listing.categories
@@ -58,6 +99,7 @@ def map_listing(listing: Listing, *, include_menu: bool) -> ListingDetail:
     common = {
         "id": listing.id,
         "area": listing.area,
+        "location": map_location(listing, detail=include_menu),
         "image": listing.image_url,
         "tags": list(listing.tags),
         "categories": refs,

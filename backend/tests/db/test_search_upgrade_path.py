@@ -157,7 +157,7 @@ def test_existing_listings_become_searchable_only_after_the_supported_reindex(
     command.upgrade(config, "0001")
     populate_at_0001(url)
 
-    command.upgrade(config, "0002")
+    command.upgrade(config, "head")  # includes 0002; the CLI needs the current schema
 
     # -- before the reindex: the column exists but is empty, so nothing is found ----------------
     assert set(documents(url).values()) == {""}
@@ -205,11 +205,11 @@ def test_downgrade_then_upgrade_again_needs_the_reindex_again(
     config = alembic_config(url)
     command.upgrade(config, "0001")
     populate_at_0001(url)
-    command.upgrade(config, "0002")
+    command.upgrade(config, "head")  # includes 0002; the CLI needs the current schema
     assert search_index_cli.main(["rebuild"]) == 0
 
     command.downgrade(config, "0001")
-    command.upgrade(config, "0002")
+    command.upgrade(config, "head")  # includes 0002; the CLI needs the current schema
 
     assert set(documents(url).values()) == {""}
     capsys.readouterr()

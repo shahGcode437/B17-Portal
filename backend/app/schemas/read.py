@@ -20,6 +20,7 @@ from app.models.enums import (
     CategoryModule,
     FoodServiceOption,
     Furnishing,
+    LocationVisibility,
     NewsKind,
     PropertyListingType,
 )
@@ -68,9 +69,34 @@ class FoodRead(ApiModel):
     menu_image: str | None = None
 
 
+class CoordinatesRead(ApiModel):
+    """A PUBLIC point. ``exact`` listings expose the stored point; ``approximate`` ones expose only
+    the database-generated 2-decimal point. There is no field that could carry the private point."""
+
+    latitude: float
+    longitude: float
+    precision: Literal["exact", "approximate"]
+
+
+class LocationRead(ApiModel):
+    """What the public may know about where a listing is (docs/backend/LOCATION_MAP.md §7, §8).
+
+    ``area`` stays a top-level field of the listing. ``address`` / ``landmark`` appear only on the
+    detail of an ``exact`` listing; ``coordinates`` is omitted for ``area_only`` (and for every
+    legacy row). Nothing here is ever the owner's stored (private) point.
+    """
+
+    visibility: LocationVisibility
+    block: str | None = None
+    address: str | None = None
+    landmark: str | None = None
+    coordinates: CoordinatesRead | None = None
+
+
 class _ListingBase(ApiModel):
     id: uuid.UUID
     area: str
+    location: LocationRead
     image: str | None = None
     tags: list[str]
     categories: list[CategoryRef]

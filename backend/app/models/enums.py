@@ -69,6 +69,17 @@ class Furnishing(StrEnum):
     SEMI_FURNISHED = "Semi-Furnished"
 
 
+class LocationVisibility(StrEnum):
+    """How much of a listing's location the public may see (docs/backend/LOCATION_MAP.md §7).
+
+    ``area_only`` is also the safe default for legacy rows: it stores no point at all.
+    """
+
+    EXACT = "exact"
+    APPROXIMATE = "approximate"
+    AREA_ONLY = "area_only"
+
+
 class HistoryAction(StrEnum):
     SUBMITTED = "submitted"
     RESUBMITTED = "resubmitted"

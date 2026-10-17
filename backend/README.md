@@ -2,7 +2,7 @@
 
 FastAPI + PostgreSQL backend. Architecture, data model and contracts are specified in [`docs/backend/`](../docs/backend/BACKEND_ARCHITECTURE.md) — this file only covers day-to-day commands.
 
-**Current scope (Phase 11C):** application foundation, the PostgreSQL data layer (Alembic migrations `0001`–`0004`, reference taxonomy seed, dev fixtures), health/readiness, the **public read APIs** (categories, search, suggestions, listing detail, news — `docs/backend/READ_API_PARITY.md`) and **email/password authentication** (`/api/v1/auth/*`: register, login, me, logout, logout-all, verify-email, resend-verification, forgot-/reset-/change-password) with PostgreSQL sessions in an `HttpOnly` cookie, CSRF protection and an RBAC foundation (`docs/backend/AUTH_RBAC.md`), plus **Google sign-in** (`/api/v1/auth/oauth/google/{start,callback}`, `DELETE /api/v1/auth/oauth/google`: sign-in, Connect and Disconnect through the same sessions; a development fake provider needs no credentials). No write or owner/admin APIs yet, and the frontend does not call the backend.
+**Current scope (Phase 12B):** application foundation, the PostgreSQL data layer (Alembic migrations `0001`–`0005` — `0005` adds the shared listing location columns, reference taxonomy seed, dev fixtures), health/readiness, the **public read APIs** (categories, search, suggestions, listing detail, news — `docs/backend/READ_API_PARITY.md`) and **email/password authentication** (`/api/v1/auth/*`: register, login, me, logout, logout-all, verify-email, resend-verification, forgot-/reset-/change-password) with PostgreSQL sessions in an `HttpOnly` cookie, CSRF protection and an RBAC foundation (`docs/backend/AUTH_RBAC.md`), plus **Google sign-in** (`/api/v1/auth/oauth/google/{start,callback}`, `DELETE /api/v1/auth/oauth/google`: sign-in, Connect and Disconnect through the same sessions; a development fake provider needs no credentials). No write or owner/admin APIs yet, and the frontend does not call the backend.
 
 ## Setup (once)
 
@@ -62,6 +62,7 @@ uvicorn app.main:app --reload
   ```
 
   Pending, rejected, archived and draft records, unknown ids and malformed ids all answer the same `404`.
+  Every listing item also carries a public `location` (Phase 12B): `exact` listings expose their point (and, on detail, address / landmark), `approximate` ones only a 2-decimal rounded point, `area_only` and pre-`0005` legacy rows no point at all. After upgrading an existing development database to `0005`, run `python -m scripts.dev_fixtures` again to give the fixtures their synthetic demo locations (idempotent; it prints how many it relocated), then `python -m app.db.search_index check`. Verified example: `curl "http://127.0.0.1:8000/api/v1/listings/<Mocha Corner Cafe id>"` → `"location": {"visibility": "approximate", "block": "C", "coordinates": {"latitude": 33.71, "longitude": 73.06, "precision": "approximate"}}` (the stored point and the private address are never returned).
 - Authentication (run the API with `uvicorn app.main:app` and use **`127.0.0.1` everywhere** — never mix in `localhost`; the verified examples below were run against that topology; browsers must send an allowed `Origin`, curl needs it explicitly):
 
   ```bash
@@ -105,7 +106,7 @@ docker compose run --rm api alembic upgrade head          # migrations are an ex
 ## Test and check
 
 ```bash
-pytest                    # 394 database-free tests always run; the 747 PostgreSQL tests need TEST_DATABASE_URL
+pytest                    # 413 database-free tests always run; the 834 PostgreSQL tests need TEST_DATABASE_URL
 ruff check .              # lint
 ruff format --check .     # formatting (use `ruff format .` to fix)
 mypy                      # strict type check (app, tests, scripts)

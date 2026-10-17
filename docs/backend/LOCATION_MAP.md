@@ -1,6 +1,6 @@
 # B-17 Portal — Location & Maps
 
-**Status:** **frozen by Phase 12A** (design only — no migration, endpoint, dependency or UI exists yet). Implementation lands in slices 12B (schema + public serialization) and 12D/12G/12H (writes, map display, map picker); see `ROADMAP.md`.
+**Status:** **frozen by Phase 12A; the backend foundation is IMPLEMENTED in Phase 12B** (migration `0005`, model, public serialization, search document, fixtures — §19). Writes, map display and the picker land in 12D/12G/12H; see `ROADMAP.md`.
 **Owns:** the shared location data model, field semantics, requiredness per listing kind, the privacy model (exact / approximate / area-only) and how it is enforced server-side, public vs owner/admin serialization, search-document rules, the map stack and tile policy, directions, geocoding policy, the map picker, the future map-search / near-me path, indexing, fixtures and the location test plan.
 **Does not own:** the write endpoints, lifecycle and ownership rules → [`API_CONTRACT.md`](API_CONTRACT.md) §10 · guards, sessions, CSRF and frontend auth → [`AUTH_RBAC.md`](AUTH_RBAC.md) §22 · generic table conventions → [`DATA_MODEL.md`](DATA_MODEL.md) · hosting and tile operations → [`DEPLOYMENT.md`](DEPLOYMENT.md) §11 · visual conventions → [`../design/DESIGN_SYSTEM.md`](../design/DESIGN_SYSTEM.md) §11.1.
 
@@ -38,7 +38,7 @@
 
 **Structural privacy guard (binding on 12B).** The ORM maps `latitude`, `longitude`, `address` and `landmark` with `deferred=True`; `ListingReadRepository` (public detail and card hydration) additionally applies `defer(..., raiseload=True)` to them and loads only `block`, `location_visibility`, `public_latitude`, `public_longitude`. A public code path that *touches* a private attribute therefore raises in tests instead of silently leaking, and the generated SQL of every public query is asserted not to select those columns. Owner and admin repositories `undefer` them explicitly.
 
-## 3. Schema (migration `0005`, slice 12B — not created in 12A)
+## 3. Schema (migration `0005`, implemented in slice 12B)
 
 Added to `listings` (nothing else about `0001`–`0004` changes):
 
@@ -346,3 +346,16 @@ Phase 12 is **not complete** unless: the location columns and constraints exist 
 - A managed `areas` / `blocks` lookup (O-1) and cleanup of legacy `area` strings (§3.1).
 - The validated `ck_listings_property_has_point` rule once the legacy drift query returns zero everywhere (§3.1).
 - Geocoding / address autocomplete, "use my location", map search, near-me, PostGIS (§13–§14).
+
+## 19. Implementation notes — Phase 12B as built
+
+Source: `backend/alembic/versions/0005_listing_location.py`, `app/models/listings.py`, `app/schemas/read.py` (`LocationRead`, `CoordinatesRead`), `app/services/read_mappers.py` (`map_location`), `app/repositories/listing_reads.py`, `app/services/search_document.py`, `app/services/search_index.py`, `scripts/dev_fixtures.py`. Nothing frozen in §1–§18 was changed; this records how it was realised and the few places the implementation had to choose.
+
+1. **Migration `0005`** is DDL only (no `UPDATE` / `INSERT`; asserted by an offline-SQL test) and carries the generated-column SQL verbatim. The expression is written in PostgreSQL's own normal form (`'exact'::text … ELSE NULL::numeric`) so Alembic's crude computed-column comparison reports no drift and no warning.
+2. **ORM guard.** `latitude`, `longitude`, `address`, `landmark` are mapped `deferred=True, deferred_raiseload=True` — secure by default: any code that touches one without loading it explicitly raises (`InvalidRequestError`). Public repositories never load them; the indexing loader `undefer`s only `address` / `landmark`, never the point.
+3. **Public address / landmark.** Instead of loading the private columns and filtering in Python, public detail queries use `with_expression` to select `CASE WHEN visibility = 'exact' THEN address END` into the query-only attributes `public_address` / `public_landmark`; the address of a non-exact listing is never selected. (Tests strip those guarded `CASE` fragments and assert no raw private column remains in the compiled SQL.)
+4. **Wire shape.** The frozen nested form of §8 was implemented (`area` top-level, `location.coordinates{latitude, longitude, precision}`), not the flat sketch in the 12B brief. Floats are JSON numbers (converted from the `NUMERIC` values in the mapper); `by_alias` / `exclude_none` apply, so absent values are omitted.
+5. **`SearchIndexer.refresh`** now flushes and re-reads the listing through the indexing loader (with `populate_existing`), so callers that obtained the instance any way — including a plain `session.get` whose private columns are unloaded — can never trip the raiseload guard or index stale values. Application-maintained, no trigger, nothing runs at startup.
+6. **Not part of 12B (deferred to the slice that needs it):** the `LOCALITIES` setting and per-kind requiredness (write validation, 12D); the new error codes (12D); owner / admin location shapes and routes (12D/12E — no fake endpoint was added); the `block` filter and its index (not introduced); frontend and map UI (12G/12H).
+7. **Fixtures.** `DEMO_LOCATIONS` (ten fixtures: exact / approximate / area-only, including private addresses used by the leak tests and two non-public located listings) and `LEGACY_FIXTURE_IDS` (five, kept legacy). The step runs on every loader run, is idempotent, and is the only place `area` is ever set to `B-17`. Tests that asserted the old fixture area strings now distinguish `LEGACY_PUBLIC` from `MODERN_PUBLIC`.
+8. **Search-index CLI vs. old schemas.** Because the ORM now maps the new columns, `python -m app.db.search_index` needs a database at `0005`; the old "stop at 0002, then rebuild" upgrade-path tests were changed to upgrade to head first, which is also the real release order (`alembic upgrade head` → rebuild if needed → check).

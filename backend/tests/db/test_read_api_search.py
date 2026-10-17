@@ -22,8 +22,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 SEARCH = "/api/v1/search"
+# LEGACY free-text areas (pre-0005 style); the modernised fixtures use the canonical "B-17".
 BLOCK_C = "B-17, Block C (Demo Area)"
 BLOCK_D = "B-17, Block D (Demo Area)"
+CANONICAL = "B-17"
 
 SOLAR = "Sunrise Solar Solutions"
 ELECTRIC = "Bright Electric Works"
@@ -54,6 +56,9 @@ ALL_PUBLIC = {
     WATER,
     PARK,
 }
+#: Public fixtures still in the legacy state (old area text, area-only, no point).
+LEGACY_PUBLIC = {SOLAR, PHARMACY, FLAT}
+MODERN_PUBLIC = {ELECTRIC, SALON, BAKERS, BIRYANI, CAFE, SARA, ALI, HOUSE}
 HIDDEN_WORDS = ("quokka", "wombat", "platypus", "echidna", "narwhal")
 
 
@@ -198,7 +203,7 @@ def test_matching_is_case_insensitive_and_trimmed(read_client: TestClient, q: st
         ("for sale", {HOUSE}),  # the property type label
         ("3 bed", {HOUSE}),
         ("unfurnished", {HOUSE}),
-        ("demo area", ALL_PUBLIC - {WATER, PARK}),  # the area text
+        ("demo area", LEGACY_PUBLIC),  # the legacy area text
         ("pipe work", {WATER}),  # a news summary
     ],
 )
@@ -328,8 +333,10 @@ def test_an_unknown_type_is_a_validation_error(read_client: TestClient) -> None:
 @pytest.mark.parametrize(
     ("params", "expected"),
     [
-        ({"area": BLOCK_D}, {ELECTRIC, SALON, ALI, FLAT, WATER, PARK}),  # news has no area: kept
-        ({"area": BLOCK_D, "type": "business"}, {SALON}),
+        ({"area": BLOCK_D}, {FLAT, WATER, PARK}),  # legacy text; news has no area: kept
+        ({"area": BLOCK_D, "type": "business"}, set()),
+        ({"area": CANONICAL}, MODERN_PUBLIC | {WATER, PARK}),  # the canonical locality
+        ({"area": CANONICAL, "type": "business"}, {SALON, BAKERS, BIRYANI, CAFE}),
         ({"area": "Nowhere"}, {WATER, PARK}),
         ({"area": "Nowhere", "type": "business"}, set()),
         ({"category": "solar", "type": "provider"}, {SOLAR}),

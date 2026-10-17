@@ -72,3 +72,7 @@ Built only from public searchable content so that selecting one always yields re
 * News documents are computed at query time (a small, admin-authored table).
 * No locale-aware collation: ordering uses lower-cased text.
 * The two LOW Search UX findings in `docs/development/SEARCH_UX_FINDINGS.md` remain deferred (frontend-only).
+
+## 8. Location (Phase 12B)
+
+Search cards and listing detail gain `location` (see `API_CONTRACT.md` §6.2); the frontend has no location data yet, so this is additive. `area` is returned exactly as stored. The search document now also contains the `block` (as typed and as `block x`) and, for `exact` listings only, the `address` and `landmark`; legacy documents are unchanged. Suggestions are unchanged and never use location text. Result order, ranking, totals and filters are unchanged; the `area` filter stays an exact match, so during the transition it can list both legacy strings (`B-17, Block C (Demo Area)`) and the canonical `B-17`. Statement counts per search page are unchanged (location lives on the `listings` row).

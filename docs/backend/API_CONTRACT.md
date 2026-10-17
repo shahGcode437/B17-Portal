@@ -235,6 +235,10 @@ General business / provider / property / tutor use `category` (a **slug**) inste
 * **Visibility:** approved listings and published news only. Hidden, unknown and malformed ids all return the same `404 not_found` envelope. Invalid query values return the `422 validation_error` envelope with `details[].field`.
 * All responses use camelCase and omit null fields; `meta` appears only on paginated reads. Verified example (`GET /api/v1/search?q=biryani&limit=1`): `{"data":[{"kind":"business","item":{"id":"…","name":"Karachi Biryani House","vertical":"food","category":"Biryani / Rice","food":{"categories":["biryani-rice","desi-food"],"serviceOptions":["dine-in","delivery"],"hoursNote":"Daily, 12 PM–11 PM"}, …}}],"meta":{"total":1,"limit":1,"offset":0}}`.
 
+### 6.2 Location in the public read responses (Phase 12B)
+
+Every listing item of `/search` (card) and `/listings/{id}` (detail) carries a `location` object next to the unchanged top-level `area`: `visibility` (`exact` · `approximate` · `area_only`), `block?`, `coordinates?` = `{latitude, longitude, precision}` (`precision` `exact` | `approximate`), and — **detail of an `exact` listing only** — `address?` and `landmark?`. Coordinates are JSON numbers taken from the database-generated *public* point: the stored point for `exact`, the 2-decimal rounded point for `approximate`, **absent** for `area_only` and for every legacy row (a legacy row is just `{"visibility": "area_only"}`). Absent values are omitted, never `null`. Cards never carry `address` / `landmark`. Nothing about a listing's stored point or a non-exact address is reachable through a public endpoint. Details and privacy rules: [`LOCATION_MAP.md`](LOCATION_MAP.md) §7–§9, §19.
+
 ## 7. Cross-cutting HTTP behavior
 
 - **CORS:** exact-origin allow-list; see `BACKEND_ARCHITECTURE.md` §7. Never `*` with credentials.

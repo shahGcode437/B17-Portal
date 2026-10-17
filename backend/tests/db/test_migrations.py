@@ -65,7 +65,7 @@ def test_a_fresh_database_upgrades_to_head(scratch_url: str) -> None:
     command.upgrade(alembic_config(scratch_url), "head")
 
     assert tables(scratch_url) == EXPECTED_TABLES | {"alembic_version"}
-    assert version(scratch_url) == "0004"
+    assert version(scratch_url) == "0005"
 
 
 def test_it_downgrades_to_base_and_upgrades_again(scratch_url: str) -> None:
@@ -90,8 +90,9 @@ def test_the_models_and_the_migrations_have_not_drifted(scratch_url: str) -> Non
 def test_there_is_a_single_linear_migration_history(scratch_url: str) -> None:
     script = ScriptDirectory.from_config(alembic_config(scratch_url))
 
-    assert script.get_heads() == ["0004"]
+    assert script.get_heads() == ["0005"]
     assert [revision.revision for revision in script.walk_revisions()] == [
+        "0005",
         "0004",
         "0003",
         "0002",
@@ -163,7 +164,7 @@ def test_0002_downgrades_cleanly_to_0001_and_upgrades_again(scratch_url: str) ->
     assert "search_document" not in columns(scratch_url, "listings")
     assert "pg_trgm" not in extensions(scratch_url)
     command.upgrade(config, "head")
-    assert version(scratch_url) == "0004"
+    assert version(scratch_url) == "0005"
     command.check(config)
 
 
@@ -250,7 +251,7 @@ def test_0003_downgrades_to_0002_and_upgrades_again(scratch_url: str) -> None:
     assert tables(scratch_url).isdisjoint(AUTH_TABLES)
     assert "ck_users_email_normalized" not in user_checks(scratch_url)
     command.upgrade(config, "head")
-    assert version(scratch_url) == "0004"
+    assert version(scratch_url) == "0005"
     assert tables(scratch_url) >= AUTH_TABLES
 
 
@@ -341,7 +342,8 @@ def test_0004_upgrades_a_0003_database_and_adds_the_flow_table_and_constraint(
         "uq_auth_identities_user_id_provider",
         "uq_auth_identities_provider_subject",
     } <= unique_constraints(scratch_url, "auth_identities")
-    command.check(config)  # no drift between the models and the migrations
+    command.upgrade(config, "head")
+    command.check(config)  # no drift between the models and the migrations (at head)
 
 
 def test_0004_downgrades_to_0003_and_upgrades_again(scratch_url: str) -> None:
@@ -355,7 +357,7 @@ def test_0004_downgrades_to_0003_and_upgrades_again(scratch_url: str) -> None:
         scratch_url, "auth_identities"
     )
     command.upgrade(config, "head")
-    assert version(scratch_url) == "0004" and "oauth_flows" in tables(scratch_url)
+    assert version(scratch_url) == "0005" and "oauth_flows" in tables(scratch_url)
 
 
 def test_0004_refuses_to_run_over_duplicate_provider_identities(scratch_url: str) -> None:
@@ -368,3 +370,215 @@ def test_0004_refuses_to_run_over_duplicate_provider_identities(scratch_url: str
         command.upgrade(config, "0004")
 
     assert version(scratch_url) == "0003"  # the failed migration rolled back completely
+
+
+# -- 0005: the shared listing location foundation (docs/backend/LOCATION_MAP.md §3, §3.1) -----------
+
+LOCATION_COLUMNS = {
+    "block",
+    "address",
+    "landmark",
+    "latitude",
+    "longitude",
+    "location_visibility",
+    "public_latitude",
+    "public_longitude",
+}
+LOCATION_CHECKS = {
+    "ck_listings_location_visibility_valid",
+    "ck_listings_coordinates_pair",
+    "ck_listings_latitude_range",
+    "ck_listings_longitude_range",
+    "ck_listings_visibility_matches_point",
+    "ck_listings_block_not_blank",
+    "ck_listings_address_not_blank",
+    "ck_listings_landmark_not_blank",
+}
+#: Everything a 0004 listing has — all of it must survive 0005 byte for byte.
+LEGACY_COLUMNS = (
+    "id, kind, owner_id, status, title, description, area, tags, image_url, is_featured, "
+    "revision, submitted_at, created_at, updated_at, search_document"
+)
+
+#: (kind, status, title, legacy free-text area, featured) — deliberately messy, one non-ASCII.
+LEGACY_LISTINGS = [
+    ("provider", "approved", "Legacy Plumber", "B-17, Block C (Demo Area)", True),
+    ("business", "approved", "Legacy Shop", "Sector B-17 / Blk-D", False),
+    ("business", "pending", "Legacy Food Pending", "b17 market", False),
+    ("tutor", "rejected", "Legacy Tutor", "B-17", False),
+    ("property", "approved", "Legacy House", "B-17, Block C (Demo Area)", False),
+    ("property", "archived", "Legacy Plot", "Near B-17 chowk — بلاک", False),
+]
+
+
+def seed_legacy_listings(url: str) -> None:
+    """Listings of every kind and several statuses, exactly as a 0004 database holds them."""
+    engine = create_engine(url)
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO users (id, email, display_name) "
+                    "VALUES (gen_random_uuid(), 'legacy@example.test', 'Legacy Owner')"
+                )
+            )
+            owner = connection.execute(text("SELECT id FROM users")).scalar_one()
+            for kind, status, title, area, featured in LEGACY_LISTINGS:
+                connection.execute(
+                    text(
+                        "INSERT INTO listings (id, kind, owner_id, status, title, description, "
+                        "area, tags, image_url, is_featured, revision, submitted_at, created_at, "
+                        "updated_at, search_document) VALUES (gen_random_uuid(), :k, :o, :s, :t, "
+                        "'Legacy description text', :a, :tags, '/images/x.jpg', :f, 3, "
+                        "'2026-01-02T03:04:05Z', '2026-01-02T03:04:05Z', '2026-02-03T04:05:06Z', "
+                        ":doc)"
+                    ),
+                    {
+                        "k": kind,
+                        "o": owner,
+                        "s": status,
+                        "t": title,
+                        "a": area,
+                        "tags": ["legacy", "tag"],
+                        "f": featured,
+                        "doc": f"{title.lower()} {area.lower()} legacy tag",
+                    },
+                )
+    finally:
+        engine.dispose()
+
+
+def rows(url: str, sql: str) -> list[tuple[object, ...]]:
+    engine = create_engine(url)
+    try:
+        with engine.connect() as connection:
+            return [tuple(row) for row in connection.execute(text(sql))]
+    finally:
+        engine.dispose()
+
+
+def listing_snapshot(url: str) -> list[tuple[object, ...]]:
+    return rows(url, f"SELECT {LEGACY_COLUMNS} FROM listings ORDER BY title")
+
+
+def listing_indexes(url: str) -> set[str]:
+    return {
+        str(name)
+        for (name,) in rows(url, "SELECT indexname FROM pg_indexes WHERE tablename = 'listings'")
+    }
+
+
+def test_0005_adds_the_location_columns_types_and_checks(scratch_url: str) -> None:
+    config = alembic_config(scratch_url)
+    command.upgrade(config, "0004")
+    assert not LOCATION_COLUMNS & columns(scratch_url, "listings")
+
+    command.upgrade(config, "0005")
+
+    assert columns(scratch_url, "listings") >= LOCATION_COLUMNS
+    types = {
+        name: (data_type, precision, scale, generated)
+        for name, data_type, precision, scale, generated in rows(
+            scratch_url,
+            "SELECT column_name, data_type, numeric_precision, numeric_scale, is_generated "
+            "FROM information_schema.columns WHERE table_name = 'listings' "
+            "AND column_name IN ('latitude','longitude','public_latitude','public_longitude')",
+        )
+    }
+    for name in ("latitude", "longitude"):
+        assert types[name] == ("numeric", 9, 6, "NEVER")  # stored as NUMERIC(9,6), not a float
+    for name in ("public_latitude", "public_longitude"):
+        assert types[name] == (
+            "numeric",
+            9,
+            6,
+            "ALWAYS",
+        )  # database-generated, never client-written
+    checks = rows(
+        scratch_url,
+        "SELECT conname, convalidated FROM pg_constraint "
+        "WHERE conrelid = 'listings'::regclass AND contype = 'c'",
+    )
+    present = {name: validated for name, validated in checks}
+    assert set(present) >= LOCATION_CHECKS and all(present[n] for n in LOCATION_CHECKS)
+    assert rows(
+        scratch_url,
+        "SELECT column_default FROM information_schema.columns "
+        "WHERE table_name = 'listings' AND column_name = 'location_visibility'",
+    ) == [("'area_only'::character varying",)]
+
+
+def test_0005_leaves_populated_0004_listings_untouched_as_area_only_legacy_rows(
+    scratch_url: str,
+) -> None:
+    """THE regression test: a populated 0004 database upgrades without changing any listing."""
+    config = alembic_config(scratch_url)
+    command.upgrade(config, "0004")
+    seed_legacy_listings(scratch_url)
+    before = listing_snapshot(scratch_url)
+    assert len(before) == len(LEGACY_LISTINGS)
+
+    command.upgrade(config, "0005")
+
+    # area, status, search_document, updated_at and every other pre-existing value: identical
+    assert listing_snapshot(scratch_url) == before
+    # ... and the legacy state is exactly area-only, no point, nothing invented
+    location = rows(
+        scratch_url,
+        "SELECT location_visibility, block, address, landmark, latitude, longitude, "
+        "public_latitude, public_longitude FROM listings",
+    )
+    assert location == [("area_only", None, None, None, None, None, None, None)] * len(before)
+    # legacy Properties (no point) survive; no per-kind rule was added to the database
+    assert rows(scratch_url, "SELECT count(*) FROM listings WHERE kind = 'property'") == [(2,)]
+    command.check(config)
+
+
+def test_0005_downgrades_to_0004_and_reupgrades_without_touching_listings(
+    scratch_url: str,
+) -> None:
+    config = alembic_config(scratch_url)
+    command.upgrade(config, "0004")
+    seed_legacy_listings(scratch_url)
+    before = listing_snapshot(scratch_url)
+
+    command.upgrade(config, "0005")
+    command.downgrade(config, "0004")
+
+    assert version(scratch_url) == "0004"
+    assert not LOCATION_COLUMNS & columns(scratch_url, "listings")
+    assert not LOCATION_CHECKS & {
+        name
+        for (name,) in rows(
+            scratch_url,
+            "SELECT conname FROM pg_constraint WHERE conrelid = 'listings'::regclass",
+        )
+    }
+    assert listing_snapshot(scratch_url) == before  # only the 0005 schema was removed
+
+    command.upgrade(config, "head")
+
+    assert version(scratch_url) == "0005" and listing_snapshot(scratch_url) == before
+    command.check(config)
+
+
+def test_0005_is_ddl_only_with_no_data_statement_extension_or_index(scratch_url: str) -> None:
+    config = alembic_config(scratch_url)
+    command.upgrade(config, "0004")
+    indexes_before, extensions_before = listing_indexes(scratch_url), extensions(scratch_url)
+    buffer = io.StringIO()
+    offline = alembic_config(scratch_url)
+    offline.output_buffer = buffer
+    command.upgrade(offline, "0004:0005", sql=True)
+
+    sql = buffer.getvalue().upper()
+
+    # no listings data statement: nothing is backfilled, guessed or rewritten
+    assert "UPDATE LISTINGS" not in sql and "INSERT INTO LISTINGS" not in sql
+    assert "DELETE FROM" not in sql
+    assert "POSTGIS" not in sql and "CREATE INDEX" not in sql and "CREATE UNIQUE INDEX" not in sql
+    assert "ALTER COLUMN AREA" not in sql
+
+    command.upgrade(config, "0005")
+    assert listing_indexes(scratch_url) == indexes_before  # no coordinate / block index (yet)
+    assert extensions(scratch_url) == extensions_before  # no PostGIS

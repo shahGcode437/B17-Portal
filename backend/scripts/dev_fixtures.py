@@ -11,13 +11,16 @@ which is what backend tests and a future full-stack E2E suite need in place of t
 ids (``business-01``). Never use ``fixture_id`` for real data.
 
 The content is a small, real subset of the frontend seed data (``src/data/*``). The loader is
-idempotent: existing fixture rows are left alone.
+idempotent: existing fixture rows are left alone — except that the explicit demo-LOCATION step
+(``DEMO_LOCATIONS`` below) is re-applied on every run, so an already-seeded development database
+gains demo locations after migration ``0005`` (docs/backend/LOCATION_MAP.md §3.1, §15).
 """
 
 import sys
 import uuid
 from dataclasses import dataclass
 from datetime import date
+from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
@@ -48,6 +51,7 @@ from app.models.enums import (
     HistoryAction,
     ListingKind,
     ListingStatus,
+    LocationVisibility,
     NewsKind,
     NewsStatus,
     PropertyListingType,
@@ -114,6 +118,103 @@ class FixtureResult:
     users: int
     listings: int
     news: int
+    #: Fixture listings whose demo location was (re-)applied by the explicit location step.
+    locations: int = 0
+
+
+@dataclass(frozen=True)
+class DemoLocation:
+    """A fixture's modernised location. ``point`` is None exactly when visibility is area-only."""
+
+    block: str
+    visibility: LocationVisibility
+    address: str | None = None
+    landmark: str | None = None
+    point: tuple[Decimal, Decimal] | None = None
+    area: str = "B-17"
+
+
+#: SYNTHETIC demo coordinates, for development / test / staging fixtures only. They are a
+#: deterministic scatter (a few hundred metres apart) around an arbitrary PLACEHOLDER centre near
+#: 33.70 N, 73.05 E — NOT B-17's real centre and NOT the location of any real business or person,
+#: whatever the fictional names suggest. Tests never depend on real geography.
+_N = Decimal
+
+
+#: Keyed by fixed fixture id: the ONLY rows the location step touches. Nothing is derived by
+#: parsing other data. The migration never does any of this (it is DDL-only).
+DEMO_LOCATIONS: dict[uuid.UUID, DemoLocation] = {
+    # exact: businesses / food / property (map-ready)
+    BAKERS_ID: DemoLocation(
+        "C",
+        LocationVisibility.EXACT,
+        "Shop 4, Demo Plaza",
+        "Next to the demo park",
+        (_N("33.701234"), _N("73.051234")),
+    ),
+    BIRYANI_ID: DemoLocation(
+        "C",
+        LocationVisibility.EXACT,
+        "Unit 2, Demo Food Court",
+        "Opposite the demo mosque",
+        (_N("33.702345"), _N("73.053456")),
+    ),
+    HOUSE_ID: DemoLocation(
+        "C",
+        LocationVisibility.EXACT,
+        "House 12, Demo Street 3",
+        None,
+        (_N("33.703456"), _N("73.054321")),
+    ),
+    SALON_ID: DemoLocation(
+        "D",
+        LocationVisibility.EXACT,
+        "Shop 9, Demo Market",
+        None,
+        (_N("33.707890"), _N("73.052109")),
+    ),
+    # approximate: a cafe and a home-based tutor (private address must never go public)
+    CAFE_ID: DemoLocation(
+        "C",
+        LocationVisibility.APPROXIMATE,
+        "Private Cafe Address 5",
+        "Private cafe landmark",
+        (_N("33.706789"), _N("73.058765")),
+    ),
+    TUTOR_ID: DemoLocation(
+        "C",
+        LocationVisibility.APPROXIMATE,
+        "Private Home Address 7",
+        "Private home landmark",
+        (_N("33.704567"), _N("73.055678")),
+    ),
+    # area_only: no point at all; the private address is stored for admins only
+    MATH_TUTOR_ID: DemoLocation(
+        "D", LocationVisibility.AREA_ONLY, "Private Lane Address 9", "Private lane landmark"
+    ),
+    ELECTRIC_ID: DemoLocation(
+        "D", LocationVisibility.AREA_ONLY, "Private Workshop Address 2", None
+    ),
+    # not public (rejected / pending): located, yet still never served
+    REJECTED_BUSINESS_ID: DemoLocation(
+        "C",
+        LocationVisibility.EXACT,
+        "Hidden Shop Address 1",
+        None,
+        (_N("33.708901"), _N("73.051098")),
+    ),
+    PENDING_FOOD_ID: DemoLocation(
+        "C",
+        LocationVisibility.EXACT,
+        "Hidden Food Address 3",
+        None,
+        (_N("33.709012"), _N("73.057654")),
+    ),
+}
+
+#: Deliberately left in the pre-0005 LEGACY state (old free-text ``area``, area-only, no point) so
+#: the transitional path stays covered: one General business and one Property are among them.
+LEGACY_FIXTURE_IDS = (SOLAR_ID, PHARMACY_ID, FLAT_ID, PENDING_PROVIDER_ID, ARCHIVED_TUTOR_ID)
 
 
 def ensure_not_production(settings: Settings) -> None:
@@ -146,11 +247,33 @@ def load_dev_fixtures(session: Session) -> FixtureResult:
         ]
     )
     news = _news(session) + _more_news(session)
+    locations = _apply_demo_locations(session)
     SearchIndexer(session).refresh_ids(FIXTURE_LISTING_IDS)
     if session.get(SavedItem, (RESIDENT_ID, BAKERS_ID)) is None:
         session.add(SavedItem(user_id=RESIDENT_ID, listing_id=BAKERS_ID))
     session.flush()
-    return FixtureResult(users=users, listings=listings, news=news)
+    return FixtureResult(users=users, listings=listings, news=news, locations=locations)
+
+
+def _apply_demo_locations(session: Session) -> int:
+    """Give the fixtures in ``DEMO_LOCATIONS`` their canonical ``area`` (``B-17``), ``block`` and
+    demo location. Idempotent (assigning the same values again changes nothing); the caller owns
+    the transaction; the search documents are refreshed by the caller afterwards."""
+    applied = 0
+    for listing_id, demo in DEMO_LOCATIONS.items():
+        listing = session.get(Listing, listing_id)
+        if listing is None:
+            continue
+        listing.area = demo.area
+        listing.block = demo.block
+        listing.address = demo.address
+        listing.landmark = demo.landmark
+        listing.location_visibility = demo.visibility
+        listing.latitude = demo.point[0] if demo.point else None
+        listing.longitude = demo.point[1] if demo.point else None
+        applied += 1
+    session.flush()
+    return applied
 
 
 # -- users ----------------------------------------------------------------------------------
@@ -688,7 +811,8 @@ def main() -> int:
         engine.dispose()
     print(
         f"Dev fixtures: {result.users} user(s), {result.listings} listing(s), "
-        f"{result.news} news article(s) created (existing ones left untouched)."
+        f"{result.news} news article(s) created (existing ones left untouched); "
+        f"demo location applied to {result.locations} listing(s)."
     )
     return 0
 

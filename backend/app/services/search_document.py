@@ -9,7 +9,8 @@ Composition (public, approved-content text ONLY — in this order, single-space 
 * the NAMES of its categories, in position order (so "bakeries" finds a Food business and "house"
   finds a property: the frontend matches the category label as part of the subtitle);
 * the description (the tutor's bio is its description);
-* the area, and the tags;
+* the area, the public location text (block; address and landmark for ``exact`` only), and
+  the tags;
 * **Food**: the names of its menu items (the frontend searches menu-highlight names too);
 * **Property**: the price text, "N bed", the furnishing, and "for sale" / "for rent";
 * **Tutor**: the grade.
@@ -23,7 +24,23 @@ collapsed to a single space.
 """
 
 from app.models import Listing
-from app.models.enums import ListingKind, PropertyListingType
+from app.models.enums import ListingKind, LocationVisibility, PropertyListingType
+
+
+def _location_terms(listing: Listing) -> list[str]:
+    """Location text that is PUBLIC (docs/backend/LOCATION_MAP.md §9): the block always (also as
+    ``block <x>`` so "block c" finds block ``C``), the address and landmark ONLY for ``exact``
+    listings. The stored point never appears, and neither does a private address — so flipping a
+    listing to ``approximate`` / ``area_only`` removes that text on the next rebuild. Legacy rows
+    have none of this, so their documents are unchanged."""
+    terms: list[str] = []
+    if listing.block:
+        terms.append(listing.block)
+        if not listing.block.strip().lower().startswith("block"):
+            terms.append(f"block {listing.block}")
+    if listing.location_visibility is LocationVisibility.EXACT:
+        terms.extend(text for text in (listing.address, listing.landmark) if text)
+    return terms
 
 
 def build_search_document(listing: Listing) -> str:
@@ -33,6 +50,7 @@ def build_search_document(listing: Listing) -> str:
     if listing.description:
         parts.append(listing.description)
     parts.append(listing.area)
+    parts.extend(_location_terms(listing))
     parts.extend(listing.tags)
 
     if listing.kind is ListingKind.BUSINESS and listing.business and listing.business.food:

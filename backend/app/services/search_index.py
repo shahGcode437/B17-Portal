@@ -33,8 +33,13 @@ class SearchIndexer:
         self._listings = ListingReadRepository(session)
 
     def refresh(self, listing: Listing) -> None:
-        """Recompute one listing's document. Its relations are loaded on demand."""
-        listing.search_document = build_search_document(listing)
+        """Recompute one listing's document. The listing is re-read through the indexing loader
+        (flushing first), so the private-capable columns the builder needs — and only those — are
+        loaded explicitly, whichever way the caller obtained the instance."""
+        self._session.flush()
+        loaded = self._listings.get_for_indexing([listing.id])
+        for fresh in loaded:
+            fresh.search_document = build_search_document(fresh)
         self._session.flush()
 
     def refresh_ids(self, ids: Sequence[uuid.UUID]) -> int:

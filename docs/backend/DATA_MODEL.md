@@ -355,7 +355,7 @@ As built: `auth_sessions.token_hash`/`auth_tokens.token_hash` are `bytea` with `
 
 Raw session and token secrets are **never stored** — only their SHA-256. Closed sets use `VARCHAR + CHECK`; all timestamps `timestamptz`; constraint names follow the existing convention. Expired rows are removed by `python -m app.cli.auth_maintenance purge` and are never trusted for correctness (validity is always checked against the timestamps).
 
-## 16. Phase 12 schema plan (frozen in Phase 12A — nothing below exists yet)
+## 16. Phase 12 schema plan (frozen in Phase 12A; **`0005` implemented in Phase 12B**, `0006` not yet)
 
 Two additive migrations, each shipped with the slice that needs it (`0001`–`0004` are never edited):
 
@@ -365,6 +365,8 @@ Two additive migrations, each shipped with the slice that needs it (`0001`–`00
 | **`0006_service_requests`** | 12F | `service_requests` and `service_request_status_history` (below). |
 
 **`service_requests`** (the "conceptual" table of §6, now specified): `id uuid` · `requester_id → users` (RESTRICT) · `provider_listing_id → listings` (SET NULL; `provider_name_snapshot varchar(100) NOT NULL` keeps the display) · `service varchar(80)` · `details varchar(500)` (`CHECK char_length(btrim) ≥ 10`) · `area varchar(80)` · `preferred_date date` · `preferred_time varchar(20)` · `notes varchar(500)` · `status` (`submitted|accepted|in-progress|completed|cancelled` as `VARCHAR + CHECK`) · `created_at`, `updated_at`. Indexes: `(provider_listing_id, status)`, `(requester_id, created_at DESC)`. **`service_request_status_history`**: `id`, `request_id` (CASCADE), `from_status` (NULL on creation), `to_status`, `actor_user_id` (RESTRICT), `actor_role` (`requester|provider`), `created_at`; append-only like `listing_status_history`. The service rule "the target is an approved provider listing, not the requester's own" is not a database constraint. No contact data is stored (O-3).
+
+**As built (Phase 12B, `0005_listing_location`):** exactly the columns, generated expressions and `ck_listings_*` constraints above, DDL only. `latitude`, `longitude`, `address` and `landmark` are mapped `deferred` with raiseload; `public_address` / `public_landmark` are SQL-guarded query expressions, not columns. No index, no extension, no data statement; existing rows are the documented legacy state (`LOCATION_MAP.md` §3.1, §19).
 
 **Phase 12 does not change:** `listing_status_history` (the narrowing edit writes no row; every other transition uses the existing actions), `professional_profiles`, `saved_items`, `categories`, `listing_categories` (its constraints already cover the category write rules), `news_articles`. The `search_document` composition gains `block` and, for `exact` listings only, `address` / `landmark` (`LOCATION_MAP.md` §9); no reindex is needed because existing rows have none of those, but `python -m app.db.search_index check` stays in the release gate.
 

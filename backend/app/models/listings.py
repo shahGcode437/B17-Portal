@@ -16,16 +16,19 @@ Database vs service (docs/backend/DATA_MODEL.md §11):
 
 import uuid
 from datetime import datetime
+from decimal import Decimal
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
+    Computed,
     DateTime,
     ForeignKey,
     ForeignKeyConstraint,
     Index,
     Integer,
+    Numeric,
     SmallInteger,
     String,
     Text,
@@ -35,7 +38,7 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.dialects.postgresql import ARRAY
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, query_expression, relationship
 
 from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 from app.db.types import in_values, str_enum
@@ -49,6 +52,7 @@ from app.models.enums import (
     HistoryAction,
     ListingKind,
     ListingStatus,
+    LocationVisibility,
     PropertyListingType,
 )
 
@@ -56,6 +60,19 @@ if TYPE_CHECKING:
     from app.models.taxonomy import ListingCategory
 
 _EMPTY_ARRAY = text("'{}'::text[]")
+
+# The public point is DERIVED BY THE DATABASE from the stored point and the visibility mode
+# (docs/backend/LOCATION_MAP.md §3, §7.2). ``exact`` -> the point, ``approximate`` -> the nearest
+# point of a 0.01-degree grid (``round(x, 2)``, half away from zero), ``area_only`` -> NULL.
+# Application code never writes these columns. Migration 0005 repeats this SQL verbatim.
+PUBLIC_LATITUDE_SQL = (
+    "CASE location_visibility WHEN 'exact'::text THEN latitude "
+    "WHEN 'approximate'::text THEN round(latitude, 2) ELSE NULL::numeric END"
+)
+PUBLIC_LONGITUDE_SQL = (
+    "CASE location_visibility WHEN 'exact'::text THEN longitude "
+    "WHEN 'approximate'::text THEN round(longitude, 2) ELSE NULL::numeric END"
+)
 
 
 class Listing(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -102,6 +119,44 @@ class Listing(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         Text, nullable=False, default="", server_default=text("''")
     )
 
+    # -- location (Phase 12B; docs/backend/LOCATION_MAP.md). Shared by every kind. ----------------
+    #: Public in every mode. Free text (no block taxonomy is invented).
+    block: Mapped[str | None] = mapped_column(String(40))
+    #: PRIVATE-CAPABLE: public only for ``exact`` listings. ``deferred_raiseload``: no query loads
+    #: it unless it says so explicitly, and a stray attribute access raises instead of silently
+    #: lazy-loading — public repositories read ``public_address`` instead.
+    address: Mapped[str | None] = mapped_column(String(200), deferred=True, deferred_raiseload=True)
+    landmark: Mapped[str | None] = mapped_column(
+        String(100), deferred=True, deferred_raiseload=True
+    )
+    #: PRIVATE: the exact stored point. Never read by a public path; the public API reads the
+    #: database-generated ``public_*`` columns. ``area_only`` stores no point (CHECK).
+    latitude: Mapped[Decimal | None] = mapped_column(
+        Numeric(9, 6), deferred=True, deferred_raiseload=True
+    )
+    longitude: Mapped[Decimal | None] = mapped_column(
+        Numeric(9, 6), deferred=True, deferred_raiseload=True
+    )
+    #: ``area_only`` is the safe default for legacy rows (no point, area-level only).
+    location_visibility: Mapped[LocationVisibility] = mapped_column(
+        str_enum(LocationVisibility),
+        nullable=False,
+        default=LocationVisibility.AREA_ONLY,
+        server_default="area_only",
+    )
+    #: GENERATED ALWAYS ... STORED by PostgreSQL — read-only for the application.
+    public_latitude: Mapped[Decimal | None] = mapped_column(
+        Numeric(9, 6), Computed(PUBLIC_LATITUDE_SQL, persisted=True)
+    )
+    public_longitude: Mapped[Decimal | None] = mapped_column(
+        Numeric(9, 6), Computed(PUBLIC_LONGITUDE_SQL, persisted=True)
+    )
+    #: Not a column: populated by public queries with ``with_expression`` as
+    #: ``CASE WHEN visibility = 'exact' THEN address END`` — so the address of a non-exact listing
+    #: is never even selected on a public path.
+    public_address: Mapped[str | None] = query_expression()
+    public_landmark: Mapped[str | None] = query_expression()
+
     business: Mapped["BusinessProfile | None"] = relationship(
         back_populates="listing", uselist=False, cascade="all, delete-orphan", passive_deletes=True
     )
@@ -132,6 +187,27 @@ class Listing(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         CheckConstraint("revision >= 1", name="revision_positive"),
         CheckConstraint(
             "NOT is_featured OR kind IN ('provider', 'business')", name="featured_kinds"
+        ),
+        # -- location (docs/backend/LOCATION_MAP.md §3): row-local rules only. Per-kind
+        # requiredness (e.g. a Property needs a point) is a WRITE-SERVICE rule, because legacy
+        # rows legitimately have none (§3.1).
+        in_values("location_visibility", LocationVisibility, name="location_visibility_valid"),
+        CheckConstraint("(latitude IS NULL) = (longitude IS NULL)", name="coordinates_pair"),
+        CheckConstraint("latitude IS NULL OR latitude BETWEEN -90 AND 90", name="latitude_range"),
+        CheckConstraint(
+            "longitude IS NULL OR longitude BETWEEN -180 AND 180", name="longitude_range"
+        ),
+        # area_only <=> no stored point: narrowing to area_only erases the pin.
+        CheckConstraint(
+            "(location_visibility = 'area_only') = (latitude IS NULL)",
+            name="visibility_matches_point",
+        ),
+        CheckConstraint("block IS NULL OR char_length(btrim(block)) > 0", name="block_not_blank"),
+        CheckConstraint(
+            "address IS NULL OR char_length(btrim(address)) > 0", name="address_not_blank"
+        ),
+        CheckConstraint(
+            "landmark IS NULL OR char_length(btrim(landmark)) > 0", name="landmark_not_blank"
         ),
         # Target of the subtype tables' composite foreign keys (subtype <-> matching kind).
         UniqueConstraint("id", "kind", name="uq_listings_id_kind"),

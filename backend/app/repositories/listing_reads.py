@@ -8,12 +8,14 @@ page loads only what a result card needs (no Food menu items).
 import uuid
 from collections.abc import Sequence
 
-from sqlalchemy import select
-from sqlalchemy.orm import Session, joinedload, selectinload
+from sqlalchemy import case, null, select
+from sqlalchemy.orm import Session, joinedload, selectinload, undefer, with_expression
+from sqlalchemy.orm.attributes import InstrumentedAttribute
 from sqlalchemy.orm.interfaces import LoaderOption
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.models import BusinessProfile, FoodProfile, Listing, ListingCategory
-from app.models.enums import ListingStatus
+from app.models.enums import ListingStatus, LocationVisibility
 
 #: The only status the public can see.
 PUBLIC_STATUS = ListingStatus.APPROVED
@@ -27,14 +29,29 @@ def _base_options() -> list[LoaderOption]:
     ]
 
 
+def _exact_only(column: InstrumentedAttribute[str | None]) -> ColumnElement[str | None]:
+    """``CASE WHEN visibility = 'exact' THEN column END`` — the address / landmark of an
+    approximate or area-only listing is never even selected on a public path."""
+    return case((Listing.location_visibility == LocationVisibility.EXACT, column), else_=null())
+
+
 def detail_options() -> list[LoaderOption]:
-    """Everything a public detail page (and the search document) needs."""
+    """Everything a PUBLIC detail page needs. The stored point, ``address`` and ``landmark`` stay
+    unloaded (``deferred_raiseload``); the public address / landmark come from guarded SQL."""
     return [
         *_base_options(),
         joinedload(Listing.business)
         .joinedload(BusinessProfile.food)
         .selectinload(FoodProfile.menu_items),
+        with_expression(Listing.public_address, _exact_only(Listing.address)),
+        with_expression(Listing.public_landmark, _exact_only(Listing.landmark)),
     ]
+
+
+def indexing_options() -> list[LoaderOption]:
+    """Everything the SEARCH DOCUMENT needs: the detail relations plus the stored address and
+    landmark (the builder includes them only for ``exact`` listings). Never the stored point."""
+    return [*detail_options(), undefer(Listing.address), undefer(Listing.landmark)]
 
 
 def card_options() -> list[LoaderOption]:
@@ -72,7 +89,10 @@ class ListingReadRepository:
             return []
         return list(
             self._session.scalars(
-                select(Listing).where(Listing.id.in_(ids)).options(*detail_options())
+                select(Listing)
+                .where(Listing.id.in_(ids))
+                .options(*indexing_options())
+                .execution_options(populate_existing=True)
             )
         )
 
