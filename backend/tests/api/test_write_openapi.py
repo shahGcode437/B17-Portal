@@ -1,6 +1,6 @@
 """The OpenAPI surface of the Phase 12D write endpoints (database-free).
 
-Only the real 12D operations exist (no admin, no Saved, no requests, no category writes); the
+Only the real 12D operations exist outside /admin (no Saved, no requests, no public category writes); the
 request schemas cannot even DESCRIBE a server-owned field; the public coordinates are not writable;
 the revision token is the one required field of PATCH and archive.
 """
@@ -77,7 +77,7 @@ def test_exactly_the_12d_operations_were_added(document: dict[str, Any]) -> None
     written = {
         (method, path)
         for method, path in operations(document)
-        if method != "GET" and not path.startswith(("/auth/", "/health"))
+        if method != "GET" and not path.startswith(("/auth/", "/health", "/admin/"))
     }
 
     assert written == {
@@ -96,12 +96,16 @@ def test_exactly_the_12d_operations_were_added(document: dict[str, Any]) -> None
 def test_nothing_from_later_slices_leaked_in(document: dict[str, Any]) -> None:
     paths = [path.removeprefix(PREFIX) for path in document["paths"]]
 
-    for later in ("/admin", "/saved", "/requests", "/leads", "/media", "/upload"):
+    for later in ("/saved", "/requests", "/leads", "/media", "/upload"):
         assert not any(later in path for path in paths), later
-    assert not any(path.endswith(("/approve", "/reject", "/unarchive")) for path in paths)
+    # Phase 12E added the admin moderation + taxonomy routes (and nothing else under /admin)
+    assert not any(path.endswith("/unarchive") for path in paths)
+    assert not any(
+        path.endswith(("/approve", "/reject")) for path in paths if not path.startswith("/admin/")
+    )
     assert {m for m, p in operations(document) if p == "/categories"} == {
         "GET"
-    }  # no category writes
+    }  # the PUBLIC category route is read-only (writes live under /admin/categories)
 
 
 @pytest.mark.parametrize("name", REQUEST_SCHEMAS)

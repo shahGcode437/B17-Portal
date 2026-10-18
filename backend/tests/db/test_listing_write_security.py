@@ -253,7 +253,8 @@ def test_a_professional_has_no_admin_power_over_anyone_s_listing(
         response = pro.request("POST", f"{LISTINGS}/{target}/{path}", json={"revision": 1})
         assert response.status_code in (404, 405), path
     assert pro.request("DELETE", f"{LISTINGS}/{target}").status_code == 405
-    assert pro.request("GET", "/admin/listings").status_code in (404, 405)
+    # Phase 12E: the admin surface exists, and a professional (either plan) is simply not an admin
+    assert pro.request("GET", "/admin/listings").status_code == 403
 
 
 def test_no_write_endpoint_leaks_the_listing_existence_through_timing_free_differences(

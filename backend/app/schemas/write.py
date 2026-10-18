@@ -57,6 +57,7 @@ def _printable(allow_newlines: bool) -> AfterValidator:
     return AfterValidator(check)
 
 
+printable = _printable  # shared with the admin schemas
 _one_line = _printable(False)
 Name = Annotated[
     str, StringConstraints(strip_whitespace=True, min_length=2, max_length=80), _one_line

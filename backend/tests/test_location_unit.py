@@ -251,7 +251,9 @@ def test_no_other_schema_exposes_a_location_field() -> None:
     for name, schema in schemas.items():
         if name in LOCATION_SCHEMAS:
             continue
-        leaked = forbidden & set(schema.get("properties", {}))
+        # The admin QUEUE row shows the privacy MODE only (never a coordinate, address or landmark).
+        mode_only = {"locationVisibility"} if name == "AdminListingSummary" else set()
+        leaked = forbidden & set(schema.get("properties", {})) - mode_only
         assert not leaked, (name, leaked)
 
 
@@ -273,6 +275,11 @@ def test_only_owner_shapes_and_write_bodies_reference_the_private_location() -> 
         "OwnerBusiness",
         "OwnerTutor",
         "OwnerProperty",
+        # Phase 12E: the admin review shapes extend the owner shapes (admin routes only)
+        "AdminProvider",
+        "AdminBusiness",
+        "AdminTutor",
+        "AdminProperty",
     }
     assert references("LocationInput") == {
         "ProviderCreate",
@@ -293,9 +300,7 @@ def test_the_only_listing_routes_with_a_body_are_the_owner_writes() -> None:
     document = openapi()
     paths = document["paths"]
 
-    assert not any(
-        path.startswith(("/api/v1/admin", "/api/v1/saved", "/api/v1/requests")) for path in paths
-    )
+    assert not any(path.startswith(("/api/v1/saved", "/api/v1/requests")) for path in paths)
     assert set(paths["/api/v1/listings/{listing_id}"]) == {"get", "patch"}
     with_body = {
         (method, path)

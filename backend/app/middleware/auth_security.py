@@ -13,9 +13,10 @@ without anyone remembering to opt in):
    — they are protected by 1, 2 and the JSON-only content type.
 4. **Content type** — auth endpoints accept JSON bodies only (``415`` otherwise). This is scoped to
    ``/auth/``; future upload routes may accept multipart and are protected by 1-3 like any other.
-5. **Caching** — every response under ``/auth/`` and ``/users/me/`` (the signed-in user's own
-   resources, Phase 12D) is ``Cache-Control: no-store``, errors included. Public read APIs are not
-   touched; the owner WRITE routes under ``/listings`` set it themselves.
+5. **Caching** — every response under ``/auth/``, ``/users/me/`` (the signed-in user's own
+   resources, Phase 12D) and ``/admin/`` (Phase 12E) is ``Cache-Control: no-store``, errors
+   included. Public read APIs are not touched; the owner WRITE routes under ``/listings`` set it
+   themselves.
 
 Failures are the normal error envelope (``csrf_failed`` 403 / ``bad_request`` 415) with the request
 id. The middleware sits inside CORS (so a browser can read the 403) and inside the request log.
@@ -53,7 +54,11 @@ class AuthSecurityMiddleware:
         self.app = app
         self._prefix = api_prefix.rstrip("/")
         self._auth_prefix = f"{self._prefix}/auth/"
-        self._private_prefixes = (self._auth_prefix, f"{self._prefix}/users/me/")
+        self._private_prefixes = (
+            self._auth_prefix,
+            f"{self._prefix}/users/me/",
+            f"{self._prefix}/admin/",
+        )
         self._allowed_origins = frozenset(allowed_origins)
         self._cookie_name = cookie_name
 

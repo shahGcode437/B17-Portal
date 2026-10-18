@@ -96,6 +96,13 @@ def test_openapi_document_loads_and_describes_the_health_endpoint(client: TestCl
         "/api/v1/users/me/professional-profile",
         "/api/v1/users/me/listings",
         "/api/v1/users/me/listings/{listing_id}",
+        "/api/v1/admin/listings",
+        "/api/v1/admin/listings/{listing_id}",
+        "/api/v1/admin/listings/{listing_id}/approve",
+        "/api/v1/admin/listings/{listing_id}/reject",
+        "/api/v1/admin/categories",
+        "/api/v1/admin/categories/reorder",
+        "/api/v1/admin/categories/{category_id}",
         "/api/v1/news",
         "/api/v1/news/{article_id}",
     ]

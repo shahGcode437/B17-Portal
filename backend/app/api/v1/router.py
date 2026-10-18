@@ -4,6 +4,7 @@ from fastapi import APIRouter
 
 from app.api.routing import ContractRoute
 from app.api.v1 import (
+    admin,
     auth,
     categories,
     health,
@@ -26,4 +27,5 @@ api_router.include_router(search.router)
 api_router.include_router(listings.router)
 api_router.include_router(owner_listings.router)
 api_router.include_router(users.router)
+api_router.include_router(admin.router)
 api_router.include_router(news.router)

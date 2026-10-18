@@ -225,7 +225,18 @@ def test_a_client_cannot_assign_itself_a_role_at_registration(env: AuthEnv, fiel
 def test_the_production_api_has_no_role_or_probe_routes(auth_env: AuthEnv) -> None:
     paths = list(auth_env.app.openapi()["paths"])
 
-    assert not any("role" in p or "admin" in p or "_probe" in p for p in paths)
+    assert not any("role" in p or "_probe" in p for p in paths)
+    # Phase 12E: the admin surface is exactly the moderation + taxonomy routes (and no admin/role
+    # management route exists at all)
+    assert [p for p in paths if "/admin" in p] == [
+        "/api/v1/admin/listings",
+        "/api/v1/admin/listings/{listing_id}",
+        "/api/v1/admin/listings/{listing_id}/approve",
+        "/api/v1/admin/listings/{listing_id}/reject",
+        "/api/v1/admin/categories",
+        "/api/v1/admin/categories/reorder",
+        "/api/v1/admin/categories/{category_id}",
+    ]
     assert [p for p in paths if "/auth/" in p] == [
         "/api/v1/auth/register",
         "/api/v1/auth/login",

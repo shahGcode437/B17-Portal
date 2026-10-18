@@ -97,7 +97,7 @@ def parse_listing_id(raw: str) -> uuid.UUID:
         raise not_found() from None  # a malformed id cannot exist: same answer as an unknown one
 
 
-def _stale_revision(current: int) -> AppError:
+def stale_revision(current: int) -> AppError:
     return AppError(
         ErrorCode.LISTING_CONFLICT,
         status_code=409,
@@ -111,7 +111,7 @@ def _stale_revision(current: int) -> AppError:
     )
 
 
-def _invalid_transition() -> AppError:
+def invalid_transition() -> AppError:
     return AppError(ErrorCode.INVALID_STATE_TRANSITION, status_code=409)
 
 
@@ -295,7 +295,8 @@ class ListingWriteService:
             raise validation_error(problems)
 
         with transaction(self._session):
-            plan = self._profiles.lock(owner_id)  # lock order: profile first
+            self._categories.lock_taxonomy_shared()  # first: see taxonomy_admin.py
+            plan = self._profiles.lock(owner_id)  # then the profile
             if plan is None:
                 raise AppError(ErrorCode.PROFESSIONAL_PROFILE_REQUIRED, status_code=403)
             self._check_quota(owner_id, plan)
@@ -378,6 +379,7 @@ class ListingWriteService:
         self, owner_id: uuid.UUID, listing_id: uuid.UUID, patch: ListingPatch, *, lock_profile: bool
     ) -> Listing:
         with transaction(self._session):
+            self._categories.lock_taxonomy_shared()  # first: see taxonomy_admin.py
             plan = self._profiles.lock(owner_id) if lock_profile else None
             if lock_profile and plan is None:
                 raise AppError(ErrorCode.PROFESSIONAL_PROFILE_REQUIRED, status_code=403)
@@ -385,9 +387,9 @@ class ListingWriteService:
             if listing is None:
                 raise not_found()
             if listing.status is ListingStatus.ARCHIVED:
-                raise _invalid_transition()
+                raise invalid_transition()
             if listing.revision != patch.revision:
-                raise _stale_revision(listing.revision)
+                raise stale_revision(listing.revision)
 
             old = state_of(listing)
             new, problems = apply_patch(old, patch, self._localities)
@@ -431,7 +433,7 @@ class ListingWriteService:
                 values["submitted_at"] = self._clock()
 
             if not self._listings.guarded_update(listing.id, owner_id, patch.revision, values):
-                raise _stale_revision(listing.revision)  # defensive: the row lock prevents this
+                raise stale_revision(listing.revision)  # defensive: the row lock prevents this
             self._write_children(listing.id, old, new, category_ids)
             new_revision = patch.revision + 1
             if material:
@@ -513,14 +515,14 @@ class ListingWriteService:
             if listing is None:
                 raise not_found()
             if listing.status is ListingStatus.ARCHIVED:
-                raise _invalid_transition()
+                raise invalid_transition()
             if listing.revision != revision:
-                raise _stale_revision(listing.revision)
+                raise stale_revision(listing.revision)
             previous_status = listing.status
             if not self._listings.guarded_update(
                 listing.id, owner_id, revision, {"status": ListingStatus.ARCHIVED}
             ):
-                raise _stale_revision(listing.revision)  # defensive
+                raise stale_revision(listing.revision)  # defensive
             self._listings.record_history(
                 ListingStatusHistory(
                     listing_id=listing.id,

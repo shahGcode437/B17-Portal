@@ -80,3 +80,7 @@ Search cards and listing detail gain `location` (see `API_CONTRACT.md` §6.2); t
 ## 9. Owner shapes are not public shapes (Phase 12D)
 
 The public read APIs above are unchanged and still return only `approved` listings with the public location. The owner's own view (`GET /users/me/listings[/{id}]`, `API_CONTRACT.md` §11) is a separate set of schemas with the private location, `status`, `revision` and the current rejection reason, and it echoes the write vocabulary (category / property-type **slugs**) instead of the frontend display values used here. Nothing from an owner shape can reach a public response: the schemas, the repositories and the mappers are separate, and tests assert both directions.
+
+## 10. Admin shapes are not public shapes (Phase 12E)
+
+The public read APIs are unchanged. The admin schemas (`AdminListingSummary`, `AdminProvider | AdminBusiness | AdminTutor | AdminProperty`, `AdminCategory`) are separate models behind `require_admin`: the queue row has the status, `revision`, `submittedAt`, the submitter's display name and the location **mode** only; the detail adds the private exact location, the current rejection reason and the status history. The admin category list includes inactive categories, which the public `GET /categories` never returns. Admin responses never reach a public route, and an approval or takedown changes what the public reads return in the same commit (a takedown is invisible to search, detail and the listing's category counts immediately).
