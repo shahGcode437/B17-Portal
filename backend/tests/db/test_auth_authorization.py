@@ -113,7 +113,10 @@ def test_denial_reasons_use_the_documented_codes(env: AuthEnv) -> None:
         403,
         "email_not_verified",
     )
-    assert (resident.status_code, resident.json()["error"]["code"]) == (403, "forbidden")
+    assert (resident.status_code, resident.json()["error"]["code"]) == (
+        403,
+        "professional_profile_required",
+    )
     assert (not_admin.status_code, not_admin.json()["error"]["code"]) == (403, "forbidden")
 
 

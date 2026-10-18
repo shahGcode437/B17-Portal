@@ -30,6 +30,9 @@ class ErrorCode(StrEnum):
     TOKEN_INVALID = "token_invalid"
     TOKEN_EXPIRED = "token_expired"
     PLAN_LIMIT_REACHED = "plan_limit_reached"
+    # Listing writes (Phase 12D; docs/backend/API_CONTRACT.md §10.10)
+    LISTING_CONFLICT = "listing_conflict"
+    PROFESSIONAL_PROFILE_REQUIRED = "professional_profile_required"
     NOT_FOUND = "not_found"
     METHOD_NOT_ALLOWED = "method_not_allowed"
     CONFLICT = "conflict"
@@ -53,6 +56,8 @@ DEFAULT_MESSAGES: dict[ErrorCode, str] = {
     ErrorCode.TOKEN_INVALID: "This link is invalid or has already been used.",
     ErrorCode.TOKEN_EXPIRED: "This link has expired. Request a new one.",
     ErrorCode.PLAN_LIMIT_REACHED: "Your plan's listing limit has been reached.",
+    ErrorCode.LISTING_CONFLICT: "This listing changed since you opened it.",
+    ErrorCode.PROFESSIONAL_PROFILE_REQUIRED: "Create your professional profile to do this.",
     ErrorCode.NOT_FOUND: "Resource not found.",
     ErrorCode.METHOD_NOT_ALLOWED: "Method not allowed.",
     ErrorCode.CONFLICT: "The request conflicts with the current state of the resource.",

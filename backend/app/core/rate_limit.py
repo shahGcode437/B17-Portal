@@ -34,6 +34,9 @@ RESEND_VERIFICATION_MINUTE = RatePolicy("resend_verification_minute", limit=1, w
 RESEND_VERIFICATION_DAY = RatePolicy(
     "resend_verification_day", limit=5, window_seconds=24 * 60 * 60
 )
+#: Listing creates per user (AUTH_RBAC.md §22.1: "listing create 10/hour/user, tunable"). Edits and
+#: archives have no frozen number and are not throttled in Phase 12D.
+LISTING_CREATE = RatePolicy("listing_create", limit=10, window_seconds=60 * 60)
 
 
 class RateLimiter(Protocol):

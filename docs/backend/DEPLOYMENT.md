@@ -126,7 +126,7 @@ Nothing here is implemented in 12A; it records what deployment must provide when
 
 | Setting | Where | Meaning |
 |---|---|---|
-| `LOCALITIES` *(introduced with the write API, slice 12D)* | API environment (default `B-17`) | The canonical locality list that a new listing's `area` must belong to (`LOCATION_MAP.md` §4). Mirrored by the frontend config until a managed lookup exists. **There is no geofence setting**: only latitude `-90..90` / longitude `-180..180` are validated; B-17 geofencing waits for authoritative geographic data (`LOCATION_MAP.md` §5). |
+| `LOCALITIES` *(implemented in slice 12D)* | API environment (default `B-17`; comma-separated or a JSON list; matched trimmed and case-insensitively; an empty value fails startup) | The canonical locality list that a new listing's `area` must belong to (`LOCATION_MAP.md` §4). Mirrored by the frontend config until a managed lookup exists. **There is no geofence setting**: only latitude `-90..90` / longitude `-180..180` are validated; B-17 geofencing waits for authoritative geographic data (`LOCATION_MAP.md` §5). |
 | `VITE_MAP_TILE_URL` · `VITE_MAP_TILE_ATTRIBUTION` | frontend build | The raster tile template and its required attribution. Dev / demo default: standard OpenStreetMap tiles. **Production must set a compliant provider.** |
 | `VITE_MAP_DEFAULT_CENTER` | frontend build | Picker start position (`lat,lng`; falls back to a labelled Islamabad city centre). It is a starting view, not a limit. |
 

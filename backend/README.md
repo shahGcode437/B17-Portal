@@ -106,7 +106,7 @@ docker compose run --rm api alembic upgrade head          # migrations are an ex
 ## Test and check
 
 ```bash
-pytest                    # 413 database-free tests always run; the 834 PostgreSQL tests need TEST_DATABASE_URL
+pytest                    # 843 database-free tests always run; the 1173 PostgreSQL tests (2016 total) need TEST_DATABASE_URL
 ruff check .              # lint
 ruff format --check .     # formatting (use `ruff format .` to fix)
 mypy                      # strict type check (app, tests, scripts)

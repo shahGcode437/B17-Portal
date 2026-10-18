@@ -8,7 +8,8 @@ are UX only — these are the authority.
 ``get_optional_user``      the principal, or ``None`` (never raises for a missing/invalid session)
 ``get_current_user``       the principal, else ``401 unauthenticated`` / ``401 session_expired``
 ``require_verified_user``  + ``403 email_not_verified``
-``require_professional``   verified + a ``professional_profiles`` row, else ``403 forbidden``
+``require_professional``   verified + a ``professional_profiles`` row, else
+                           ``403 professional_profile_required``
 ``require_admin``          verified + the ``admin`` role + a recent session, else 403 / 401
 =========================  =========================================================================
 
@@ -130,7 +131,8 @@ VerifiedUser = Annotated[Principal, Depends(require_verified_user)]
 
 def require_professional(principal: VerifiedUser) -> Principal:
     if not principal.is_professional:
-        raise AppError(ErrorCode.FORBIDDEN, status_code=403)
+        # Phase 12D: the stable code the SPA routes to onboarding (API_CONTRACT §10.10).
+        raise AppError(ErrorCode.PROFESSIONAL_PROFILE_REQUIRED, status_code=403)
     return principal
 
 

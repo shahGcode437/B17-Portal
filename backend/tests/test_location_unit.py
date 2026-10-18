@@ -207,8 +207,9 @@ def test_the_fixtures_cover_all_three_modes_and_keep_legacy_rows() -> None:
 
 # -- the OpenAPI surface (no new route, no private or writable location field) ---------------------------
 
-#: Everything a client could send or receive about location, by schema name.
-LOCATION_SCHEMAS = {"LocationRead", "CoordinatesRead"}
+#: Everything a client could send or receive about location, by schema name: the PUBLIC read shapes,
+#: the owner's write block (a request body) and the owner's own stored location (Phase 12D).
+LOCATION_SCHEMAS = {"LocationRead", "CoordinatesRead", "LocationInput", "OwnerLocation"}
 
 
 def openapi() -> dict[str, Any]:
@@ -254,19 +255,60 @@ def test_no_other_schema_exposes_a_location_field() -> None:
         assert not leaked, (name, leaked)
 
 
-def test_phase_12b_adds_no_route_and_no_request_body_for_location() -> None:
+def test_only_owner_shapes_and_write_bodies_reference_the_private_location() -> None:
+    schemas = openapi()["components"]["schemas"]
+
+    def references(name: str) -> set[str]:
+        return {
+            owner
+            for owner, schema in schemas.items()
+            if any(
+                name in str(prop.get("$ref", "")) + str(prop.get("anyOf", ""))
+                for prop in schema.get("properties", {}).values()
+            )
+        }
+
+    assert references("OwnerLocation") == {
+        "OwnerProvider",
+        "OwnerBusiness",
+        "OwnerTutor",
+        "OwnerProperty",
+    }
+    assert references("LocationInput") == {
+        "ProviderCreate",
+        "BusinessCreate",
+        "TutorCreate",
+        "PropertyCreate",
+        "ListingPatch",
+    }
+    for public in ("ProviderRead", "BusinessRead", "TutorRead", "PropertyRead"):
+        assert "OwnerLocation" not in str(schemas[public]) and "LocationInput" not in str(
+            schemas[public]
+        )
+
+
+def test_the_only_listing_routes_with_a_body_are_the_owner_writes() -> None:
+    """Phase 12B added no write route; Phase 12D adds exactly the owner's create / edit / archive.
+    The public GET of a listing still takes no body, and nothing from later slices exists."""
     document = openapi()
     paths = document["paths"]
 
     assert not any(
         path.startswith(("/api/v1/admin", "/api/v1/saved", "/api/v1/requests")) for path in paths
     )
-    assert set(paths["/api/v1/listings/{listing_id}"]) == {"get"}  # still read-only
-    for path, methods in paths.items():
-        for method, operation in methods.items():
-            body = operation.get("requestBody")
-            if body and path.startswith("/api/v1/listings"):
-                pytest.fail(f"{method} {path} takes a body")
+    assert set(paths["/api/v1/listings/{listing_id}"]) == {"get", "patch"}
+    with_body = {
+        (method, path)
+        for path, methods in paths.items()
+        for method, operation in methods.items()
+        if operation.get("requestBody") and path.startswith("/api/v1/listings")
+    }
+    assert with_body == {
+        ("post", "/api/v1/listings"),
+        ("patch", "/api/v1/listings/{listing_id}"),
+        ("post", "/api/v1/listings/{listing_id}/archive"),
+    }
+    assert "requestBody" not in paths["/api/v1/listings/{listing_id}"]["get"]
 
 
 def test_openapi_describes_public_coordinates_as_plain_numbers_not_decimal_strings() -> None:

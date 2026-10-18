@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 
 from app.cli import admin as admin_cli
 from app.cli import auth_maintenance as maintenance_cli
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
 from app.core.errors import AppError
 from app.core.rate_limit import FORGOT_PASSWORD, LOGIN_FAILURES, REGISTER, RatePolicy
 from app.core.security.tokens import hash_token, is_well_formed_token, new_token
@@ -772,6 +772,9 @@ def test_the_clis_need_a_database(
 ) -> None:
     monkeypatch.delenv("DATABASE_URL", raising=False)
     get_settings.cache_clear()
+    # Hermetic: a developer's local ``backend/.env`` must not make a database appear.
+    monkeypatch.setattr(admin_cli, "get_settings", lambda: Settings(_env_file=None))
+    monkeypatch.setattr(maintenance_cli, "get_settings", lambda: Settings(_env_file=None))
 
     assert admin_cli.main(["grant", "x@example.org"]) == 1
     assert maintenance_cli.main(["purge"]) == 1

@@ -65,7 +65,7 @@ def _user_agent(request: Request) -> str | None:
     return request.headers.get("user-agent")
 
 
-def _body(principal: Principal, methods: AccountMethods, session_token: str) -> AuthUser:
+def auth_user_body(principal: Principal, methods: AccountMethods, session_token: str) -> AuthUser:
     return AuthUser(
         id=principal.user_id,
         display_name=principal.display_name,
@@ -106,7 +106,9 @@ def _signed_in(
 ) -> Envelope[AuthUser]:
     principal = issued.principal
     set_session_cookie(response, settings, issued.session_token, _max_age(principal))
-    return Envelope(data=_body(principal, service.account_methods(principal), issued.session_token))
+    return Envelope(
+        data=auth_user_body(principal, service.account_methods(principal), issued.session_token)
+    )
 
 
 @router.post(
@@ -165,7 +167,7 @@ def me(
     """Identity, explicit roles, professional plan summary, sign-in methods, session expiry and
     the session-bound ``csrfToken`` (hold it in memory; send it as ``X-CSRF-Token``)."""
     token = request.cookies.get(settings.auth_cookie_name, "")
-    return Envelope(data=_body(principal, service.account_methods(principal), token))
+    return Envelope(data=auth_user_body(principal, service.account_methods(principal), token))
 
 
 @router.post("/logout", status_code=204, summary="Sign out this device")

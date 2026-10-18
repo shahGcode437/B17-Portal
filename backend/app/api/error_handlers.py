@@ -21,6 +21,11 @@ from app.core.errors import (
 )
 
 _REQUEST_PARTS = {"body", "query", "path", "header", "cookie"}
+#: Pydantic inserts the discriminator TAG of a tagged-union member into the error location
+#: (``body.provider.name``); the tag is not part of the JSON path a client sent (``name``).
+_UNION_TAGS = {"provider", "business", "tutor", "property"}
+#: A missing / unknown ``kind`` of a tagged union (the location is the whole body).
+_UNION_TAG_ERRORS = {"union_tag_invalid", "union_tag_not_found"}
 _MAX_DETAILS = 50
 
 
@@ -33,6 +38,8 @@ def _field_path(loc: tuple[Any, ...]) -> str:
     """``("body", "food", "categories", 0)`` -> ``"food.categories.0"`` (request part dropped)."""
     parts = list(loc)
     source = parts.pop(0) if parts and parts[0] in _REQUEST_PARTS else None
+    if source == "body" and len(parts) > 1 and parts[0] in _UNION_TAGS:
+        parts.pop(0)
     names = [str(part) for part in parts]
     if not names or all(isinstance(part, int) for part in parts):
         return str(source or "request")
@@ -43,7 +50,11 @@ def validation_details(errors: list[Any]) -> list[ErrorDetail]:
     """Reduce pydantic's errors to ``{field, code, message}`` — never the input value or context."""
     return [
         ErrorDetail(
-            field=_field_path(tuple(error.get("loc", ()))),
+            field=(
+                "kind"
+                if error.get("type") in _UNION_TAG_ERRORS
+                else _field_path(tuple(error.get("loc", ())))
+            ),
             code=str(error.get("type", "invalid")),
             message=str(error.get("msg", "Invalid value.")),
         )

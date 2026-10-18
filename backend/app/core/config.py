@@ -59,6 +59,10 @@ class Settings(BaseSettings):
     api_v1_prefix: str = "/api/v1"
     #: Exact browser origins allowed by CORS. Comma-separated (or a JSON list) in the environment.
     frontend_origins: Annotated[list[str], NoDecode] = []
+    #: Canonical localities a NEW listing's ``area`` must belong to (Phase 12D; LOCATION_MAP.md §4).
+    #: Comma-separated (or a JSON list) in the environment. Matched trimmed and case-insensitively,
+    #: stored in the configured spelling. A setting, not a geofence: no geographic data is implied.
+    localities: Annotated[list[str], NoDecode] = ["B-17"]
     #: Overrides the default level (``DEBUG`` when ``debug`` is true, otherwise ``INFO``).
     log_level: str | None = None
     #: PostgreSQL URL for the application, ``postgresql+psycopg://user:password@host:port/dbname``.
@@ -115,6 +119,29 @@ class Settings(BaseSettings):
     def _validate_origins(cls, value: list[str]) -> list[str]:
         normalized = [_normalize_origin(origin) for origin in value]
         return list(dict.fromkeys(normalized))  # de-duplicate, keep order
+
+    @field_validator("localities", mode="before")
+    @classmethod
+    def _split_localities(cls, value: object) -> object:
+        if isinstance(value, str):
+            text = value.strip()
+            if text.startswith("["):
+                return json.loads(text)
+            return [item for item in (part.strip() for part in text.split(",")) if item]
+        return value
+
+    @field_validator("localities")
+    @classmethod
+    def _validate_localities(cls, value: list[str]) -> list[str]:
+        cleaned = [" ".join(item.split()) for item in value if item.strip()]
+        if not cleaned:
+            raise ValueError("LOCALITIES needs at least one locality (default: B-17)")
+        if any(len(item) > 100 or not item.isprintable() for item in cleaned):
+            raise ValueError("each locality must be printable text of at most 100 characters")
+        first_spelling: dict[str, str] = {}
+        for item in cleaned:
+            first_spelling.setdefault(item.casefold(), item)
+        return list(first_spelling.values())
 
     @field_validator("api_v1_prefix")
     @classmethod

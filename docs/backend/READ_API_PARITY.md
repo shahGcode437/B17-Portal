@@ -76,3 +76,7 @@ Built only from public searchable content so that selecting one always yields re
 ## 8. Location (Phase 12B)
 
 Search cards and listing detail gain `location` (see `API_CONTRACT.md` §6.2); the frontend has no location data yet, so this is additive. `area` is returned exactly as stored. The search document now also contains the `block` (as typed and as `block x`) and, for `exact` listings only, the `address` and `landmark`; legacy documents are unchanged. Suggestions are unchanged and never use location text. Result order, ranking, totals and filters are unchanged; the `area` filter stays an exact match, so during the transition it can list both legacy strings (`B-17, Block C (Demo Area)`) and the canonical `B-17`. Statement counts per search page are unchanged (location lives on the `listings` row).
+
+## 9. Owner shapes are not public shapes (Phase 12D)
+
+The public read APIs above are unchanged and still return only `approved` listings with the public location. The owner's own view (`GET /users/me/listings[/{id}]`, `API_CONTRACT.md` §11) is a separate set of schemas with the private location, `status`, `revision` and the current rejection reason, and it echoes the write vocabulary (category / property-type **slugs**) instead of the frontend display values used here. Nothing from an owner shape can reach a public response: the schemas, the repositories and the mappers are separate, and tests assert both directions.

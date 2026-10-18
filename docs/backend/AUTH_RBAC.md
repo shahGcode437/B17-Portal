@@ -328,7 +328,7 @@ Unlinking: `DELETE /auth/oauth/google` (authenticated + CSRF) is refused unless 
 | `get_optional_user()` | the `Principal` or `None`; never raises for a missing session; used by endpoints whose answer may differ for signed-in users |
 | `get_current_user()` | the `Principal`, else `401 unauthenticated` / `401 session_expired` |
 | `require_verified_user()` | as above + `403 email_not_verified` |
-| `require_professional()` | verified user with a `professional_profiles` row, else `403 forbidden` (listing *creation* uses `require_verified_user` and the service creates the profile on first use) |
+| `require_professional()` | verified user with a `professional_profiles` row, else **`403 professional_profile_required`** (changed from `forbidden` in Phase 12D; the profile is created explicitly with `PUT /users/me/professional-profile`, which needs only `require_verified_user`) |
 | `require_admin()` | verified + `admin` role + the admin recency rule (§4.4), else `403 forbidden` / `401 session_expired` |
 | `csrf_protected` | applied once, centrally, to all unsafe methods (§6) |
 
@@ -690,3 +690,12 @@ The frontend half of §22.2–§22.4 is implemented; the backend is unchanged. O
 - **Service worker:** `/api` requests are returned untouched (never cached, never answered offline). No offline authentication exists.
 - **Not built (no existing account-security UI):** change password, log out everywhere, Connect / Disconnect Google. The API supports them; they are scheduled with an account-security screen. The `409` copy for Disconnect in §22.3 is therefore not implemented yet.
 - **Tests:** see `docs/development/TESTING.md` (mock auth backend for Playwright; real-API smoke performed manually with the fake Google provider; real Google remains a manual DEPLOYMENT.md §10 checklist item).
+
+## 24. Implementation notes — Phase 12D (backend write guards)
+
+Phase 11 behaviour (sessions, cookie, CSRF, Origin, rate-limit seam) is unchanged; the Phase 12D endpoints use the existing dependencies and middleware.
+
+- **Guards as built** (§22.1): `PUT /users/me/professional-profile` → `VerifiedUser`; create / edit / archive → `ProfessionalUser` (so a verified user without a profile gets `403 professional_profile_required`, an unverified one `403 email_not_verified`); `GET /users/me/listings[/{id}]` → `CurrentUser`. Ownership is a query predicate (`owner_id = :principal`); a non-owner and a missing listing are the same `404`. Professional is a profile row: the `PUT` writes no role and grants no Admin power (an admin keeps exactly their roles); the plan is server-owned (`free`) and the body accepts no field.
+- **CSRF / Origin:** nothing route-specific was added; the central middleware covers every unsafe method (tested for `PUT`, `POST`, `PATCH` with a missing / foreign / `null` Origin and a missing / wrong / another session's CSRF token). The `Cache-Control: no-store` rule now covers `/auth/*` **and** `/users/me/*`, errors included.
+- **Rate limit:** `listing_create` 10 per user per hour (§22.1), identity-keyed in PostgreSQL like the auth policies; checked before the work and counted after the commit. Edits and archives are not throttled (no frozen number).
+- **Matrix (§22.6) as tested:** anonymous · unverified · unverified professional · verified resident · professional-owner · professional-other · admin without / with a profile · suspended × every endpoint; plus IDOR (read / patch / narrow / archive of another owner's listing → `404`, nothing changed, byte-identical error bodies), mass assignment (`ownerId`, `status`, `revision`, `featured`, `roles`, `planCode`, `publicLatitude`, nested keys), and the write → read regression (only `approved` is public).

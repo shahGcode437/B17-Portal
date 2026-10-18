@@ -4,6 +4,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.core.config import Settings
 from app.core.errors import AppError
 from app.db import search_index as search_index_cli
 from app.models import FoodMenuItem, Listing
@@ -245,8 +246,10 @@ def test_the_builder_is_pure_and_matches_the_stored_value(fixtures_session: Sess
 
 
 def test_the_cli_validates_its_arguments_and_needs_a_database(
-    capsys: pytest.CaptureFixture[str],
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # Hermetic: a developer's local ``backend/.env`` must not make a database appear.
+    monkeypatch.setattr(search_index_cli, "get_settings", lambda: Settings(_env_file=None))
     assert search_index_cli.main([]) == 2
     assert search_index_cli.main(["explode"]) == 2
     assert "usage" in capsys.readouterr().err

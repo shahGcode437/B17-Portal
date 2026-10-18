@@ -13,8 +13,9 @@ without anyone remembering to opt in):
    — they are protected by 1, 2 and the JSON-only content type.
 4. **Content type** — auth endpoints accept JSON bodies only (``415`` otherwise). This is scoped to
    ``/auth/``; future upload routes may accept multipart and are protected by 1-3 like any other.
-5. **Caching** — every response under ``/auth/`` is ``Cache-Control: no-store``. Public read APIs
-   are not touched.
+5. **Caching** — every response under ``/auth/`` and ``/users/me/`` (the signed-in user's own
+   resources, Phase 12D) is ``Cache-Control: no-store``, errors included. Public read APIs are not
+   touched; the owner WRITE routes under ``/listings`` set it themselves.
 
 Failures are the normal error envelope (``csrf_failed`` 403 / ``bad_request`` 415) with the request
 id. The middleware sits inside CORS (so a browser can read the 403) and inside the request log.
@@ -52,6 +53,7 @@ class AuthSecurityMiddleware:
         self.app = app
         self._prefix = api_prefix.rstrip("/")
         self._auth_prefix = f"{self._prefix}/auth/"
+        self._private_prefixes = (self._auth_prefix, f"{self._prefix}/users/me/")
         self._allowed_origins = frozenset(allowed_origins)
         self._cookie_name = cookie_name
 
@@ -60,11 +62,11 @@ class AuthSecurityMiddleware:
             await self.app(scope, receive, send)
             return
         path: str = scope["path"]
-        is_auth = path.startswith(self._auth_prefix)
+        is_private = path.startswith(self._private_prefixes)
         in_api = path.startswith(f"{self._prefix}/")
 
         async def send_with_headers(message: Message) -> None:
-            if is_auth and message["type"] == "http.response.start":
+            if is_private and message["type"] == "http.response.start":
                 headers = [
                     (k, v) for k, v in message.get("headers", []) if k.lower() != b"cache-control"
                 ]

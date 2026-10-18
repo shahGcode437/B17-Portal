@@ -35,12 +35,13 @@ ea57a11 Phase 11B: add secure email password authentication
 30736bf Phase 11C: add Google OAuth and account linking
 d29b665 Phase 12A: freeze write and location architecture
 10abbfd Phase 12B: add listing location foundation
-Phase 12C commit: pending (implementation complete, not yet committed)
+50c31b7 Phase 12C: integrate frontend authentication
+Phase 12D commit: pending (implementation complete, not yet committed)
 
 ## Current Phase
 
-Current Phase: Phase 12C — Frontend Authentication Integration: COMPLETE, commit pending approval. Phase 12B (location foundation, `10abbfd`), Phase 12A (architecture freeze, `d29b665`), Phase 11C (Google OAuth, `30736bf`), Phase 11B (email/password auth, `ea57a11`), Phase 11A (auth design freeze, `3c10c1a`), Phase 10D (read APIs, `2e73ebf`), Phase 10C (data layer, `d0c02dd`), Phase 10B (FastAPI foundation, `4d73c59`), Phase 10A (backend architecture, `e60a0b6`), Phase 9M (testing foundation, `d586f45`), Phase 9L (cleanup), Phase 9J (SEO / accessibility / final frontend QA), Phase 9G (PWA), Phase 9H (code splitting), the Food & Dining expansion (FD1–FD5) and the Visual Refresh (V1–V6) are complete and committed. Search UX refinement remains deferred; the Search review is in `SEARCH_UX_FINDINGS.md`.
-Next Step: Phase 12D — Listing + Professional Write APIs (see Next Step below).
+Current Phase: Phase 12D — Professional Profile + Listing Write APIs: COMPLETE, commit pending approval. Phase 12C (frontend authentication, `50c31b7`), Phase 12B (location foundation, `10abbfd`), Phase 12A (architecture freeze, `d29b665`), Phase 11C (Google OAuth, `30736bf`), Phase 11B (email/password auth, `ea57a11`), Phase 11A (auth design freeze, `3c10c1a`), Phase 10D (read APIs, `2e73ebf`), Phase 10C (data layer, `d0c02dd`), Phase 10B (FastAPI foundation, `4d73c59`), Phase 10A (backend architecture, `e60a0b6`), Phase 9M (testing foundation, `d586f45`), Phase 9L (cleanup), Phase 9J (SEO / accessibility / final frontend QA), Phase 9G (PWA), Phase 9H (code splitting), the Food & Dining expansion (FD1–FD5) and the Visual Refresh (V1–V6) are complete and committed. Search UX refinement remains deferred; the Search review is in `SEARCH_UX_FINDINGS.md`.
+Next Step: Phase 12E — Admin Moderation + Taxonomy Writes (see Next Step below).
 
 ## Completed Product Work
 
@@ -88,6 +89,7 @@ Next Step: Phase 12D — Listing + Professional Write APIs (see Next Step below)
 - Phase 12A — Write APIs + Location/Map Architecture Freeze (docs only; see below and `docs/backend/LOCATION_MAP.md`)
 - Phase 12B — Location Foundation + Migration 0005 (see below and `docs/backend/LOCATION_MAP.md` §19)
 - Phase 12C — Frontend Authentication Integration (see below and `docs/backend/AUTH_RBAC.md` §23)
+- Phase 12D — Professional Profile + Listing Write APIs (backend only; see below and `docs/backend/API_CONTRACT.md` §11)
 
 Full history is in `git log`; this file summarizes outcomes, not the blow-by-blow.
 
@@ -640,7 +642,7 @@ Phase 12B — Location Foundation + Migration 0005 = **COMPLETE** (Phase 12B com
 - Frontend capability checks (Phase 9E) are UX only, not authorization/security — explicitly documented in `types/entitlements.ts`; the backend will be authoritative once it exists.
 - No profession-specific Premium modules built yet (Tutor/Property/Salon, etc.) — `professional.modules` capability exists, reserved and unconsumed, for exactly this future use.
 - Authentication is real end to end since Phase 12C (design `docs/backend/AUTH_RBAC.md`, backend 11B/11C, frontend 12C). Remaining auth debt: no change-password / logout-everywhere / Connect-Disconnect-Google UI (no account-security screen exists yet), e-mail delivery is `console` in development only (a provider is still needed before real sign-ups), no onboarding path creates a professional profile before 12D/12H (so `/provider` shows "Professional profile needed" for a fresh account), and Playwright runs against a faithful mock of the auth API, not the real API (full-stack E2E is 12I).
-- A backend exists (Phase 10B–11C: liveness/readiness, a 20-table PostgreSQL schema with Alembic migrations `0001`–`0005` (listing location included), reference seed, a tested data layer, public read/search APIs, and email/password plus Google authentication with PostgreSQL sessions) but there is no write API. Since Phase 12C the frontend calls the backend **only for authentication** (`/auth/*`); all other frontend state is still static seed data + in-memory or `localStorage`-persisted Zustand until the 12D–12H slices.
+- A backend exists (Phase 10B–11C: liveness/readiness, a 20-table PostgreSQL schema with Alembic migrations `0001`–`0005` (listing location included), reference seed, a tested data layer, public read/search APIs, email/password plus Google authentication with PostgreSQL sessions, and — since Phase 12D — the owner write API: professional profile, listing create / edit / archive and owner reads) but there is no admin, Saved or request API yet. Since Phase 12C the frontend calls the backend **only for authentication** (`/auth/*`); all other frontend state is still static seed data + in-memory or `localStorage`-persisted Zustand until the 12D–12H slices.
 - Automated tests exist since Phase 9M (see `TESTING.md` → Known gaps): Chromium-only E2E, no axe/Lighthouse, no real-device or visual-regression testing, several flows (Education/Tutor, News admin CRUD, Leads/Requests lifecycle, Premium toggle) not covered by E2E.
 - Backend contract open questions (area normalization, General-business category taxonomy, listing contact channel, demo content in production, admin takedown semantics) are recorded in `docs/backend/DATA_MODEL.md` §13 and need product decisions before the write APIs (Phase 12).
 - Lint baseline: 8 pre-existing warnings (6× `only-export-components` in shadcn-pattern files, 2× `set-state-in-effect`) — known, unchanged across many phases.
@@ -669,7 +671,7 @@ Phase 12B — Location Foundation + Migration 0005 = **COMPLETE** (Phase 12B com
 
 ## Next Step
 
-Phase 12D–12I (write APIs + frontend integration per the 12A freeze — `ROADMAP.md`; the listing/category writes must call `SearchIndexer`; the SPA's Connect/Disconnect Google and account-security screens are still to be placed) and 13 (media + deployment) per `ROADMAP.md` and `docs/backend/BACKEND_ARCHITECTURE.md` §12. The backend phases should also pick up what the frontend deliberately deferred: server-side / pre-rendered per-page metadata and link previews, a per-entity sitemap, structured data from real entity data, a real production URL (`VITE_SITE_URL`), persistent data / auth, real media storage and any offline write handling. Phases 9F (Admin Production UX) and 9I (Notifications + Trust/Reviews UI) remain product decisions. Store packaging, push notifications, sharing / deep links, ordering / payments and premium merchant tools stay out of scope until their roadmap phases.
+Phase 12E–12I (admin + taxonomy, Saved + requests, then the frontend read / write integration per the 12A freeze — `ROADMAP.md`; the listing/category writes must call `SearchIndexer`; the SPA's Connect/Disconnect Google and account-security screens are still to be placed) and 13 (media + deployment) per `ROADMAP.md` and `docs/backend/BACKEND_ARCHITECTURE.md` §12. The backend phases should also pick up what the frontend deliberately deferred: server-side / pre-rendered per-page metadata and link previews, a per-entity sitemap, structured data from real entity data, a real production URL (`VITE_SITE_URL`), persistent data / auth, real media storage and any offline write handling. Phases 9F (Admin Production UX) and 9I (Notifications + Trust/Reviews UI) remain product decisions. Store packaging, push notifications, sharing / deep links, ordering / payments and premium merchant tools stay out of scope until their roadmap phases.
 
 ## Resume Instructions
 
@@ -685,7 +687,7 @@ A future Claude session should, in order:
 
 ## Phase 12C Result
 
-Phase 12C — Frontend Authentication Integration = **COMPLETE** (Phase 12C commit: pending). The demo (name-only) and separate demo-admin authentication are replaced by the real Phase 11 cookie-session backend. **No backend change** (`backend/` untouched), **no dependency** (`package*.json` untouched), no write API, no map/Leaflet, no listing/media work.
+Phase 12C — Frontend Authentication Integration = **COMPLETE** (commit `50c31b7`). The demo (name-only) and separate demo-admin authentication are replaced by the real Phase 11 cookie-session backend. **No backend change** (`backend/` untouched), **no dependency** (`package*.json` untouched), no write API, no map/Leaflet, no listing/media work.
 
 - **State machine:** `AuthProvider` = `loading` (bootstrap `GET /auth/me`) → `anonymous` | `authenticated`, plus a recoverable `unavailable` (network/5xx on bootstrap: retry, never a fake logout). A request-sequence + epoch guard ignores stale `/auth/me` answers; `refreshMe({ fresh: true })` is used after state-changing actions (verify, reset, CSRF recovery). StrictMode-safe.
 - **API client (`src/lib/api/`):** `credentials: "include"`, error envelope → `ApiError`, `X-CSRF-Token` from **module memory** on authenticated unsafe requests only, one retry on `403 csrf_failed` after `/auth/me`, `401 unauthenticated | session_expired` and `account_disabled` clear the session and notify. No `Content-Type` for bodiless requests. The CSRF token and `/auth/me` data are never written to `localStorage`, `sessionStorage`, IndexedDB or the service worker cache; the `HttpOnly` cookie is never read.
@@ -699,3 +701,19 @@ Phase 12C — Frontend Authentication Integration = **COMPLETE** (Phase 12C comm
 - **Audit:** auth-related `localStorage` = none; `sessionStorage` = none; `document.cookie` reads = none; Bearer/Authorization headers = none; remaining direct `localStorage` use is only `pwa/install.ts`; Zustand `persist` only in the two demo stores.
 - **Behaviour changes to existing journeys (explicit):** a reload no longer signs you out (the session is the cookie); any account can log in to `/admin/login` but only `admin` roles pass; `/provider` needs a professional profile; E2E fixtures sign in through the real form against the mock.
 - **Next:** Phase 12D — Listing + Professional Write APIs.
+
+## Phase 12D Result
+
+Phase 12D — Professional Profile + Listing Write APIs = **COMPLETE** (Phase 12D commit: pending). Implements the owner half of the 12A write freeze (`docs/backend/API_CONTRACT.md` §10; as-built notes in §11, location rules in `LOCATION_MAP.md` §20, guards in `AUTH_RBAC.md` §24). **Backend only: `src/`, `e2e/`, `package*.json` untouched; no migration (`0006` stays reserved for service requests); no dependency; no admin / Saved / request / media / map work.**
+
+- **Endpoints:** `PUT /users/me/professional-profile` (verified user; idempotent `201` / `200`; the plan is server-owned, the body accepts nothing; a capability, never a role), `POST /listings` (discriminated on `kind`: provider, business — General or Food —, tutor, property), `PATCH /listings/<built-in function id>`, `POST /listings/{id}/archive`, `GET /users/me/listings`, `GET /users/me/listings/{id}`.
+- **Ownership / IDOR:** the owner is the session user, never the body; every owner query is scoped by `owner_id`; a non-owner, a missing and a malformed id are byte-identical `404`s. Unverified → `403 email_not_verified` (no forced logout); no profile → `403 professional_profile_required`.
+- **Lifecycle (as frozen):** create → `pending`, `revision 1`, history `submitted`; any effective edit → `pending`, `revision`++, `submitted_at` reset, history `resubmitted` (also `pending → pending`); a no-op writes nothing (and an unedited `rejected` listing is refused `no_changes`); a **pure visibility narrowing** keeps the status, bumps the revision, refreshes the search document and writes no history; archive is terminal (revision + 1, row kept, quota freed).
+- **Concurrency:** `revision` is checked against the row locked `FOR UPDATE` and again by the guarded `UPDATE`; a stale token is `409 listing_conflict`; lock order profile → listing (with a rollback-and-retry when an edit discovers late that the quota applies); quota counted under the profile lock; the profile `PUT` is one `INSERT … ON CONFLICT DO NOTHING`.
+- **Validation:** strict request bodies (`not_allowed`), per-kind completeness, Food rules (1–3 categories, ≥ 1 service option, ≤ 8 items; Food stays `vertical`, not a kind), Property always has a point, location requiredness per kind, `LOCALITIES` (default `B-17`, new setting), category module / active checks, media references (`https://` or site-relative only), PATCH null / array semantics.
+- **Search / privacy:** the search document is rebuilt in the same transaction; narrowing removes the address from search immediately; widening / material edits take a listing offline until re-approved; public reads remain `approved`-only and never see the private point.
+- **Quota / rate limit:** Free 3 active, Premium unlimited (`403 plan_limit_reached`); listing create 10 per user per hour (`429`); edits / archives not throttled (no frozen number).
+- **Behaviour changes to existing code (explicit):** `require_professional` answers `professional_profile_required` instead of `forbidden`; `/users/me/*` is `no-store` in the middleware; `get_settings()` gains `localities`; three older tests were updated for the new surface (route list, 12B "no write route" guard, hermetic CLI test) and one Phase 11C time-bomb test was fixed.
+- **Tests:** 2016 (843 database-free + 1173 on PostgreSQL), including the SQL-level concurrency suite and the full narrowing / security matrices. Verified: ruff, ruff format, `mypy --strict app tests scripts`, `alembic upgrade head` + `alembic check` (no drift), seed twice, fixture loader, `search_index check`, Docker build, Compose API + PostgreSQL healthy (`GET /api/v1/health/ready` = 200), and a manual smoke of every flow against the local API (35 checks).
+- **Deferred (not 12D):** admin approve / reject and category writes (12E), Saved and requests (12F, O-3 open), frontend read / write integration and the map (12G / 12H), media (13), a Premium upgrade path (no billing), edit / archive rate limits, an account-security UI.
+- **Next:** Phase 12E — Admin Moderation + Taxonomy Writes.

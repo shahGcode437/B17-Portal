@@ -544,7 +544,8 @@ def test_a_non_boolean_email_verified_is_refused_outright(google: FakeGoogle, ra
         ("wrong audience", claims(aud="someone-elses-client-id")),
         ("wrong issuer", claims(iss="https://evil.example")),
         ("expired", claims(exp=int(time.time()) - 120, iat=int(time.time()) - 3600)),
-        ("issued in the future", claims(iat=int(time.time()) + 300)),
+        # evaluated at collection time: a day ahead, so a long test run cannot make it "past"
+        ("issued in the future", claims(iat=int(time.time()) + 86_400)),
         ("string issued-at", claims(iat="yesterday")),
         ("string expiry", claims(exp="tomorrow")),
         ("audience is a list with ours and another", claims(aud=[CLIENT_ID, "someone-else"])),

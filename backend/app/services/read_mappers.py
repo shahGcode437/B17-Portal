@@ -121,7 +121,7 @@ def map_listing(listing: Listing, *, include_menu: bool) -> ListingDetail:
         business = listing.business
         assert business is not None  # guaranteed by the subtype composite FK + creation rules
         food = (
-            _map_food(listing, include_menu=include_menu)
+            map_food(listing, include_menu=include_menu)
             if business.vertical is BusinessVertical.FOOD and business.food is not None
             else None
         )
@@ -163,7 +163,7 @@ def map_listing(listing: Listing, *, include_menu: bool) -> ListingDetail:
     )
 
 
-def _map_food(listing: Listing, *, include_menu: bool) -> FoodRead:
+def map_food(listing: Listing, *, include_menu: bool) -> FoodRead:
     assert listing.business is not None and listing.business.food is not None
     food = listing.business.food
     menu = (
