@@ -15,6 +15,10 @@ export const routes = {
 
   login: "/login",
   register: "/register",
+  forgotPassword: "/forgot-password",
+  /** E-mail link targets: the one-time token arrives in the URL fragment (`#token=`). */
+  verifyEmail: "/verify-email",
+  resetPassword: "/reset-password",
   profile: "/profile",
   profileSaved: "/profile/saved",
   profileRequests: "/profile/requests",

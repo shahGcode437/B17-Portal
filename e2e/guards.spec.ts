@@ -1,11 +1,12 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './helpers/test'
 import { enterAdmin } from './helpers/workspace'
 import { expectPage, openApp, pushInApp, signIn } from './helpers/app'
 
 /**
- * Route guards. These are DEMO guards over in-memory state — they are UX gating, not security
- * (there is no backend). The tests pin the behavior users and later phases rely on:
- * private areas send a signed-out visitor to the right login and return them afterwards.
+ * Route guards (Phase 12C). They are UX gating over the REAL auth state machine (loading →
+ * anonymous | authenticated, from `/auth/me`) — the API stays the authority. The tests pin the
+ * behavior users rely on: private areas send a signed-out visitor to the right login and return them
+ * afterwards, and roles / the professional capability come only from the backend's `/auth/me`.
  */
 test.describe('signed-out visitors', () => {
   for (const [path, label] of [
@@ -38,26 +39,42 @@ test.describe('signed-out visitors', () => {
   test('Admin Login returns to the page the admin was trying to open', async ({ page }) => {
     await page.goto('/admin/moderation')
     await expectPage(page, 'Admin Login')
-    await page.getByRole('button', { name: 'Continue as Admin (Demo)' }).click()
+    await signIn(page, 'Demo Admin', 'admin')
     await expectPage(page, 'Listing Review')
     await expect(page).toHaveURL(/\/admin\/moderation$/)
   })
 })
 
 test.describe('roles are separate', () => {
-  test('a signed-in resident is still sent to Admin Login for /admin', async ({ page }) => {
+  test('a signed-in resident is told /admin is for administrators only', async ({ page }) => {
     await openApp(page, '/login', 'Log In')
-    await signIn(page, 'Ayesha Khan')
+    await signIn(page, 'Ayesha Khan', 'resident')
     await expectPage(page)
     await pushInApp(page, '/admin')
-    await expectPage(page, 'Admin Login')
+    await expectPage(page, 'Admin access only')
   })
 
-  test('an admin session does not open the Professional workspace', async ({ page }) => {
+  test('a professional account is not an administrator either', async ({ page }) => {
+    await openApp(page, '/login', 'Log In')
+    await signIn(page, 'Sana Baker', 'professional')
+    await expectPage(page)
+    await pushInApp(page, '/admin/moderation')
+    await expectPage(page, 'Admin access only')
+  })
+
+  test('an account without a professional profile cannot open the Professional workspace', async ({ page }) => {
+    await openApp(page, '/login', 'Log In')
+    await signIn(page, 'Ayesha Khan', 'resident')
+    await expectPage(page)
+    await pushInApp(page, '/provider')
+    await expectPage(page, 'Professional profile needed')
+  })
+
+  test('an admin account (roles from /auth/me) does not thereby get the Professional workspace', async ({ page }) => {
     await openApp(page, '/')
     await enterAdmin(page)
     await pushInApp(page, '/provider')
-    await expectPage(page, 'Log In')
+    await expectPage(page, 'Professional profile needed')
   })
 
   test('the public site never links to the Admin area', async ({ page }) => {

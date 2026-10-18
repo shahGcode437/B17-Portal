@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './helpers/test'
 import { expectPage, openApp, signIn } from './helpers/app'
 
 /**
@@ -39,11 +39,9 @@ test('Home → Search → preview → detail → Save → Saved → unsave', asy
 
   // Saved page shows it; removing it empties the page.
   await page.goto('/profile/saved')
-  // (full load wipes in-memory auth, so the guard sends us to Log In; sign in again and follow `from`)
-  await expectPage(page, 'Log In')
-  await signIn(page, 'Ayesha Khan')
+  // A full page load: the session survives it (the HttpOnly cookie → /auth/me), so there is no re-login.
   await expectPage(page, 'Saved')
-  // Saved items persist in localStorage, so the earlier save survived the reload.
+  // Saved items persist in localStorage (demo data until the Saved API), so the earlier save survived too.
   await expect(page.getByRole('button', { name: 'Remove B-17 Family Pharmacy from saved' })).toBeVisible()
   await page.getByRole('button', { name: 'Remove B-17 Family Pharmacy from saved' }).click()
   await expect(page.getByRole('heading', { name: 'Nothing saved yet' })).toBeVisible()

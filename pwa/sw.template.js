@@ -46,6 +46,11 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url)
   if (url.origin !== self.location.origin) return
 
+  // Phase 12C: the API (authentication included) is NETWORK-ONLY. A same-origin /api/ request is never
+  // answered from a cache, never replaced by the cached app shell offline, and never stored: sessions,
+  // CSRF tokens and account data must always come from the server (or fail visibly when offline).
+  if (url.pathname === "/api" || url.pathname.startsWith("/api/")) return
+
   if (request.mode === "navigate") {
     event.respondWith(fetch(request).catch(() => caches.match(SHELL_URL, { cacheName: CACHE_NAME }).then((shell) => shell || Response.error())))
     return

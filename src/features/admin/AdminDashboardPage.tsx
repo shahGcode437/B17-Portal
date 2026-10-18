@@ -41,7 +41,7 @@ function AdminDashboardPage() {
           <Stack gap={1}>
             <Typography variant="h1">Admin Dashboard</Typography>
             <Typography variant="body-sm" className="text-muted-foreground">
-              Signed in as {admin.name}.
+              Signed in as {admin.displayName}.
             </Typography>
           </Stack>
 

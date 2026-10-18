@@ -56,7 +56,7 @@ function ProfessionalOverviewPage() {
 
   const { myListings, myLeads, counts } = useMemo(() => {
     if (!user) return { myListings: [], myLeads: [], counts: null }
-    const mine = selectListingsBySubmitter(listings, user.name)
+    const mine = selectListingsBySubmitter(listings, user.displayName)
     const myProviderIds = new Set(mine.filter((l) => l.kind === "provider").map((l) => l.data.id))
     const leads = requests.filter((r) => myProviderIds.has(r.providerId))
     return {
@@ -92,7 +92,7 @@ function ProfessionalOverviewPage() {
             <Stack gap={1}>
               <Typography variant="h1">Overview</Typography>
               <Typography variant="body-sm" className="text-muted-foreground">
-                Signed in as {user.name} (demo).
+                Signed in as {user.displayName}. Listings and leads here are local demo data until the Professional APIs ship.
               </Typography>
             </Stack>
             <PlanBadge />

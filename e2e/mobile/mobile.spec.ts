@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from '../helpers/test'
 import { expectPage, navigateInApp, openApp, signIn } from '../helpers/app'
 
 /**
@@ -87,4 +87,19 @@ test('the Food listing form is usable on a phone: type switch, validation and fi
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
   expect(overflow).toBeLessThanOrEqual(0)
   await navigateInApp(page, '/provider/listings', 'Listings')
+})
+
+test('Log In and Create Account fit a 320px phone: no horizontal scroll, inputs at least 16px, touch-sized controls', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 640 })
+  for (const path of ['/login', '/register', '/forgot-password']) {
+    await openApp(page, path)
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
+    expect(overflow, `${path} overflows horizontally by ${overflow}px`).toBeLessThanOrEqual(0)
+    const inputs = await page.locator('input').evaluateAll((nodes) => nodes.map((node) => parseFloat(getComputedStyle(node).fontSize)))
+    expect(Math.min(...inputs), `${path} has an input under 16px`).toBeGreaterThanOrEqual(16)
+  }
+  await openApp(page, '/login')
+  const google = await page.getByRole('button', { name: 'Continue with Google' }).boundingBox()
+  expect(google!.height).toBeGreaterThanOrEqual(36)
+  expect(google!.width).toBeLessThanOrEqual(320)
 })

@@ -1,24 +1,12 @@
-import { useEffect } from "react"
-import { useNavigate, useLocation } from "react-router-dom"
 import { useAuth } from "@/hooks/useAuth"
-import { routes } from "@/config/routes"
+import type { CurrentUser } from "@/types/auth"
 
 /**
- * Whole-page auth gate for screens with no meaningful guest view (Provider
- * Dashboard, Create Listing, Pending). Redirects to Login preserving the
- * page to return to — same intent-preservation pattern as Request Service
- * (Phase 3B), just applied to an entire route instead of a single action.
+ * The signed-in user for a screen that sits behind `<AuthGate>` (Phase 12C). Redirecting an
+ * anonymous visitor to Log In is the gate's job — it knows the difference between "loading",
+ * "anonymous" and "server unreachable" — so this hook never navigates and never guesses: it just
+ * returns the authenticated user, or `null` while that is not (yet) the case.
  */
-export function useRequireAuth() {
-  const { user } = useAuth()
-  const navigate = useNavigate()
-  const location = useLocation()
-
-  useEffect(() => {
-    if (!user) {
-      navigate(routes.login, { state: { from: location.pathname }, replace: true })
-    }
-  }, [user, navigate, location.pathname])
-
-  return user
+export function useRequireAuth(): CurrentUser | null {
+  return useAuth().user
 }

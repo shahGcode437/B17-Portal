@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { useListingsStore, selectListingsBySubmitter } from "@/state/listingsStore"
 import { useAuth } from "@/hooks/useAuth"
+import { useToast } from "@/hooks/useToast"
+import { VerificationNotice } from "@/features/auth/VerificationNotice"
 import { useRequireAuth } from "@/hooks/useRequireAuth"
 import { routes, providerProfilePath, businessProfilePath, propertyDetailsPath } from "@/config/routes"
 import { fadeUp } from "@/lib/motion"
@@ -39,18 +41,23 @@ function publicPathFor(listing: PendingListing): string {
 function ProfessionalProfilePage() {
   const user = useRequireAuth()
   const { logout } = useAuth()
+  const { show } = useToast()
   const navigate = useNavigate()
   const { listings } = useListingsStore()
 
   if (!user) return null
 
-  const myListings = selectListingsBySubmitter(listings, user.name)
+  const myListings = selectListingsBySubmitter(listings, user.displayName)
   const kinds = Array.from(new Set(myListings.map((l) => l.kind)))
   const approvedListings = myListings.filter((l) => l.status === "approved")
 
-  function handleLogout() {
-    logout()
-    navigate(routes.home)
+  async function handleLogout() {
+    try {
+      await logout()
+      navigate(routes.home)
+    } catch {
+      show("Couldn't log out — check your connection and try again.", { tone: "error" })
+    }
   }
 
   return (
@@ -59,16 +66,18 @@ function ProfessionalProfilePage() {
         <Stack gap={6}>
           <Typography variant="h1">Profile</Typography>
 
+          <VerificationNotice />
+
           <Card variant="workspace" className="flex-row items-center gap-3">
             <span className="flex size-14 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
               <UserRound className="size-6" aria-hidden="true" />
             </span>
             <Stack gap={0} className="min-w-0">
               <Typography as="p" variant="label" className="break-words font-heading text-xl font-semibold">
-                {user.name}
+                {user.displayName}
               </Typography>
               <Typography variant="body-sm" className="text-muted-foreground">
-                Signed in (demo) — no real professional account has been created.
+                {user.email} · listings and leads in this workspace are local demo data for now
               </Typography>
             </Stack>
           </Card>

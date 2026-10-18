@@ -93,13 +93,13 @@ function ProfessionalListingsPage() {
 
   if (!user) return null
 
-  const myListings = selectListingsBySubmitter(listings, user.name)
+  const myListings = selectListingsBySubmitter(listings, user.displayName)
     .slice()
     .sort((a, b) => b.submittedAt.localeCompare(a.submittedAt))
 
   // Archived/rejected listings stay visible above, but don't consume the
   // active-listing quota — only pending/approved do (Phase 9E fix).
-  const activeListingCount = selectActiveListingsBySubmitter(listings, user.name).length
+  const activeListingCount = selectActiveListingsBySubmitter(listings, user.displayName).length
   const maxListings = entitlements.maxListings
   const atLimit = maxListings !== null && activeListingCount >= maxListings
 

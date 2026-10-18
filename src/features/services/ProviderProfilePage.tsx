@@ -129,7 +129,7 @@ function ProviderProfilePage() {
       {user && (
         <RequestServiceDialog
           provider={provider}
-          requesterName={user.name}
+          requesterName={user.displayName}
           open={isRequestOpen}
           onOpenChange={setIsRequestOpen}
         />

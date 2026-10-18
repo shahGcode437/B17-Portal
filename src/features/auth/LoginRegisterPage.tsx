@@ -1,74 +1,79 @@
-import { useState } from "react"
-import { useForm } from "react-hook-form"
-import { useLocation, useNavigate } from "react-router-dom"
+import { useEffect, useState } from "react"
+import { Link, Navigate, useLocation } from "react-router-dom"
 import { motion } from "motion/react"
-import { z } from "zod"
-import { LogIn, UserPlus } from "lucide-react"
+import { Loader2 } from "lucide-react"
 import { Container } from "@/components/foundation/Container"
 import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { useAuth } from "@/hooks/useAuth"
-import { useToast } from "@/hooks/useToast"
 import { routes, providerProfilePath } from "@/config/routes"
-import { zodResolver } from "@/lib/zodResolver"
+import { safeLocalPath } from "@/lib/safePath"
 import { fadeUp } from "@/lib/motion"
-
-const authSchema = z.object({
-  name: z
-    .string()
-    .trim()
-    .min(2, "Please enter at least 2 characters.")
-    .max(60, "That name is a bit too long."),
-})
-type AuthValues = z.infer<typeof authSchema>
+import { LoginForm, RegisterForm } from "@/features/auth/AuthForms"
+import { GoogleSignInButton } from "@/features/auth/GoogleSignInButton"
+import { oauthErrorMessage } from "@/features/auth/authMessages"
 
 interface LoginLocationState {
   from?: string
   providerId?: string
 }
 
+/** The backend sends a failed Google sign-in back as `/login?error=<code>`; read it once, then it is stripped. */
+function readOAuthError(): string | null {
+  return new URLSearchParams(window.location.search).get("error")
+}
+
+function stripOAuthError(): void {
+  const url = new URL(window.location.href)
+  if (!url.searchParams.has("error")) return
+  url.searchParams.delete("error")
+  window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`)
+}
+
 /**
- * Shared Login/Register screen (Master Spec §17). Demo-only — the two modes
- * collect the same single name field and both call the same simulated
- * `login()`; the toggle exists for a complete-feeling UX, not different
- * behavior. Preserves and resumes an interrupted Request Service intent.
+ * Login / Register (Phase 12C: real accounts — email + password, or Google). The two modes share one
+ * screen. Navigation after sign-in is decided at render time from the auth state, so the page never
+ * redirects before `/auth/me` has answered, never flashes the form at an already-signed-in user, and
+ * only ever goes to a validated local path (no open redirect).
  */
 function LoginRegisterPage() {
   const location = useLocation()
-  const navigate = useNavigate()
-  const { login } = useAuth()
-  const { show } = useToast()
+  const { status, notice, bootstrapError, retryBootstrap, dismissNotice } = useAuth()
   const state = (location.state ?? {}) as LoginLocationState
+  const from = safeLocalPath(state.from) ?? undefined
 
-  const [mode, setMode] = useState<"login" | "register">(
-    location.pathname === routes.register ? "register" : "login"
-  )
+  const [mode, setMode] = useState<"login" | "register">(location.pathname === routes.register ? "register" : "login")
+  const [oauthError] = useState(readOAuthError)
+  const oauthMessage = oauthErrorMessage(oauthError)
 
-  const {
-    register,
-    handleSubmit,
-    formState: { errors, isSubmitting },
-  } = useForm<AuthValues>({
-    resolver: zodResolver(authSchema),
-    defaultValues: { name: "" },
-  })
+  useEffect(() => {
+    stripOAuthError()
+  }, [])
 
-  function onSubmit(values: AuthValues) {
-    login(values.name)
-    show(`Signed in as ${values.name.trim()} (demo)`)
+  if (status === "loading") {
+    return (
+      <div role="status" className="flex min-h-[50svh] flex-col items-center justify-center gap-3 px-4 py-16">
+        <Loader2 className="size-6 animate-spin text-primary" aria-hidden="true" />
+        <Typography variant="body-sm" className="text-muted-foreground">
+          Checking your session
+        </Typography>
+      </div>
+    )
+  }
 
+  if (status === "authenticated") {
     if (state.providerId) {
-      navigate(providerProfilePath(state.providerId), {
-        replace: true,
-        state: { openRequestFor: state.providerId },
-      })
-      return
+      return (
+        <Navigate
+          to={providerProfilePath(state.providerId)}
+          replace
+          state={{ openRequestFor: state.providerId }}
+        />
+      )
     }
-    navigate(state.from ?? routes.home, { replace: true })
+    return <Navigate to={from ?? routes.home} replace />
   }
 
   return (
@@ -79,10 +84,43 @@ function LoginRegisterPage() {
             <Typography variant="h1">{mode === "login" ? "Log In" : "Create Account"}</Typography>
             <Typography variant="body-sm" className="text-muted-foreground">
               {mode === "login"
-                ? "Welcome back — enter your name to continue."
-                : "Create a demo account to continue."}
+                ? "Welcome back — log in to save listings and request services."
+                : "Create an account to save listings and request services."}
             </Typography>
           </Stack>
+
+          {notice && (
+            <div role="status" className="rounded-lg border border-border bg-muted px-3 py-2">
+              <Typography variant="body-sm">
+                {notice === "disabled"
+                  ? "This account isn't available. If you think this is a mistake, please contact us."
+                  : "Your session has ended. Please log in again."}
+              </Typography>
+              <Button type="button" variant="link" size="sm" onClick={dismissNotice}>
+                Dismiss
+              </Button>
+            </div>
+          )}
+
+          {oauthMessage && (
+            <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2">
+              <Typography variant="body-sm" className="text-destructive">
+                {oauthMessage}
+              </Typography>
+            </div>
+          )}
+
+          {status === "unavailable" && (
+            <div role="alert" className="rounded-lg border border-border bg-muted px-3 py-2">
+              <Typography variant="body-sm">
+                {bootstrapError?.isNetwork ? "We couldn't reach the server." : "The server isn't responding properly."} You
+                can still try to log in.
+              </Typography>
+              <Button type="button" variant="link" size="sm" onClick={retryBootstrap}>
+                Check again
+              </Button>
+            </div>
+          )}
 
           <ToggleGroup
             type="single"
@@ -102,39 +140,22 @@ function LoginRegisterPage() {
             </ToggleGroupItem>
           </ToggleGroup>
 
-          <form onSubmit={handleSubmit(onSubmit)} noValidate>
-            <Stack gap={4}>
-              <Stack gap={2}>
-                <Label htmlFor="auth-name">Your name</Label>
-                <Input
-                  id="auth-name"
-                  autoComplete="name"
-                  placeholder="e.g. Ayesha Khan"
-                  aria-invalid={!!errors.name}
-                  aria-describedby={errors.name ? "auth-name-error" : undefined}
-                  {...register("name")}
-                />
-                {errors.name && (
-                  <Typography
-                    id="auth-name-error"
-                    variant="caption"
-                    className="text-destructive"
-                    role="alert"
-                  >
-                    {errors.name.message}
-                  </Typography>
-                )}
-              </Stack>
+          <GoogleSignInButton returnTo={from} />
 
-              <Button type="submit" size="lg" disabled={isSubmitting}>
-                {mode === "login" ? <LogIn /> : <UserPlus />}
-                {mode === "login" ? "Log In" : "Create Account"}
-              </Button>
-            </Stack>
-          </form>
+          <div className="flex items-center gap-3" aria-hidden="true">
+            <span className="h-px flex-1 bg-border" />
+            <Typography as="span" variant="caption">
+              or use your email
+            </Typography>
+            <span className="h-px flex-1 bg-border" />
+          </div>
+
+          {mode === "login" ? <LoginForm /> : <RegisterForm />}
 
           <Typography variant="caption" className="text-center text-muted-foreground">
-            Demo login — no real account is created.
+            <Link to={routes.home} className="underline underline-offset-4">
+              Back to home
+            </Link>
           </Typography>
         </Stack>
       </motion.div>

@@ -8,6 +8,7 @@ import { ProviderCard } from "@/components/cards/ProviderCard"
 import { PropertyCard } from "@/components/cards/PropertyCard"
 import { TutorCard } from "@/components/cards/TutorCard"
 import { AuthContext } from "@/hooks/useAuth"
+import { authContextValue } from "@/test/authFixtures"
 import { ToastContext } from "@/hooks/useToast"
 import { getBusinessById, getProviderById, getPropertyById, getTutorById } from "@/services/search"
 import { useResidentStore } from "@/state/residentStore"
@@ -26,10 +27,9 @@ const INTERACTIVE = 'button, a[href], input, select, textarea, [role="button"], 
 
 function renderCard(ui: ReactElement) {
   const show = vi.fn()
-  const login = vi.fn()
   const utils = render(
     <MemoryRouter>
-      <AuthContext.Provider value={{ user: { name: "Tester" }, login, logout: vi.fn() }}>
+      <AuthContext.Provider value={authContextValue()}>
         <ToastContext.Provider value={{ show }}>{ui}</ToastContext.Provider>
       </AuthContext.Provider>
     </MemoryRouter>

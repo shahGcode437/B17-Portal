@@ -1,6 +1,7 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test } from './helpers/test'
+import type { Page } from '@playwright/test'
 import { expectPage, navigateInApp } from './helpers/app'
-import { enterAdmin, enterProfessionalWorkspace, openListingReview, openMyListings } from './helpers/workspace'
+import { enterAdmin, enterProfessionalWorkspace, openListingReview, returnToProfessional } from './helpers/workspace'
 
 const NAME = 'Sweet Crumbs Bakery'
 const REASON = 'Please add your opening hours and a clearer description.'
@@ -80,7 +81,7 @@ test('Food listing: create → reject with reason → edit & resubmit → approv
   await expect(page.getByText('Rejected', { exact: true }).first()).toBeVisible()
 
   // ── Professional: sees the reason, edits, resubmits ─────────────────────────────────────────
-  await openMyListings(page)
+  await returnToProfessional(page, 'Sana Baker')
   await expect(page.getByText('Rejected', { exact: true })).toBeVisible()
   await expect(page.getByText(REASON)).toBeVisible()
   await page.getByRole('link', { name: 'Edit' }).click()
@@ -101,6 +102,7 @@ test('Food listing: create → reject with reason → edit & resubmit → approv
   await expect(page.getByText(REASON)).toHaveCount(0) // resubmission clears the previous reason
 
   // ── Admin: approve ──────────────────────────────────────────────────────────────────────────
+  await enterAdmin(page)
   await openListingReview(page)
   await page.getByRole('button', { name: `Review ${NAME}` }).click()
   const approve = page.getByRole('dialog', { name: 'Review Listing' })

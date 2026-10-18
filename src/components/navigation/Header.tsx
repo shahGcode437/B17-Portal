@@ -11,7 +11,7 @@ import { site } from "@/data/site"
 
 /** Sticky global header: brand, desktop nav, search entry, auth entry. */
 function Header() {
-  const { user } = useAuth()
+  const { user, status } = useAuth()
 
   return (
     <header className="sticky top-0 z-sticky border-b border-border bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/80">
@@ -41,12 +41,17 @@ function Header() {
                 <span className="hidden xl:inline">List Your Business</span>
               </Link>
             </Button>
-            <Button asChild variant="outline" size="sm" className="hidden sm:inline-flex">
-              <Link to={user ? routes.profile : routes.login}>
-                <User />
-                <span className="max-w-32 truncate">{user ? user.name : "Log in"}</span>
-              </Link>
-            </Button>
+            {status === "loading" ? (
+              // Not yet known whether the visitor is signed in: reserve the space, show no wrong button.
+              <span aria-hidden="true" className="hidden h-7 w-24 animate-pulse rounded-lg bg-muted sm:inline-block" />
+            ) : (
+              <Button asChild variant="outline" size="sm" className="hidden sm:inline-flex">
+                <Link to={user ? routes.profile : routes.login}>
+                  <User />
+                  <span className="max-w-32 truncate">{user ? user.displayName : "Log in"}</span>
+                </Link>
+              </Button>
+            )}
           </Stack>
         </Stack>
       </Container>

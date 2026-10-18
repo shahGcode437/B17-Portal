@@ -87,6 +87,9 @@ const entries: RouteEntry[] = [
 
   { path: routes.login, seo: privatePage("Log In") },
   { path: routes.register, seo: privatePage("Create Account") },
+  { path: routes.forgotPassword, seo: privatePage("Forgot Password") },
+  { path: routes.verifyEmail, seo: privatePage("Verify Email") },
+  { path: routes.resetPassword, seo: privatePage("Reset Password") },
   { path: routes.profileSaved, seo: privatePage("Saved") },
   { path: routes.profileRequests, seo: privatePage("My Requests") },
   { path: routes.profile, seo: privatePage("My Profile") },

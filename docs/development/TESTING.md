@@ -32,7 +32,7 @@ playwright.config.ts       projects, webServer, artifacts
 e2e/*.spec.ts              desktop journeys
 e2e/mobile/*.spec.ts       mobile-viewport specs      (project: mobile)
 e2e/pwa/*.spec.ts          service-worker / offline   (project: pwa)
-e2e/helpers/               shared helpers (readiness, in-app navigation, role flows)
+e2e/helpers/               shared helpers (readiness, in-app navigation, role flows, `authMock.ts` mock auth API, `test.ts` fixture)
 tsconfig.e2e.json          type-checks e2e/ and playwright.config.ts under `tsc -b`
 ```
 
@@ -43,8 +43,10 @@ Unit tests cover pure logic with real inputs/outputs; component tests cover beha
 - **Unit:** Search service (ranking, scope, Food vs General, filters, suggestions), Food config (derivation, validation helpers, labels), listing builders and schemas (general, Food, Property), SEO route/entity descriptors, store actions and selectors (listings, resident).
 - **Component:** `SearchBar` (combobox), `FilterControls`, `FoodListingFields`, `ListingForm` (business-type switching, validation, prefill), the four result cards (`cards.a11y.test.tsx`: no nested interactive controls, tab order, Save independence), `useRequireOnline`, `InstallPrompt`, `RouteFallback`, `RouteError`, `PwaStatus`.
 - Queries are `getByRole` / `getByLabelText` / `getByText`; no snapshots. Interaction uses `user-event`.
+- **Auth tests (Phase 12C):** `src/test/apiMock.ts` (`installFetchMock` stubs `fetch` with the real `{data}` / `{error}` envelopes), `src/test/authFixtures.ts` (`testUser`, `authContextValue`), `AuthProvider.test.tsx` (state machine, stale answers, CSRF retry, session loss, no storage writes), `client.test.ts`, `safePath.test.ts`, `fragmentToken.test.ts`, `AuthGate.test.tsx`, the page/form tests, `fragmentBootstrap.test.ts` (the bootstrap is `main.tsx`'s first import; a router created afterwards sees a clean URL, one created without it would not), `persistedStoresAuthority.test.tsx` (the persisted demo stores hold no security state and feed no guard), `serviceWorkerApi.test.ts` (executes `pwa/sw.template.js` against a fake worker scope) and `authSafety.test.ts` (source audit: no auth data in `localStorage` / `sessionStorage` / `document.cookie` / Bearer). Nothing contacts Google or a real API.
 - Zustand stores are module singletons: reset them in `beforeEach` (`useListingsStore.setState({ listings: [] })`, `useResidentStore.setState({ savedItems: [], requests: [] })`). `src/test/setup.ts` clears `localStorage` / `sessionStorage` and unmounts after every test.
 - `src/pwa/install.ts` is also a singleton; `InstallPrompt.test.tsx` uses `vi.resetModules()` + dynamic imports for a fresh copy per test.
+- A test probe that publishes React state to the test (e.g. a context `latest` ref) must do it in `useLayoutEffect`, not `useEffect`: a passive effect can run one tick AFTER the DOM that `waitFor` observes, so reading the ref right after `waitFor` is intermittently stale (this was a ~1-in-60 flake in `AuthProvider.test.tsx`). Do not import the whole app router in a test (a cold transform of the app can exceed the timeout on a loaded machine); test router behaviour with a small `createBrowserRouter`.
 - Prefer `user.paste` over `user.type` for long text in forms — one event per field keeps suites fast on slow disks. `testTimeout` is 15 s as headroom for cold Windows / OneDrive starts (the first worker spin-up there can occasionally time out once; re-run).
 
 ## E2E strategy
@@ -71,7 +73,7 @@ Caching would make functional tests order-dependent, so every functional project
 
 Every test gets a fresh browser context (empty `localStorage`, cookies, service workers) and the app's in-memory state resets on each full page load. There is **no** reset endpoint or test-only code in the shipped bundle and nothing is exposed on `window`.
 
-Because listings and both login sessions are in memory *by design* (no backend yet), a flow that crosses roles — Professional → Admin → Professional — must not reload. The Admin area has no public link, so `navigateInApp()` drives React Router with `history.pushState` + a `popstate` event (the same path Back/Forward takes) and then waits for the destination's `<h1>`. This is a test helper only.
+Authentication is real from Phase 12C, but E2E runs the production build **without a backend**, so `e2e/helpers/authMock.ts` fakes `/api/v1/auth/*` with `page.route` (all specs import `test` / `expect` from `e2e/helpers/test.ts`, which installs it): a stateful server-side session that survives reloads, `/auth/me`, CSRF enforcement, the error envelope, and a fake Google consent route (no real Google, ever). Listings and moderation data are still in memory *by design* until their Phase 12 slices, so a flow that crosses roles — Professional → Admin → Professional — must not reload. The Admin area has no public link, so `navigateInApp()` drives React Router with `history.pushState` + a `popstate` event (the same path Back/Forward takes) and then waits for the destination's `<h1>`. This is a test helper only.
 
 ### Readiness and waiting
 
@@ -85,7 +87,8 @@ No `waitForTimeout`, sleeps or fixed delays (enforced by review: `grep -rE "wait
 | `search` | URL as source of truth (direct URL, reload, Clear), suggestions combobox (ArrowDown/Enter/Escape/click), Food vs General and Food filters, unknown URL values, empty state, no-nested-interactive card + keyboard, Save vs preview |
 | `food-lifecycle` | Professional creates a Food listing → validation → preview → submit → pending → Admin rejects with reason → Professional sees reason, edits (prefilled), resubmits → Admin approves → Search finds it → `/businesses/:id` shows Food data; plus a General business and a Service listing |
 | `property-lifecycle` | Property create → submit → Admin approves → Search → `/properties/:id` |
-| `guards` | Signed-out redirects for resident / Professional / Admin routes with return-to, role separation, no public link to Admin, Admin logout |
+| `guards` | Signed-out redirects with return-to; roles and the Professional capability come only from the (mock) backend; non-admin refused; no public link to Admin; Admin logout |
+| `auth` | Anonymous bootstrap, login, reload restores the session, wrong password, logout revokes, protected-page round trip, register + resend + verify (fragment removed), reset password, Google start / return / error / disabled, admin-only access |
 | `seo` | Titles, descriptions, robots (indexable / `noindex, follow` Search / `noindex, nofollow` private + 404), canonical, entity titles, `robots.txt`, manifest |
 | `routes` | Direct load of every public route (one h1, no error state), unknown entities, 404, primary nav `aria-current`, Back/Forward |
 | `mobile/mobile` | Bottom tab bar, no horizontal overflow, Filters sheet + Food scope, touch preview/Save, Food detail, Food listing form |
@@ -118,4 +121,5 @@ The Playwright **MCP** browser is an exploratory tool for a human-in-the-loop / 
 - No visual-regression screenshots (deliberately — they are brittle; visual checks are manual/MCP).
 - Install dialog and iOS "Add to Home Screen" are manual.
 - Not covered by E2E: Education/Tutor profile flows, News admin content CRUD, Leads (Professional) and resident Requests lifecycle, Free/Premium upgrade toggle. Their logic is partially covered at unit level.
-- The suite tests demo guards and in-memory state; when the backend exists, auth/RBAC and persistence tests must be re-founded on real services (API contract tests, seeded database, real login).
+- Auth is tested against a faithful mock of the API (Playwright) and a mocked `fetch` (Vitest); the real backend was exercised only by a manual smoke in Phase 12C. Real-service E2E (seeded database, real login) arrives in Phase 12I. Real Google sign-in is a manual checklist (`DEPLOYMENT.md` §10).
+- Listing, moderation, saved and request data are still in-memory/`localStorage` prototype state, so those specs are not backend tests.

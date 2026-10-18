@@ -26,8 +26,8 @@ Discover → Explore → Compare → Trust → Connect → Request → Return/Tr
 - Zustand 5 (two stores: listings, news) — no persistence, in-memory only
 - `react-hook-form` + `zod` (via a hand-rolled resolver bridge)
 - `motion` (animation), `lucide-react` (icons)
-- No database, no real auth. Automated tests (Vitest + Playwright) exist since Phase 9M — see `docs/development/TESTING.md`
-- Backend: FastAPI + PostgreSQL exist in `backend/` (Phase 10B–12B: health/readiness, settings, CORS, error envelope, a PostgreSQL schema with Alembic migrations `0001`–`0005` (including privacy-aware listing location), public read APIs for categories, search/suggestions, listing detail and news (listings carry a public `location`), and email/password plus Google authentication with PostgreSQL sessions + CSRF — see `docs/backend/`). No write API exists yet, and the frontend does not call the backend (it still uses demo auth) — do not assume either does
+- Authentication is real since Phase 12C (cookie session + in-memory CSRF against the Phase 11 backend; see `docs/backend/AUTH_RBAC.md` §23). Automated tests (Vitest + Playwright) exist since Phase 9M — see `docs/development/TESTING.md`
+- Backend: FastAPI + PostgreSQL exist in `backend/` (Phase 10B–12C: health/readiness, settings, CORS, error envelope, a PostgreSQL schema with Alembic migrations `0001`–`0005` (including privacy-aware listing location), public read APIs for categories, search/suggestions, listing detail and news (listings carry a public `location`), and email/password plus Google authentication with PostgreSQL sessions + CSRF — see `docs/backend/`). No write API exists yet, and the frontend calls the backend only for authentication (`/auth/*`); all other data is still demo/in-memory — do not assume otherwise
 
 ## Engineering Workflow
 

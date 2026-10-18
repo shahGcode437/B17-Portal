@@ -47,7 +47,7 @@ function ListingPendingPage() {
 
   if (!user) return null
 
-  const myListings = selectListingsBySubmitter(listings, user.name)
+  const myListings = selectListingsBySubmitter(listings, user.displayName)
     .slice()
     .sort((a, b) => b.submittedAt.localeCompare(a.submittedAt))
   const myListing = myListings[0]

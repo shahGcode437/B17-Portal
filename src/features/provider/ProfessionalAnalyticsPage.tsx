@@ -66,7 +66,7 @@ function ProfessionalAnalyticsPage() {
 
   const breakdown = useMemo(() => {
     if (!user) return null
-    const mine = selectListingsBySubmitter(listings, user.name)
+    const mine = selectListingsBySubmitter(listings, user.displayName)
     const myProviderIds = new Set(mine.filter((l) => l.kind === "provider").map((l) => l.data.id))
     const myLeads = requests.filter((r) => myProviderIds.has(r.providerId))
 

@@ -1,4 +1,6 @@
 import { expect, type Page } from '@playwright/test'
+import { PASSWORD } from './authMock'
+import { mockFor } from './test'
 
 /**
  * Shared E2E helpers. Rules for this folder (see docs/development/TESTING.md):
@@ -41,10 +43,32 @@ export async function pushInApp(page: Page, path: string) {
   }, path)
 }
 
-/** Demo resident / professional sign-in through the real Log In form (the same screen guards redirect to). */
-export async function signIn(page: Page, name: string) {
-  await page.getByLabel('Your name').fill(name)
-  await page.getByRole('button', { name: 'Log In' }).click()
+export type AccountKind = 'resident' | 'professional' | 'admin'
+
+/** The deterministic e-mail the mock backend knows an account by. */
+export function emailFor(name: string) {
+  return `${name.toLowerCase().replace(/[^a-z0-9]+/g, '.')}@example.org`
+}
+
+/**
+ * Signs in through the REAL Log In form (the screen guards redirect to) against the mock backend.
+ * The account is registered with the mock first, with the capabilities of `kind`: a `professional`
+ * has the backend's professional summary, an `admin` the `admin` role, a `resident` neither.
+ */
+export async function signIn(page: Page, name: string, kind: AccountKind = 'professional') {
+  const email = emailFor(name)
+  const mock = mockFor(page)
+  if (!mock.accounts.has(email)) {
+    mock.addAccount({
+      email,
+      displayName: name,
+      roles: kind === 'admin' ? ['admin'] : [],
+      ...(kind === 'professional' && { professional: { planCode: 'free' as const } }),
+    })
+  }
+  await page.getByLabel('Email').fill(email)
+  await page.getByLabel('Password', { exact: true }).fill(PASSWORD)
+  await page.getByRole('button', { name: 'Log In', exact: true }).click()
 }
 
 /** Logs in at /login with a full load, and lands on the home page. */

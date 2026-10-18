@@ -1,23 +1,12 @@
-import { useEffect } from "react"
-import { useNavigate, useLocation } from "react-router-dom"
-import { useAdminAuth } from "@/hooks/useAdminAuth"
-import { routes } from "@/config/routes"
+import { useAuth } from "@/hooks/useAuth"
+import type { CurrentUser } from "@/types/auth"
 
 /**
- * Whole-page auth gate for admin screens — mirrors useRequireAuth but
- * against the separate AdminAuthContext. Redirects to Admin Login,
- * preserving the page to return to.
+ * The signed-in ADMIN for a screen behind `<AuthGate requires="admin">`. Admin-ness comes only from
+ * the backend's `/auth/me` roles — there is no separate admin login, flag or storage. This is UX
+ * only: the API (`require_admin`) is the authority, including its session-freshness rules.
  */
-export function useRequireAdminAuth() {
-  const { admin } = useAdminAuth()
-  const navigate = useNavigate()
-  const location = useLocation()
-
-  useEffect(() => {
-    if (!admin) {
-      navigate(routes.adminLogin, { state: { from: location.pathname }, replace: true })
-    }
-  }, [admin, navigate, location.pathname])
-
-  return admin
+export function useRequireAdminAuth(): CurrentUser | null {
+  const { user } = useAuth()
+  return user && user.roles.includes("admin") ? user : null
 }

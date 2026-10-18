@@ -136,3 +136,15 @@ Nothing here is implemented in 12A; it records what deployment must provide when
 - **CSP.** None exists today. If one is introduced, `img-src` must include only the configured tile host (plus `self` and `data:` for inline icons) and `connect-src` the API origin.
 - **Upgrading an existing database to `0005`.** `alembic upgrade head` (DDL only, no data change; it rewrites `listings` once to compute the generated columns — run it in the normal migration window) → for dev / staging `python -m scripts.dev_fixtures` (idempotent; applies the explicit demo-location step to fixture ids only; refuses production; it prints how many fixtures were relocated) → `python -m app.db.search_index check` (no rebuild needed for existing rows). Existing listings become area-level legacy rows; nothing is inferred (`LOCATION_MAP.md` §3.1).
 - **Privacy in logs.** The request log records no bodies or query strings, so coordinates never reach it; do not add proxy-level body logging for `/api/v1/listings`.
+
+## 12. Frontend authentication operations (Phase 12C)
+
+| Setting | Where | Meaning |
+|---|---|---|
+| `VITE_API_BASE_URL` | frontend build | API base including `/api/v1`. Default: `http://127.0.0.1:8000/api/v1` in `vite dev`, `/api/v1` in production builds (same-origin reverse proxy). If the API is on another origin (`https://api.…`), set it **and** put the frontend origin in the API's `FRONTEND_ORIGINS` and `FRONTEND_BASE_URL`; cookies need the same-site topology of §9. |
+
+- **No secret is ever a `VITE_*` variable.** The frontend holds no key, client secret or token; the Google client secret stays on the API.
+- **Referrer policy.** `/verify-email` and `/reset-password` carry the one-time token in the URL fragment (never sent to servers) and the SPA sets `<meta name="referrer" content="no-referrer">` for them and removes the fragment before anything else runs. Also set `Referrer-Policy: no-referrer` for those two paths at the host/CDN (an HTTP header is stronger than the meta tag); keep a standard policy elsewhere (§11).
+- **SPA fallback for auth links.** `/verify-email`, `/reset-password`, `/forgot-password` and `/login` must serve `index.html` (the same SPA fallback as every route); the OAuth callback redirects the browser to `/login?error=…` or the requested `returnTo`.
+- **Caching.** Do not cache `/api/*` at the CDN for authenticated paths; the service worker already leaves `/api` untouched (network-only).
+- **Logs/analytics.** Do not add third-party scripts to the token routes; do not log full URLs of `/login?error=` or the token routes in analytics.

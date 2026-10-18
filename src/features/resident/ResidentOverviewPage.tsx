@@ -17,6 +17,8 @@ import { RequestDetailDialog } from "@/features/resident/RequestDetailDialog"
 import { SAVED_KIND_META, resolveSavedItem } from "@/features/resident/savedItems"
 import { useResidentStore } from "@/state/residentStore"
 import { useAuth } from "@/hooks/useAuth"
+import { useToast } from "@/hooks/useToast"
+import { VerificationNotice } from "@/features/auth/VerificationNotice"
 import { useRequireAuth } from "@/hooks/useRequireAuth"
 import { routes } from "@/config/routes"
 import { fadeUp } from "@/lib/motion"
@@ -35,6 +37,7 @@ const RECENT_LIMIT = 3
 function ResidentOverviewPage() {
   const user = useRequireAuth()
   const { logout } = useAuth()
+  const { show } = useToast()
   const navigate = useNavigate()
   const savedItems = useResidentStore((state) => state.savedItems)
   const requests = useResidentStore((state) => state.requests)
@@ -53,9 +56,13 @@ function ResidentOverviewPage() {
 
   if (!user) return null
 
-  function handleLogout() {
-    logout()
-    navigate(routes.home)
+  async function handleLogout() {
+    try {
+      await logout()
+      navigate(routes.home)
+    } catch {
+      show("Couldn't log out — check your connection and try again.", { tone: "error" })
+    }
   }
 
   return (
@@ -68,13 +75,15 @@ function ResidentOverviewPage() {
             </span>
             <Stack gap={0} className="min-w-0">
               <Typography variant="h1" className="break-words text-2xl sm:text-3xl">
-                {user.name}
+                {user.displayName}
               </Typography>
               <Typography variant="body-sm" className="text-muted-foreground">
-                Signed in (demo) — no real account has been created.
+                {user.email}
               </Typography>
             </Stack>
           </Stack>
+
+          <VerificationNotice />
 
           <ResidentNav />
 

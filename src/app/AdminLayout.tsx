@@ -8,7 +8,8 @@ import { SkipLink } from "@/components/navigation/SkipLink"
 import { cn } from "@/lib/utils"
 import { routes } from "@/config/routes"
 import { headerFocusClass } from "@/features/admin/adminStyles"
-import { useAdminAuth } from "@/hooks/useAdminAuth"
+import { useAuth } from "@/hooks/useAuth"
+import { useToast } from "@/hooks/useToast"
 
 const adminNav = [
   { label: "Dashboard", path: routes.adminDashboard, icon: LayoutDashboard, end: true },
@@ -22,7 +23,9 @@ const adminNav = [
  * A compact nav row (not a sidebar) links the two management areas.
  */
 function AdminLayout() {
-  const { admin, logout } = useAdminAuth()
+  const { user, logout } = useAuth()
+  const { show } = useToast()
+  const admin = user?.roles.includes("admin") ? user : null
 
   return (
     <div className="flex min-h-svh flex-col bg-secondary/30">
@@ -61,11 +64,13 @@ function AdminLayout() {
                 </NavLink>
               ))}
               {admin && (
-                // Existing admin logout (clears the demo admin session). Each Admin page's
-                // `useRequireAdminAuth` then redirects to Admin Login — no extra navigation here.
+                // Real logout (revokes the server session). The admin gate then sends the visitor to
+                // Admin Login — no extra navigation here.
                 <button
                   type="button"
-                  onClick={logout}
+                  onClick={() => {
+                    logout().catch(() => show("Couldn't log out — check your connection and try again.", { tone: "error" }))
+                  }}
                   className={cn(
                     "ml-1 flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-md border-l border-background/20 px-2.5 text-sm font-medium text-background/70 transition-colors hover:bg-background/10 hover:text-background",
                     headerFocusClass

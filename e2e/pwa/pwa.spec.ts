@@ -1,4 +1,5 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test } from '../helpers/test'
+import type { Page } from '@playwright/test'
 import { expectPage, navigateInApp, openApp, signIn } from '../helpers/app'
 
 /**
@@ -102,4 +103,25 @@ test('offline: submitting a request is blocked with a clear message and keeps th
   await context.setOffline(false)
   await dialog.getByRole('button', { name: 'Submit Request' }).click()
   await expect(page.getByRole('heading', { name: 'Request submitted successfully' })).toBeVisible()
+})
+
+test('the API is network-only: with the worker in control and no network, /api requests fail instead of returning the app shell', async ({ page, context }) => {
+  await openApp(page, '/')
+  await waitForControl(page)
+  await page.reload()
+  await waitForControl(page)
+  await page.unroute('**/api/v1/**') // the mock would answer even offline; the worker is what is under test
+
+  await context.setOffline(true)
+  const outcome = await page.evaluate(async () => {
+    try {
+      const response = await fetch('/api/v1/auth/me', { credentials: 'include' })
+      return `response ${response.status} ${response.headers.get('content-type')}`
+    } catch {
+      return 'network-error'
+    }
+  })
+  await context.setOffline(false)
+
+  expect(outcome).toBe('network-error') // never the cached index.html (200 text/html)
 })

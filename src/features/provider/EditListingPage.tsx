@@ -90,7 +90,7 @@ function EditListingPage() {
 
   if (!user) return null
 
-  const listing = id ? selectListingsBySubmitter(listings, user.name).find((l) => l.id === id) : undefined
+  const listing = id ? selectListingsBySubmitter(listings, user.displayName).find((l) => l.id === id) : undefined
 
   if (!listing) {
     return (

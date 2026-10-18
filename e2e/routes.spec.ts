@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './helpers/test'
 import { expectPage, openApp } from './helpers/app'
 
 /** Every public route must load directly from its URL (deep link / refresh / shared link) with exactly one h1. */

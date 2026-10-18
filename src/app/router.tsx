@@ -3,6 +3,7 @@ import { createBrowserRouter } from "react-router-dom"
 import { ConsumerLayout } from "@/app/ConsumerLayout"
 import { ProviderLayout } from "@/app/ProviderLayout"
 import { AdminLayout } from "@/app/AdminLayout"
+import { AuthGate } from "@/components/access/AuthGate"
 import { HomePage } from "@/features/home/HomePage"
 import { ComingSoonPage } from "@/features/future-modules/ComingSoonPage"
 import { NotFoundPage } from "@/features/future-modules/NotFoundPage"
@@ -32,6 +33,9 @@ const PropertyDetailsPage = lazyPage(() => import("@/features/property/PropertyD
 const NewsListPage = lazyPage(() => import("@/features/news/NewsListPage"), "NewsListPage")
 const NewsArticlePage = lazyPage(() => import("@/features/news/NewsArticlePage"), "NewsArticlePage")
 const LoginRegisterPage = lazyPage(() => import("@/features/auth/LoginRegisterPage"), "LoginRegisterPage")
+const ForgotPasswordPage = lazyPage(() => import("@/features/auth/ForgotPasswordPage"), "ForgotPasswordPage")
+const ResetPasswordPage = lazyPage(() => import("@/features/auth/ResetPasswordPage"), "ResetPasswordPage")
+const VerifyEmailPage = lazyPage(() => import("@/features/auth/VerifyEmailPage"), "VerifyEmailPage")
 const ResidentOverviewPage = lazyPage(() => import("@/features/resident/ResidentOverviewPage"), "ResidentOverviewPage")
 const SavedPage = lazyPage(() => import("@/features/resident/SavedPage"), "SavedPage")
 const MyRequestsPage = lazyPage(() => import("@/features/resident/MyRequestsPage"), "MyRequestsPage")
@@ -76,9 +80,18 @@ export const router = createBrowserRouter([
       { path: routes.newsArticle, element: <NewsArticlePage /> },
       { path: routes.login, element: <LoginRegisterPage /> },
       { path: routes.register, element: <LoginRegisterPage /> },
-      { path: routes.profile, element: <ResidentOverviewPage /> },
-      { path: routes.profileSaved, element: <SavedPage /> },
-      { path: routes.profileRequests, element: <MyRequestsPage /> },
+      { path: routes.forgotPassword, element: <ForgotPasswordPage /> },
+      { path: routes.verifyEmail, element: <VerifyEmailPage /> },
+      { path: routes.resetPassword, element: <ResetPasswordPage /> },
+      {
+        // Resident area: needs a signed-in account (the gate waits for /auth/me before deciding).
+        element: <AuthGate />,
+        children: [
+          { path: routes.profile, element: <ResidentOverviewPage /> },
+          { path: routes.profileSaved, element: <SavedPage /> },
+          { path: routes.profileRequests, element: <MyRequestsPage /> },
+        ],
+      },
       { path: routes.comingSoon, element: <ComingSoonPage /> },
       { path: "*", element: <NotFoundPage /> },
     ],
@@ -87,27 +100,39 @@ export const router = createBrowserRouter([
     path: routes.providerDashboard,
     element: <ProviderLayout />,
     children: [
-      { index: true, element: <ProfessionalOverviewPage /> },
-      { path: "listings", element: <ProfessionalListingsPage /> },
-      { path: "listings/new", element: <ListingFormPage /> },
-      { path: "listings/pending", element: <ListingPendingPage /> },
-      { path: "listings/:id/edit", element: <EditListingPage /> },
-      { path: "leads", element: <ProfessionalLeadsPage /> },
-      { path: "profile", element: <ProfessionalProfilePage /> },
-      { path: "analytics", element: <ProfessionalAnalyticsPage /> },
-      { path: "upgrade", element: <UpgradePage /> },
+      {
+        // Professional is a CAPABILITY from /auth/me, not a role. UX guard only — the API enforces it.
+        element: <AuthGate requires="professional" />,
+        children: [
+          { index: true, element: <ProfessionalOverviewPage /> },
+          { path: "listings", element: <ProfessionalListingsPage /> },
+          { path: "listings/new", element: <ListingFormPage /> },
+          { path: "listings/pending", element: <ListingPendingPage /> },
+          { path: "listings/:id/edit", element: <EditListingPage /> },
+          { path: "leads", element: <ProfessionalLeadsPage /> },
+          { path: "profile", element: <ProfessionalProfilePage /> },
+          { path: "analytics", element: <ProfessionalAnalyticsPage /> },
+          { path: "upgrade", element: <UpgradePage /> },
+        ],
+      },
     ],
   },
   {
     path: routes.adminDashboard,
     element: <AdminLayout />,
     children: [
-      { index: true, element: <AdminDashboardPage /> },
       { path: "login", element: <AdminLoginPage /> },
-      { path: "moderation", element: <ModerationQueuePage /> },
-      { path: "content", element: <ContentListPage /> },
-      { path: "content/new", element: <ContentFormPage /> },
-      { path: "content/:id/edit", element: <ContentFormPage /> },
+      {
+        // Admin comes ONLY from the backend roles in /auth/me. UX guard — require_admin is the authority.
+        element: <AuthGate requires="admin" />,
+        children: [
+          { index: true, element: <AdminDashboardPage /> },
+          { path: "moderation", element: <ModerationQueuePage /> },
+          { path: "content", element: <ContentListPage /> },
+          { path: "content/new", element: <ContentFormPage /> },
+          { path: "content/:id/edit", element: <ContentFormPage /> },
+        ],
+      },
     ],
   },
 ])

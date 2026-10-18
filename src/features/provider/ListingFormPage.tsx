@@ -63,7 +63,7 @@ function ListingFormPage() {
 
   if (!user) return null
 
-  const activeListingCount = selectActiveListingsBySubmitter(listings, user.name).length
+  const activeListingCount = selectActiveListingsBySubmitter(listings, user.displayName).length
   const atLimit = entitlements.maxListings !== null && activeListingCount >= entitlements.maxListings
 
   if (atLimit) {
@@ -97,7 +97,7 @@ function ListingFormPage() {
       id: draftId,
       status: "pending" as const,
       submittedAt: new Date().toISOString(),
-      submittedBy: user.name,
+      submittedBy: user.displayName,
     }
     if (kind === "provider") {
       submitListing({ ...base, kind: "provider", data: buildProvider(values as ListingFormValues, draftId) })

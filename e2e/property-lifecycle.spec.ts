@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './helpers/test'
 import { expectPage, navigateInApp } from './helpers/app'
 import { enterAdmin, enterProfessionalWorkspace, openListingReview } from './helpers/workspace'
 

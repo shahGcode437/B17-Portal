@@ -1,3 +1,7 @@
+// Phase 12C: MUST stay the first import. It moves a one-time e-mail token out of the URL fragment
+// (into memory, then history.replaceState) before any other module — the router, App, PWA code —
+// is evaluated. See src/lib/fragmentBootstrap.ts.
+import './lib/fragmentBootstrap'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'

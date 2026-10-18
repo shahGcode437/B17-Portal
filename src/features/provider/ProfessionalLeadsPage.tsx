@@ -34,7 +34,7 @@ function LeadList({ leads, onSelect }: { leads: ServiceRequestRecord[]; onSelect
  * Leads (Phase 9D) — the professional-side counterpart of Phase 9C's My
  * Requests. Ownership is real, not fabricated: a request is only shown here
  * if its `providerId` matches a Provider-kind listing this demo professional
- * themselves submitted (`submittedBy === user.name`). Business/Property
+ * themselves submitted (`submittedBy === user.displayName`). Business/Property
  * listings have no request-capture flow today, so they never produce leads —
  * documented in the phase report, not worked around.
  */
@@ -48,7 +48,7 @@ function ProfessionalLeadsPage() {
   const myLeads = useMemo(() => {
     if (!user) return []
     const myProviderIds = new Set(
-      selectListingsBySubmitter(listings, user.name)
+      selectListingsBySubmitter(listings, user.displayName)
         .filter((listing) => listing.kind === "provider")
         .map((listing) => listing.data.id)
     )
