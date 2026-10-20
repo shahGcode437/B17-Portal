@@ -1,19 +1,21 @@
 import { motion } from "motion/react"
 import { Container } from "@/components/foundation/Container"
-import { Grid } from "@/components/foundation/Grid"
 import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
-import { CategoryCard } from "@/components/cards/CategoryCard"
-import { serviceCategories } from "@/data/serviceCategories"
+import { CategoryTiles } from "@/components/cards/CategoryTiles"
+import { serviceIconFor } from "@/config/categoryIcons"
+import { useCategories } from "@/hooks/useCategories"
 import { routes } from "@/config/routes"
-import { staggerContainer, staggerItem, fadeUp } from "@/lib/motion"
+import { fadeUp } from "@/lib/motion"
 
 /**
- * Services landing (Prototype Scope §8) — every construction/home-service
- * category, each linking into the existing provider-filtered Search rather
- * than a separate results page (Master Spec §15 — no duplicate architecture).
+ * Services landing (Prototype Scope §8) - every active service category from `GET /categories`,
+ * each linking into the provider-filtered Search rather than a separate results page (Master Spec
+ * §15 - no duplicate architecture).
  */
 function ServicesPage() {
+  const categories = useCategories("services")
+
   return (
     <Container className="py-10 sm:py-16">
       <motion.div {...fadeUp}>
@@ -25,24 +27,12 @@ function ServicesPage() {
         </Stack>
       </motion.div>
 
-      <motion.div
-        initial="initial"
-        whileInView="animate"
-        viewport={{ once: true, margin: "-60px" }}
-        variants={staggerContainer}
-      >
-        <Grid cols={4} gap={4}>
-          {serviceCategories.map((category) => (
-            <motion.div key={category.slug} variants={staggerItem}>
-              <CategoryCard
-                to={`${routes.search}?type=provider&q=${encodeURIComponent(category.label)}`}
-                icon={category.icon}
-                label={category.label}
-              />
-            </motion.div>
-          ))}
-        </Grid>
-      </motion.div>
+      <CategoryTiles
+        read={categories}
+        noun="service categories"
+        iconFor={serviceIconFor}
+        hrefFor={(category) => `${routes.search}?type=provider&category=${encodeURIComponent(category.slug)}`}
+      />
     </Container>
   )
 }

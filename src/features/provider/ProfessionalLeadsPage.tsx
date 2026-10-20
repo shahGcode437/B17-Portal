@@ -1,16 +1,18 @@
-import { useMemo, useState } from "react"
+import { useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { motion } from "motion/react"
 import { Inbox } from "lucide-react"
 import { Container } from "@/components/foundation/Container"
 import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
+import { Button } from "@/components/ui/button"
+import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/feedback/EmptyState"
+import { ReadError } from "@/components/feedback/ReadError"
 import { WorkspaceSection } from "@/components/workspace/WorkspaceSection"
 import { LeadSummaryCard } from "@/features/provider/LeadSummaryCard"
 import { LeadDetailDialog } from "@/features/provider/LeadDetailDialog"
-import { useListingsStore, selectListingsBySubmitter } from "@/state/listingsStore"
-import { useResidentStore } from "@/state/residentStore"
+import { useLeads } from "@/hooks/useResidentReads"
 import { useRequireAuth } from "@/hooks/useRequireAuth"
 import { routes } from "@/config/routes"
 import { fadeUp, staggerContainer, staggerItem } from "@/lib/motion"
@@ -31,35 +33,21 @@ function LeadList({ leads, onSelect }: { leads: ServiceRequestRecord[]; onSelect
 }
 
 /**
- * Leads (Phase 9D) — the professional-side counterpart of Phase 9C's My
- * Requests. Ownership is real, not fabricated: a request is only shown here
- * if its `providerId` matches a Provider-kind listing this demo professional
- * themselves submitted (`submittedBy === user.displayName`). Business/Property
- * listings have no request-capture flow today, so they never produce leads —
- * documented in the phase report, not worked around.
+ * Leads (Phase 9D) - the professional-side counterpart of My Requests, read from
+ * `GET /users/me/leads` (Phase 12G): the requests sent to listings this account OWNS. Ownership is the
+ * server's, not a guess made in the browser. Open vs closed is a split on the status of the rows
+ * loaded so far (completed / cancelled are the terminal states). Read-only until Phase 12H.
  */
 function ProfessionalLeadsPage() {
   const user = useRequireAuth()
-  const { listings } = useListingsStore()
-  const requests = useResidentStore((state) => state.requests)
+  const leads = useLeads()
   const navigate = useNavigate()
   const [selected, setSelected] = useState<ServiceRequestRecord | null>(null)
 
-  const myLeads = useMemo(() => {
-    if (!user) return []
-    const myProviderIds = new Set(
-      selectListingsBySubmitter(listings, user.displayName)
-        .filter((listing) => listing.kind === "provider")
-        .map((listing) => listing.data.id)
-    )
-    return requests.filter((request) => myProviderIds.has(request.providerId))
-  }, [listings, requests, user])
-
-  // Open vs closed is a split on the existing status only — completed/cancelled are the terminal states.
-  const open = useMemo(() => myLeads.filter((r) => r.status !== "completed" && r.status !== "cancelled"), [myLeads])
-  const closed = useMemo(() => myLeads.filter((r) => r.status === "completed" || r.status === "cancelled"), [myLeads])
-
   if (!user) return null
+
+  const open = leads.items.filter((r) => r.status !== "completed" && r.status !== "cancelled")
+  const closed = leads.items.filter((r) => r.status === "completed" || r.status === "cancelled")
 
   return (
     <Container className="py-8 sm:py-12">
@@ -68,11 +56,19 @@ function ProfessionalLeadsPage() {
           <Stack gap={1}>
             <Typography variant="h1">Leads</Typography>
             <Typography variant="body-sm" className="text-muted-foreground">
-              Service requests residents have sent to your approved provider listings.
+              Service requests residents have sent to your listings.
             </Typography>
           </Stack>
 
-          {myLeads.length === 0 ? (
+          {leads.loading ? (
+            <div role="status" aria-label="Loading your leads" className="flex flex-col gap-3">
+              {Array.from({ length: 3 }).map((_, index) => (
+                <Skeleton key={index} className="h-28 rounded-xl" />
+              ))}
+            </div>
+          ) : leads.error ? (
+            <ReadError error={leads.error} onRetry={leads.retry} title="Couldn't load your leads" />
+          ) : leads.items.length === 0 ? (
             <EmptyState
               icon={Inbox}
               title="No leads yet"
@@ -83,14 +79,26 @@ function ProfessionalLeadsPage() {
           ) : (
             <Stack gap={8}>
               {open.length > 0 && (
-                <WorkspaceSection title={`Open (${open.length})`}>
+                <WorkspaceSection title={leads.hasMore ? "Open" : `Open (${open.length})`}>
                   <LeadList leads={open} onSelect={setSelected} />
                 </WorkspaceSection>
               )}
               {closed.length > 0 && (
-                <WorkspaceSection title={`Completed & cancelled (${closed.length})`}>
+                <WorkspaceSection title={leads.hasMore ? "Completed & cancelled" : `Completed & cancelled (${closed.length})`}>
                   <LeadList leads={closed} onSelect={setSelected} />
                 </WorkspaceSection>
+              )}
+              {leads.hasMore && (
+                <Stack align="center" gap={2}>
+                  <Button variant="outline" onClick={leads.loadMore} disabled={leads.loadingMore}>
+                    {leads.loadingMore ? "Loading…" : "Load More"}
+                  </Button>
+                  {leads.moreError && (
+                    <Typography variant="body-sm" role="alert" className="text-destructive">
+                      Couldn't load more. Try again.
+                    </Typography>
+                  )}
+                </Stack>
               )}
             </Stack>
           )}

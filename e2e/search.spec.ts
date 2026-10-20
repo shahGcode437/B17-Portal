@@ -101,10 +101,16 @@ test.describe('Search: Food & Dining vs General businesses', () => {
     await expect(page.getByRole('button', { name: 'Preview B-17 Family Pharmacy' })).toBeVisible()
   })
 
-  test('an unknown Food value in the URL is ignored, never trusted', async ({ page }) => {
-    await openApp(page, '/search?type=business&vertical=food&foodCategory=not-a-category&service=teleport', 'Search / Explore')
+  test('an unknown service in the URL is dropped; an unknown Food category is an honest empty result', async ({ page }) => {
+    // `service` is a closed set, so an invalid value is never sent. A Food CATEGORY is open data now
+    // (an admin can add one), so the server decides: it finds nothing for an unknown slug - not an error.
+    await openApp(page, '/search?type=business&vertical=food&service=teleport', 'Search / Explore')
     await expect(page.getByRole('button', { name: 'Preview Karahi Junction' })).toBeVisible()
-    await expect(page.getByRole('button', { name: /Remove Food category/ })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: /Remove Service/ })).toHaveCount(0)
+    await openApp(page, '/search?type=business&vertical=food&foodCategory=not-a-category', 'Search / Explore')
+    await expect(page.getByText('0 results')).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'No results found' })).toBeVisible()
+    await expect(page.getByRole('alert')).toHaveCount(0)
   })
 })
 
@@ -142,10 +148,35 @@ test.describe('Search: results, empty and quick look', () => {
     await expect(dialog).toBeVisible()
   })
 
-  test('Save on a card does not open the preview, and prompts a logged-out visitor to log in', async ({ page }) => {
+  test('Save is honestly unavailable: it does not open the preview, does not navigate, and says why', async ({ page }) => {
     await openApp(page, '/search?q=pharmacy&type=business', 'Search / Explore')
-    await page.getByRole('button', { name: 'Save B-17 Family Pharmacy' }).click()
-    await expectPage(page, 'Log In')
+    const save = page.getByRole('button', { name: 'Save B-17 Family Pharmacy (coming soon)' })
+    await expect(save).toHaveAttribute('aria-disabled', 'true')
+    // Playwright treats aria-disabled as not-actionable; a real user CAN press it (it stays focusable), so force the click.
+    await save.click({ force: true })
+    await expect(page.getByText('Saving items is coming soon.')).toBeVisible()
     await expect(page.getByRole('dialog')).toHaveCount(0)
+    await expect(page).toHaveURL(/\/search\?/)
+    await expect(page.getByRole('button', { name: /Remove .* from saved/ })).toHaveCount(0)
+  })
+
+  test('a failing search shows an error with Try again - never an empty list - and recovers', async ({ page }) => {
+    let healthy = false
+    await page.route('**/api/v1/search?*', (route) => {
+      if (healthy || new URL(route.request().url()).searchParams.get('limit') !== '12') return route.fallback()
+      return route.fulfill({
+        status: 500,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: { code: 'internal_error', message: 'x', details: [], requestId: 'r' } }),
+      })
+    })
+    await openApp(page, '/search?q=pharmacy&type=business', 'Search / Explore')
+    await expect(page.getByRole('alert')).toBeVisible()
+    await expect(page.getByText('Search unavailable')).toBeVisible()
+    await expect(page.getByText(/No .*results/)).toHaveCount(0)
+    healthy = true
+    await page.getByRole('button', { name: /try again/i }).click()
+    await expect(page.getByRole('button', { name: 'Preview B-17 Family Pharmacy' })).toBeVisible()
+    await expect(page.getByRole('alert')).toHaveCount(0)
   })
 })

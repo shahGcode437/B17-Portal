@@ -6,40 +6,30 @@ import { Grid } from "@/components/foundation/Grid"
 import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
 import { CategoryCard } from "@/components/cards/CategoryCard"
-import { getPropertyListingTypes, getPropertyTypes } from "@/services/search"
+import { CategoryTiles } from "@/components/cards/CategoryTiles"
+import { useCategories } from "@/hooks/useCategories"
 import { routes } from "@/config/routes"
 import { staggerContainer, staggerItem, fadeUp } from "@/lib/motion"
-import type { ListingType } from "@/types/property"
 
-const listingTypeMeta: Record<ListingType, { label: string; icon: LucideIcon }> = {
-  sale: { label: "Sale", icon: Tag },
-  rent: { label: "Rent", icon: KeyRound },
-}
+/** Sale / Rent is a closed set of the product (`listingType`), not taxonomy data. */
+const LISTING_TYPES: { value: "sale" | "rent"; label: string; icon: LucideIcon }[] = [
+  { value: "sale", label: "Sale", icon: Tag },
+  { value: "rent", label: "Rent", icon: KeyRound },
+]
 
-const propertyTypeIcons: Record<string, LucideIcon> = {
-  House: Home,
-  Flat: Building2,
-  Plot: LandPlot,
-}
-
-/** Pairs each real listing type (Sale/Rent) with its display label/icon, in seed order. */
-function getListingTypeTiles() {
-  return getPropertyListingTypes().map((value) => ({ value, ...listingTypeMeta[value] }))
-}
-
-/** Pairs each real property type (House/Flat/Plot) with its display icon, in seed order. */
-function getPropertyTypeTiles() {
-  return getPropertyTypes().map((value) => ({ value, icon: propertyTypeIcons[value] ?? Home }))
+/** Visual only; the property types themselves (names, order) come from `GET /categories?module=property`. */
+const PROPERTY_TYPE_ICONS: Record<string, LucideIcon> = {
+  house: Home,
+  flat: Building2,
+  plot: LandPlot,
 }
 
 /**
- * Property landing (Master Spec Screen 15) — Sale/Rent and House/Flat/Plot
- * discovery into Property Results, which reuses the existing Search page
- * (Phase 6 audit §5/§8) rather than a second dedicated results screen.
+ * Property landing (Master Spec Screen 15) - Sale/Rent and the property types from
+ * `GET /categories?module=property`, leading into Property results (the Search page).
  */
 function PropertyPage() {
-  const listingTypes = getListingTypeTiles()
-  const propertyTypes = getPropertyTypeTiles()
+  const propertyTypes = useCategories("property")
 
   return (
     <Container className="py-10 sm:py-16">
@@ -56,20 +46,11 @@ function PropertyPage() {
       <Stack gap={8}>
         <Stack gap={3}>
           <Typography variant="label">Sale or Rent</Typography>
-          <motion.div
-            initial="initial"
-            whileInView="animate"
-            viewport={{ once: true, margin: "-60px" }}
-            variants={staggerContainer}
-          >
+          <motion.div initial="initial" animate="animate" variants={staggerContainer}>
             <Grid cols={2} gap={4}>
-              {listingTypes.map(({ value, label, icon }) => (
+              {LISTING_TYPES.map(({ value, label, icon }) => (
                 <motion.div key={value} variants={staggerItem}>
-                  <CategoryCard
-                    to={`${routes.search}?type=property&q=${encodeURIComponent(label)}`}
-                    icon={icon}
-                    label={label}
-                  />
+                  <CategoryCard to={`${routes.search}?type=property&listingType=${value}`} icon={icon} label={label} />
                 </motion.div>
               ))}
             </Grid>
@@ -78,24 +59,12 @@ function PropertyPage() {
 
         <Stack gap={3}>
           <Typography variant="label">Property Type</Typography>
-          <motion.div
-            initial="initial"
-            whileInView="animate"
-            viewport={{ once: true, margin: "-60px" }}
-            variants={staggerContainer}
-          >
-            <Grid cols={4} gap={4}>
-              {propertyTypes.map(({ value, icon }) => (
-                <motion.div key={value} variants={staggerItem}>
-                  <CategoryCard
-                    to={`${routes.search}?type=property&q=${encodeURIComponent(value)}`}
-                    icon={icon}
-                    label={value}
-                  />
-                </motion.div>
-              ))}
-            </Grid>
-          </motion.div>
+          <CategoryTiles
+            read={propertyTypes}
+            noun="property types"
+            iconFor={(slug) => PROPERTY_TYPE_ICONS[slug] ?? Home}
+            hrefFor={(category) => `${routes.search}?type=property&propertyType=${encodeURIComponent(category.slug)}`}
+          />
         </Stack>
       </Stack>
     </Container>

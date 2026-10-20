@@ -4,7 +4,6 @@ import type { Provider } from "@/types/provider"
 import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
 import { CardImage } from "@/components/media/CardImage"
-import { DemoBadge } from "@/components/feedback/DemoBadge"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -47,7 +46,6 @@ function ProviderCard({ provider, onSelect }: ProviderCardProps) {
           <Typography variant="label" className="line-clamp-2 text-base">
             {provider.name}
           </Typography>
-          <DemoBadge />
         </Stack>
         <Typography variant="body-sm" className="text-primary">
           {provider.categoryLabel}

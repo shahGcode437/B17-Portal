@@ -1,6 +1,5 @@
-import { useRef, useState } from "react"
+import { useRef } from "react"
 import { CheckCircle2, XCircle } from "lucide-react"
-import type { PendingListing } from "@/types/listing"
 import {
   Dialog,
   DialogContent,
@@ -10,32 +9,22 @@ import {
 } from "@/components/ui/dialog"
 import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { ProviderCard } from "@/components/cards/ProviderCard"
-import { BusinessCard } from "@/components/cards/BusinessCard"
-import { PropertyCard } from "@/components/cards/PropertyCard"
+import { Skeleton } from "@/components/ui/skeleton"
+import { ReadError } from "@/components/feedback/ReadError"
 import { rowActionClass as actionClass } from "@/features/admin/adminStyles"
 import { ListingStatusBadge } from "@/features/provider/ListingStatusBadge"
-import { FoodListingSummary } from "@/features/provider/FoodListingSummary"
-import { businessTypeLabel } from "@/features/provider/listingDisplay"
-import { useListingsStore } from "@/state/listingsStore"
-import { useToast } from "@/hooks/useToast"
-import { useRequireOnline } from "@/hooks/useRequireOnline"
+import { OwnerLocationFacts } from "@/features/provider/OwnerLocationFacts"
+import { useAdminListing } from "@/hooks/useWorkspaceReads"
+import { foodCategoryLabel, foodServiceLabel } from "@/config/food"
+import type { AdminQueueRow } from "@/types/ownerListing"
 
 interface ReviewPanelProps {
-  listing: PendingListing | null
+  /** The queue row that was opened (its fields show at once); the dialog then reads the full review view. */
+  row: AdminQueueRow | null
   open: boolean
   onOpenChange: (open: boolean) => void
-}
-
-const MIN_REASON_LENGTH = 10
-
-const kindLabel: Record<PendingListing["kind"], string> = {
-  provider: "Service / Professional",
-  business: "Business / Shop",
-  property: "Property",
 }
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", {
@@ -43,92 +32,67 @@ const dateFormatter = new Intl.DateTimeFormat("en-US", {
   day: "numeric",
   year: "numeric",
 })
+const stampFormatter = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+})
 
 /**
- * Approve/reject moderation dialog (Master Spec §17), mirroring the
- * RequestServiceDialog pattern: a single Dialog whose body swaps views
- * (preview+actions vs. reject-reason) via local state.
+ * The review dialog for one listing (Master Spec §17), READ-ONLY in Phase 12G. It reads
+ * `GET /admin/listings/{id}`: the full review shape, including the PRIVATE location the owner entered
+ * (visible only here, to an admin), the submitter's display name, the current revision, the last
+ * rejection reason and the status history.
+ *
+ * Approve and Reject are shown but disabled, with the reason: they are connected to
+ * `POST /admin/listings/{id}/approve|reject` in Phase 12H. The old local buttons changed a browser-only
+ * copy and reported success, which is exactly what must not happen against real moderation data.
  */
-function ReviewPanel({ listing, open, onOpenChange }: ReviewPanelProps) {
-  const { setStatus } = useListingsStore()
-  const { show } = useToast()
-  const requireOnline = useRequireOnline()
-  const [showReasonInput, setShowReasonInput] = useState(false)
-  const [reason, setReason] = useState("")
-  const [reasonError, setReasonError] = useState<string | null>(null)
+function ReviewPanel({ row, open, onOpenChange }: ReviewPanelProps) {
   const contentRef = useRef<HTMLDivElement>(null)
+  const read = useAdminListing(open && row ? row.id : null)
 
-  function handleOpenChange(next: boolean) {
-    onOpenChange(next)
-    if (!next) {
-      // Reset after the close animation so the dialog doesn't flash empty while closing.
-      setTimeout(() => {
-        setShowReasonInput(false)
-        setReason("")
-        setReasonError(null)
-      }, 200)
-    }
-  }
-
-  if (!listing) return null
-
-  const displayName = listing.kind === "property" ? listing.data.title : listing.data.name
-
-  function handleApprove() {
-    if (!listing || !requireOnline()) return
-    setStatus(listing.id, "approved")
-    show(`${displayName} approved (demo)`)
-    handleOpenChange(false)
-  }
-
-  function handleConfirmReject() {
-    if (!listing || !requireOnline()) return
-    const trimmed = reason.trim()
-    if (trimmed.length < MIN_REASON_LENGTH) {
-      setReasonError(`Please provide a specific reason (at least ${MIN_REASON_LENGTH} characters).`)
-      return
-    }
-    setStatus(listing.id, "rejected", trimmed)
-    show(`${displayName} rejected (demo)`)
-    handleOpenChange(false)
-  }
+  if (!row) return null
+  const listing = read.status === "success" ? read.data : null
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         ref={contentRef}
-        // Start at the top of the dialog (title/summary) rather than on the first tabbable element,
-        // which would be the resident preview card — the decision controls come after reading.
+        // Start at the top of the dialog (title/summary) rather than on the first tabbable element.
         onOpenAutoFocus={(event) => {
           event.preventDefault()
           contentRef.current?.focus()
         }}
-        className="gap-0 p-0 sm:max-w-md"
+        className="max-h-[90svh] gap-0 overflow-y-auto p-0 sm:max-w-md"
       >
         <div className="flex flex-col gap-4 p-4">
           <DialogHeader className="pr-8">
             <DialogTitle className="break-words">Review Listing</DialogTitle>
             <DialogDescription>
-              Check the details, then approve or reject. The preview below is how it will appear to residents once approved.
+              Check the details. Approving and rejecting from here is coming soon.
             </DialogDescription>
           </DialogHeader>
 
           <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2 rounded-lg bg-muted p-3 text-sm">
             <dt className="text-muted-foreground">Listing</dt>
-            <dd className="break-words font-medium">{displayName}</dd>
+            <dd className="break-words font-medium">{row.title}</dd>
             <dt className="text-muted-foreground">Type</dt>
-            <dd className="break-words">
-              {listing.kind === "business" ? businessTypeLabel(listing.data, kindLabel.business) : kindLabel[listing.kind]}
-            </dd>
+            <dd className="break-words">{row.typeLabel}</dd>
+            <dt className="text-muted-foreground">Category</dt>
+            <dd className="break-words">{row.categoryLabel}</dd>
             <dt className="text-muted-foreground">Submitted by</dt>
-            <dd className="break-words font-medium">{listing.submittedBy}</dd>
+            <dd className="break-words font-medium">{row.submitterName ?? "Unknown"}</dd>
             <dt className="text-muted-foreground">Submitted</dt>
-            <dd className="font-medium">{dateFormatter.format(new Date(listing.submittedAt))}</dd>
+            <dd className="font-medium">{dateFormatter.format(new Date(row.submittedAt))}</dd>
             <dt className="text-muted-foreground">Status</dt>
             <dd>
-              <ListingStatusBadge status={listing.status} />
+              <ListingStatusBadge status={listing?.status ?? row.status} />
             </dd>
-            {listing.status === "rejected" && listing.rejectionReason && (
+            <dt className="text-muted-foreground">Revision</dt>
+            <dd className="font-medium">{listing?.revision ?? row.revision}</dd>
+            {listing?.status === "rejected" && listing.rejectionReason && (
               <>
                 <dt className="text-muted-foreground">Rejection reason</dt>
                 <dd className="break-words">{listing.rejectionReason}</dd>
@@ -136,71 +100,73 @@ function ReviewPanel({ listing, open, onOpenChange }: ReviewPanelProps) {
             )}
           </dl>
 
-          {listing.kind === "business" && <FoodListingSummary business={listing.data} />}
+          {read.status === "loading" && (
+            <div role="status" aria-label="Loading the full listing" className="flex flex-col gap-2">
+              <Skeleton className="h-4 w-1/2" />
+              <Skeleton className="h-20 w-full" />
+            </div>
+          )}
+          {read.status === "error" && <ReadError error={read.error} onRetry={read.retry} title="Couldn't load this listing" />}
 
-          <section aria-label="Resident preview" className="flex flex-col gap-2">
-            <Typography as="h3" variant="label" className="text-muted-foreground">
-              Resident preview
-            </Typography>
-            {listing.kind === "provider" && <ProviderCard provider={listing.data} />}
-            {listing.kind === "business" && <BusinessCard business={listing.data} />}
-            {listing.kind === "property" && <PropertyCard property={listing.data} />}
-          </section>
+          {listing && (
+            <>
+              {listing.description && (
+                <Typography variant="body-sm" className="break-words text-muted-foreground">
+                  {listing.description}
+                </Typography>
+              )}
+              <OwnerLocationFacts location={listing.location} area={listing.area} />
+              {listing.food && (
+                <section aria-label="Food and dining" className="flex flex-col gap-2">
+                  <Typography as="h3" variant="label" className="text-xs">
+                    Food & Dining
+                  </Typography>
+                  <Typography variant="body-sm">{listing.food.categories.map(foodCategoryLabel).join(", ")}</Typography>
+                  <Stack direction="row" wrap gap={2}>
+                    {listing.food.serviceOptions.map((option) => (
+                      <Badge key={option} variant="outline" className="font-normal">
+                        {foodServiceLabel(option)}
+                      </Badge>
+                    ))}
+                  </Stack>
+                </section>
+              )}
+              <section aria-label="History" className="flex flex-col gap-2">
+                <Typography as="h3" variant="label" className="text-xs">
+                  History
+                </Typography>
+                <ol className="flex flex-col gap-1.5">
+                  {listing.history.map((entry, index) => (
+                    <li key={`${entry.action}-${index}`} className="text-sm">
+                      <span className="font-medium capitalize">{entry.action}</span>
+                      <span className="text-muted-foreground">
+                        {" "}
+                        · revision {entry.revision} · {entry.actorName} ({entry.actorRole}) ·{" "}
+                        {stampFormatter.format(new Date(entry.at))}
+                      </span>
+                      {entry.reason && <p className="break-words text-muted-foreground">“{entry.reason}”</p>}
+                    </li>
+                  ))}
+                </ol>
+              </section>
+            </>
+          )}
         </div>
 
         <div className="sticky bottom-0 border-t border-border bg-popover p-4">
-          {showReasonInput ? (
-            <Stack gap={2}>
-              <Label htmlFor="reject-reason">Rejection reason</Label>
-              <Textarea
-                id="reject-reason"
-                placeholder="Explain what needs to change before this listing can be approved…"
-                value={reason}
-                onChange={(e) => {
-                  setReason(e.target.value)
-                  if (reasonError) setReasonError(null)
-                }}
-                aria-invalid={!!reasonError}
-                aria-describedby={reasonError ? "reject-reason-hint reject-reason-error" : "reject-reason-hint"}
-                rows={3}
-                className="min-h-24 text-base md:text-sm"
-                autoFocus
-              />
-              <Typography id="reject-reason-hint" variant="caption">
-                At least {MIN_REASON_LENGTH} characters. The submitter will see this reason on their listing.
-              </Typography>
-              {reasonError && (
-                <Typography
-                  id="reject-reason-error"
-                  variant="caption"
-                  className="text-destructive"
-                  role="alert"
-                >
-                  {reasonError}
-                </Typography>
-              )}
-              <Stack gap={2} className="flex-col-reverse sm:flex-row sm:justify-end">
-                <Button type="button" variant="outline" className={actionClass} onClick={() => setShowReasonInput(false)}>
-                  Cancel
-                </Button>
-                <Button type="button" variant="destructive" className={actionClass} onClick={handleConfirmReject}>
-                  <XCircle />
-                  Confirm Rejection
-                </Button>
-              </Stack>
-            </Stack>
-          ) : (
-            <Stack gap={2} className="flex-col-reverse sm:flex-row sm:justify-end">
-              <Button type="button" variant="destructive" className={actionClass} onClick={() => setShowReasonInput(true)}>
-                <XCircle />
-                Reject
-              </Button>
-              <Button type="button" className={actionClass} onClick={handleApprove}>
-                <CheckCircle2 />
-                Approve
-              </Button>
-            </Stack>
-          )}
+          <Stack gap={2} className="flex-col-reverse sm:flex-row sm:justify-end">
+            <Button type="button" variant="destructive" className={actionClass} disabled aria-describedby="review-actions-note">
+              <XCircle />
+              Reject
+            </Button>
+            <Button type="button" className={actionClass} disabled aria-describedby="review-actions-note">
+              <CheckCircle2 />
+              Approve
+            </Button>
+          </Stack>
+          <Typography id="review-actions-note" variant="caption" className="mt-2 block text-muted-foreground">
+            Approve and reject are not connected yet — this view is read-only.
+          </Typography>
         </div>
       </DialogContent>
     </Dialog>

@@ -3,7 +3,12 @@ import { HOME_TITLE, SITE_DESCRIPTION, pageTitle, publicImagePath, summarize } f
 import { applySeo } from "@/seo/applySeo"
 import { businessSeo, newsSeo, propertySeo } from "@/seo/entitySeo"
 import { resolveRouteSeo } from "@/seo/routeSeo"
-import { getBusinessById, getNewsById, getPropertyById } from "@/services/search"
+import { toBusiness, toNewsArticle, toProperty } from "@/lib/api/adapters"
+import { BUSINESSES, IDS, NEWS, PROPERTIES } from "@/test/fixtures/apiFixtures"
+
+const foodBusiness = toBusiness(BUSINESSES[2])
+const newsArticle = toNewsArticle(NEWS[0])
+const propertyItem = toProperty(PROPERTIES[0])
 
 const meta = (selector: string) => document.head.querySelector(selector)?.getAttribute("content") ?? null
 
@@ -93,10 +98,9 @@ describe("route indexing rules", () => {
 
 describe("entity metadata", () => {
   it("builds a business title, description, canonical and a public-only image", () => {
-    const business = getBusinessById("business-08")
-    const seo = businessSeo(business)
-    expect(seo).toMatchObject({ title: "Karahi Junction | B-17 Portal", indexing: "index", canonicalPath: "/businesses/business-08" })
-    expect(seo.description).toContain("Desi Food in B-17, Block A")
+    const seo = businessSeo(foodBusiness)
+    expect(seo).toMatchObject({ title: "Capital Bakers | B-17 Portal", indexing: "index", canonicalPath: `/businesses/${IDS.foodExact}` })
+    expect(seo.description).toContain("Bakeries in B-17")
     expect(seo.description.length).toBeLessThanOrEqual(155)
   })
 
@@ -106,10 +110,10 @@ describe("entity metadata", () => {
   })
 
   it("uses the article image and type for news, and the sale/rent wording for property", () => {
-    const news = newsSeo(getNewsById("news-01"))
+    const news = newsSeo(newsArticle)
     expect(news.ogType).toBe("article")
     expect(news.image).toMatch(/^\/images\/news\//)
-    expect(propertySeo(getPropertyById("property-01")).description).toMatch(/for (sale|rent) in/)
+    expect(propertySeo(propertyItem).description).toMatch(/for (sale|rent) in/)
   })
 
   it("marks a missing entity noindex with a 'not found' title", () => {
@@ -145,7 +149,7 @@ describe("applySeo (document head)", () => {
   })
 
   it("uses the large Twitter card only when the page has its own image", () => {
-    applySeo(newsSeo(getNewsById("news-01")), "/news/news-01")
+    applySeo(newsSeo(newsArticle), `/news/${IDS.news}`)
     expect(meta('meta[name="twitter:card"]')).toBe("summary_large_image")
     expect(meta('meta[property="og:type"]')).toBe("article")
     expect(meta('meta[property="og:image"]')).toMatch(/\/images\/news\/.+\.jpg$/)

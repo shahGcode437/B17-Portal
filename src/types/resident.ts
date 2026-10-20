@@ -32,7 +32,8 @@ export type RequestStatus = "submitted" | "accepted" | "in-progress" | "complete
  */
 export interface ServiceRequestRecord {
   id: string
-  providerId: string
+  /** The target listing's id; absent only if that listing was hard-deleted (the name below is a snapshot). */
+  providerId?: string
   providerName: string
   service: string
   details: string
@@ -40,7 +41,19 @@ export interface ServiceRequestRecord {
   preferredDate: string
   preferredTime?: string
   notes?: string
+  /** How the requester would LIKE to be reached - a preference only; nothing is sent (DECISIONS.md, O-3). */
+  preferredContactChannel?: ContactChannel
   requestedBy: string
   submittedAt: string
   status: RequestStatus
+}
+
+export type ContactChannel = "in_app" | "whatsapp" | "phone"
+
+/** One event in a request's history, as the API reports it (who acted, by role only). */
+export interface RequestHistoryEntry {
+  fromStatus?: RequestStatus
+  toStatus: RequestStatus
+  actorRole: "requester" | "provider"
+  at: string
 }

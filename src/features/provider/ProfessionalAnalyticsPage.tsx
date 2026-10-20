@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from "react"
+import type { ReactNode } from "react"
 import { Link } from "react-router-dom"
 import { motion } from "motion/react"
 import { Lock } from "lucide-react"
@@ -12,15 +12,15 @@ import { WorkspaceSection } from "@/components/workspace/WorkspaceSection"
 import { ListingStatusBadge } from "@/features/provider/ListingStatusBadge"
 import { RequestStatusBadge } from "@/features/resident/RequestStatusBadge"
 import { RequireCapability } from "@/components/access/RequireCapability"
-import { useListingsStore, selectListingsBySubmitter } from "@/state/listingsStore"
-import { useResidentStore } from "@/state/residentStore"
+import { ReadError } from "@/components/feedback/ReadError"
+import { useLeadStatusCounts, useOwnerCounts } from "@/hooks/useWorkspaceReads"
 import { useRequireAuth } from "@/hooks/useRequireAuth"
 import { routes } from "@/config/routes"
 import { fadeUp } from "@/lib/motion"
 import type { ListingStatus } from "@/types/listing"
 import type { RequestStatus } from "@/types/resident"
 
-function CountRow({ badge, value }: { badge: ReactNode; value: number }) {
+function CountRow({ badge, value }: { badge: ReactNode; value: number | string }) {
   return (
     <Card variant="workspace" className="flex-row items-center justify-between gap-3 p-3">
       {badge}
@@ -52,40 +52,22 @@ function AnalyticsLocked() {
   )
 }
 
+const LISTING_STATUSES: ListingStatus[] = ["pending", "approved", "rejected", "archived"]
+const REQUEST_STATUSES: RequestStatus[] = ["submitted", "accepted", "in-progress", "completed", "cancelled"]
+
 /**
- * Analytics (Phase 9E — the one real gated example proving the capability
- * architecture). Content is entirely derived from the same `listingsStore`/
- * `residentStore` every other workspace page reads — real status breakdowns,
- * no invented revenue/views/conversion metrics. Gated on `analytics.basic`
- * via `RequireCapability`, the single reusable gating mechanism.
+ * Analytics (Phase 9E - the one real gated example proving the capability architecture). The
+ * numbers are the SERVER's own counts (Phase 12G): listings per moderation status from
+ * `GET /users/me/listings` and leads per status from `GET /users/me/leads` - real breakdowns, no
+ * invented revenue / views / conversion metrics. Gated on `analytics.basic` via `RequireCapability`,
+ * the single reusable gating mechanism.
  */
 function ProfessionalAnalyticsPage() {
   const user = useRequireAuth()
-  const { listings } = useListingsStore()
-  const requests = useResidentStore((state) => state.requests)
+  const listings = useOwnerCounts()
+  const leads = useLeadStatusCounts()
 
-  const breakdown = useMemo(() => {
-    if (!user) return null
-    const mine = selectListingsBySubmitter(listings, user.displayName)
-    const myProviderIds = new Set(mine.filter((l) => l.kind === "provider").map((l) => l.data.id))
-    const myLeads = requests.filter((r) => myProviderIds.has(r.providerId))
-
-    const listingStatuses: ListingStatus[] = ["pending", "approved", "rejected", "archived"]
-    const requestStatuses: RequestStatus[] = ["submitted", "accepted", "in-progress", "completed", "cancelled"]
-
-    return {
-      listingsByStatus: listingStatuses.map((status) => ({
-        status,
-        count: mine.filter((l) => l.status === status).length,
-      })),
-      leadsByStatus: requestStatuses.map((status) => ({
-        status,
-        count: myLeads.filter((r) => r.status === status).length,
-      })),
-    }
-  }, [listings, requests, user])
-
-  if (!user || !breakdown) return null
+  if (!user) return null
 
   return (
     <Container className="py-8 sm:py-12">
@@ -94,27 +76,42 @@ function ProfessionalAnalyticsPage() {
           <Stack gap={1}>
             <Typography variant="h1">Analytics</Typography>
             <Typography variant="body-sm" className="text-muted-foreground">
-              A breakdown of your own listings and leads — derived from your real data, not
-              estimated.
+              A breakdown of your own listings and leads — counted by the server, not estimated.
             </Typography>
           </Stack>
 
           <RequireCapability capability="analytics.basic" fallback={<AnalyticsLocked />}>
             <Stack gap={6}>
               <WorkspaceSection title="Listings by status">
-                <Grid cols={2} gap={2}>
-                  {breakdown.listingsByStatus.map(({ status, count }) => (
-                    <CountRow key={status} badge={<ListingStatusBadge status={status} />} value={count} />
-                  ))}
-                </Grid>
+                {listings.status === "error" ? (
+                  <ReadError error={listings.error} onRetry={listings.retry} title="Couldn't load your listing counts" />
+                ) : (
+                  <Grid cols={2} gap={2}>
+                    {LISTING_STATUSES.map((status) => (
+                      <CountRow
+                        key={status}
+                        badge={<ListingStatusBadge status={status} />}
+                        value={listings.status === "success" ? listings.data[status] : "—"}
+                      />
+                    ))}
+                  </Grid>
+                )}
               </WorkspaceSection>
 
               <WorkspaceSection title="Leads by status">
-                <Grid cols={2} gap={2}>
-                  {breakdown.leadsByStatus.map(({ status, count }) => (
-                    <CountRow key={status} badge={<RequestStatusBadge status={status} />} value={count} />
-                  ))}
-                </Grid>
+                {leads.status === "error" ? (
+                  <ReadError error={leads.error} onRetry={leads.retry} title="Couldn't load your lead counts" />
+                ) : (
+                  <Grid cols={2} gap={2}>
+                    {REQUEST_STATUSES.map((status) => (
+                      <CountRow
+                        key={status}
+                        badge={<RequestStatusBadge status={status} />}
+                        value={leads.status === "success" ? leads.data[status] : "—"}
+                      />
+                    ))}
+                  </Grid>
+                )}
               </WorkspaceSection>
             </Stack>
           </RequireCapability>

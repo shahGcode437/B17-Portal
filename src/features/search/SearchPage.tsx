@@ -16,15 +16,11 @@ import { useSearchResults } from "@/hooks/useSearchResults"
 import { useSearchSuggestions } from "@/hooks/useSearchSuggestions"
 import { useResultPreview } from "@/hooks/useResultPreview"
 import { searchTypeFilters } from "@/config/search"
-import { serviceCategories } from "@/data/serviceCategories"
 import { site } from "@/data/site"
-import {
-  FOOD_VERTICAL_LABEL,
-  foodCategoryLabel,
-  foodServiceLabel,
-  isFoodCategory,
-  isFoodServiceOption,
-} from "@/config/food"
+import { FOOD_VERTICAL_LABEL, foodServiceLabel, isFoodServiceOption } from "@/config/food"
+import { ReadError } from "@/components/feedback/ReadError"
+import { useCategories } from "@/hooks/useCategories"
+import type { CategoryModule } from "@/lib/api/dto/public"
 import type { SearchResultKind, SearchFilters, SearchSuggestion, SortOption } from "@/types/search"
 
 const VALID_TYPES = new Set(searchTypeFilters.map((f) => f.value))
@@ -69,9 +65,10 @@ function buildFilters(raw: {
   if (raw.furnished) filters.furnished = raw.furnished as SearchFilters["furnished"]
   if (raw.listingType) filters.listingType = raw.listingType as SearchFilters["listingType"]
   if (raw.propertyType) filters.propertyType = raw.propertyType
-  // Food params are validated against the canonical config: an unknown value is ignored, never trusted.
+  // The closed sets (vertical, service) are validated here: an unknown value is dropped, never sent. A Food
+  // CATEGORY is open data now (an admin can add one), so any slug goes to the server, which finds nothing for an unknown one.
   if (raw.vertical === "general" || raw.vertical === "food") filters.vertical = raw.vertical
-  if (raw.foodCategory && isFoodCategory(raw.foodCategory)) filters.foodCategory = raw.foodCategory
+  if (raw.foodCategory) filters.foodCategory = raw.foodCategory
   if (raw.service && isFoodServiceOption(raw.service)) filters.service = raw.service
   return filters
 }
@@ -129,9 +126,17 @@ function applyType(params: URLSearchParams, nextType: SearchResultKind | "all") 
   params.delete("sort")
 }
 
-function categoryChipLabel(type: SearchResultKind | "all", value: string): string {
-  if (type === "provider") return serviceCategories.find((c) => c.slug === value)?.label ?? value
-  return value
+/** Which category module a chip's slug belongs to, or `undefined` when no chip needs a lookup. */
+function chipModule(type: SearchResultKind | "all", filters: SearchFilters): CategoryModule | undefined {
+  if (filters.foodCategory) return "food"
+  if (filters.propertyType) return "property"
+  if (filters.subject) return "education"
+  if (filters.category) {
+    if (type === "provider") return "services"
+    if (type === "business") return "directory"
+    if (type === "news") return "news"
+  }
+  return undefined
 }
 
 interface ActiveChip {
@@ -170,12 +175,17 @@ function SearchPage() {
 
   const suggestions = useSearchSuggestions(inputValue, type)
   const typeFilter = searchTypeFilters.find((f) => f.value === type)
-  const { results, visibleResults, hasMore, loadMore, loading } = useSearchResults(
+  const { results, total, hasMore, loadMore, loading, loadingMore, error, moreError, retry } = useSearchResults(
     committedQuery,
     type,
     filters,
     sort
   )
+  // Chip labels use the categories' real names; the lookup is only requested when a chip needs it.
+  const neededModule = chipModule(type, filters)
+  const labels = useCategories(neededModule ?? "services", { enabled: neededModule !== undefined })
+  const nameOf = (slug: string): string =>
+    (labels.status === "success" ? labels.data.find((category) => category.slug === slug)?.name : undefined) ?? slug
 
   // Typing is debounced into the URL; Enter / picking a suggestion commit at once.
   const commitTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
@@ -292,14 +302,14 @@ function SearchPage() {
   if (filters.category) {
     activeChips.push({
       key: "category",
-      label: `Category: ${categoryChipLabel(type, filters.category)}`,
+      label: `Category: ${nameOf(filters.category)}`,
       onRemove: () => handleFiltersChange({ ...filters, category: undefined }),
     })
   }
   if (filters.subject) {
     activeChips.push({
       key: "subject",
-      label: `Subject: ${filters.subject}`,
+      label: `Subject: ${nameOf(filters.subject)}`,
       onRemove: () => handleFiltersChange({ ...filters, subject: undefined }),
     })
   }
@@ -320,7 +330,7 @@ function SearchPage() {
   if (filters.propertyType) {
     activeChips.push({
       key: "propertyType",
-      label: filters.propertyType,
+      label: nameOf(filters.propertyType),
       onRemove: () => handleFiltersChange({ ...filters, propertyType: undefined }),
     })
   }
@@ -335,7 +345,7 @@ function SearchPage() {
   if (filters.foodCategory) {
     activeChips.push({
       key: "foodCategory",
-      label: `Food category: ${foodCategoryLabel(filters.foodCategory)}`,
+      label: `Food category: ${nameOf(filters.foodCategory)}`,
       onRemove: () => handleFiltersChange({ ...filters, foodCategory: undefined }),
     })
   }
@@ -405,7 +415,7 @@ function SearchPage() {
             onSortChange={handleSortChange}
             onClear={clearFilters}
             showClear={hasActiveFilters}
-            resultCount={results.length}
+            resultCount={total}
           />
         </Stack>
 
@@ -431,19 +441,30 @@ function SearchPage() {
           </Stack>
         )}
 
-        <Typography variant="label" className="text-foreground">
+        <Typography variant="label" className="text-foreground" role="status" aria-live="polite">
           {loading
             ? "Searching…"
-            : `${results.length} result${results.length === 1 ? "" : "s"}${committedQuery ? ` for “${committedQuery}”` : ""}`}
+            : error
+              ? "Search unavailable"
+              : `${total} result${total === 1 ? "" : "s"}${committedQuery ? ` for “${committedQuery}”` : ""}`}
         </Typography>
 
-        <ResultList hits={visibleResults} loading={loading} onSelect={preview.open} empty={emptyContent} />
+        {error ? (
+          <ReadError error={error} onRetry={retry} title={error.status === 422 ? undefined : "Search is unavailable right now"} />
+        ) : (
+          <ResultList hits={results} loading={loading} onSelect={preview.open} empty={emptyContent} />
+        )}
 
-        {!loading && hasMore && (
-          <Stack align="center">
-            <Button variant="outline" onClick={loadMore}>
-              Load More
+        {!loading && !error && hasMore && (
+          <Stack align="center" gap={2}>
+            <Button variant="outline" onClick={loadMore} disabled={loadingMore}>
+              {loadingMore ? "Loading…" : "Load More"}
             </Button>
+            {moreError && (
+              <Typography variant="body-sm" role="alert" className="text-destructive">
+                Couldn't load more results. Try again.
+              </Typography>
+            )}
           </Stack>
         )}
       </Stack>

@@ -8,7 +8,9 @@ import { DetailHero } from "@/components/detail/DetailHero"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { EmptyState } from "@/components/feedback/EmptyState"
-import { getNewsById } from "@/services/search"
+import { ReadError } from "@/components/feedback/ReadError"
+import { DetailSkeleton } from "@/components/detail/ListingDetailGate"
+import { useNewsItem } from "@/hooks/useNews"
 import { useSeo } from "@/hooks/useSeo"
 import { newsSeo } from "@/seo/entitySeo"
 import { routes } from "@/config/routes"
@@ -28,8 +30,18 @@ const dateFormatter = new Intl.DateTimeFormat("en-US", {
 function NewsArticlePage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const article = id ? getNewsById(id) : undefined
+  const read = useNewsItem(id)
+  const article = read.status === "success" ? read.data : undefined
   useSeo(newsSeo(article))
+
+  if (read.status === "loading") return <DetailSkeleton />
+  if (read.status === "error" && read.error.status !== 404) {
+    return (
+      <Container className="py-16">
+        <ReadError error={read.error} onRetry={read.retry} headingLevel={1} />
+      </Container>
+    )
+  }
 
   if (!article) {
     return (
@@ -90,11 +102,6 @@ function NewsArticlePage() {
               ))}
             </Stack>
           )}
-
-          <Typography variant="caption" className="text-muted-foreground">
-            This is prototype content for demonstration purposes — not a real B-17 operational
-            announcement.
-          </Typography>
         </Stack>
       </motion.div>
     </Container>

@@ -1,10 +1,10 @@
 import { Wrench, Building2, GraduationCap, KeyRound } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
-import type { SavedItem, SavedItemKind } from "@/types/resident"
-import { getProviderById, getBusinessById, getTutorById, getPropertyById } from "@/services/search"
+import type { SavedItemKind } from "@/types/resident"
+import type { SavedEntry } from "@/lib/api/privateAdapters"
 import { providerProfilePath, businessProfilePath, tutorProfilePath, propertyDetailsPath } from "@/config/routes"
 
-/** How each saved kind is named to a resident — the domain label shown on the Saved page and Overview. */
+/** How each saved kind is named to a resident - the domain label shown on the Saved page and Overview. */
 export const SAVED_KIND_META: Record<SavedItemKind, { label: string; plural: string; icon: LucideIcon }> = {
   provider: { label: "Service", plural: "Services", icon: Wrench },
   business: { label: "Business", plural: "Businesses", icon: Building2 },
@@ -12,40 +12,59 @@ export const SAVED_KIND_META: Record<SavedItemKind, { label: string; plural: str
   property: { label: "Property", plural: "Properties", icon: KeyRound },
 }
 
-export interface ResolvedSavedItem {
-  item: SavedItem
+export interface DescribedSavedEntry {
+  entry: SavedEntry
+  kind: SavedItemKind
+  id: string
   title: string
-  /** Secondary line, built from the live item's own fields (category/subject/area) — never invented. */
+  /** Secondary line, built from the listing's own public fields (category / subject / area). */
   subtitle: string
   path: string
 }
 
 /**
- * Resolves a `{kind, id}` reference through the public `search.ts` boundary
- * (the same one the detail pages use). Returns `null` when the live item is
- * gone, so callers can skip it — the store only ever holds the reference.
+ * Titles and links for a saved entry, derived from the PUBLIC card the Saved API returned. Nothing is
+ * looked up elsewhere any more (the old version resolved a stored `{kind, id}` through local data):
+ * the server only returns listings that are still approved.
  */
-export function resolveSavedItem(item: SavedItem): ResolvedSavedItem | null {
-  if (item.kind === "provider") {
-    const provider = getProviderById(item.id)
-    return provider
-      ? { item, title: provider.name, subtitle: `${provider.categoryLabel} · ${provider.area}`, path: providerProfilePath(provider.id) }
-      : null
+export function describeSavedEntry(entry: SavedEntry): DescribedSavedEntry {
+  const { hit } = entry
+  switch (hit.kind) {
+    case "provider":
+      return {
+        entry,
+        kind: "provider",
+        id: hit.item.id,
+        title: hit.item.name,
+        subtitle: `${hit.item.categoryLabel} · ${hit.item.area}`,
+        path: providerProfilePath(hit.item.id),
+      }
+    case "business":
+      return {
+        entry,
+        kind: "business",
+        id: hit.item.id,
+        title: hit.item.name,
+        subtitle: `${hit.item.category} · ${hit.item.area}`,
+        path: businessProfilePath(hit.item.id),
+      }
+    case "tutor":
+      return {
+        entry,
+        kind: "tutor",
+        id: hit.item.id,
+        title: hit.item.name,
+        subtitle: `${hit.item.subject} · ${hit.item.area}`,
+        path: tutorProfilePath(hit.item.id),
+      }
+    case "property":
+      return {
+        entry,
+        kind: "property",
+        id: hit.item.id,
+        title: hit.item.title,
+        subtitle: `${hit.item.propertyType} · ${hit.item.area}`,
+        path: propertyDetailsPath(hit.item.id),
+      }
   }
-  if (item.kind === "business") {
-    const business = getBusinessById(item.id)
-    return business
-      ? { item, title: business.name, subtitle: `${business.category} · ${business.area}`, path: businessProfilePath(business.id) }
-      : null
-  }
-  if (item.kind === "tutor") {
-    const tutor = getTutorById(item.id)
-    return tutor
-      ? { item, title: tutor.name, subtitle: `${tutor.subject} · ${tutor.area}`, path: tutorProfilePath(tutor.id) }
-      : null
-  }
-  const property = getPropertyById(item.id)
-  return property
-    ? { item, title: property.title, subtitle: `${property.propertyType} · ${property.area}`, path: propertyDetailsPath(property.id) }
-    : null
 }

@@ -1,4 +1,4 @@
-import { MapPin, LayoutDashboard, ClipboardList, Newspaper, LogOut } from "lucide-react"
+import { MapPin, LayoutDashboard, ClipboardList, Newspaper, LogOut, Tags } from "lucide-react"
 import { Link, NavLink } from "react-router-dom"
 import { RouteOutlet } from "@/app/RouteOutlet"
 import { Container } from "@/components/foundation/Container"
@@ -14,6 +14,7 @@ import { useToast } from "@/hooks/useToast"
 const adminNav = [
   { label: "Dashboard", path: routes.adminDashboard, icon: LayoutDashboard, end: true },
   { label: "Listings", path: routes.adminModeration, icon: ClipboardList, end: false },
+  { label: "Categories", path: routes.adminCategories, icon: Tags, end: false },
   { label: "News & Updates", path: routes.adminContent, icon: Newspaper, end: false },
 ]
 

@@ -2,9 +2,9 @@ import { Container } from "@/components/foundation/Container"
 import { Grid } from "@/components/foundation/Grid"
 import { SectionHeader } from "@/components/foundation/SectionHeader"
 import { FeaturedCard } from "@/components/cards/FeaturedCard"
-import { getSponsoredCards } from "@/services/search"
+import { sponsoredCards } from "@/data/sponsored"
 
-/** Sponsored/Featured placement demo (Master Spec §7 — not a real advertiser). */
+/** Sponsored/Featured placement demo (Master Spec §7 — not a real advertiser). Static demo content: there is no advertising API, and nothing here is listing data. */
 function SponsoredSection() {
   return (
     <Container className="py-12 sm:py-16">
@@ -13,7 +13,7 @@ function SponsoredSection() {
         description="A preview of how sponsored placements will appear on B-17 Portal."
       />
       <Grid cols={2} gap={4}>
-        {getSponsoredCards().map((sponsored) => (
+        {sponsoredCards.map((sponsored) => (
           <FeaturedCard key={sponsored.id} sponsored={sponsored} />
         ))}
       </Grid>

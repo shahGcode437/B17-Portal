@@ -9,3 +9,6 @@ export const searchTypeFilters: SearchTypeFilter[] = [
   { value: "property", label: "Property", placeholder: "Search properties" },
   { value: "news", label: "News", placeholder: "Search news" },
 ]
+
+/** The shortest draft query that asks the suggestions endpoint anything (the contract answers `[]` below it). */
+export const MIN_SUGGESTION_QUERY_LENGTH = 2

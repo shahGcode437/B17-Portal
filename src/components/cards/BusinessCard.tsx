@@ -3,7 +3,6 @@ import type { Business } from "@/types/business"
 import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
 import { CardImage } from "@/components/media/CardImage"
-import { DemoBadge } from "@/components/feedback/DemoBadge"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -44,7 +43,6 @@ function BusinessCard({ business, onSelect }: BusinessCardProps) {
           <Typography variant="label" className="line-clamp-2 text-base">
             {business.name}
           </Typography>
-          <DemoBadge />
         </Stack>
         <Typography variant="body-sm" className="text-primary">
           {business.category}

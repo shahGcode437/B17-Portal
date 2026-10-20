@@ -1,5 +1,6 @@
 import { expect, test } from './helpers/test'
 import { expectPage, openApp } from './helpers/app'
+import { IDS } from '../src/test/fixtures/apiFixtures'
 
 /** Every public route must load directly from its URL (deep link / refresh / shared link) with exactly one h1. */
 const PUBLIC_ROUTES: [path: string, heading: string | RegExp][] = [
@@ -11,11 +12,12 @@ const PUBLIC_ROUTES: [path: string, heading: string | RegExp][] = [
   ['/education', /Education|Tutor/],
   ['/property', /Property/],
   ['/news', /News/],
-  ['/news/news-01', /.+/],
-  ['/businesses/business-01', 'B-17 Family Pharmacy'],
-  ['/providers/provider-solar-01', 'Sunrise Solar Solutions'],
-  ['/tutors/tutor-physics-01', /.+/],
-  ['/properties/property-01', '5 Marla House — B-17 Block C'],
+  [`/news/${IDS.news}`, 'B-17 Community Park Cleanup Drive This Weekend'],
+  [`/businesses/${IDS.generalAreaOnly}`, 'B-17 Family Pharmacy'],
+  [`/businesses/${IDS.foodExact}`, 'Capital Bakers'],
+  [`/providers/${IDS.provider}`, 'Sunrise Solar Solutions'],
+  [`/tutors/${IDS.tutorApproximate}`, 'Sara M.'],
+  [`/properties/${IDS.propertyExact}`, '5 Marla House - B-17 Block C'],
   ['/coming-soon', /.+/],
   ['/login', 'Log In'],
   ['/register', 'Create Account'],
@@ -33,6 +35,11 @@ test.describe('unknown entities are handled, not crashed', () => {
   for (const [path, heading] of [
     ['/businesses/does-not-exist', 'Business not found'],
     ['/properties/does-not-exist', 'Property not found'],
+    ['/providers/does-not-exist', /not found/i],
+    ['/tutors/does-not-exist', /not found/i],
+    ['/news/does-not-exist', 'Content not found'],
+    // A real id on the wrong route is the same "not found": each kind has one canonical route.
+    [`/businesses/${IDS.tutorApproximate}`, 'Business not found'],
   ] as const) {
     test(`${path} shows "${heading}" with one h1`, async ({ page }) => {
       await openApp(page, path, heading)

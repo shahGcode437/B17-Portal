@@ -1,55 +1,37 @@
 import { Link, useNavigate } from "react-router-dom"
 import { motion } from "motion/react"
-import { UserRound, LogOut, Wrench, Building2, KeyRound } from "lucide-react"
+import { UserRound, LogOut } from "lucide-react"
 import { Container } from "@/components/foundation/Container"
 import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { useListingsStore, selectListingsBySubmitter } from "@/state/listingsStore"
+import { ReadError } from "@/components/feedback/ReadError"
+import { useOwnerListings } from "@/hooks/useWorkspaceReads"
 import { useAuth } from "@/hooks/useAuth"
 import { useToast } from "@/hooks/useToast"
 import { VerificationNotice } from "@/features/auth/VerificationNotice"
 import { useRequireAuth } from "@/hooks/useRequireAuth"
-import { routes, providerProfilePath, businessProfilePath, propertyDetailsPath } from "@/config/routes"
+import { routes } from "@/config/routes"
 import { fadeUp } from "@/lib/motion"
-import type { PendingListing } from "@/types/listing"
-
-const kindMeta: Record<PendingListing["kind"], { label: string; icon: typeof Wrench }> = {
-  provider: { label: "Service / Professional", icon: Wrench },
-  business: { label: "Business / Shop", icon: Building2 },
-  property: { label: "Property", icon: KeyRound },
-}
-
-function listingTitle(listing: PendingListing): string {
-  return listing.kind === "property" ? listing.data.title : listing.data.name
-}
-
-function publicPathFor(listing: PendingListing): string {
-  if (listing.kind === "provider") return providerProfilePath(listing.data.id)
-  if (listing.kind === "business") return businessProfilePath(listing.data.id)
-  return propertyDetailsPath(listing.data.id)
-}
 
 /**
- * Professional Profile (Phase 9D) — uses only what demo auth and the
- * listings store actually contain: a name and the professional's own
- * submissions. No verification documents, bank info, subscription info,
- * team permissions, or analytics — those belong to later phases.
+ * Professional Profile (Phase 9D) - what the session and the account's own listings actually say:
+ * a name, an e-mail and (Phase 12G) the REAL approved listings read from `GET /users/me/listings`.
+ * No verification documents, bank info, subscription info, team permissions, or analytics - those
+ * belong to later phases.
  */
 function ProfessionalProfilePage() {
   const user = useRequireAuth()
   const { logout } = useAuth()
   const { show } = useToast()
   const navigate = useNavigate()
-  const { listings } = useListingsStore()
+  const listings = useOwnerListings("approved")
 
   if (!user) return null
 
-  const myListings = selectListingsBySubmitter(listings, user.displayName)
-  const kinds = Array.from(new Set(myListings.map((l) => l.kind)))
-  const approvedListings = myListings.filter((l) => l.status === "approved")
+  const kinds = Array.from(new Set(listings.items.map((l) => l.typeLabel)))
 
   async function handleLogout() {
     try {
@@ -77,7 +59,7 @@ function ProfessionalProfilePage() {
                 {user.displayName}
               </Typography>
               <Typography variant="body-sm" className="text-muted-foreground">
-                {user.email} · listings and leads in this workspace are local demo data for now
+                {user.email}
               </Typography>
             </Stack>
           </Card>
@@ -90,7 +72,7 @@ function ProfessionalProfilePage() {
               <Stack direction="row" wrap gap={2}>
                 {kinds.map((kind) => (
                   <Badge key={kind} variant="outline" className="gap-1 font-normal">
-                    {kindMeta[kind].label}
+                    {kind}
                   </Badge>
                 ))}
               </Stack>
@@ -101,19 +83,25 @@ function ProfessionalProfilePage() {
             <Typography as="h2" variant="label" className="font-heading text-lg font-semibold">
               Public listings
             </Typography>
-            {approvedListings.length === 0 ? (
+            {listings.loading ? (
+              <Typography variant="body-sm" role="status" className="text-muted-foreground">
+                Loading your listings…
+              </Typography>
+            ) : listings.error ? (
+              <ReadError error={listings.error} onRetry={listings.retry} title="Couldn't load your listings" />
+            ) : listings.items.length === 0 ? (
               <Typography variant="body-sm" className="text-muted-foreground">
                 None of your listings are approved and public yet.
               </Typography>
             ) : (
               <Stack gap={2}>
-                {approvedListings.map((listing) => (
+                {listings.items.map((listing) => (
                   <Link
                     key={listing.id}
-                    to={publicPathFor(listing)}
+                    to={listing.publicPath ?? routes.providerListings}
                     className="flex min-h-11 items-center break-words rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-primary shadow-subtle transition-colors hover:border-primary/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
-                    {listingTitle(listing)}
+                    {listing.title}
                   </Link>
                 ))}
               </Stack>

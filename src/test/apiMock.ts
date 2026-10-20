@@ -29,6 +29,15 @@ export const ok = (data?: unknown, status = 200): MockReply => ({
   body: data === undefined ? undefined : { data },
 })
 
+/** A list endpoint's reply: `{ data: [...], meta: { total, limit, offset, ...extra } }`. */
+export const okPage = (
+  items: unknown[],
+  meta: { total?: number; limit?: number; offset?: number } & Record<string, unknown> = {}
+): MockReply => ({
+  status: 200,
+  body: { data: items, meta: { total: items.length, limit: 50, offset: 0, ...meta } },
+})
+
 export const noContent = (): MockReply => ({ status: 204 })
 
 export const fail = (

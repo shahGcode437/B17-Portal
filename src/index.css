@@ -262,3 +262,38 @@
       }
     }
 }
+
+/* Read-only location map (Phase 12G, docs/backend/LOCATION_MAP.md §10-§11). The pin is a CSS divIcon
+   so Leaflet's default marker images (which bundlers break) are never used. Colours come from the
+   design tokens, so light and dark themes both work. */
+.b17-map-pin-wrapper {
+  background: transparent;
+  border: 0;
+}
+.b17-map-pin {
+  display: block;
+  width: 28px;
+  height: 28px;
+  box-sizing: border-box;
+  border-radius: 9999px;
+  background: var(--primary);
+  border: 4px solid var(--background);
+  box-shadow: 0 2px 6px rgb(15 23 42 / 0.35);
+}
+.b17-map-circle {
+  stroke: var(--primary);
+  stroke-width: 2px;
+  stroke-dasharray: 6 4;
+  fill: var(--primary);
+  fill-opacity: 0.14;
+}
+
+/* Touch devices: Leaflet's zoom buttons are 30-34px; give them a 44px target (WCAG 2.5.8 / platform guidance). */
+@media (pointer: coarse) {
+  .leaflet-container.leaflet-container .leaflet-bar a {
+    /* doubled class: outranks Leaflet's own `.leaflet-touch .leaflet-bar a`, whatever order the two sheets load in */
+    width: 44px;
+    height: 44px;
+    line-height: 44px;
+  }
+}

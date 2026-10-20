@@ -20,20 +20,23 @@ import { Grid } from "@/components/foundation/Grid"
 import { SectionHeader } from "@/components/foundation/SectionHeader"
 import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
-import { CategoryCard } from "@/components/cards/CategoryCard"
 import { BusinessCard } from "@/components/cards/BusinessCard"
 import { SearchBar } from "@/components/inputs/SearchBar"
 import { EmptyState } from "@/components/feedback/EmptyState"
 import { Button } from "@/components/ui/button"
-import { FOOD_CATEGORIES, FOOD_SERVICE_OPTIONS } from "@/config/food"
-import type { FoodCategorySlug, FoodServiceOption } from "@/config/food"
+import { FOOD_SERVICE_OPTIONS } from "@/config/food"
+import type { FoodServiceOption } from "@/config/food"
+import { CategoryTiles } from "@/components/cards/CategoryTiles"
+import { ReadBoundary } from "@/components/feedback/ReadBoundary"
+import { ResultCardSkeleton } from "@/components/feedback/ResultCardSkeleton"
+import { useCategories } from "@/hooks/useCategories"
+import { featuredFirst, useBusinesses } from "@/hooks/useListings"
 import { routes, businessProfilePath } from "@/config/routes"
 import { serviceIcons } from "@/features/food/foodIcons"
-import { getFoodBusinesses } from "@/services/search"
 import { fadeUp, staggerContainer, staggerItem } from "@/lib/motion"
 
-/** Purely visual icon per category. Exhaustive on purpose: adding a taxonomy category forces a choice here. */
-const categoryIcons: Record<FoodCategorySlug, LucideIcon> = {
+/** Purely visual icon per category slug; a category an admin adds later falls back to a generic one (the list itself comes from `GET /categories`). */
+const categoryIcons: Record<string, LucideIcon> = {
   restaurants: UtensilsCrossed,
   "fast-food": Sandwich,
   "biryani-rice": CookingPot,
@@ -53,7 +56,7 @@ const categoryIcons: Record<FoodCategorySlug, LucideIcon> = {
  * frozen one: type=business, vertical=food, plus optional q / foodCategory /
  * service (docs/product/FOOD_DINING.md §6).
  */
-function foodSearchPath(params: { q?: string; foodCategory?: FoodCategorySlug; service?: FoodServiceOption } = {}): string {
+function foodSearchPath(params: { q?: string; foodCategory?: string; service?: FoodServiceOption } = {}): string {
   const search = new URLSearchParams({ type: "business", vertical: "food" })
   if (params.q) search.set("q", params.q)
   if (params.foodCategory) search.set("foodCategory", params.foodCategory)
@@ -72,7 +75,8 @@ function FoodPage() {
   const [query, setQuery] = useState("")
   // Real data only: records flagged `featured` sort first (and BusinessCard shows its own Featured
   // badge for them), but the section itself is neutral — nothing is promoted that isn't flagged.
-  const foodBusinesses = getFoodBusinesses(4)
+  const categories = useCategories("food")
+  const businesses = useBusinesses(12, "food")
 
   function runSearch(value: string) {
     navigate(foodSearchPath({ q: value.trim() || undefined }))
@@ -103,24 +107,12 @@ function FoodPage() {
 
         <section aria-label="Browse by category">
           <SectionHeader title="Browse by category" />
-          <motion.div
-            initial="initial"
-            whileInView="animate"
-            viewport={{ once: true, margin: "-60px" }}
-            variants={staggerContainer}
-          >
-            <Grid cols={4} gap={4}>
-              {FOOD_CATEGORIES.map((category) => (
-                <motion.div key={category.slug} variants={staggerItem}>
-                  <CategoryCard
-                    to={foodSearchPath({ foodCategory: category.slug })}
-                    icon={categoryIcons[category.slug]}
-                    label={category.label}
-                  />
-                </motion.div>
-              ))}
-            </Grid>
-          </motion.div>
+          <CategoryTiles
+            read={categories}
+            noun="food categories"
+            iconFor={(slug) => categoryIcons[slug] ?? Utensils}
+            hrefFor={(category) => foodSearchPath({ foodCategory: category.slug })}
+          />
         </section>
 
         <section aria-label="Browse by service">
@@ -149,30 +141,43 @@ function FoodPage() {
             description="A few places to start — open one to see its details and contact it."
             viewAllPath={foodSearchPath()}
           />
-          {foodBusinesses.length === 0 ? (
-            <EmptyState
-              icon={Utensils}
-              title="No food businesses yet"
-              description="Food & Dining listings will appear here once they're available."
-              actionLabel="Browse the Directory"
-              onAction={() => navigate(routes.directory)}
-            />
-          ) : (
-            <motion.div
-              initial="initial"
-              whileInView="animate"
-              viewport={{ once: true, margin: "-60px" }}
-              variants={staggerContainer}
-            >
-              <Grid cols={4} gap={4}>
-                {foodBusinesses.map((business) => (
-                  <motion.div key={business.id} variants={staggerItem}>
-                    <BusinessCard business={business} onSelect={() => navigate(businessProfilePath(business.id))} />
-                  </motion.div>
-                ))}
-              </Grid>
-            </motion.div>
-          )}
+          <ReadBoundary
+            read={businesses}
+            errorTitle="Couldn't load food businesses"
+            loading={
+              <div role="status" aria-label="Loading food businesses">
+                <Grid cols={4} gap={4}>
+                  {Array.from({ length: 4 }).map((_, index) => (
+                    <ResultCardSkeleton key={index} />
+                  ))}
+                </Grid>
+              </div>
+            }
+            isEmpty={(page) => page.items.length === 0}
+            empty={
+              <EmptyState
+                icon={Utensils}
+                title="No food businesses yet"
+                description="Food & Dining listings will appear here once they're available."
+                actionLabel="Browse the Directory"
+                onAction={() => navigate(routes.directory)}
+              />
+            }
+          >
+            {(page) => (
+              <motion.div initial="initial" animate="animate" variants={staggerContainer}>
+                <Grid cols={4} gap={4}>
+                  {featuredFirst(page.items)
+                    .slice(0, 4)
+                    .map((business) => (
+                      <motion.div key={business.id} variants={staggerItem}>
+                        <BusinessCard business={business} onSelect={() => navigate(businessProfilePath(business.id))} />
+                      </motion.div>
+                    ))}
+                </Grid>
+              </motion.div>
+            )}
+          </ReadBoundary>
         </section>
       </Stack>
     </Container>

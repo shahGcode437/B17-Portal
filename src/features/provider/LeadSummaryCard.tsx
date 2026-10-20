@@ -5,7 +5,6 @@ import { SelectableCard } from "@/components/workspace/SelectableCard"
 import { RequestMeta } from "@/components/workspace/RequestMeta"
 import { RequestProgress } from "@/components/workspace/RequestProgress"
 import { RequestStatusBadge } from "@/features/resident/RequestStatusBadge"
-import { REQUEST_TRANSITIONS } from "@/features/provider/requestTransitions"
 
 interface LeadSummaryCardProps {
   request: ServiceRequestRecord
@@ -13,15 +12,11 @@ interface LeadSummaryCardProps {
 }
 
 /**
- * One row in "Leads" (Phase 9D) — the professional-side counterpart of
- * `RequestSummaryCard`. Same `ServiceRequestRecord`, framed for the
- * professional: who requested, not which provider. The hint line names the
- * next valid action straight from `REQUEST_TRANSITIONS` (the single source of
- * truth for the state machine), so it can never disagree with the dialog.
+ * One row in "Leads" - the professional-side counterpart of `RequestSummaryCard`. Same request view
+ * model, framed for the professional: who requested (by display name only), not which provider. It is
+ * read-only in Phase 12G; accepting, starting, completing and cancelling arrive with Phase 12H.
  */
 function LeadSummaryCard({ request, onSelect }: LeadSummaryCardProps) {
-  const [nextAction] = REQUEST_TRANSITIONS[request.status]
-
   return (
     <SelectableCard onSelect={onSelect}>
       <div className="flex items-start gap-3">
@@ -40,9 +35,6 @@ function LeadSummaryCard({ request, onSelect }: LeadSummaryCardProps) {
       </div>
       <RequestProgress status={request.status} compact />
       <RequestMeta request={request} />
-      <Typography as="span" variant="caption" className="font-medium text-foreground">
-        {nextAction ? `Next action: ${nextAction.label}` : "No further action needed"}
-      </Typography>
     </SelectableCard>
   )
 }

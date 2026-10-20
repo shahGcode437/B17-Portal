@@ -4,11 +4,8 @@ import { Grid } from "@/components/foundation/Grid"
 import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
 import { Card } from "@/components/ui/card"
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
-import { useToast } from "@/hooks/useToast"
-import { useRequireOnline } from "@/hooks/useRequireOnline"
 import { useRequireAuth } from "@/hooks/useRequireAuth"
-import { usePlanStore } from "@/state/planStore"
+import { usePlanEntitlements } from "@/hooks/useCapability"
 import { PLAN_ENTITLEMENTS } from "@/config/plans"
 import { fadeUp } from "@/lib/motion"
 import { motion } from "motion/react"
@@ -25,10 +22,6 @@ const CAPABILITY_LABELS: Record<Capability, string> = {
 
 function limitLabel(maxListings: number | null): string {
   return maxListings === null ? "Unlimited listings" : `Up to ${maxListings} listings`
-}
-
-function isPlan(value: string): value is Plan {
-  return value === "free" || value === "premium"
 }
 
 function PlanColumn({ plan, current }: { plan: Plan; current: boolean }) {
@@ -74,25 +67,14 @@ function PlanColumn({ plan, current }: { plan: Plan; current: boolean }) {
 }
 
 /**
- * Upgrade / plan comparison (Phase 9E). No pricing, no payment button, no
- * checkout flow — there is no billing system yet (Master Spec / DECISIONS.md:
- * billing is explicitly deferred). The plan switch below is a demo-only
- * control (like the rest of this prototype's "(demo)" affordances — e.g.
- * demo login, simulated WhatsApp) so the capability system is actually
- * demonstrable without pretending a real subscription exists.
+ * Upgrade / plan comparison (Phase 9E). No pricing, no payment button, no checkout flow - there is
+ * no billing system yet (Master Spec / DECISIONS.md: billing is explicitly deferred). Since Phase
+ * 12G the plan shown is the one the SERVER reports for the account; the old local demo switch is gone
+ * because it could only ever have shown a plan the server does not enforce.
  */
 function UpgradePage() {
   const user = useRequireAuth()
-  const plan = usePlanStore((state) => state.plan)
-  const setPlan = usePlanStore((state) => state.setPlan)
-  const { show } = useToast()
-  const requireOnline = useRequireOnline()
-
-  function handlePlanChange(next: string) {
-    if (!isPlan(next) || !requireOnline()) return
-    setPlan(next)
-    show(next === "premium" ? "Switched to Premium (demo)" : "Switched to Free (demo)")
-  }
+  const { plan } = usePlanEntitlements()
 
   if (!user) return null
 
@@ -114,23 +96,12 @@ function UpgradePage() {
 
           <Card variant="workspace" className="border-dashed shadow-none">
             <Stack gap={1}>
-              <Typography variant="label">Try it (demo)</Typography>
+              <Typography variant="label">Changing your plan</Typography>
               <Typography variant="body-sm" className="text-muted-foreground">
-                This is a prototype — there is no real payment or subscription. Use this switch to
-                preview what Premium unlocks in your workspace.
+                There is no payment or subscription yet, so a plan can't be changed from here. Your
+                account is on the {plan === "premium" ? "Premium" : "Free"} plan.
               </Typography>
             </Stack>
-            <ToggleGroup
-              type="single"
-              variant="outline"
-              value={plan}
-              onValueChange={handlePlanChange}
-              aria-label="Switch demo plan"
-              className="w-fit"
-            >
-              <ToggleGroupItem value="free" className="h-11 min-w-20 data-[state=on]:border-primary data-[state=on]:bg-accent data-[state=on]:font-semibold data-[state=on]:text-accent-foreground">Free</ToggleGroupItem>
-              <ToggleGroupItem value="premium" className="h-11 min-w-20 data-[state=on]:border-primary data-[state=on]:bg-accent data-[state=on]:font-semibold data-[state=on]:text-accent-foreground">Premium</ToggleGroupItem>
-            </ToggleGroup>
           </Card>
         </Stack>
       </motion.div>

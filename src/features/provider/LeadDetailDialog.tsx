@@ -1,4 +1,4 @@
-import { MapPin, CalendarDays } from "lucide-react"
+import { MapPin, CalendarDays, MessageCircle } from "lucide-react"
 import type { ServiceRequestRecord } from "@/types/resident"
 import {
   Dialog,
@@ -6,17 +6,13 @@ import {
   DialogHeader,
   DialogTitle,
   DialogDescription,
-  DialogFooter,
 } from "@/components/ui/dialog"
 import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
-import { Button } from "@/components/ui/button"
 import { RequestProgress } from "@/components/workspace/RequestProgress"
 import { RequestStatusBadge } from "@/features/resident/RequestStatusBadge"
-import { REQUEST_TRANSITIONS } from "@/features/provider/requestTransitions"
-import { useResidentStore } from "@/state/residentStore"
-import { useToast } from "@/hooks/useToast"
-import { useRequireOnline } from "@/hooks/useRequireOnline"
+import { RequestHistory } from "@/features/resident/RequestHistory"
+import { contactPreferenceLabel } from "@/config/requests"
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" })
 
@@ -26,25 +22,17 @@ interface LeadDetailDialogProps {
 }
 
 /**
- * Lead detail + manual status transitions (Phase 9D). Writes go through
- * `residentStore.updateRequestStatus` — the same record the resident's My
- * Requests reads — so both sides stay in sync with no duplicate state.
+ * Lead detail for the provider (read-only in Phase 12G). The fields come from the inbox row; the
+ * history is read from `GET /requests/{id}` when the dialog opens. The requester appears by display
+ * name only - no e-mail or phone number exists on a request. Accept / start / complete / cancel are
+ * wired to the API in Phase 12H, so this dialog offers no action that could pretend to work.
  */
 function LeadDetailDialog({ request, onOpenChange }: LeadDetailDialogProps) {
-  const updateRequestStatus = useResidentStore((state) => state.updateRequestStatus)
-  const { show } = useToast()
-  const requireOnline = useRequireOnline()
-
-  function handleTransition(next: ServiceRequestRecord["status"], label: string) {
-    if (!request || !requireOnline()) return
-    updateRequestStatus(request.id, next)
-    show(`${label}: marked as ${next.replace("-", " ")} (demo)`)
-    onOpenChange(false)
-  }
+  const preference = contactPreferenceLabel(request?.preferredContactChannel)
 
   return (
     <Dialog open={!!request} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-md">
         {request && (
           <>
             <DialogHeader>
@@ -75,6 +63,13 @@ function LeadDetailDialog({ request, onOpenChange }: LeadDetailDialogProps) {
                 </Typography>
               </Stack>
 
+              {preference && (
+                <Stack direction="row" align="center" gap={1} className="text-muted-foreground">
+                  <MessageCircle className="size-3.5 shrink-0" aria-hidden="true" />
+                  <Typography variant="body-sm">{preference}</Typography>
+                </Stack>
+              )}
+
               {request.notes && (
                 <Stack gap={1} className="rounded-lg bg-muted p-3">
                   <Typography variant="label" className="text-xs">
@@ -86,27 +81,13 @@ function LeadDetailDialog({ request, onOpenChange }: LeadDetailDialogProps) {
                 </Stack>
               )}
 
+              <RequestHistory requestId={request.id} viewerRole="provider" />
+
               <Typography variant="caption" className="text-muted-foreground">
-                This is a prototype — status changes are local to this demo session and are not
-                sent to the resident in real time (they'll see the update next time they open My
-                Requests).
+                Accepting and updating requests from here is coming soon. B-17 Portal doesn't send the
+                requester a notification yet.
               </Typography>
             </Stack>
-
-            {REQUEST_TRANSITIONS[request.status].length > 0 && (
-              <DialogFooter className="gap-2 sm:gap-2">
-                {REQUEST_TRANSITIONS[request.status].map(({ next, label }) => (
-                  <Button
-                    key={next}
-                    variant={next === "cancelled" ? "destructive" : "default"}
-                    className="h-11 flex-1"
-                    onClick={() => handleTransition(next, label)}
-                  >
-                    {label}
-                  </Button>
-                ))}
-              </DialogFooter>
-            )}
           </>
         )}
       </DialogContent>

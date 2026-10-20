@@ -10,7 +10,6 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog"
 import { CardImage } from "@/components/media/CardImage"
-import { DemoBadge } from "@/components/feedback/DemoBadge"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Stack } from "@/components/foundation/Stack"
@@ -88,7 +87,6 @@ function ResultPreviewDialog({ result, onOpenChange }: ResultPreviewDialogProps)
             <DialogHeader>
               <Stack direction="row" justify="between" align="start" gap={2}>
                 <DialogTitle>{result.title}</DialogTitle>
-                <DemoBadge />
               </Stack>
               <DialogDescription>{result.subtitle}</DialogDescription>
             </DialogHeader>

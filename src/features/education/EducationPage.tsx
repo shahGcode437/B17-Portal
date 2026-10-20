@@ -1,31 +1,20 @@
 import { motion } from "motion/react"
-import { Atom, Calculator, BookOpen, FlaskConical, GraduationCap } from "lucide-react"
-import type { LucideIcon } from "lucide-react"
 import { Container } from "@/components/foundation/Container"
-import { Grid } from "@/components/foundation/Grid"
 import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
-import { CategoryCard } from "@/components/cards/CategoryCard"
-import { getTutorSubjects } from "@/services/search"
+import { CategoryTiles } from "@/components/cards/CategoryTiles"
+import { educationIconFor } from "@/config/categoryIcons"
+import { useCategories } from "@/hooks/useCategories"
 import { routes } from "@/config/routes"
-import { staggerContainer, staggerItem, fadeUp } from "@/lib/motion"
-
-/** Icon per subject — purely visual; falls back to a generic cap for any subject not in this list. */
-const subjectIcons: Record<string, LucideIcon> = {
-  Physics: Atom,
-  Mathematics: Calculator,
-  English: BookOpen,
-  Chemistry: FlaskConical,
-}
+import { fadeUp } from "@/lib/motion"
 
 /**
- * Education landing (Master Spec Screen 12) — subject discovery into Tutor
- * Results, which reuses the existing Search page (Phase 6 audit §5) rather
- * than a second dedicated results screen. Individual tutors are first-class
- * listings here; no schools/academies are invented (Prototype Scope §10).
+ * Education landing (Master Spec Screen 12) - subject discovery from `GET /categories?module=education`
+ * into Tutor results, which reuse the Search page. Individual tutors are first-class listings; no
+ * schools or academies are invented (Prototype Scope §10).
  */
 function EducationPage() {
-  const subjects = getTutorSubjects()
+  const subjects = useCategories("education")
 
   return (
     <Container className="py-10 sm:py-16">
@@ -39,25 +28,12 @@ function EducationPage() {
         </Stack>
       </motion.div>
 
-      <motion.div
-        initial="initial"
-        whileInView="animate"
-        viewport={{ once: true, margin: "-60px" }}
-        variants={staggerContainer}
-      >
-        <Grid cols={4} gap={4}>
-          {subjects.map(({ subject, grade }) => (
-            <motion.div key={subject} variants={staggerItem}>
-              <CategoryCard
-                to={`${routes.search}?type=tutor&q=${encodeURIComponent(subject)}`}
-                icon={subjectIcons[subject] ?? GraduationCap}
-                label={subject}
-                description={grade}
-              />
-            </motion.div>
-          ))}
-        </Grid>
-      </motion.div>
+      <CategoryTiles
+        read={subjects}
+        noun="subjects"
+        iconFor={educationIconFor}
+        hrefFor={(category) => `${routes.search}?type=tutor&subject=${encodeURIComponent(category.slug)}`}
+      />
     </Container>
   )
 }

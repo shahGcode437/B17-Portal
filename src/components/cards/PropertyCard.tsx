@@ -3,7 +3,6 @@ import type { Property } from "@/types/property"
 import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
 import { CardImage } from "@/components/media/CardImage"
-import { DemoBadge } from "@/components/feedback/DemoBadge"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -44,7 +43,6 @@ function PropertyCard({ property, onSelect }: PropertyCardProps) {
           <Typography variant="label" className="line-clamp-2 text-base">
             {property.title}
           </Typography>
-          <DemoBadge />
         </Stack>
         <Typography variant="body-sm" className="font-medium text-primary">
           {property.price}

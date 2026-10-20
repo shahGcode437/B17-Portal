@@ -34,3 +34,8 @@ export function authContextValue(overrides: Partial<AuthContextValue> = {}): Aut
     ...overrides,
   }
 }
+
+/** A signed-in admin: authority comes only from the backend roles on `/auth/me`. */
+export function adminUser(): CurrentUser {
+  return testUser({ displayName: "Site Admin", roles: ["admin"] })
+}

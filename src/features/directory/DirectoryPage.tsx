@@ -1,42 +1,23 @@
 import { motion } from "motion/react"
-import { Pill, Scissors, Shirt, ShoppingBasket, Car, Cookie, Dumbbell, Building2, Utensils } from "lucide-react"
-import type { LucideIcon } from "lucide-react"
+import { Utensils } from "lucide-react"
 import { Container } from "@/components/foundation/Container"
-import { Grid } from "@/components/foundation/Grid"
 import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
 import { CategoryCard } from "@/components/cards/CategoryCard"
-import { getBusinessCategories } from "@/services/search"
+import { CategoryTiles } from "@/components/cards/CategoryTiles"
+import { directoryIconFor } from "@/config/categoryIcons"
+import { useCategories } from "@/hooks/useCategories"
 import { routes } from "@/config/routes"
-import { staggerContainer, staggerItem, fadeUp } from "@/lib/motion"
-
-/** Icon per category — purely visual; falls back to a generic building for any category not in this list. */
-const categoryIcons: Record<string, LucideIcon> = {
-  Pharmacy: Pill,
-  Hairdressing: Scissors,
-  Tailoring: Shirt,
-  Grocery: ShoppingBasket,
-  Automotive: Car,
-  Bakery: Cookie,
-  Fitness: Dumbbell,
-}
-
-/** Pairs each real business category with its display icon, in seed order. */
-function getCategoryTiles() {
-  return getBusinessCategories("general").map((category) => ({
-    category,
-    icon: categoryIcons[category] ?? Building2,
-  }))
-}
+import { fadeUp } from "@/lib/motion"
 
 /**
- * Business Directory landing (Master Spec Screen 10) — category discovery
- * into Business Results, which reuses the existing Search page (established
- * pattern from Services/Education/Property) rather than a second dedicated
- * results screen.
+ * Business Directory landing (Master Spec Screen 10) - the general-business categories from
+ * `GET /categories?module=directory`, each leading into Search (the established pattern) rather than
+ * a second results screen. Food & Dining is its own vertical (see /food): one entry here, and its
+ * categories are not repeated below.
  */
 function DirectoryPage() {
-  const categories = getCategoryTiles()
+  const categories = useCategories("directory")
 
   return (
     <Container className="py-10 sm:py-16">
@@ -50,15 +31,15 @@ function DirectoryPage() {
         </Stack>
       </motion.div>
 
-      <motion.div
-        initial="initial"
-        whileInView="animate"
-        viewport={{ once: true, margin: "-60px" }}
-        variants={staggerContainer}
-      >
-        <Grid cols={4} gap={4}>
-          {/* Food & Dining is its own vertical (see /food): one entry here, and its categories are not repeated below. */}
-          <motion.div variants={staggerItem}>
+      <CategoryTiles
+        read={categories}
+        noun="business categories"
+        iconFor={directoryIconFor}
+        hrefFor={(category) =>
+          `${routes.search}?type=business&vertical=general&category=${encodeURIComponent(category.slug)}`
+        }
+        leading={
+          <motion.div>
             <CategoryCard
               to={routes.food}
               icon={Utensils}
@@ -67,17 +48,8 @@ function DirectoryPage() {
               emphasis
             />
           </motion.div>
-          {categories.map(({ category, icon }) => (
-            <motion.div key={category} variants={staggerItem}>
-              <CategoryCard
-                to={`${routes.search}?type=business&vertical=general&q=${encodeURIComponent(category)}`}
-                icon={icon}
-                label={category}
-              />
-            </motion.div>
-          ))}
-        </Grid>
-      </motion.div>
+        }
+      />
     </Container>
   )
 }

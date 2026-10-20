@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom"
-import { MapPin, CalendarDays, Clock } from "lucide-react"
+import { MapPin, CalendarDays, Clock, MessageCircle } from "lucide-react"
 import type { ServiceRequestRecord } from "@/types/resident"
 import {
   Dialog,
@@ -14,6 +14,8 @@ import { Typography } from "@/components/foundation/Typography"
 import { Button } from "@/components/ui/button"
 import { RequestProgress } from "@/components/workspace/RequestProgress"
 import { RequestStatusBadge } from "@/features/resident/RequestStatusBadge"
+import { RequestHistory } from "@/features/resident/RequestHistory"
+import { contactPreferenceLabel } from "@/config/requests"
 import { providerProfilePath } from "@/config/routes"
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" })
@@ -29,9 +31,14 @@ interface RequestDetailDialogProps {
   onOpenChange: (open: boolean) => void
 }
 
-/** Detail view for a single resident request — Dialog-based, matching RequestServiceDialog/ResultPreviewDialog. */
+/**
+ * Detail view for a single request the resident sent (Dialog-based, matching ResultPreviewDialog).
+ * The fields come from the list row; the history is read from `GET /requests/{id}` when the dialog
+ * opens. It is read-only: the resident can cancel a request only once Phase 12H wires that action.
+ */
 function RequestDetailDialog({ request, onOpenChange }: RequestDetailDialogProps) {
   const navigate = useNavigate()
+  const preference = contactPreferenceLabel(request?.preferredContactChannel)
 
   return (
     <Dialog open={!!request} onOpenChange={onOpenChange}>
@@ -66,6 +73,13 @@ function RequestDetailDialog({ request, onOpenChange }: RequestDetailDialogProps
                 </Typography>
               </Stack>
 
+              {preference && (
+                <Stack direction="row" align="center" gap={1} className="text-muted-foreground">
+                  <MessageCircle className="size-3.5 shrink-0" aria-hidden="true" />
+                  <Typography variant="body-sm">{preference}</Typography>
+                </Stack>
+              )}
+
               {request.notes && (
                 <Stack gap={1} className="rounded-lg bg-muted p-3">
                   <Typography variant="label" className="text-xs">
@@ -77,6 +91,8 @@ function RequestDetailDialog({ request, onOpenChange }: RequestDetailDialogProps
                 </Stack>
               )}
 
+              <RequestHistory requestId={request.id} viewerRole="requester" />
+
               <Stack direction="row" align="center" gap={1} className="text-muted-foreground">
                 <Clock className="size-3.5 shrink-0" aria-hidden="true" />
                 <Typography variant="caption">
@@ -85,23 +101,25 @@ function RequestDetailDialog({ request, onOpenChange }: RequestDetailDialogProps
               </Stack>
 
               <Typography variant="caption" className="text-muted-foreground">
-                This is a prototype — the provider has not actually been notified, and status here
-                does not change automatically.
+                The provider sees your request in their dashboard. B-17 Portal doesn't send
+                notifications yet, so check back here for updates.
               </Typography>
             </Stack>
 
-            <DialogFooter>
-              <Button
-                variant="outline"
-                className="h-11 w-full"
-                onClick={() => {
-                  onOpenChange(false)
-                  navigate(providerProfilePath(request.providerId))
-                }}
-              >
-                View Provider
-              </Button>
-            </DialogFooter>
+            {request.providerId && (
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  className="h-11 w-full"
+                  onClick={() => {
+                    onOpenChange(false)
+                    navigate(providerProfilePath(request.providerId ?? ""))
+                  }}
+                >
+                  View Provider
+                </Button>
+              </DialogFooter>
+            )}
           </>
         )}
       </DialogContent>

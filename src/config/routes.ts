@@ -41,6 +41,7 @@ export const routes = {
   adminLogin: "/admin/login",
   adminDashboard: "/admin",
   adminModeration: "/admin/moderation",
+  adminCategories: "/admin/categories",
   adminContent: "/admin/content",
   adminContentNew: "/admin/content/new",
   adminContentEdit: "/admin/content/:id/edit",

@@ -1,5 +1,6 @@
 import { expect, test } from '../helpers/test'
-import { expectPage, navigateInApp, openApp, signIn } from '../helpers/app'
+import { expectPage, openApp } from '../helpers/app'
+import { IDS } from '../../src/test/fixtures/apiFixtures'
 
 /**
  * Mobile-viewport coverage (Pixel 7 profile, touch + mobile UA). Runs only in the `mobile`
@@ -20,7 +21,7 @@ test('bottom tab bar navigates between the main areas; header nav is replaced', 
 })
 
 test('no horizontal page scroll on key pages', async ({ page }) => {
-  for (const path of ['/', '/search?q=food', '/food', '/businesses/business-01', '/login']) {
+  for (const path of ['/', '/search?q=food', '/food', `/businesses/${IDS.generalAreaOnly}`, `/businesses/${IDS.foodExact}`, `/properties/${IDS.propertyExact}`, '/login']) {
     await openApp(page, path)
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
     expect(overflow, `${path} overflows horizontally by ${overflow}px`).toBeLessThanOrEqual(0)
@@ -48,45 +49,48 @@ test('Search on a phone: results, Filters sheet, Food scope, Apply', async ({ pa
   await expect(page).not.toHaveURL(/foodCategory/)
 })
 
-test('a result card opens its preview with touch, and Save stays independent', async ({ page }) => {
+test('a result card opens its preview with touch, and Save stays independent (and honest)', async ({ page }) => {
   await openApp(page, '/search?q=pharmacy&type=business', 'Search / Explore')
   const preview = page.getByRole('button', { name: 'Preview B-17 Family Pharmacy' })
   await preview.tap()
   await expect(page.getByRole('dialog', { name: 'B-17 Family Pharmacy' })).toBeVisible()
   await page.keyboard.press('Escape')
-  await page.getByRole('button', { name: 'Save B-17 Family Pharmacy' }).tap()
-  await expectPage(page, 'Log In') // Save is its own control: it did not open the preview
+  await page.getByRole('button', { name: 'Save B-17 Family Pharmacy (coming soon)' }).tap({ force: true })
+  await expect(page.getByText('Saving items is coming soon.')).toBeVisible() // its own control: it did not open the preview
+  await expect(page.getByRole('dialog')).toHaveCount(0)
 })
 
 test('detail page: Food profile shows its sections without overflow', async ({ page }) => {
-  await openApp(page, '/businesses/business-06', 'Capital Bakers')
+  await openApp(page, `/businesses/${IDS.foodExact}`, 'Capital Bakers')
   await expect(page.getByRole('heading', { name: 'Service options' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Menu highlights' })).toBeVisible()
   await expect(page.getByText('Chocolate Fudge Cake')).toBeVisible()
 })
 
-test('the Food listing form is usable on a phone: type switch, validation and fields', async ({ page }) => {
-  await openApp(page, '/')
-  await page.goto('/provider/listings/new')
-  await expectPage(page, 'Log In')
-  await signIn(page, 'Sana Baker')
-  await expectPage(page, 'List Your Business / Service / Property')
-  await page.getByRole('button', { name: /Business \/ Shop/ }).click()
-  await page.getByRole('radio', { name: /Food & Dining/ }).click()
-  await expect(page.getByRole('heading', { name: /Food & Dining details/ })).toBeVisible()
+test('the map on a phone: it fits, does not trap the page scroll, shows attribution and Get Directions', async ({ page }) => {
+  await openApp(page, `/businesses/${IDS.foodExact}`, 'Capital Bakers')
+  const map = page.getByTestId('location-map')
+  await expect(map).toHaveAttribute('data-map-status', 'ready')
+  await map.scrollIntoViewIfNeeded()
+  const box = (await map.boundingBox())!
+  const viewport = page.viewportSize()!
+  expect(box.width).toBeLessThanOrEqual(viewport.width)
+  await expect(map.locator('.leaflet-control-attribution')).toContainText('OpenStreetMap')
+  await expect(map.getByRole('button', { name: 'Zoom in' })).toBeVisible()
+  // Touch-sized controls: the zoom buttons and the directions link meet the 44px target.
+  const zoom = (await map.getByRole('button', { name: 'Zoom in' }).boundingBox())!
+  expect(Math.min(zoom.width, zoom.height)).toBeGreaterThanOrEqual(44)
+  const directions = (await page.getByRole('link', { name: /get directions/i }).boundingBox())!
+  expect(directions.height).toBeGreaterThanOrEqual(44)
 
-  await page.getByRole('button', { name: 'Preview Listing' }).click()
-  await expect(page.getByText('Choose at least one category.')).toBeVisible()
-  await page.getByRole('checkbox', { name: 'Bakeries' }).check()
-  await page.getByRole('checkbox', { name: 'Takeaway' }).check()
-  await expect(page.getByText('Choose at least one category.')).toBeHidden()
-  await page.getByRole('button', { name: 'Add menu item' }).tap()
-  await expect(page.getByLabel('Item name')).toBeFocused()
+  // One-finger drag on the map must scroll the PAGE, not pan the map (the map would trap the swipe).
+  const before = await page.evaluate(() => window.scrollY)
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+  await page.mouse.wheel(0, 200)
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(before)
 
-  // The form stays inside the viewport width.
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
   expect(overflow).toBeLessThanOrEqual(0)
-  await navigateInApp(page, '/provider/listings', 'Listings')
 })
 
 test('Log In and Create Account fit a 320px phone: no horizontal scroll, inputs at least 16px, touch-sized controls', async ({ page }) => {

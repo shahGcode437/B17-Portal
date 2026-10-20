@@ -1,84 +1,10 @@
 import { beforeEach, describe, expect, it } from "vitest"
-import {
-  isListingCountedTowardPlanLimit,
-  selectActiveListingsBySubmitter,
-  selectListingsBySubmitter,
-  useListingsStore,
-} from "@/state/listingsStore"
 import { useResidentStore } from "@/state/residentStore"
 import { businessCategoryLabel, businessTypeIcon, businessTypeLabel } from "@/features/provider/listingDisplay"
-import type { PendingListing } from "@/types/listing"
 import type { Business } from "@/types/business"
 
-function businessListing(id: string, submittedBy = "Ayesha"): PendingListing {
-  return {
-    id,
-    kind: "business",
-    status: "pending",
-    submittedAt: "2026-10-01T00:00:00.000Z",
-    submittedBy,
-    data: { id, name: `Shop ${id}`, vertical: "general", category: "Stationery", description: "A shop.", area: "B-17", tags: [] },
-  }
-}
-
-const statusOf = (id: string) => useListingsStore.getState().listings.find((l) => l.id === id)?.status
-
 beforeEach(() => {
-  useListingsStore.setState({ listings: [] })
   useResidentStore.setState({ savedItems: [], requests: [] })
-})
-
-describe("listing lifecycle (listingsStore)", () => {
-  it("moves pending → rejected (with reason) → pending again on resubmit, clearing the reason", () => {
-    const { submitListing, setStatus, resubmitListing } = useListingsStore.getState()
-    submitListing(businessListing("a"))
-    expect(statusOf("a")).toBe("pending")
-
-    setStatus("a", "rejected", "Please add more detail.")
-    const rejected = useListingsStore.getState().listings[0]
-    expect(rejected).toMatchObject({ status: "rejected", rejectionReason: "Please add more detail." })
-
-    resubmitListing("a", { ...(rejected.data as Business), name: "Shop a (edited)" })
-    const resubmitted = useListingsStore.getState().listings[0]
-    expect(resubmitted.status).toBe("pending")
-    expect(resubmitted.rejectionReason).toBeUndefined()
-    expect((resubmitted.data as Business).name).toBe("Shop a (edited)")
-    expect(useListingsStore.getState().listings).toHaveLength(1) // edited in place, never duplicated
-  })
-
-  it("approves and archives without touching other listings or the data", () => {
-    const { submitListing, setStatus, archiveListing } = useListingsStore.getState()
-    submitListing(businessListing("a"))
-    submitListing(businessListing("b"))
-    setStatus("a", "approved")
-    archiveListing("a")
-    expect(statusOf("a")).toBe("archived")
-    expect(statusOf("b")).toBe("pending")
-    expect((useListingsStore.getState().listings[0].data as Business).name).toBe("Shop a")
-  })
-})
-
-describe("quota rule", () => {
-  it("counts only pending and approved listings toward the plan limit", () => {
-    expect(isListingCountedTowardPlanLimit("pending")).toBe(true)
-    expect(isListingCountedTowardPlanLimit("approved")).toBe(true)
-    expect(isListingCountedTowardPlanLimit("rejected")).toBe(false)
-    expect(isListingCountedTowardPlanLimit("archived")).toBe(false)
-  })
-
-  it("scopes ownership by submitter and keeps archived/rejected visible in management but out of the quota", () => {
-    const { submitListing, setStatus, archiveListing } = useListingsStore.getState()
-    submitListing(businessListing("a", "Ayesha"))
-    submitListing(businessListing("b", "Ayesha"))
-    submitListing(businessListing("c", "Ayesha"))
-    submitListing(businessListing("z", "Someone Else"))
-    setStatus("b", "rejected", "reason that is long enough")
-    archiveListing("c")
-    const { listings } = useListingsStore.getState()
-    expect(selectListingsBySubmitter(listings, "Ayesha")).toHaveLength(3)
-    expect(selectActiveListingsBySubmitter(listings, "Ayesha").map((l) => l.id)).toEqual(["a"])
-    expect(selectListingsBySubmitter(listings, "Someone Else")).toHaveLength(1)
-  })
 })
 
 describe("Saved items (residentStore)", () => {

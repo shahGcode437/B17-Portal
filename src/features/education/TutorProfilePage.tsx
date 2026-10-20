@@ -1,9 +1,6 @@
 import { useNavigate, useParams } from "react-router-dom"
 import { MapPin, MessageCircle, GraduationCap, BookOpen } from "lucide-react"
-import { Container } from "@/components/foundation/Container"
 import { Typography } from "@/components/foundation/Typography"
-import { DemoBadge } from "@/components/feedback/DemoBadge"
-import { EmptyState } from "@/components/feedback/EmptyState"
 import { Button } from "@/components/ui/button"
 import { SaveButton } from "@/components/inputs/SaveButton"
 import { DetailLayout } from "@/components/detail/DetailLayout"
@@ -12,45 +9,50 @@ import { DetailSummary } from "@/components/detail/DetailSummary"
 import { DetailSection } from "@/components/detail/DetailSection"
 import { DetailFacts } from "@/components/detail/DetailFacts"
 import { DetailTagList } from "@/components/detail/DetailTagList"
-import { getTutorById } from "@/services/search"
+import { ListingDetailGate } from "@/components/detail/ListingDetailGate"
+import { LocationSection } from "@/components/location/LocationSection"
+import { useListing } from "@/hooks/useListings"
 import { useSeo } from "@/hooks/useSeo"
 import { tutorSeo } from "@/seo/entitySeo"
 import { useToast } from "@/hooks/useToast"
 import { SIMULATED_MESSAGES } from "@/lib/simulatedActions"
 import { routes } from "@/config/routes"
+import type { Tutor } from "@/types/tutor"
 
 /**
- * Public Tutor Profile (Master Spec Screen 14) — mirrors ProviderProfilePage's
- * structure. Guest-accessible, no auth gate (Master Spec §17: contact/WhatsApp
- * is guest-allowed). WhatsApp is the only CTA — no Request Service, no
- * booking, no verification/ratings beyond what the data actually contains.
+ * Public Tutor Profile (Master Spec Screen 14) - read from `GET /listings/{id}` (Phase 12G).
+ * Guest-accessible (Master Spec §17). WhatsApp is the only CTA, and it is simulated: there is no
+ * contact data, booking, or verification beyond what the listing contains.
  */
 function TutorProfilePage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const { show } = useToast()
-  const tutor = id ? getTutorById(id) : undefined
-  useSeo(tutorSeo(tutor))
+  const read = useListing("tutor", id)
 
-  if (!tutor) {
-    return (
-      <Container className="py-16">
-        <EmptyState
-          headingLevel={1}
-          icon={GraduationCap}
-          title="Tutor not found"
-          description="This tutor profile doesn't exist or may no longer be available."
-          actionLabel="Back to Education"
-          onAction={() => navigate(routes.education)}
-        />
-      </Container>
-    )
-  }
+  return (
+    <ListingDetailGate
+      read={read}
+      notFound={{
+        icon: GraduationCap,
+        title: "Tutor not found",
+        description: "This tutor profile doesn't exist or may no longer be available.",
+        actionLabel: "Back to Education",
+        onAction: () => navigate(routes.education),
+      }}
+    >
+      {(tutor) => <TutorProfile tutor={tutor} />}
+    </ListingDetailGate>
+  )
+}
+
+function TutorProfile({ tutor }: { tutor: Tutor }) {
+  const navigate = useNavigate()
+  const { show } = useToast()
+  useSeo(tutorSeo(tutor))
 
   return (
     <DetailLayout
       onBack={() => navigate(-1)}
-      notice="This is a prototype tutor listing with demo details — it does not represent a real, verified B-17 tutor."
       hero={
         <DetailHero
           src={tutor.image}
@@ -61,7 +63,6 @@ function TutorProfilePage() {
       }
       summary={
         <DetailSummary
-          badges={<DemoBadge />}
           title={tutor.name}
           facts={
             <DetailFacts
@@ -81,11 +82,14 @@ function TutorProfilePage() {
         />
       }
     >
-      <DetailSection title="About">
-        <Typography variant="body" className="break-words text-muted-foreground">
-          {tutor.bio}
-        </Typography>
-      </DetailSection>
+      {tutor.bio && (
+        <DetailSection title="About">
+          <Typography variant="body" className="break-words text-muted-foreground">
+            {tutor.bio}
+          </Typography>
+        </DetailSection>
+      )}
+      <LocationSection name={tutor.name} area={tutor.area} location={tutor.location} />
       {tutor.tags.length > 0 && (
         <DetailSection title="Subjects & focus">
           <DetailTagList tags={tutor.tags} />

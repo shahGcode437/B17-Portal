@@ -43,8 +43,8 @@ export interface PlanEntitlements {
    * `null` means no cap (Premium). This — not the `listings.extended`
    * capability above — is the single value every listing-limit check must
    * read; never hardcoded in a component. Counts only *active* listings
-   * (`isListingCountedTowardPlanLimit` in `listingsStore.ts`: pending or
-   * approved) — archived/rejected listings never consume this quota.
+   * (pending or approved) — archived/rejected listings never consume this
+   * quota. The server enforces it; the frontend only displays it (Phase 12G).
    */
   maxListings: number | null
 }

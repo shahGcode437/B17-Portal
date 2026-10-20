@@ -5,7 +5,10 @@ import { Container } from "@/components/foundation/Container"
 import { Grid } from "@/components/foundation/Grid"
 import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
+import { Button } from "@/components/ui/button"
 import { EmptyState } from "@/components/feedback/EmptyState"
+import { ReadError } from "@/components/feedback/ReadError"
+import { ResultCardSkeleton } from "@/components/feedback/ResultCardSkeleton"
 import { ProviderCard } from "@/components/cards/ProviderCard"
 import { BusinessCard } from "@/components/cards/BusinessCard"
 import { TutorCard } from "@/components/cards/TutorCard"
@@ -13,9 +16,8 @@ import { PropertyCard } from "@/components/cards/PropertyCard"
 import { WorkspaceSection } from "@/components/workspace/WorkspaceSection"
 import { ResidentNav } from "@/features/resident/ResidentNav"
 import { SAVED_KIND_META } from "@/features/resident/savedItems"
-import { useResidentStore } from "@/state/residentStore"
+import { useSaved } from "@/hooks/useResidentReads"
 import { useRequireAuth } from "@/hooks/useRequireAuth"
-import { getProviderById, getBusinessById, getTutorById, getPropertyById } from "@/services/search"
 import {
   providerProfilePath,
   businessProfilePath,
@@ -24,58 +26,42 @@ import {
   routes,
 } from "@/config/routes"
 import { fadeUp, staggerContainer, staggerItem } from "@/lib/motion"
-import type { SavedItem, SavedItemKind } from "@/types/resident"
+import type { SavedEntry } from "@/lib/api/privateAdapters"
+import type { SavedItemKind } from "@/types/resident"
 
-/** Resolves a saved reference to its live card, or `null` if the item is no longer resolvable. */
-function renderSavedItem(item: SavedItem, navigate: ReturnType<typeof useNavigate>) {
-  if (item.kind === "provider") {
-    const provider = getProviderById(item.id)
-    if (!provider) return null
-    return <ProviderCard provider={provider} onSelect={() => navigate(providerProfilePath(provider.id))} />
+function renderCard(entry: SavedEntry, navigate: ReturnType<typeof useNavigate>) {
+  const { hit } = entry
+  switch (hit.kind) {
+    case "provider":
+      return <ProviderCard provider={hit.item} onSelect={() => navigate(providerProfilePath(hit.item.id))} />
+    case "business":
+      return <BusinessCard business={hit.item} onSelect={() => navigate(businessProfilePath(hit.item.id))} />
+    case "tutor":
+      return <TutorCard tutor={hit.item} onSelect={() => navigate(tutorProfilePath(hit.item.id))} />
+    case "property":
+      return <PropertyCard property={hit.item} onSelect={() => navigate(propertyDetailsPath(hit.item.id))} />
   }
-  if (item.kind === "business") {
-    const business = getBusinessById(item.id)
-    if (!business) return null
-    return <BusinessCard business={business} onSelect={() => navigate(businessProfilePath(business.id))} />
-  }
-  if (item.kind === "tutor") {
-    const tutor = getTutorById(item.id)
-    if (!tutor) return null
-    return <TutorCard tutor={tutor} onSelect={() => navigate(tutorProfilePath(tutor.id))} />
-  }
-  const property = getPropertyById(item.id)
-  if (!property) return null
-  return <PropertyCard property={property} onSelect={() => navigate(propertyDetailsPath(property.id))} />
 }
 
 const KIND_ORDER: SavedItemKind[] = ["provider", "business", "tutor", "property"]
 
 /**
- * Resident's saved/favorite listings (Phase 9C; collection layout in Visual
- * V4). Every card is resolved live from `search.ts` at render time —
- * `savedItems` only ever stores a `{kind, id}` reference, never a copy of the
- * domain object, so this always reflects the current state of the underlying
- * listing. Grouping by kind (newest first within each) is what identifies the
- * domain; each card keeps its own Save toggle, which is also how an item is
- * removed.
+ * The resident's saved listings (Phase 9C; collection layout in Visual V4), read from `GET /saved`
+ * (Phase 12G). The server returns only listings that are still approved - a saved item that was taken
+ * down is simply absent, and returns if it is approved again - as the same public cards the rest of
+ * the site uses. Saving and removing are NOT available yet (Phase 12H), so this page is read-only and
+ * says so; the browser-local list the old version kept is no longer consulted.
  */
 function SavedPage() {
   const user = useRequireAuth()
-  const savedItems = useResidentStore((state) => state.savedItems)
-
   const navigate = useNavigate()
+  const saved = useSaved()
 
   if (!user) return null
 
-  const resolved = savedItems
-    .slice()
-    .sort((a, b) => b.savedAt.localeCompare(a.savedAt))
-    .map((item) => ({ item, node: renderSavedItem(item, navigate) }))
-    .filter((entry): entry is { item: SavedItem; node: NonNullable<typeof entry.node> } => entry.node !== null)
-
   const groups = KIND_ORDER.map((kind) => ({
     kind,
-    entries: resolved.filter(({ item }) => item.kind === kind),
+    entries: saved.items.filter((entry) => entry.hit.kind === kind),
   })).filter((group) => group.entries.length > 0)
 
   return (
@@ -87,18 +73,30 @@ function SavedPage() {
               Saved
             </Typography>
             <Typography variant="body-sm" className="text-muted-foreground">
-              {resolved.length === 0
+              {saved.loading || saved.error
                 ? "Things you save show up here."
-                : `${resolved.length} saved ${resolved.length === 1 ? "item" : "items"} — tap the heart on a card to remove it.`}
+                : saved.total === 0
+                  ? "Things you save show up here."
+                  : `${saved.total} saved ${saved.total === 1 ? "item" : "items"}. Saving and removing items is coming soon.`}
             </Typography>
           </Stack>
           <ResidentNav />
 
-          {resolved.length === 0 ? (
+          {saved.loading ? (
+            <div role="status" aria-label="Loading saved items">
+              <Grid cols={3} gap={4}>
+                {Array.from({ length: 3 }).map((_, index) => (
+                  <ResultCardSkeleton key={index} />
+                ))}
+              </Grid>
+            </div>
+          ) : saved.error ? (
+            <ReadError error={saved.error} onRetry={saved.retry} title="Couldn't load your saved items" />
+          ) : saved.items.length === 0 ? (
             <EmptyState
               icon={Heart}
               title="Nothing saved yet"
-              description="Tap the heart on any service, business, tutor or property to save it here."
+              description="Saving services, businesses, tutors and properties is coming soon. They'll show up here."
               actionLabel="Explore B-17"
               onAction={() => navigate(routes.search)}
             />
@@ -107,16 +105,28 @@ function SavedPage() {
               {groups.map(({ kind, entries }) => (
                 <WorkspaceSection key={kind} title={`${SAVED_KIND_META[kind].plural} (${entries.length})`}>
                   <motion.div initial="initial" animate="animate" variants={staggerContainer}>
-                    <Grid cols={3} gap={4} className="[&_button[aria-pressed]]:size-11">
-                      {entries.map(({ item, node }) => (
-                        <motion.div key={`${item.kind}-${item.id}`} variants={staggerItem}>
-                          {node}
+                    <Grid cols={3} gap={4}>
+                      {entries.map((entry) => (
+                        <motion.div key={`${entry.hit.kind}-${entry.hit.item.id}`} variants={staggerItem}>
+                          {renderCard(entry, navigate)}
                         </motion.div>
                       ))}
                     </Grid>
                   </motion.div>
                 </WorkspaceSection>
               ))}
+              {saved.hasMore && (
+                <Stack align="center" gap={2}>
+                  <Button variant="outline" onClick={saved.loadMore} disabled={saved.loadingMore}>
+                    {saved.loadingMore ? "Loading…" : "Load More"}
+                  </Button>
+                  {saved.moreError && (
+                    <Typography variant="body-sm" role="alert" className="text-destructive">
+                      Couldn't load more. Try again.
+                    </Typography>
+                  )}
+                </Stack>
+              )}
             </Stack>
           )}
         </Stack>

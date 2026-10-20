@@ -7,7 +7,7 @@ interface AdminStatProps {
   badge: ReactNode
   /** Accessible link name, e.g. "Pending Review listings". */
   linkLabel: string
-  value: number
+  value: number | string
   to: string
 }
 

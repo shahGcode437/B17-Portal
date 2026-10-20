@@ -1,5 +1,4 @@
 import { useNavigate } from "react-router-dom"
-import type { PendingListing } from "@/types/listing"
 import {
   Dialog,
   DialogContent,
@@ -11,72 +10,116 @@ import {
 import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
 import { Button } from "@/components/ui/button"
-import { ProviderCard } from "@/components/cards/ProviderCard"
-import { BusinessCard } from "@/components/cards/BusinessCard"
-import { PropertyCard } from "@/components/cards/PropertyCard"
+import { Skeleton } from "@/components/ui/skeleton"
+import { Badge } from "@/components/ui/badge"
+import { ReadError } from "@/components/feedback/ReadError"
 import { ListingStatusBadge } from "@/features/provider/ListingStatusBadge"
-import { FoodListingSummary } from "@/features/provider/FoodListingSummary"
-import { providerProfilePath, businessProfilePath, propertyDetailsPath } from "@/config/routes"
+import { OwnerLocationFacts } from "@/features/provider/OwnerLocationFacts"
+import { useOwnerListing } from "@/hooks/useWorkspaceReads"
+import { foodCategoryLabel, foodServiceLabel } from "@/config/food"
+import type { OwnerListingView } from "@/types/ownerListing"
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" })
 
 interface ListingPreviewDialogProps {
-  listing: PendingListing | null
+  /** The row that was opened (its fields show at once); the dialog then reads the listing afresh. */
+  listing: OwnerListingView | null
   onOpenChange: (open: boolean) => void
 }
 
 /**
- * Read-only "View" for one of the professional's own listings (Phase 9D).
- * Works for every status: pending/rejected/archived listings aren't
- * publicly resolvable yet, so this is the only way to see how they look;
- * approved listings additionally get a link to their real public page.
+ * Read-only "View" for one of the professional's own listings. It reads `GET /users/me/listings/{id}`
+ * when it opens, so what it shows - status, revision, the admin's reason for a rejection, and the
+ * location AS THE OWNER ENTERED IT - is the server's current truth, not a copy that may have gone
+ * stale. Approved listings additionally link to their real public page.
  */
 function ListingPreviewDialog({ listing, onOpenChange }: ListingPreviewDialogProps) {
   const navigate = useNavigate()
-
+  const read = useOwnerListing(listing?.id ?? null)
   if (!listing) return null
-
-  const publicPath =
-    listing.status === "approved"
-      ? listing.kind === "provider"
-        ? providerProfilePath(listing.data.id)
-        : listing.kind === "business"
-          ? businessProfilePath(listing.data.id)
-          : propertyDetailsPath(listing.data.id)
-      : null
+  const current = read.status === "success" ? read.data : listing
 
   return (
     <Dialog open={!!listing} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-md">
         <DialogHeader>
           <Stack direction="row" align="start" justify="between" gap={2}>
-            <DialogTitle>Listing Preview</DialogTitle>
-            <ListingStatusBadge status={listing.status} />
+            <DialogTitle className="min-w-0 break-words">{current.title}</DialogTitle>
+            <ListingStatusBadge status={current.status} />
           </Stack>
           <DialogDescription>
-            Submitted {dateFormatter.format(new Date(listing.submittedAt))}
+            {current.typeLabel} · {current.categoryLabel}
           </DialogDescription>
         </DialogHeader>
 
-        {listing.kind === "provider" && <ProviderCard provider={listing.data} />}
-        {listing.kind === "business" && <BusinessCard business={listing.data} />}
-        {listing.kind === "business" && <FoodListingSummary business={listing.data} />}
-        {listing.kind === "property" && <PropertyCard property={listing.data} />}
-
-        {listing.status === "rejected" && listing.rejectionReason && (
-          <Typography variant="body-sm" className="text-destructive">
-            Reason: {listing.rejectionReason}
+        <Stack gap={4} className="text-left">
+          <Typography variant="caption" className="text-muted-foreground">
+            Submitted {dateFormatter.format(new Date(current.submittedAt))} · revision {current.revision}
           </Typography>
-        )}
 
-        {publicPath && (
+          {current.status === "rejected" && current.rejectionReason && (
+            <Typography variant="body-sm" className="rounded-lg bg-destructive/5 px-3 py-2 text-destructive">
+              <span className="font-medium">Reason:</span> {current.rejectionReason}
+            </Typography>
+          )}
+
+          {current.description && (
+            <Typography variant="body-sm" className="break-words text-muted-foreground">
+              {current.description}
+            </Typography>
+          )}
+
+          {read.status === "loading" && (
+            <div role="status" aria-label="Loading listing" className="flex flex-col gap-2">
+              <Skeleton className="h-4 w-1/2" />
+              <Skeleton className="h-16 w-full" />
+            </div>
+          )}
+          {read.status === "error" && <ReadError error={read.error} onRetry={read.retry} title="Couldn't load this listing" />}
+          {read.status === "success" && (
+            <>
+              <OwnerLocationFacts location={read.data.location} area={read.data.area} />
+              {read.data.food && (
+                <section aria-label="Food and dining" className="flex flex-col gap-2">
+                  <Typography as="h3" variant="label" className="text-xs">
+                    Food & Dining
+                  </Typography>
+                  <Typography variant="body-sm">{read.data.food.categories.map(foodCategoryLabel).join(", ")}</Typography>
+                  <Stack direction="row" wrap gap={2}>
+                    {read.data.food.serviceOptions.map((option) => (
+                      <Badge key={option} variant="outline" className="font-normal">
+                        {foodServiceLabel(option)}
+                      </Badge>
+                    ))}
+                  </Stack>
+                  {read.data.food.hoursNote && (
+                    <Typography variant="body-sm" className="text-muted-foreground">
+                      {read.data.food.hoursNote}
+                    </Typography>
+                  )}
+                </section>
+              )}
+              {read.data.tags.length > 0 && (
+                <Stack direction="row" wrap gap={2}>
+                  {read.data.tags.map((tag) => (
+                    <Badge key={tag} variant="outline" className="font-normal">
+                      {tag}
+                    </Badge>
+                  ))}
+                </Stack>
+              )}
+            </>
+          )}
+        </Stack>
+
+        {current.publicPath && (
           <DialogFooter>
             <Button
               variant="outline"
               className="w-full"
               onClick={() => {
                 onOpenChange(false)
-                navigate(publicPath)
+                navigate(current.publicPath ?? "")
               }}
             >
               View Public Listing

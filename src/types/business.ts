@@ -1,4 +1,5 @@
-import type { FoodCategorySlug, FoodServiceOption } from "@/config/food"
+import type { PublicLocation } from "@/types/location"
+import type { FoodServiceOption } from "@/config/food"
 
 /** Which part of the Business Directory a business belongs to. Food & Dining is a vertical of Business, not a separate kind. */
 export type BusinessVertical = "general" | "food"
@@ -19,7 +20,10 @@ export interface MenuHighlight {
 /** Food-specific data nested on a Business whose `vertical` is "food". */
 export interface FoodProfile {
   /** 1–3 canonical slugs; the first is the primary category. */
-  categories: FoodCategorySlug[]
+  /** Category SLUGS (dynamic since Phase 12E: an admin can add one, so this is no longer a closed union). */
+  categories: string[]
+  /** slug -> the category's real NAME, when the server supplied it (the label fallback is `foodCategoryLabel`). */
+  categoryLabels?: Record<string, string>
   serviceOptions: FoodServiceOption[]
   /** Free display text (e.g. "Mon–Sun, 12 PM–11 PM") — no structured hours, no "open now". */
   hoursNote?: string
@@ -41,6 +45,8 @@ export interface Business {
   category: string
   description: string
   area: string
+  /** Where it is, as the PUBLIC may know it (Phase 12B/12G). Absent on legacy demo records. */
+  location?: PublicLocation
   image?: string
   tags: string[]
   featured?: boolean

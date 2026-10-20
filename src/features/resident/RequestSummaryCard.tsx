@@ -5,7 +5,6 @@ import { SelectableCard } from "@/components/workspace/SelectableCard"
 import { RequestMeta } from "@/components/workspace/RequestMeta"
 import { RequestProgress } from "@/components/workspace/RequestProgress"
 import { RequestStatusBadge } from "@/features/resident/RequestStatusBadge"
-import { getProviderById } from "@/services/search"
 
 interface RequestSummaryCardProps {
   request: ServiceRequestRecord
@@ -13,14 +12,11 @@ interface RequestSummaryCardProps {
 }
 
 /**
- * One row in "My Requests". Identity is the service plus the provider it was
- * sent to (name snapshot from the request, with the provider's live category
- * when it still resolves). The thin bar is a glance at where the request is;
- * the badge says it in words.
+ * One row in "My Requests". Identity is the service plus the provider it was sent to - the name is
+ * the SNAPSHOT taken when the request was made, so the row reads the same whatever later happens to
+ * the listing. The thin bar is a glance at where the request is; the badge says it in words.
  */
 function RequestSummaryCard({ request, onSelect }: RequestSummaryCardProps) {
-  const categoryLabel = getProviderById(request.providerId)?.categoryLabel
-
   return (
     <SelectableCard onSelect={onSelect}>
       <div className="flex items-start gap-3">
@@ -33,7 +29,6 @@ function RequestSummaryCard({ request, onSelect }: RequestSummaryCardProps) {
           </Typography>
           <Typography as="span" variant="body-sm" className="break-words text-muted-foreground">
             To {request.providerName}
-            {categoryLabel ? ` · ${categoryLabel}` : ""}
           </Typography>
         </div>
         <RequestStatusBadge status={request.status} />

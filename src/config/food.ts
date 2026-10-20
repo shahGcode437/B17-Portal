@@ -50,8 +50,15 @@ export function isFoodServiceOption(value: string): value is FoodServiceOption {
   return FOOD_SERVICE_OPTIONS.some((option) => option.value === value)
 }
 
-export function foodCategoryLabel(slug: FoodCategorySlug): string {
-  return FOOD_CATEGORIES.find((category) => category.slug === slug)?.label ?? slug
+/**
+ * The display label of a Food category slug. The canonical seed labels win; a slug an admin added
+ * later (Phase 12E) falls back to a readable form of the slug. Where the category's real name is
+ * known (a listing's `categories`, `GET /categories`) prefer that.
+ */
+export function foodCategoryLabel(slug: string): string {
+  const known = FOOD_CATEGORIES.find((category) => category.slug === slug)?.label
+  if (known) return known
+  return slug.replace(/-/g, " ").replace(/^./, (c) => c.toUpperCase())
 }
 
 export function foodServiceLabel(value: FoodServiceOption): string {
@@ -63,6 +70,6 @@ export function foodServiceLabel(value: FoodServiceOption): string {
  * of its PRIMARY (first) category. Seed data and the onboarding builder call
  * this instead of typing a category string, so the two can never disagree.
  */
-export function deriveFoodCategory(categories: readonly FoodCategorySlug[]): string {
+export function deriveFoodCategory(categories: readonly string[]): string {
   return categories.length > 0 ? foodCategoryLabel(categories[0]) : ""
 }

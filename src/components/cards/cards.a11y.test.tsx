@@ -2,7 +2,7 @@ import type { ReactElement } from "react"
 import { MemoryRouter } from "react-router-dom"
 import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import { BusinessCard } from "@/components/cards/BusinessCard"
 import { ProviderCard } from "@/components/cards/ProviderCard"
 import { PropertyCard } from "@/components/cards/PropertyCard"
@@ -10,8 +10,8 @@ import { TutorCard } from "@/components/cards/TutorCard"
 import { AuthContext } from "@/hooks/useAuth"
 import { authContextValue } from "@/test/authFixtures"
 import { ToastContext } from "@/hooks/useToast"
-import { getBusinessById, getProviderById, getPropertyById, getTutorById } from "@/services/search"
-import { useResidentStore } from "@/state/residentStore"
+import { toBusiness, toProperty, toProvider, toTutor } from "@/lib/api/adapters"
+import { BUSINESSES, PROPERTIES, PROVIDERS, TUTORS } from "@/test/fixtures/apiFixtures"
 import type { Business } from "@/types/business"
 import type { Property } from "@/types/property"
 import type { Provider } from "@/types/provider"
@@ -43,15 +43,10 @@ function nestedInteractive(root: HTMLElement) {
     .map((el) => `${el.tagName.toLowerCase()}[${el.getAttribute("aria-label") ?? el.textContent?.trim()}] inside ${el.parentElement?.closest(INTERACTIVE)?.tagName.toLowerCase()}`)
 }
 
-// The resident store is a module singleton: start every test with nothing saved.
-beforeEach(() => {
-  useResidentStore.setState({ savedItems: [], requests: [] })
-})
-
-const business = getBusinessById("business-08") as Business
-const provider = getProviderById("provider-construction-01") as Provider
-const tutor = getTutorById("tutor-physics-01") as Tutor
-const property = getPropertyById("property-01") as Property
+const business: Business = toBusiness(BUSINESSES[0])
+const provider: Provider = toProvider(PROVIDERS[0])
+const tutor: Tutor = toTutor(TUTORS[0])
+const property: Property = toProperty(PROPERTIES[0])
 
 const cards: { name: string; label: string; actions: RegExp[]; element: (onSelect: () => void) => ReactElement }[] = [
   { name: "BusinessCard", label: business.name, actions: [/whatsapp/i, /contact/i], element: (onSelect) => <BusinessCard business={business} onSelect={onSelect} /> },
@@ -69,7 +64,7 @@ describe.each(cards)("$name accessibility semantics", ({ label, actions, element
   it("exposes a preview control, a Save button and the action buttons as separate, named controls", () => {
     renderCard(element(vi.fn()))
     expect(screen.getByRole("button", { name: `Preview ${label}` })).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: `Save ${label}` })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: `Save ${label} (coming soon)` })).toBeInTheDocument()
     for (const action of actions) expect(screen.getByRole("button", { name: action })).toBeInTheDocument()
   })
 
@@ -89,14 +84,18 @@ describe.each(cards)("$name accessibility semantics", ({ label, actions, element
     expect(onSelect).toHaveBeenCalledTimes(3)
   })
 
-  it("keeps Save independent of the preview: saving does not open the preview", async () => {
+  it("keeps Save independent of the preview, and is honest that saving is not available yet", async () => {
     const user = userEvent.setup()
     const onSelect = vi.fn()
     const { show } = renderCard(element(onSelect))
-    await user.click(screen.getByRole("button", { name: `Save ${label}` }))
+    const save = screen.getByRole("button", { name: `Save ${label} (coming soon)` })
+    expect(save).toHaveAttribute("aria-disabled", "true")
+    await user.click(save)
     expect(onSelect).not.toHaveBeenCalled()
-    expect(show).toHaveBeenCalledWith(`Saved ${label}`)
-    expect(screen.getByRole("button", { name: `Remove ${label} from saved` })).toHaveAttribute("aria-pressed", "true")
+    // No fake success: nothing is announced as saved and the control never flips to "saved".
+    expect(show).toHaveBeenCalledWith("Saving items is coming soon.")
+    expect(show).not.toHaveBeenCalledWith(`Saved ${label}`)
+    expect(screen.queryByRole("button", { name: `Remove ${label} from saved` })).not.toBeInTheDocument()
   })
 
   it("lets keyboard users reach every control in a sensible order (preview first)", async () => {
@@ -105,7 +104,7 @@ describe.each(cards)("$name accessibility semantics", ({ label, actions, element
     await user.tab()
     expect(screen.getByRole("button", { name: `Preview ${label}` })).toHaveFocus()
     await user.tab()
-    expect(screen.getByRole("button", { name: `Save ${label}` })).toHaveFocus()
+    expect(screen.getByRole("button", { name: `Save ${label} (coming soon)` })).toHaveFocus()
   })
 })
 

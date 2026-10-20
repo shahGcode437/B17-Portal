@@ -53,6 +53,7 @@ const EditListingPage = lazyPage(() => import("@/features/provider/EditListingPa
 const AdminLoginPage = lazyPage(() => import("@/features/admin/AdminLoginPage"), "AdminLoginPage")
 const AdminDashboardPage = lazyPage(() => import("@/features/admin/AdminDashboardPage"), "AdminDashboardPage")
 const ModerationQueuePage = lazyPage(() => import("@/features/admin/ModerationQueuePage"), "ModerationQueuePage")
+const AdminCategoriesPage = lazyPage(() => import("@/features/admin/AdminCategoriesPage"), "AdminCategoriesPage")
 const ContentListPage = lazyPage(() => import("@/features/admin/ContentListPage"), "ContentListPage")
 const ContentFormPage = lazyPage(() => import("@/features/admin/ContentFormPage"), "ContentFormPage")
 
@@ -128,6 +129,7 @@ export const router = createBrowserRouter([
         children: [
           { index: true, element: <AdminDashboardPage /> },
           { path: "moderation", element: <ModerationQueuePage /> },
+          { path: "categories", element: <AdminCategoriesPage /> },
           { path: "content", element: <ContentListPage /> },
           { path: "content/new", element: <ContentFormPage /> },
           { path: "content/:id/edit", element: <ContentFormPage /> },

@@ -78,8 +78,7 @@ function Footer() {
         <Divider className="my-8" />
 
         <Typography variant="caption">
-          {site.name} is a clickable prototype. Listings, contact details and figures shown are
-          placeholder demo data, not real businesses or offers.
+          {site.name} is an early prototype. Details may change, and nothing here is a binding offer.
         </Typography>
       </Container>
     </footer>

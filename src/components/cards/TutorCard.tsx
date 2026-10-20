@@ -3,7 +3,6 @@ import type { Tutor } from "@/types/tutor"
 import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
 import { CardImage } from "@/components/media/CardImage"
-import { DemoBadge } from "@/components/feedback/DemoBadge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { CardPreviewTrigger } from "@/components/cards/CardPreviewTrigger"
@@ -37,7 +36,6 @@ function TutorCard({ tutor, onSelect }: TutorCardProps) {
           <Typography variant="label" className="line-clamp-2 text-base">
             {tutor.name}
           </Typography>
-          <DemoBadge />
         </Stack>
         <Typography variant="body-sm" className="text-primary">
           {tutor.subject} · {tutor.grade}

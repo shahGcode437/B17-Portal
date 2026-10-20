@@ -45,7 +45,13 @@ async function readJson(response: Response): Promise<unknown> {
   }
 }
 
-async function execute<T>(method: string, path: string, options: RequestOptions, retried: boolean): Promise<T> {
+/** What a successful call returns before it is narrowed: the envelope's `data` and (list endpoints) `meta`. */
+interface Envelope<T> {
+  data: T
+  meta: unknown
+}
+
+async function execute<T>(method: string, path: string, options: RequestOptions, retried: boolean): Promise<Envelope<T>> {
   const unsafe = UNSAFE_METHODS.has(method)
   const headers = new Headers({ Accept: "application/json" })
   if (options.body !== undefined) headers.set("Content-Type", "application/json")
@@ -74,8 +80,11 @@ async function execute<T>(method: string, path: string, options: RequestOptions,
 
   const parsed = await readJson(response)
   if (response.ok) {
-    if (parsed !== null && typeof parsed === "object" && "data" in parsed) return (parsed as { data: T }).data
-    return undefined as T
+    if (parsed !== null && typeof parsed === "object" && "data" in parsed) {
+      const envelope = parsed as { data: T; meta?: unknown }
+      return { data: envelope.data, meta: envelope.meta }
+    }
+    return { data: undefined as T, meta: undefined }
   }
 
   const error = errorFromBody(response.status, parsed, response.headers.get("X-Request-ID"))
@@ -90,6 +99,43 @@ async function execute<T>(method: string, path: string, options: RequestOptions,
   throw error
 }
 
-export function apiRequest<T>(method: string, path: string, options: RequestOptions = {}): Promise<T> {
-  return execute<T>(method.toUpperCase(), path, options, false)
+export async function apiRequest<T>(method: string, path: string, options: RequestOptions = {}): Promise<T> {
+  return (await execute<T>(method.toUpperCase(), path, options, false)).data
+}
+
+/** Pagination metadata of a list endpoint (`API_CONTRACT.md` §4): the TRUE total, never the page length. */
+export interface PageMeta {
+  total: number
+  limit: number
+  offset: number
+}
+
+export interface Page<T> {
+  items: T[]
+  meta: PageMeta
+  /** Extra list metadata an endpoint adds next to the page numbers (e.g. status `counts`), untouched. */
+  extra: Record<string, unknown>
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+/**
+ * A list endpoint: `{ data: T[], meta: { total, limit, offset, … } }`. A response without a valid
+ * `meta` is treated as a protocol failure rather than guessed at (no faked totals).
+ */
+export async function apiRequestPage<T>(method: string, path: string, options: RequestOptions = {}): Promise<Page<T>> {
+  const { data, meta } = await execute<T[]>(method.toUpperCase(), path, options, false)
+  if (
+    !Array.isArray(data) ||
+    !isRecord(meta) ||
+    typeof meta.total !== "number" ||
+    typeof meta.limit !== "number" ||
+    typeof meta.offset !== "number"
+  ) {
+    throw new ApiError({ status: 200, code: "invalid_response", message: "The server returned an unexpected response." })
+  }
+  const { total, limit, offset, ...extra } = meta
+  return { items: data, meta: { total, limit, offset }, extra }
 }

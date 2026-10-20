@@ -1,6 +1,7 @@
 import { expect, test } from './helpers/test'
 import { expectPage, expectRobots, metaContent, openApp, pushInApp, signIn } from './helpers/app'
 import { enterAdmin } from './helpers/workspace'
+import { IDS } from '../src/test/fixtures/apiFixtures'
 
 test.describe('indexable public pages', () => {
   test('Home: real title and description, indexable, canonical to "/"', async ({ page, baseURL }) => {
@@ -13,7 +14,7 @@ test.describe('indexable public pages', () => {
   })
 
   test('a business detail page uses the business name in title and social tags', async ({ page }) => {
-    await openApp(page, '/businesses/business-01', 'B-17 Family Pharmacy')
+    await openApp(page, `/businesses/${IDS.generalAreaOnly}`, 'B-17 Family Pharmacy')
     await expect(page).toHaveTitle('B-17 Family Pharmacy | B-17 Portal')
     await expectRobots(page, null)
     expect(await metaContent(page, 'og:title')).toBe('B-17 Family Pharmacy | B-17 Portal')
@@ -21,7 +22,7 @@ test.describe('indexable public pages', () => {
   })
 
   test('a provider detail page uses the provider name', async ({ page }) => {
-    await openApp(page, '/providers/provider-solar-01', 'Sunrise Solar Solutions')
+    await openApp(page, `/providers/${IDS.provider}`, 'Sunrise Solar Solutions')
     await expect(page).toHaveTitle('Sunrise Solar Solutions | B-17 Portal')
     await expectRobots(page, null)
   })

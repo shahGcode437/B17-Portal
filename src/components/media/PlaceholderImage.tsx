@@ -27,7 +27,7 @@ function PlaceholderImage({
 }: PlaceholderImageProps) {
   return (
     <div
-      {...(decorative ? { "aria-hidden": true } : { role: "img", "aria-label": `Demo image placeholder for ${label}` })}
+      {...(decorative ? { "aria-hidden": true } : { role: "img", "aria-label": `No photo available for ${label}` })}
       className={cn(
         "flex aspect-video w-full items-center justify-center rounded-lg",
         tone === "primary" ? "bg-accent text-accent-foreground" : "bg-secondary text-muted-foreground",

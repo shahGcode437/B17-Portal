@@ -1,10 +1,6 @@
-import { useEffect, useState } from "react"
-import { useParams, useNavigate, useLocation } from "react-router-dom"
+import { useNavigate, useParams } from "react-router-dom"
 import { MapPin, MessageCircle, Wrench } from "lucide-react"
-import { Container } from "@/components/foundation/Container"
 import { Typography } from "@/components/foundation/Typography"
-import { DemoBadge } from "@/components/feedback/DemoBadge"
-import { EmptyState } from "@/components/feedback/EmptyState"
 import { Button } from "@/components/ui/button"
 import { SaveButton } from "@/components/inputs/SaveButton"
 import { DetailLayout } from "@/components/detail/DetailLayout"
@@ -14,127 +10,99 @@ import { DetailSection } from "@/components/detail/DetailSection"
 import { DetailFacts } from "@/components/detail/DetailFacts"
 import { DetailTagList } from "@/components/detail/DetailTagList"
 import { FeaturedBadge } from "@/components/detail/FeaturedBadge"
-import { getProviderById } from "@/services/search"
+import { ListingDetailGate } from "@/components/detail/ListingDetailGate"
+import { LocationSection } from "@/components/location/LocationSection"
+import { useListing } from "@/hooks/useListings"
 import { useSeo } from "@/hooks/useSeo"
 import { providerSeo } from "@/seo/entitySeo"
 import { useToast } from "@/hooks/useToast"
-import { useAuth } from "@/hooks/useAuth"
 import { SIMULATED_MESSAGES } from "@/lib/simulatedActions"
 import { routes } from "@/config/routes"
-import { RequestServiceDialog } from "@/features/services/RequestServiceDialog"
-
-interface ProviderLocationState {
-  openRequestFor?: string
-}
+import type { Provider } from "@/types/provider"
 
 /**
- * Public Provider Profile (UI/UX Spec §11). Trust/experience/verification
- * rows are intentionally omitted — nothing here is backed by a real process
- * (Master Spec §9, §19). WhatsApp is simulated for every visitor; Request
- * Service is gated behind the simulated auth session (Phase 3B).
+ * Public Provider Profile (UI/UX Spec §11) - read from `GET /listings/{id}` (Phase 12G). Trust /
+ * experience / verification rows are intentionally omitted: nothing here is backed by a real
+ * process (Master Spec §9, §19). WhatsApp stays simulated.
+ *
+ * "Request Service" is NOT available yet: the requests API exists (Phase 12F) but the form is wired
+ * to it in Phase 12H, and the old demo dialog only pretended to record a request. Until then the
+ * button is disabled and says why, rather than reporting a success that was never persisted.
  */
 function ProviderProfilePage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const location = useLocation()
-  const { show } = useToast()
-  const { user } = useAuth()
-  const [isRequestOpen, setIsRequestOpen] = useState(false)
-  const provider = id ? getProviderById(id) : undefined
-  useSeo(providerSeo(provider))
-
-  // Resume an interrupted Request Service intent after returning from login.
-  // Clearing the location state below makes this effect's second run a
-  // no-op, so it's safe to depend on the full, real set of values it reads.
-  useEffect(() => {
-    const state = location.state as ProviderLocationState | null
-    if (provider && state?.openRequestFor === provider.id) {
-      setIsRequestOpen(true)
-      navigate(location.pathname, { replace: true, state: null })
-    }
-  }, [provider, location.pathname, location.state, navigate])
-
-  function handleRequestService() {
-    if (!provider) return
-    if (!user) {
-      navigate(routes.login, {
-        state: { from: location.pathname, providerId: provider.id },
-      })
-      return
-    }
-    setIsRequestOpen(true)
-  }
-
-  if (!provider) {
-    return (
-      <Container className="py-16">
-        <EmptyState
-          headingLevel={1}
-          icon={Wrench}
-          title="Provider not found"
-          description="This provider listing doesn't exist or may no longer be available."
-          actionLabel="Back to Search"
-          onAction={() => navigate(routes.search)}
-        />
-      </Container>
-    )
-  }
+  const read = useListing("provider", id)
 
   return (
-    <>
-      <DetailLayout
-        onBack={() => navigate(-1)}
-        notice="This is a prototype listing with demo details — it does not represent a real, verified B-17 provider."
-        hero={
-          <DetailHero
-            src={provider.image}
-            icon={Wrench}
-            label={provider.name}
-            badges={provider.featured && <FeaturedBadge />}
-            action={<SaveButton kind="provider" id={provider.id} name={provider.name} />}
-          />
-        }
-        summary={
-          <DetailSummary
-            badges={<DemoBadge />}
-            title={provider.name}
-            subtitle={provider.categoryLabel}
-            facts={<DetailFacts facts={[{ icon: MapPin, label: "Coverage area", value: provider.area, wide: true }]} />}
-            actions={
-              <>
-                <Button size="lg" className="w-full" onClick={handleRequestService}>
-                  Request Service
-                </Button>
-                <Button size="lg" variant="outline" className="w-full" onClick={() => show(SIMULATED_MESSAGES.whatsapp)}>
-                  <MessageCircle />
-                  Contact on WhatsApp
-                </Button>
-              </>
-            }
-          />
-        }
-      >
+    <ListingDetailGate
+      read={read}
+      notFound={{
+        icon: Wrench,
+        title: "Provider not found",
+        description: "This provider listing doesn't exist or may no longer be available.",
+        actionLabel: "Back to Search",
+        onAction: () => navigate(routes.search),
+      }}
+    >
+      {(provider) => <ProviderProfile provider={provider} />}
+    </ListingDetailGate>
+  )
+}
+
+function ProviderProfile({ provider }: { provider: Provider }) {
+  const navigate = useNavigate()
+  const { show } = useToast()
+  useSeo(providerSeo(provider))
+
+  return (
+    <DetailLayout
+      onBack={() => navigate(-1)}
+      hero={
+        <DetailHero
+          src={provider.image}
+          icon={Wrench}
+          label={provider.name}
+          badges={provider.featured && <FeaturedBadge />}
+          action={<SaveButton kind="provider" id={provider.id} name={provider.name} />}
+        />
+      }
+      summary={
+        <DetailSummary
+          title={provider.name}
+          subtitle={provider.categoryLabel}
+          facts={<DetailFacts facts={[{ icon: MapPin, label: "Coverage area", value: provider.area, wide: true }]} />}
+          actions={
+            <>
+              <Button size="lg" className="w-full" disabled aria-describedby="request-service-note">
+                Request Service
+              </Button>
+              <Typography id="request-service-note" variant="caption">
+                Sending requests is coming soon.
+              </Typography>
+              <Button size="lg" variant="outline" className="w-full" onClick={() => show(SIMULATED_MESSAGES.whatsapp)}>
+                <MessageCircle />
+                Contact on WhatsApp
+              </Button>
+            </>
+          }
+        />
+      }
+    >
+      {provider.description && (
         <DetailSection title="About">
           <Typography variant="body" className="break-words text-muted-foreground">
             {provider.description}
           </Typography>
         </DetailSection>
-        {provider.tags.length > 0 && (
-          <DetailSection title="Services offered">
-            <DetailTagList tags={provider.tags} />
-          </DetailSection>
-        )}
-      </DetailLayout>
-
-      {user && (
-        <RequestServiceDialog
-          provider={provider}
-          requesterName={user.displayName}
-          open={isRequestOpen}
-          onOpenChange={setIsRequestOpen}
-        />
       )}
-    </>
+      <LocationSection name={provider.name} area={provider.area} location={provider.location} title="Coverage area" />
+      {provider.tags.length > 0 && (
+        <DetailSection title="Services offered">
+          <DetailTagList tags={provider.tags} />
+        </DetailSection>
+      )}
+    </DetailLayout>
   )
 }
 

@@ -1,17 +1,18 @@
-import { motion } from "motion/react"
 import { Container } from "@/components/foundation/Container"
-import { Grid } from "@/components/foundation/Grid"
 import { SectionHeader } from "@/components/foundation/SectionHeader"
-import { CategoryCard } from "@/components/cards/CategoryCard"
-import { serviceCategories } from "@/data/serviceCategories"
+import { CategoryTiles } from "@/components/cards/CategoryTiles"
+import { serviceIconFor } from "@/config/categoryIcons"
+import { useCategories } from "@/hooks/useCategories"
 import { routes } from "@/config/routes"
-import { staggerContainer, staggerItem } from "@/lib/motion"
 
 /**
- * Construction/Home Services categories (Project Overview §4) — the
- * client's initial supply focus, given strong homepage prominence.
+ * Construction/Home Services categories (Project Overview §4) - the client's initial supply focus,
+ * given strong homepage prominence. The tiles are the active service categories from
+ * `GET /categories`, so an admin-added or deactivated category is reflected here without a code change.
  */
 function ConstructionServices() {
+  const categories = useCategories("services")
+
   return (
     <section className="bg-secondary/30">
       <Container className="py-12 sm:py-16">
@@ -20,25 +21,14 @@ function ConstructionServices() {
           description="Our strongest local supply — construction and home-related providers."
           viewAllPath={routes.services}
         />
-        <motion.div
-          initial="initial"
-          whileInView="animate"
-          viewport={{ once: true, margin: "-80px" }}
-          variants={staggerContainer}
-        >
-          <Grid cols={5} gap={3}>
-            {serviceCategories.map((category) => (
-              <motion.div key={category.slug} variants={staggerItem}>
-                <CategoryCard
-                  to={`${routes.search}?type=provider&q=${encodeURIComponent(category.label)}`}
-                  icon={category.icon}
-                  label={category.label}
-                  compact
-                />
-              </motion.div>
-            ))}
-          </Grid>
-        </motion.div>
+        <CategoryTiles
+          read={categories}
+          noun="service categories"
+          cols={5}
+          compact
+          iconFor={serviceIconFor}
+          hrefFor={(category) => `${routes.search}?type=provider&category=${encodeURIComponent(category.slug)}`}
+        />
       </Container>
     </section>
   )

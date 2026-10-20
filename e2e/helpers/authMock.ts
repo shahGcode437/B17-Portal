@@ -1,4 +1,5 @@
 import type { Page, Route } from '@playwright/test'
+import { routeRead } from '../../src/test/fixtures/readRouter'
 
 /**
  * A deterministic stand-in for the FastAPI authentication endpoints (Phase 12C), installed per test
@@ -7,6 +8,11 @@ import type { Page, Route } from '@playwright/test'
  * state held "server side" (it survives page reloads, like an HttpOnly cookie), the real
  * `{data}` / `{error}` envelopes, `/auth/me` returning a CSRF token, CSRF enforced on authenticated
  * unsafe calls, and the documented status codes. Nothing here reaches Google or any real service.
+ *
+ * Phase 12G: the same object also answers every READ endpoint (public discovery and the signed-in
+ * owner / admin / saved / request reads) from `src/test/fixtures/readRouter.ts` - the contract the
+ * Vitest layer uses - and fulfils map tile requests with a 1x1 PNG, so no spec ever contacts
+ * OpenStreetMap. `tileRequests` records every tile URL the page asked for.
  */
 
 export const PASSWORD = 'correct horse battery'
@@ -30,9 +36,17 @@ export interface RecordedCall {
 
 const GOOGLE_CONSENT_PATH = '/__fake-google/consent'
 
+// A 1x1 transparent PNG: what every map tile request is answered with.
+const BLANK_TILE = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+  'base64'
+)
+
 export class AuthMock {
   readonly accounts = new Map<string, MockAccount>()
   readonly calls: RecordedCall[] = []
+  /** Every map-tile URL the page requested (answered locally, never from the network). */
+  readonly tileRequests: string[] = []
   /** The "server session": which account is signed in, and its CSRF token. */
   session: { email: string; csrf: string } | null = null
   googleEnabled = true
@@ -62,6 +76,10 @@ export class AuthMock {
   /** The routes the frontend uses, answered from this object's state. */
   async install(page: Page): Promise<void> {
     await page.route('**/api/v1/**', (route) => this.handle(route))
+    await page.route('https://tile.openstreetmap.org/**', (route) => {
+      this.tileRequests.push(route.request().url())
+      return route.fulfill({ status: 200, contentType: 'image/png', body: BLANK_TILE })
+    })
     await page.route(`**${GOOGLE_CONSENT_PATH}**`, (route) => this.googleConsent(route))
   }
 
@@ -162,8 +180,11 @@ export class AuthMock {
         this.googleReturnTo = String(body?.returnTo ?? '/')
         return data({ authorizationUrl: `${this.origin}${GOOGLE_CONSENT_PATH}?state=fake` })
       }
-      default:
-        return error(404, 'not_found')
+      default: {
+        const account = this.current()
+        const read = routeRead(method, path, new URL(request.url()).searchParams, account ? { roles: account.roles } : null)
+        return read ? reply(read.status, read.body) : error(404, 'not_found')
+      }
     }
   }
 
