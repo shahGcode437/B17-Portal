@@ -74,7 +74,7 @@ def test_there_is_no_delete_no_module_endpoint_no_role_management_and_no_later_s
     assert not any(
         later in path
         for path in document["paths"]
-        for later in ("/saved", "/requests", "/leads", "/media", "/upload")
+        for later in ("/media", "/upload", "/notifications", "/payments", "/chat")
     )
 
 

@@ -65,7 +65,7 @@ def test_a_fresh_database_upgrades_to_head(scratch_url: str) -> None:
     command.upgrade(alembic_config(scratch_url), "head")
 
     assert tables(scratch_url) == EXPECTED_TABLES | {"alembic_version"}
-    assert version(scratch_url) == "0005"
+    assert version(scratch_url) == "0006"
 
 
 def test_it_downgrades_to_base_and_upgrades_again(scratch_url: str) -> None:
@@ -90,8 +90,9 @@ def test_the_models_and_the_migrations_have_not_drifted(scratch_url: str) -> Non
 def test_there_is_a_single_linear_migration_history(scratch_url: str) -> None:
     script = ScriptDirectory.from_config(alembic_config(scratch_url))
 
-    assert script.get_heads() == ["0005"]
+    assert script.get_heads() == ["0006"]
     assert [revision.revision for revision in script.walk_revisions()] == [
+        "0006",
         "0005",
         "0004",
         "0003",
@@ -164,7 +165,7 @@ def test_0002_downgrades_cleanly_to_0001_and_upgrades_again(scratch_url: str) ->
     assert "search_document" not in columns(scratch_url, "listings")
     assert "pg_trgm" not in extensions(scratch_url)
     command.upgrade(config, "head")
-    assert version(scratch_url) == "0005"
+    assert version(scratch_url) == "0006"
     command.check(config)
 
 
@@ -251,7 +252,7 @@ def test_0003_downgrades_to_0002_and_upgrades_again(scratch_url: str) -> None:
     assert tables(scratch_url).isdisjoint(AUTH_TABLES)
     assert "ck_users_email_normalized" not in user_checks(scratch_url)
     command.upgrade(config, "head")
-    assert version(scratch_url) == "0005"
+    assert version(scratch_url) == "0006"
     assert tables(scratch_url) >= AUTH_TABLES
 
 
@@ -357,7 +358,7 @@ def test_0004_downgrades_to_0003_and_upgrades_again(scratch_url: str) -> None:
         scratch_url, "auth_identities"
     )
     command.upgrade(config, "head")
-    assert version(scratch_url) == "0005" and "oauth_flows" in tables(scratch_url)
+    assert version(scratch_url) == "0006" and "oauth_flows" in tables(scratch_url)
 
 
 def test_0004_refuses_to_run_over_duplicate_provider_identities(scratch_url: str) -> None:
@@ -531,6 +532,7 @@ def test_0005_leaves_populated_0004_listings_untouched_as_area_only_legacy_rows(
     assert location == [("area_only", None, None, None, None, None, None, None)] * len(before)
     # legacy Properties (no point) survive; no per-kind rule was added to the database
     assert rows(scratch_url, "SELECT count(*) FROM listings WHERE kind = 'property'") == [(2,)]
+    command.upgrade(config, "head")
     command.check(config)
 
 
@@ -558,7 +560,7 @@ def test_0005_downgrades_to_0004_and_reupgrades_without_touching_listings(
 
     command.upgrade(config, "head")
 
-    assert version(scratch_url) == "0005" and listing_snapshot(scratch_url) == before
+    assert version(scratch_url) == "0006" and listing_snapshot(scratch_url) == before
     command.check(config)
 
 
@@ -582,3 +584,169 @@ def test_0005_is_ddl_only_with_no_data_statement_extension_or_index(scratch_url:
     command.upgrade(config, "0005")
     assert listing_indexes(scratch_url) == indexes_before  # no coordinate / block index (yet)
     assert extensions(scratch_url) == extensions_before  # no PostGIS
+
+
+# -- 0006: service requests (docs/backend/DATA_MODEL.md §16, API_CONTRACT.md §13) ------------------
+
+NEW_TABLES = {"service_requests", "service_request_status_history"}
+#: Tables whose rows a populated 0005 database holds; 0006 must leave every one byte-identical.
+EXISTING_DATA = {
+    "users": "SELECT id, email, display_name, status, created_at FROM users ORDER BY id",
+    "listings": f"SELECT {LEGACY_COLUMNS} FROM listings ORDER BY title",
+    "saved_items": "SELECT user_id, listing_id, created_at FROM saved_items ORDER BY listing_id",
+    "categories": "SELECT id, module, slug, name FROM categories ORDER BY slug",
+}
+
+
+def seed_0005_world(url: str) -> None:
+    """A populated 0005 database: legacy listings, a user, a category and saved items."""
+    seed_legacy_listings(url)
+    engine = create_engine(url)
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO categories (id, module, slug, name, display_order, is_active) "
+                    "VALUES (gen_random_uuid(), 'services', 'plumbing', 'Plumbing', 1, true)"
+                )
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO saved_items (user_id, listing_id) "
+                    "SELECT u.id, l.id FROM users u CROSS JOIN listings l "
+                    "WHERE l.status = 'approved'"
+                )
+            )
+    finally:
+        engine.dispose()
+
+
+def existing_data(url: str) -> dict[str, list[tuple[object, ...]]]:
+    return {table: rows(url, sql) for table, sql in EXISTING_DATA.items()}
+
+
+def column_map(url: str) -> dict[str, set[str]]:
+    """``table -> columns`` for every table that is not new in 0006."""
+    found: dict[str, set[str]] = {}
+    for table, column in rows(
+        url,
+        "SELECT table_name, column_name FROM information_schema.columns "
+        "WHERE table_schema = 'public'",
+    ):
+        if str(table) not in NEW_TABLES:
+            found.setdefault(str(table), set()).add(str(column))
+    return found
+
+
+def test_0006_adds_exactly_the_two_tables_and_changes_no_other_table(scratch_url: str) -> None:
+    config = alembic_config(scratch_url)
+    command.upgrade(config, "0005")
+    tables_before, columns_before = tables(scratch_url), column_map(scratch_url)
+    assert not NEW_TABLES & tables_before
+
+    command.upgrade(config, "0006")
+
+    assert tables(scratch_url) - tables_before == NEW_TABLES
+    assert column_map(scratch_url) == columns_before  # not one column added to or dropped elsewhere
+    assert version(scratch_url) == "0006"
+    command.check(config)  # the models and the migration agree
+
+
+def test_0006_keeps_every_existing_row_of_a_populated_0005_database(scratch_url: str) -> None:
+    """THE regression test: users, listings, saved items and categories survive unchanged."""
+    config = alembic_config(scratch_url)
+    command.upgrade(config, "0005")
+    seed_0005_world(scratch_url)
+    before = existing_data(scratch_url)
+    assert all(before.values()), before  # the world really is populated
+
+    command.upgrade(config, "0006")
+
+    assert existing_data(scratch_url) == before
+    assert rows(scratch_url, "SELECT count(*) FROM service_requests") == [(0,)]  # nothing invented
+
+
+def test_0006_foreign_keys_and_checks_are_the_designed_ones(scratch_url: str) -> None:
+    command.upgrade(alembic_config(scratch_url), "0006")
+
+    delete_rules = {
+        (str(table), str(column)): str(rule)
+        for table, column, rule in rows(
+            scratch_url,
+            "SELECT c.conrelid::regclass::text, a.attname::text, c.confdeltype::text "
+            "FROM pg_constraint c JOIN pg_attribute a "
+            "ON a.attrelid = c.conrelid AND a.attnum = ANY(c.conkey) "
+            "WHERE c.contype = 'f' AND c.conrelid::regclass::text IN "
+            "('service_requests', 'service_request_status_history')",
+        )
+    }
+    assert delete_rules == {
+        ("service_requests", "requester_id"): "r",  # RESTRICT: a requester is never orphaned
+        ("service_requests", "provider_listing_id"): "n",  # SET NULL: history outlives a listing
+        ("service_request_status_history", "request_id"): "c",  # CASCADE with its request
+        ("service_request_status_history", "actor_user_id"): "r",  # RESTRICT: valid actor forever
+    }
+    checks = {
+        str(name): validated
+        for name, validated in rows(
+            scratch_url,
+            "SELECT conname, convalidated FROM pg_constraint "
+            "WHERE contype = 'c' AND conrelid::regclass::text IN "
+            "('service_requests', 'service_request_status_history')",
+        )
+    }
+    assert set(checks) == {
+        "ck_service_requests_status_valid",
+        "ck_service_requests_contact_channel_valid",
+        "ck_service_requests_details_min_length",
+        "ck_service_requests_service_not_blank",
+        "ck_service_requests_area_min_length",
+        "ck_service_requests_provider_name_not_blank",
+        "ck_service_request_status_history_from_status_valid",
+        "ck_service_request_status_history_to_status_valid",
+        "ck_service_request_status_history_actor_role_valid",
+        "ck_service_request_status_history_from_status_iff_submitted",
+    }
+    assert all(checks.values())
+
+
+def test_0006_downgrades_to_0005_and_reupgrades_without_touching_existing_data(
+    scratch_url: str,
+) -> None:
+    config = alembic_config(scratch_url)
+    command.upgrade(config, "0005")
+    seed_0005_world(scratch_url)
+    before = existing_data(scratch_url)
+
+    command.upgrade(config, "0006")
+    command.downgrade(config, "0005")
+
+    assert version(scratch_url) == "0005"
+    assert not NEW_TABLES & tables(scratch_url)  # only the 0006 schema was removed
+    assert existing_data(scratch_url) == before
+
+    command.upgrade(config, "head")
+
+    assert version(scratch_url) == "0006" and existing_data(scratch_url) == before
+    command.check(config)
+
+
+def test_0006_is_ddl_only_with_no_data_statement(scratch_url: str) -> None:
+    config = alembic_config(scratch_url)
+    command.upgrade(config, "0005")
+    buffer = io.StringIO()
+    offline = alembic_config(scratch_url)
+    offline.output_buffer = buffer
+    command.upgrade(offline, "0005:0006", sql=True)
+
+    lines = [line for line in buffer.getvalue().splitlines() if not line.strip().startswith("--")]
+    sql = " ".join(lines)
+    statements = [s.strip().upper() for s in sql.split(";") if s.strip()]
+    own = [s for s in statements if "ALEMBIC_VERSION" not in s and s not in {"BEGIN", "COMMIT"}]
+
+    assert any(s.startswith("CREATE TABLE SERVICE_REQUESTS") for s in own)
+    assert any(s.startswith("CREATE TABLE SERVICE_REQUEST_STATUS_HISTORY") for s in own)
+    for statement in own:
+        # DDL on the two new tables only: no data statement, no change to any existing table
+        assert statement.startswith(("CREATE TABLE", "CREATE INDEX")), statement[:80]
+        assert "SERVICE_REQUEST" in statement.split("(")[0], statement[:80]

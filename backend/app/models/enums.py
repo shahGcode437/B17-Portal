@@ -93,6 +93,31 @@ class ActorRole(StrEnum):
     ADMIN = "admin"
 
 
+class RequestStatus(StrEnum):
+    """Service-request lifecycle (Phase 12F). The wire value is ``in-progress`` (hyphen), exactly as
+    the frontend's ``RequestStatus`` and DATA_MODEL.md §16 spell it."""
+
+    SUBMITTED = "submitted"
+    ACCEPTED = "accepted"
+    IN_PROGRESS = "in-progress"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+
+
+class ContactChannel(StrEnum):
+    """The requester's PREFERRED way to be reached (DECISIONS.md, O-3). Metadata only: choosing
+    ``whatsapp`` or ``phone`` sends nothing and stores no number."""
+
+    IN_APP = "in_app"
+    WHATSAPP = "whatsapp"
+    PHONE = "phone"
+
+
+class RequestActorRole(StrEnum):
+    REQUESTER = "requester"
+    PROVIDER = "provider"
+
+
 class UserStatus(StrEnum):
     ACTIVE = "active"
     SUSPENDED = "suspended"

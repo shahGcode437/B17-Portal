@@ -711,3 +711,15 @@ Phase 11 mechanics (cookie, CSRF, Origin, session store) are unchanged; the eigh
 - **Caching:** `/admin/*` joins `/auth/*` and `/users/me/*` in the middleware's `Cache-Control: no-store` prefix list, errors included.
 - **Admin may moderate their own listing.** No rule forbids it (no multi-admin roles exist yet); the audit trail records the actor. Granular roles (Master Admin, Property Moderator, …) remain deferred.
 - **Matrix as tested** (`tests/db/test_admin_security_api.py`): {anonymous, unverified, unverified admin, verified resident, professional, Premium professional, suspended, admin with stale session, fresh admin} × all eight operations; Origin / CSRF tampering on every mutation; the stale-session boundary on each side of both limits.
+
+
+## 26. Implementation notes — Phase 12F (guards for Saved items and service requests)
+
+Phase 11 mechanics are unchanged; the new routes use the existing dependencies and the central middleware (`/saved` and `/requests` join `/auth/`, `/users/me/` and `/admin/` in the `Cache-Control: no-store` list, errors included).
+
+- **Guards as built** (§22.1): Saved list / `PUT` / `DELETE` → `CurrentUser` (verification not required); `POST /requests` → `VerifiedUser` (unverified = `403 email_not_verified`, no forced logout; no professional profile needed); `GET /requests`, `GET /requests/{id}` and the four actions → `CurrentUser` plus **party membership checked in the service**; `GET /users/me/leads` → `ProfessionalUser` (verified + profile: `403 email_not_verified` / `403 professional_profile_required`).
+- **Party, not capability.** The actions are authorised by being the requester or the **owner of the target listing**; the professional profile is not consulted (a provider who lost the profile can still work requests they own, but cannot open the inbox). Admin is not a party: there is no admin request surface, so an admin gets the same `404` as any outsider.
+- **Refusal order for an action:** CSRF / Origin (central, before any lookup, so a tampered write cannot be used to probe) → authentication `401` → non-party `404` (byte-identical to a missing or malformed id) → no authority over the action `403` → wrong status `409`.
+- **Rate limits** (identity-keyed in PostgreSQL like the others): request create 5 / hour / user and 1 / provider listing / day / user. Counted in the create transaction (`record`), serialised per requester by an advisory lock; actions, saves and reads are not throttled.
+- **Suspended accounts** lose Saved, requests and the inbox at once (the session is dead, `401`); roles and the professional capability are re-read from the database on every request.
+- **Matrix as tested** (`test_service_request_lifecycle_api.py`, `test_service_request_security_api.py`): {requester, provider, stranger, other professional, admin, anonymous} × {accept, start, complete, cancel} × {the five statuses}; Origin / CSRF tampering (six forms) on every new write; no request or contact data on any public surface.

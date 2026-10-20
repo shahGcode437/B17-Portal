@@ -11,6 +11,8 @@ from app.api.v1 import (
     listings,
     news,
     owner_listings,
+    requests,
+    saved,
     search,
     users,
 )
@@ -27,5 +29,7 @@ api_router.include_router(search.router)
 api_router.include_router(listings.router)
 api_router.include_router(owner_listings.router)
 api_router.include_router(users.router)
+api_router.include_router(saved.router)
+api_router.include_router(requests.router)
 api_router.include_router(admin.router)
 api_router.include_router(news.router)

@@ -77,7 +77,8 @@ def test_exactly_the_12d_operations_were_added(document: dict[str, Any]) -> None
     written = {
         (method, path)
         for method, path in operations(document)
-        if method != "GET" and not path.startswith(("/auth/", "/health", "/admin/"))
+        if method != "GET"
+        and not path.startswith(("/auth/", "/health", "/admin/", "/saved", "/requests"))
     }
 
     assert written == {
@@ -96,7 +97,8 @@ def test_exactly_the_12d_operations_were_added(document: dict[str, Any]) -> None
 def test_nothing_from_later_slices_leaked_in(document: dict[str, Any]) -> None:
     paths = [path.removeprefix(PREFIX) for path in document["paths"]]
 
-    for later in ("/saved", "/requests", "/leads", "/media", "/upload"):
+    # Phase 12F added Saved + service requests (and nothing else); media is still a later slice
+    for later in ("/media", "/upload", "/notifications", "/payments", "/chat"):
         assert not any(later in path for path in paths), later
     # Phase 12E added the admin moderation + taxonomy routes (and nothing else under /admin)
     assert not any(path.endswith("/unarchive") for path in paths)

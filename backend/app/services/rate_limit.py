@@ -49,3 +49,11 @@ class PostgresRateLimiter:
             count = self._repository.increment(_key_hash(identifier), policy.name, start)
         allowed = count <= policy.limit
         return RateDecision(allowed, 0 if allowed else self._retry_after(now, start, policy))
+
+    def record(self, identifier: str, policy: RatePolicy) -> RateDecision:
+        """Count one event inside the CALLER's transaction (no commit here)."""
+        now = self._clock()
+        start = _window_start(now, policy)
+        count = self._repository.increment(_key_hash(identifier), policy.name, start)
+        allowed = count <= policy.limit
+        return RateDecision(allowed, 0 if allowed else self._retry_after(now, start, policy))

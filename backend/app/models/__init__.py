@@ -11,6 +11,7 @@ from app.models.listings import (
     TutorProfile,
 )
 from app.models.news import NewsArticle
+from app.models.requests import ServiceRequest, ServiceRequestStatusHistory
 from app.models.saved import SavedItem
 from app.models.taxonomy import Category, ListingCategory
 from app.models.users import AuthIdentity, ProfessionalProfile, User, UserRole
@@ -33,6 +34,8 @@ __all__ = [
     "ProfessionalProfile",
     "PropertyProfile",
     "SavedItem",
+    "ServiceRequest",
+    "ServiceRequestStatusHistory",
     "TutorProfile",
     "User",
     "UserRole",

@@ -23,6 +23,8 @@ EXPECTED_TABLES = {
     "professional_profiles",
     "property_profiles",
     "saved_items",
+    "service_request_status_history",
+    "service_requests",
     "tutor_profiles",
     "user_roles",
     "users",
@@ -37,6 +39,9 @@ EXPECTED_INDEXES = {
     "ix_food_profiles_service_options",
     "ix_property_profiles_listing_type",
     "ix_saved_items_user_id_created_at",
+    "ix_service_requests_provider_listing_id_status",
+    "ix_service_requests_requester_id_created_at",
+    "ix_service_request_status_history_request_id_created_at",
     "ix_listing_status_history_listing_id_created_at",
     "ix_news_articles_status_published_at",
     "uq_users_email_lower",
@@ -64,7 +69,6 @@ def test_deferred_tables_do_not_exist(db_session: Session) -> None:
 
     for deferred in (
         "provider_profiles",  # no provider-specific data exists
-        "service_requests",  # conceptual in DATA_MODEL.md
         "media_assets",  # reserved for the media phase
         "listing_revisions",  # content-version history is deferred
         "modules",  # a module is code, not a row

@@ -37,6 +37,11 @@ RESEND_VERIFICATION_DAY = RatePolicy(
 #: Listing creates per user (AUTH_RBAC.md §22.1: "listing create 10/hour/user, tunable"). Edits and
 #: archives have no frozen number and are not throttled in Phase 12D.
 LISTING_CREATE = RatePolicy("listing_create", limit=10, window_seconds=60 * 60)
+#: Service-request creates (API_CONTRACT.md §10.8: "create 5 per hour per user and 1 per provider
+#: per day", tunable). The second is keyed by requester + target listing ("the provider" of a
+#: request IS the provider listing); both are counted only after a request was actually created.
+REQUEST_CREATE = RatePolicy("request_create", limit=5, window_seconds=60 * 60)
+REQUEST_PER_PROVIDER = RatePolicy("request_per_provider", limit=1, window_seconds=24 * 60 * 60)
 
 
 class RateLimiter(Protocol):
@@ -46,4 +51,9 @@ class RateLimiter(Protocol):
 
     def hit(self, identifier: str, policy: RatePolicy) -> RateDecision:
         """Count one event; ``allowed`` is false once the window's limit is exceeded."""
+        ...
+
+    def record(self, identifier: str, policy: RatePolicy) -> RateDecision:
+        """Like ``hit`` but WITHOUT ending the transaction: the count commits or rolls back with
+        the caller's own transaction (so an event is counted exactly when its work was done)."""
         ...

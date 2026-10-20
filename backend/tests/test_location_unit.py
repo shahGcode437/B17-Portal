@@ -300,7 +300,7 @@ def test_the_only_listing_routes_with_a_body_are_the_owner_writes() -> None:
     document = openapi()
     paths = document["paths"]
 
-    assert not any(path.startswith(("/api/v1/saved", "/api/v1/requests")) for path in paths)
+    # Phase 12F added /saved and /requests: the location work still added no route of its own
     assert set(paths["/api/v1/listings/{listing_id}"]) == {"get", "patch"}
     with_body = {
         (method, path)

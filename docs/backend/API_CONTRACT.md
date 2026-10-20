@@ -1,6 +1,6 @@
 # B-17 Portal — API Contract
 
-**Status:** conventions frozen by Phase 10A. **Individual endpoints are frozen only in principle** — the phase that implements each group owns its exact schema (§9). Once implemented, the generated **OpenAPI document is the machine-readable source of truth**; this file stays the human contract for conventions and intent. **Implemented so far:** `/health`, `/health/ready` (10B/10C), the public **read** group — `/categories`, `/search`, `/search/suggestions`, `/listings/{id}`, `/news`, `/news/{id}` (Phase 10D; details in §6 and [`READ_API_PARITY.md`](READ_API_PARITY.md)) — and the **email/password auth** group under `/auth` (Phase 11B: `register`, `login`, `me`, `logout`, `logout-all`, `verify-email`, `resend-verification`, `forgot-password`, `reset-password`, `change-password`). Google sign-in (Phase 11C: `oauth/google/start`, `oauth/google/callback`, `DELETE oauth/google`) is implemented too. The **owner write group is implemented in Phase 12D** (`PUT /users/me/professional-profile`, `POST /listings`, `PATCH /listings/{id}`, `POST /listings/{id}/archive`, `GET /users/me/listings[/{id}]` — as-built notes in §11); the **admin group is implemented in Phase 12E** (`/admin/listings`, approve / reject, `/admin/categories` — as-built notes in §12); the Saved and request groups are still frozen designs in §10 for 12F. Location fields and privacy: [`LOCATION_MAP.md`](LOCATION_MAP.md). **The auth contract (cookie sessions, CSRF, error codes, endpoint list, `/auth/me` shape) is frozen by Phase 11A in [`AUTH_RBAC.md`](AUTH_RBAC.md) §5–§6 and §12 and is implemented in Phases 11B/11C.**
+**Status:** conventions frozen by Phase 10A. **Individual endpoints are frozen only in principle** — the phase that implements each group owns its exact schema (§9). Once implemented, the generated **OpenAPI document is the machine-readable source of truth**; this file stays the human contract for conventions and intent. **Implemented so far:** `/health`, `/health/ready` (10B/10C), the public **read** group — `/categories`, `/search`, `/search/suggestions`, `/listings/{id}`, `/news`, `/news/{id}` (Phase 10D; details in §6 and [`READ_API_PARITY.md`](READ_API_PARITY.md)) — and the **email/password auth** group under `/auth` (Phase 11B: `register`, `login`, `me`, `logout`, `logout-all`, `verify-email`, `resend-verification`, `forgot-password`, `reset-password`, `change-password`). Google sign-in (Phase 11C: `oauth/google/start`, `oauth/google/callback`, `DELETE oauth/google`) is implemented too. The **owner write group is implemented in Phase 12D** (`PUT /users/me/professional-profile`, `POST /listings`, `PATCH /listings/{id}`, `POST /listings/{id}/archive`, `GET /users/me/listings[/{id}]` — as-built notes in §11); the **admin group is implemented in Phase 12E** (`/admin/listings`, approve / reject, `/admin/categories` — as-built notes in §12), and the **Saved and service-request groups in Phase 12F** (`/saved`, `/requests`, `/users/me/leads` — as-built notes in §13). Location fields and privacy: [`LOCATION_MAP.md`](LOCATION_MAP.md). **The auth contract (cookie sessions, CSRF, error codes, endpoint list, `/auth/me` shape) is frozen by Phase 11A in [`AUTH_RBAC.md`](AUTH_RBAC.md) §5–§6 and §12 and is implemented in Phases 11B/11C.**
 **Owns:** REST conventions, versioning, naming, response/error envelopes, pagination/filter/sort conventions, the planned resource groups and why they are shaped as they are.
 **Does not own:** table design → [`DATA_MODEL.md`](DATA_MODEL.md) · role/permission rules → [`AUTH_RBAC.md`](AUTH_RBAC.md) · layering/CORS/logging → [`BACKEND_ARCHITECTURE.md`](BACKEND_ARCHITECTURE.md).
 
@@ -262,7 +262,7 @@ Every listing item of `/search` (card) and `/listings/{id}` (detail) carries a `
 ## 9. What is intentionally not frozen here
 
 Exact request/response schemas of `/admin/news` (the listing, `/saved`, `/requests` and `/admin/categories` write contracts are frozen in §10), notification endpoints, media upload/signing endpoints (`MEDIA_STORAGE.md`), user profile fields, the cookie-vs-bearer decision, and rate-limit numbers. Each is owned by the phase in §5; they must follow §1–§4 (envelopes, camelCase, null/omitted, error codes, pagination, no `status` writes).
-## 10. Phase 12 write contract (frozen in Phase 12A — the owner endpoints are implemented in 12D, see §11, and the admin endpoints in 12E, see §12; Saved / requests are not yet)
+## 10. Phase 12 write contract (frozen in Phase 12A — the owner endpoints are implemented in 12D, see §11, the admin endpoints in 12E, see §12, and Saved / requests in 12F, see §13)
 
 Binding for slices 12D–12F (`ROADMAP.md`). It refines §5 and does not touch Phase 11 behaviour (sessions, cookie, CSRF, Origin, rate-limit seam). The generated OpenAPI document becomes the machine-readable contract when each slice lands. **Location fields and privacy:** [`LOCATION_MAP.md`](LOCATION_MAP.md). **Guards and frontend auth:** [`AUTH_RBAC.md`](AUTH_RBAC.md) §22.
 
@@ -372,7 +372,7 @@ Categories stay inside **code-defined modules**; an admin can never create a mod
 ### 10.8 Saved and service requests
 
 - **Saved:** the existing polymorphic `saved_items` table, current user only (`userId` is never accepted). Supported kinds: provider, business (incl. Food), tutor, property — **not news**. `PUT` requires an *approved* listing (`404` otherwise); both calls are idempotent. A saved listing that stops being approved is hidden from `GET /saved` and reappears if re-approved.
-- **Requests (MVP, table in migration `0006`, slice 12F):** only for **provider** listings that are approved, and never for the requester's own listing. Create requires a **verified** user. Fields mirror the frontend: `providerListingId`, `service`, `details` (10–500), `area` (2–80, the requester's own area text — private to requester and owner), `preferredDate` (date, not in the past), `preferredTime?`, `notes?` (≤ 500). `providerName` is stored as a snapshot. Status `submitted → accepted → in-progress → completed`, `cancelled` from any non-terminal state (`REQUEST_TRANSITIONS`); the provider owner drives `accept`/`start`/`complete`/`cancel`; **the requester may `cancel` while `submitted` or `accepted`** (approved in the 12A review; an addition over the frontend, which only lets providers act). Every transition is a guarded `UPDATE … WHERE status = :from` plus a history row; a wrong state is `409 invalid_state_transition`. Visibility: requester and listing owner only; there is **no admin request surface** in V1. No contact channel, booking or payment is designed or built in 12A: a request is in-app status only. **DATA_MODEL O-3 (the contact channel) must be resolved by the product owner before the Phase 12F implementation is finalised** — 12F does not start building request delivery until it is. Rate limits (tunable): create 5 per hour per user and 1 per provider per day.
+- **Requests (MVP, table in migration `0006`, slice 12F):** only for **provider** listings that are approved, and never for the requester's own listing. Create requires a **verified** user. Fields mirror the frontend: `providerListingId`, `service`, `details` (10–500), `area` (2–80, the requester's own area text — private to requester and owner), `preferredDate` (date, not in the past), `preferredTime?`, `notes?` (≤ 500). `providerName` is stored as a snapshot. Status `submitted → accepted → in-progress → completed`, `cancelled` from any non-terminal state (`REQUEST_TRANSITIONS`); the provider owner drives `accept`/`start`/`complete`/`cancel`; **the requester may `cancel` while `submitted` or `accepted`** (approved in the 12A review; an addition over the frontend, which only lets providers act). Every transition is a guarded `UPDATE … WHERE status = :from` plus a history row; a wrong state is `409 invalid_state_transition`. Visibility: requester and listing owner only; there is **no admin request surface** in V1. No contact channel, booking or payment is designed or built in 12A: a request is in-app status only. **DATA_MODEL O-3 (the contact channel) was resolved in Phase 12F** as a closed *preference* (`in_app` · `whatsapp` · `phone`, metadata only) — see §13; there is still no contact number, chat, booking or payment. Rate limits (tunable): create 5 per hour per user and 1 per provider per day.
 
 ### 10.9 Quota
 
@@ -461,3 +461,63 @@ Eight operations under `/api/v1/admin`, all behind `require_admin` (verified e-m
 - *Concurrency:* taxonomy writes take an exclusive PostgreSQL advisory lock (`BACKEND_ARCHITECTURE.md` §5.1); owner create / edit take the shared one, so a rename can never miss a listing being written. Two admins creating the same name: exactly one wins, the other gets `409`.
 
 **Error usage.** `401 session_expired` (stale admin session), `403 forbidden` / `email_not_verified`, `404 not_found` (listing or category), `409 listing_conflict`, `409 invalid_state_transition`, `409 conflict` (duplicate name or slug), `422 validation_error` with `required`, `too_short`, `too_long`, `invalid_format`, `invalid_parent`, `unknown_parent`, `unknown_category`, `duplicate`, `incomplete`, `not_allowed`, `not_nullable`. CSRF and Origin are enforced as for every authenticated mutation (`403 csrf_failed`).
+
+## 13. Implementation notes — Phase 12F as built (Saved items + service requests)
+
+Eleven operations; the paths are exactly the frozen ones (§10.2). Migration `0006` adds `service_requests` and `service_request_status_history`; `saved_items` already existed and is unchanged. Every response is `Cache-Control: no-store`; every unsafe call is covered by the central Origin + CSRF check.
+
+| Endpoint | Guard | Result |
+|---|---|---|
+| `GET /saved` | signed-in | `?limit=&offset=` (limit 1–50, default 12) → `{kind, item, savedAt}[]` — the **public card** of each saved listing that is still approved, newest save first; `meta: {total, limit, offset}` counts only visible items |
+| `PUT /saved/{listing_id}` | signed-in | `204`; idempotent; only an **approved** listing (`404` for unknown, malformed or not approved) |
+| `DELETE /saved/{listing_id}` | signed-in | `204`; idempotent (also when nothing was saved, and whatever the listing's status is now); malformed id → `404` |
+| `POST /requests` | **verified** | `201` + `Location: /api/v1/requests/{id}` + the detail shape |
+| `GET /requests` | signed-in | my requests, newest first, `?status=&limit=&offset=` → summary rows |
+| `GET /requests/{id}` | signed-in **party** | the detail shape; `404` for anyone else |
+| `GET /users/me/leads` | professional (verified + profile) | requests made to listings I own, newest first, `?status=&limit=&offset=` → lead rows |
+| `POST /requests/{id}/accept` · `/start` · `/complete` · `/cancel` | signed-in **party** | no body (`{}` or absent; any key is `422 not_allowed`) → the detail shape from the caller's side |
+
+**Contact model V1 (O-3 resolved — `DECISIONS.md`).** A request is created and tracked inside B-17 Portal; the request record is the source of truth. `preferredContactChannel` ∈ `in_app` (default) · `whatsapp` · `phone` is **metadata only**: it sends nothing, stores no phone number, calls no API and starts no chat. There is no requester contact field (`phone`, `email`, … are `422 not_allowed`) and the listings still carry no contact data, so nothing contact-related can leak; the requester is identified to the provider by display name only.
+
+**Saved.**
+- Any signed-in user, verified or not, any account type (resident, professional, admin, the listing's own owner). The user is always the session's; no path, query or body names another user.
+- Eligibility is checked on `PUT` only: the listing must be `approved` (kinds provider, business incl. Food, tutor, property — the public listings; news is not a listing and is `404`).
+- A saved listing that stops being approved (owner edit → `pending`, takedown, archive) keeps its row but is **absent** from `GET /saved` — nothing about it appears, not even in `meta.total` — and **reappears if re-approved**. It cannot be saved again while down; un-saving always works. Saving changes nothing about the listing (no ranking, counter or status).
+- Duplicates are impossible (`PRIMARY KEY (user_id, listing_id)`); the insert is `ON CONFLICT DO NOTHING`, so concurrent saves never raise. The list costs a fixed number of queries whatever the page size.
+
+**Creating a request** (`ServiceRequestCreate`, strict — a key it does not declare is `422 not_allowed`):
+
+| Field | Rule |
+|---|---|
+| `providerListingId` | uuid; the target. Client-supplied `providerId`, `ownerId`, `requesterId`, `status`, timestamps, `requestedBy`, `providerName`, `history`, roles … are all `not_allowed` |
+| `service` | 1–80 characters, one line (free text, as in the frontend form) |
+| `details` | 10–500 characters after trimming; newlines allowed |
+| `area` | 2–80 characters, one line (the requester's own area text; private to the two parties) |
+| `preferredDate` | `YYYY-MM-DD` only; **today (in B-17, UTC+05:00) or later**, at most 365 days ahead (`in_the_past` / `too_far_ahead`; the 365-day bound is an abuse limit, not a product rule) |
+| `preferredTime?` | `HH:MM` (24-hour); omitted or `null` = none |
+| `notes?` | ≤ 500 characters; blank = none |
+| `preferredContactChannel?` | `in_app` · `whatsapp` · `phone`; default `in_app` |
+
+Eligibility (service, in this order after the rate limits): the listing must exist and be **approved** (`404 not_found` otherwise — the same answer as the public detail route); its kind must be **provider** (`422`, `providerListingId` / `not_requestable` for business, Food, tutor and property); it must not be the requester's own (`422`, `providerListingId` / `own_listing`). The requester is the session user, the provider is the listing's owner, the status starts `submitted`, and `providerName` is a snapshot of the listing title at that moment. Requires a **verified** user (`403 email_not_verified`); a professional profile is not required.
+
+**Shapes** (separate models; none reuses an owner / admin listing mapper): *summary* (the requester's list row) = `id`, `providerListingId?`, `providerName`, `service`, `details`, `area`, `preferredDate`, `preferredTime?`, `notes?`, `preferredContactChannel`, `status`, `createdAt`, `updatedAt`; *lead* (the inbox row) = summary + `requesterName` (display name); *detail* = lead + `viewerRole` (`requester` | `provider`) + `history[]` (`fromStatus?`, `toStatus`, `actorRole`, `createdAt`; no ids or names). Never an e-mail, phone, user id, role or session datum. `providerListingId` is absent only if the listing was hard-deleted.
+
+**Lifecycle** (`status` values are `submitted`, `accepted`, **`in-progress`** (hyphen, as the frontend spells it), `completed`, `cancelled`; the last two are final):
+
+| Action | By | From → to |
+|---|---|---|
+| `accept` | provider | `submitted → accepted` |
+| `start` | provider | `accepted → in-progress` |
+| `complete` | provider | `in-progress → completed` |
+| `cancel` | provider | `submitted`, `accepted` or `in-progress → cancelled` |
+| `cancel` | requester | `submitted` or `accepted → cancelled` (**not** once work has started) |
+
+The requester can never accept, start or complete. The provider is whoever **owns the target listing** (derived, never stored as a user id); actions need no professional profile and no verified e-mail — ownership of the listing is the authority. **Order of refusal:** `404` for anyone who is not a party (the same body as a missing / malformed id; there is no admin surface) → `403 forbidden` when the caller's role has no authority over the action at all (e.g. the requester accepting) → `409 invalid_state_transition` when the current status does not allow it (including every action on a final request and any repeated action). A skipped step (`submitted → in-progress`) is a `409`.
+
+**Concurrency.** A transition locks the request row (`SELECT … FOR UPDATE`), re-checks, then applies a guarded `UPDATE … WHERE id AND status = :from` and appends one history row (actor, role, `clock_timestamp()` — the wall clock at the write, after the lock; `now()` is the transaction *start* and could order concurrent transitions wrongly). Two incompatible concurrent actions can not both win; the loser gets `409`. The history is always an unbroken chain (`null → submitted → …`) with one row per successful action. Create runs in **one** transaction that first takes a transaction-scoped advisory lock keyed by the requester, so one user's creates are serialised and the rate limits below are exact even under parallel requests; it then locks the target listing `FOR SHARE` (a concurrent takedown and the create serialise: the request is either created against an approved listing or refused).
+
+**Rate limits** (frozen in §10.8; tunable): **5 creates per hour per user** and **1 per provider listing per day per user** (`429 rate_limited` + `Retry-After`). They are checked before the work and counted inside the same transaction, so a refused or failed request is never counted. Actions and reads are not throttled (no frozen number).
+
+**A request outlives its listing.** Nothing about a request depends on the target listing's later status: after an edit, takedown or archive both parties can still read it, list it and progress or cancel it; it is not cancelled for them. Only a **new** request needs the listing approved at that moment. If the listing is hard-deleted (no API does this), the FK is `ON DELETE SET NULL`: the requester keeps the record (with the name snapshot); the provider side, which is derived from the listing, no longer has it.
+
+**Not built in 12F:** any contact data, chat, WhatsApp / SMS / call integration, notifications, payments, a requester edit, reopen, an admin request surface, request deletion.

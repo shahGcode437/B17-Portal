@@ -9,6 +9,7 @@ from app.dependencies.db import DbSession
 from app.dependencies.settings import SettingsDep
 from app.services.listing_writes import ListingWriteService
 from app.services.rate_limit import PostgresRateLimiter
+from app.services.service_requests import ServiceRequestService
 
 
 def no_store(response: Response) -> None:
@@ -28,5 +29,10 @@ def get_listing_write_service(
     )
 
 
+def get_service_request_service(db: DbSession, clock: ClockDep) -> ServiceRequestService:
+    return ServiceRequestService(db, clock=clock, limiter=PostgresRateLimiter(db, clock))
+
+
 ListingWriteServiceDep = Annotated[ListingWriteService, Depends(get_listing_write_service)]
+ServiceRequestServiceDep = Annotated[ServiceRequestService, Depends(get_service_request_service)]
 NoStore = Depends(no_store)

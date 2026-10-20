@@ -84,3 +84,8 @@ The public read APIs above are unchanged and still return only `approved` listin
 ## 10. Admin shapes are not public shapes (Phase 12E)
 
 The public read APIs are unchanged. The admin schemas (`AdminListingSummary`, `AdminProvider | AdminBusiness | AdminTutor | AdminProperty`, `AdminCategory`) are separate models behind `require_admin`: the queue row has the status, `revision`, `submittedAt`, the submitter's display name and the location **mode** only; the detail adds the private exact location, the current rejection reason and the status history. The admin category list includes inactive categories, which the public `GET /categories` never returns. Admin responses never reach a public route, and an approval or takedown changes what the public reads return in the same commit (a takedown is invisible to search, detail and the listing's category counts immediately).
+
+
+## 11. Saved and request shapes are not public shapes (Phase 12F)
+
+The public read APIs are unchanged and know nothing about Saved items or requests: a save adds no field, count or ranking input to any listing, and no request text reaches `search_document`, search, suggestions or the listing detail. `GET /saved` returns the **public card mapping** (the same `{kind, item}` pair as a search result, plus `savedAt`) for the caller's own still-approved saved listings; a listing that is not approved is simply absent. The request shapes (`API_CONTRACT.md` §13) are separate, party-only models that never reuse the owner or admin listing mappers.

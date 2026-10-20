@@ -58,6 +58,8 @@ class AuthSecurityMiddleware:
             self._auth_prefix,
             f"{self._prefix}/users/me/",
             f"{self._prefix}/admin/",
+            f"{self._prefix}/saved",
+            f"{self._prefix}/requests",
         )
         self._allowed_origins = frozenset(allowed_origins)
         self._cookie_name = cookie_name

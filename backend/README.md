@@ -2,7 +2,7 @@
 
 FastAPI + PostgreSQL backend. Architecture, data model and contracts are specified in [`docs/backend/`](../docs/backend/BACKEND_ARCHITECTURE.md) — this file only covers day-to-day commands.
 
-**Current scope (Phase 12E):** application foundation, the PostgreSQL data layer (Alembic migrations `0001`–`0005` — `0005` adds the shared listing location columns, reference taxonomy seed, dev fixtures), health/readiness, the **public read APIs** (categories, search, suggestions, listing detail, news — `docs/backend/READ_API_PARITY.md`) and **email/password authentication** (`/api/v1/auth/*`: register, login, me, logout, logout-all, verify-email, resend-verification, forgot-/reset-/change-password) with PostgreSQL sessions in an `HttpOnly` cookie, CSRF protection and an RBAC foundation (`docs/backend/AUTH_RBAC.md`), plus **Google sign-in** (`/api/v1/auth/oauth/google/{start,callback}`, `DELETE /api/v1/auth/oauth/google`: sign-in, Connect and Disconnect through the same sessions; a development fake provider needs no credentials). Since Phase 12D the **owner write API** (professional profile, listing create / edit / archive, owner reads — `docs/backend/API_CONTRACT.md` §11) and, since Phase 12E, the **admin API** (`/api/v1/admin/*`: moderation queue and detail, approve / reject / takedown with optimistic `revision`, category create / patch / reorder — §12) exist; there is no Saved or request API yet, and the frontend calls the backend only for authentication.
+**Current scope (Phase 12F):** application foundation, the PostgreSQL data layer (Alembic migrations `0001`–`0005` — `0005` adds the shared listing location columns, reference taxonomy seed, dev fixtures), health/readiness, the **public read APIs** (categories, search, suggestions, listing detail, news — `docs/backend/READ_API_PARITY.md`) and **email/password authentication** (`/api/v1/auth/*`: register, login, me, logout, logout-all, verify-email, resend-verification, forgot-/reset-/change-password) with PostgreSQL sessions in an `HttpOnly` cookie, CSRF protection and an RBAC foundation (`docs/backend/AUTH_RBAC.md`), plus **Google sign-in** (`/api/v1/auth/oauth/google/{start,callback}`, `DELETE /api/v1/auth/oauth/google`: sign-in, Connect and Disconnect through the same sessions; a development fake provider needs no credentials). Since Phase 12D the **owner write API** (professional profile, listing create / edit / archive, owner reads — `docs/backend/API_CONTRACT.md` §11) and, since Phase 12E, the **admin API** (`/api/v1/admin/*`: moderation queue and detail, approve / reject / takedown with optimistic `revision`, category create / patch / reorder — §12) exist, and so do the **Saved and service-request APIs** (Phase 12F: `/api/v1/saved`, `/api/v1/requests`, `/api/v1/users/me/leads` — §13; migration `0006`; a preference-only contact model, no chat, contact data or payments); the frontend calls the backend only for authentication.
 
 ## Setup (once)
 
@@ -106,7 +106,7 @@ docker compose run --rm api alembic upgrade head          # migrations are an ex
 ## Test and check
 
 ```bash
-pytest                    # 985 database-free tests always run; the 1462 PostgreSQL tests (2447 total) need TEST_DATABASE_URL
+pytest                    # 1191 database-free tests always run; the 1985 PostgreSQL tests (3176 total) need TEST_DATABASE_URL
 ruff check .              # lint
 ruff format --check .     # formatting (use `ruff format .` to fix)
 mypy                      # strict type check (app, tests, scripts)
