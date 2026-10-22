@@ -48,10 +48,14 @@ export function patchCategory(id: string, body: CategoryPatch): Promise<AdminCat
   return apiRequest<AdminCategoryDto>("PATCH", `/admin/categories/${segment(id)}`, { session: true, body })
 }
 
-/** `POST /admin/categories/reorder` — send the complete sibling group in the new order. */
+/**
+ * `POST /admin/categories/reorder` — send the complete sibling group in the new order.
+ * `parentId` is REQUIRED and nullable (API_CONTRACT §10.9): `null` is the top level; leaving the key
+ * out is a `422 missing`, which is why it is not optional here.
+ */
 export interface CategoryReorder {
   module: CategoryModule
-  parentId?: string | null
+  parentId: string | null
   orderedIds: string[]
 }
 

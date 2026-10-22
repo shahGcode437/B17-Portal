@@ -30,12 +30,11 @@ const VISIBILITY_LABELS: Record<"exact" | "approximate" | "area_only", string> =
 
 /**
  * Writable location block for every listing form (Phase 12H). It writes a `LocationWrite` as a
- * whole: switching the visibility clears or keeps fields the backend demands, so the payload never
- * carries a point for `area_only` (API_CONTRACT §10.6, LOCATION_MAP §8).
+ * whole, so the payload never carries a point for `area_only` (API_CONTRACT §10.6, LOCATION_MAP §8).
  *
- *  - `exact`: picker + address + optional landmark + block.
- *  - `approximate`: picker (circle, dragged pin stays private) + block; address / landmark hidden
- *    because the backend forbids them.
+ *  - `exact`: picker + address (required) + optional landmark + block.
+ *  - `approximate`: picker (circle, dragged pin stays private) + block. An address / landmark entered
+ *    earlier is kept as private data (it is only ever public for `exact`) - see `setVisibility`.
  *  - `area_only`: block + area only; the picker is replaced by text ("Location shared at area level").
  *
  * Property is enforced upstream: `allowedVisibilities` omits `area_only`.
@@ -44,22 +43,17 @@ function LocationFieldset({ value, onChange, itemLabel, allowedVisibilities, err
   const [latText, setLatText] = useState(value.latitude !== undefined ? String(value.latitude) : "")
   const [lngText, setLngText] = useState(value.longitude !== undefined ? String(value.longitude) : "")
 
+  // Changing the visibility discards ONLY what the new mode technically cannot hold: `area_only`
+  // stores no point. Block, address and landmark are KEPT - for `approximate` / `area_only` they stay
+  // private (never public, never in the search document). Clearing them would make a privacy narrowing
+  // a content change, which goes back to moderation and takes the listing offline instead of taking
+  // effect at once (LOCATION_MAP.md §7.4).
   const setVisibility = (visibility: "exact" | "approximate" | "area_only") => {
     if (visibility === "area_only") {
-      // area_only accepts the block only; strip point / address / landmark so the backend never 422s.
-      onChange({ visibility, ...(value.block ? { block: value.block } : {}) })
+      const { latitude: _latitude, longitude: _longitude, ...withoutPoint } = value
+      onChange({ ...withoutPoint, visibility })
       setLatText("")
       setLngText("")
-      return
-    }
-    if (visibility === "approximate") {
-      // Approximate keeps the point but drops the address / landmark (public pages never show them).
-      const next: LocationWrite = { visibility, ...(value.block ? { block: value.block } : {}) }
-      if (value.latitude !== undefined && value.longitude !== undefined) {
-        next.latitude = value.latitude
-        next.longitude = value.longitude
-      }
-      onChange(next)
       return
     }
     onChange({ ...value, visibility })
@@ -155,6 +149,12 @@ function LocationFieldset({ value, onChange, itemLabel, allowedVisibilities, err
             />
           </Stack>
         </>
+      )}
+
+      {value.visibility !== "exact" && (value.address || value.landmark) && (
+        <Typography variant="body-sm" className="text-muted-foreground">
+          The address and landmark you entered stay private: they are never shown to the public.
+        </Typography>
       )}
 
       {value.visibility === "approximate" && (

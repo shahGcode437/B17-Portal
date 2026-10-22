@@ -105,12 +105,13 @@ function AuthGate({ requires = "authenticated" }: AuthGateProps) {
           </Typography>
           <Stack direction="row" wrap gap={2} justify="center">
             <Button
+              size="lg"
               onClick={() => void createProfile.mutate(undefined).catch(() => undefined)}
               disabled={createProfile.pending || needsVerification}
             >
               {createProfile.pending ? "Setting up…" : "Create a professional profile"}
             </Button>
-            <Button variant="outline" onClick={() => navigate(routes.home)}>
+            <Button variant="outline" size="lg" onClick={() => navigate(routes.home)}>
               Back to home
             </Button>
           </Stack>

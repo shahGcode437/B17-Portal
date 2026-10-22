@@ -70,27 +70,29 @@ describe("LocationFieldset (the writable location block)", () => {
     expect(latest.latitude).toBe(33.7012) // 123.4 is not a latitude: not committed
   })
 
-  it("area_only clears the point, the address and the landmark and keeps only the block; no map is shown", async () => {
+  it("area_only clears ONLY the point (block, address and landmark are kept, privately); no map is shown", async () => {
     const user = userEvent.setup()
     render(<Harness initial={{ visibility: "exact", block: "C", address: "Shop 4", landmark: "Park", latitude: 33.7, longitude: 73.05 }} />)
     await waitFor(() => expect(screen.getByTestId("map-picker")).toBeInTheDocument())
     await user.selectOptions(screen.getByLabelText("Visibility"), "area_only")
-    expect(latest).toEqual({ visibility: "area_only", block: "C" })
+    expect(latest).toEqual({ visibility: "area_only", block: "C", address: "Shop 4", landmark: "Park" })
     expect(screen.queryByTestId("map-picker")).not.toBeInTheDocument()
     expect(screen.queryByLabelText("Latitude")).not.toBeInTheDocument()
     expect(screen.getByText(/Location shared at area level/)).toBeInTheDocument()
+    expect(screen.getByText(/stay private/)).toBeInTheDocument()
     // Going back to a located kind starts with no stale point.
     await user.selectOptions(screen.getByLabelText("Visibility"), "approximate")
     expect(latest.latitude).toBeUndefined()
     expect(screen.getByLabelText("Latitude")).toHaveValue("")
   })
 
-  it("exact to approximate keeps the point but drops the address and landmark (the backend forbids them)", async () => {
+  it("exact to approximate keeps the point AND the address / landmark, so a privacy narrowing is not a content change", async () => {
     const user = userEvent.setup()
     render(<Harness initial={{ visibility: "exact", block: "C", address: "Shop 4", landmark: "Park", latitude: 33.7, longitude: 73.05 }} />)
     await user.selectOptions(screen.getByLabelText("Visibility"), "approximate")
-    expect(latest).toEqual({ visibility: "approximate", block: "C", latitude: 33.7, longitude: 73.05 })
-    expect(screen.queryByLabelText("Street address")).not.toBeInTheDocument()
+    expect(latest).toEqual({ visibility: "approximate", block: "C", address: "Shop 4", landmark: "Park", latitude: 33.7, longitude: 73.05 })
+    expect(screen.queryByLabelText("Street address")).not.toBeInTheDocument() // the field is only offered for exact
+    expect(screen.getByText(/stay private/)).toBeInTheDocument()
   })
 
   it("a Property form cannot choose area_only (the option is not offered)", () => {

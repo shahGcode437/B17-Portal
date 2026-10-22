@@ -419,8 +419,16 @@ class ListingStatusHistory(UUIDPrimaryKeyMixin, Base):
     )
     actor_role: Mapped[ActorRole] = mapped_column(str_enum(ActorRole), nullable=False)
     reason: Mapped[str | None] = mapped_column(Text)
+    # The ORM ``default`` is applied by every INSERT the application makes: ``clock_timestamp()`` is
+    # the wall clock at THIS write. ``now()`` (kept as the schema ``server_default``, so no
+    # migration) is the transaction's START — within one transaction every event would share a
+    # timestamp, and under contention an event could be stamped earlier than the one it follows.
+    # Same rule as ``service_request_status_history`` (Phase 12F).
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        default=func.clock_timestamp(),
     )
 
     listing: Mapped[Listing] = relationship(back_populates="status_history")

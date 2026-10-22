@@ -235,6 +235,7 @@ function captureCreatedId(page: import("@playwright/test").Page): { id: () => st
 
 test.describe("Presentation regression (end-to-end round trip)", () => {
   test("create → pending → admin approves → public sees it → material edit → pending → admin rejects → owner sees reason → resubmit → pending; survives reload", async ({ page }) => {
+    test.setTimeout(90_000) // a ~21 s journey: the 30 s default has no headroom under parallel load
     const name = "Sunrise Solar Pro"
     const created = captureCreatedId(page)
 

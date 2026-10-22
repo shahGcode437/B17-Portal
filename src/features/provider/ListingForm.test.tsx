@@ -31,6 +31,18 @@ async function fillBase(user: ReturnType<typeof userEvent.setup>, name = "Sweet 
   await fill(user, screen.getByLabelText(/Tags/), "cakes, bread")
 }
 
+describe("ListingForm — submitting state", () => {
+  it("disables the submit button and marks it busy while the page's write is in flight", () => {
+    const { rerender } = render(<ListingForm kind="provider" onSubmit={vi.fn()} onBack={vi.fn()} />)
+    const submit = screen.getByRole("button", { name: "Preview Listing" })
+    expect(submit).toBeEnabled()
+    expect(submit).toHaveAttribute("aria-busy", "false")
+    rerender(<ListingForm kind="provider" submitting onSubmit={vi.fn()} onBack={vi.fn()} />)
+    expect(screen.getByRole("button", { name: "Preview Listing" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "Preview Listing" })).toHaveAttribute("aria-busy", "true")
+  })
+})
+
 describe("ListingForm — Business type", () => {
   it("offers General Business and Food & Dining as a radio group, General selected by default", () => {
     render(<ListingForm kind="business" onSubmit={vi.fn()} onBack={vi.fn()} />)

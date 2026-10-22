@@ -91,6 +91,15 @@ function invalidStateCopy(op: WriteOperation): Copy {
 }
 
 function validationCopy(error: ApiError, op: WriteOperation): Copy {
+  // The request eligibility rules arrive as `422 validation_error` + `details[].code` (API_CONTRACT §10.8),
+  // not as top-level codes.
+  const has = (code: string) => error.details.some((detail) => detail.code === code)
+  if (has("own_listing")) {
+    return { title: "You cannot send a request to your own listing", description: "Requests are for other people's services." }
+  }
+  if (has("not_requestable")) {
+    return { title: "This listing cannot receive requests", description: "Only approved service providers can be requested right now." }
+  }
   // Pick the most informative detail; fall back to a generic form error.
   const first = error.details.find((detail) => detail.message || detail.code)
   if (first) {
@@ -121,18 +130,17 @@ export function userMessageFor(error: unknown, op: WriteOperation): Copy {
       return conflictCopy(op)
     case "invalid_state_transition":
       return invalidStateCopy(op)
+    case "conflict":
+      // e.g. a duplicate category name or slug (`details: [{ field: "name", code: "duplicate" }]`).
+      if (error.details.some((detail) => detail.code === "duplicate")) {
+        return { title: "That name is already in use", description: "Choose a different name." }
+      }
+      return { title: "This conflicts with the current state", description: "Reload the page and try again." }
     case "plan_limit_reached":
       return {
         title: "Your plan's listing limit is reached",
         description: "Archive one of your active listings, or upgrade to Premium, then try again.",
       }
-    case "not_requestable":
-      return {
-        title: "This listing cannot receive requests",
-        description: "Only approved service providers can be requested right now.",
-      }
-    case "own_listing":
-      return { title: "You cannot send a request to your own listing", description: "" }
     case "rate_limited":
       return RATE_LIMITED
     case "not_found":

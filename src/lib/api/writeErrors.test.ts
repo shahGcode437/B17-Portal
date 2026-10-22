@@ -18,6 +18,19 @@ describe("writeErrors classification (matches API_CONTRACT §10)", () => {
     expect(isNoChanges(new Error("boom"))).toBe(false)
   })
 
+  it("maps the request eligibility rules from details[].code (the real 422 shape), not a top-level code", () => {
+    const own = userMessageFor(apiError(422, "validation_error", [{ field: "providerListingId", code: "own_listing" }]), "create-request")
+    expect(own.title).toBe("You cannot send a request to your own listing")
+    const wrongKind = userMessageFor(apiError(422, "validation_error", [{ field: "providerListingId", code: "not_requestable" }]), "create-request")
+    expect(wrongKind.title).toBe("This listing cannot receive requests")
+  })
+
+  it("explains a duplicate name (409 conflict + details duplicate) instead of a generic failure", () => {
+    const copy = userMessageFor(apiError(409, "conflict", [{ field: "name", code: "duplicate" }]), "category-create")
+    expect(copy.title).toBe("That name is already in use")
+    expect(userMessageFor(apiError(409, "conflict"), "category-create").title).toBe("This conflicts with the current state")
+  })
+
   it("never shows raw server text for a validation error", () => {
     const copy = userMessageFor(apiError(422, "validation_error"), "patch-listing")
     expect(copy.title).toBe("Please check the form")

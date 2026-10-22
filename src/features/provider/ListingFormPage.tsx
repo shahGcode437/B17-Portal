@@ -145,6 +145,7 @@ function ListingFormPage() {
   const formProps = {
     onBack: () => setKind(null),
     onSubmit: submit,
+    submitting: createMutation.pending,
   }
 
   return (

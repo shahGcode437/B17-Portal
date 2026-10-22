@@ -15,6 +15,8 @@ import { useCategories } from "@/hooks/useCategories"
 interface PropertyListingFormProps {
   defaultValues?: Partial<PropertyFormValues>
   onSubmit: (values: PropertyFormValues) => void
+  /** True while the page's write is in flight (see `ListingForm`'s `submitting`). */
+  submitting?: boolean
   onBack: () => void
 }
 
@@ -25,7 +27,7 @@ interface PropertyListingFormProps {
  * Deliberately simple: no map, GPS, mortgage, legal verification, or
  * booking/transaction fields.
  */
-function PropertyListingForm({ defaultValues, onSubmit, onBack }: PropertyListingFormProps) {
+function PropertyListingForm({ defaultValues, onSubmit, submitting = false, onBack }: PropertyListingFormProps) {
   // The property types are the server's (`GET /categories?module=property`); the submitted value is the SLUG.
   const types = useCategories("property")
   const propertyTypes = types.status === "success" ? types.data : []
@@ -230,7 +232,7 @@ function PropertyListingForm({ defaultValues, onSubmit, onBack }: PropertyListin
           <Button type="button" variant="outline" onClick={onBack}>
             Back
           </Button>
-          <Button type="submit" disabled={isSubmitting}>
+          <Button type="submit" disabled={isSubmitting || submitting} aria-busy={submitting}>
             Preview Listing
           </Button>
         </Stack>

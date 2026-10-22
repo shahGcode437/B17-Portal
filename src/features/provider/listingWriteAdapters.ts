@@ -14,10 +14,13 @@
  *  - a Business switched to General carries no Food block;
  *  - a Food submission carries no `category` (the server derives the display label from the primary
  *    Food category);
- *  - `location` is the single source of truth: `area_only` sends no coordinates, no address, no
- *    landmark; `approximate`/`exact` send the point only when the coordinates are finite numbers.
+ *  - `location` is the single source of truth, sent whole: `area_only` carries no coordinates (the
+ *    form clears them); address and landmark are never dropped on a visibility change, because for
+ *    `approximate` / `area_only` they are private data and clearing them would make a privacy
+ *    narrowing a moderated content change (LOCATION_MAP.md §7.4).
  */
 import type { FoodServiceOptionDto } from "@/lib/api/dto/public"
+import type { OwnerListingView } from "@/types/ownerListing"
 import { isFoodServiceOption } from "@/config/food"
 import { parseTags } from "@/features/provider/listingSchema"
 import type { FoodFormValues, ListingFormValues, PropertyFormValues } from "@/features/provider/listingSchema"
@@ -183,4 +186,24 @@ export function propertyPatchFrom(revision: number, values: PropertyFormValues, 
     furnished: values.furnished ? (values.furnished as "Furnished" | "Unfurnished" | "Semi-Furnished") : null,
     location,
   }
+}
+
+/**
+ * The edit form's starting location, from the owner's PRIVATE read. Address and landmark are carried for
+ * EVERY visibility: for `approximate` / `area_only` they are private data already on file, and an edit
+ * must send them back unchanged - dropping them is a content change that returns the listing to
+ * moderation instead of letting a privacy narrowing take effect (LOCATION_MAP.md §7.4). `area_only` has
+ * no point.
+ */
+export function toLocationWrite(listing: OwnerListingView): LocationWrite {
+  const l = listing.location
+  const base: LocationWrite = { visibility: l.visibility }
+  if (l.block) base.block = l.block
+  if (l.address) base.address = l.address
+  if (l.landmark) base.landmark = l.landmark
+  if (l.visibility !== "area_only" && l.latitude !== undefined && l.longitude !== undefined) {
+    base.latitude = l.latitude
+    base.longitude = l.longitude
+  }
+  return base
 }

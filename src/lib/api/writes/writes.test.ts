@@ -117,10 +117,12 @@ describe("write API modules", () => {
     const { calls } = installFetchMock(() => ok({}))
     await createCategory({ module: "directory", name: "New Shop" })
     await patchCategory("C1", { name: "Renamed", isActive: false })
-    await reorderCategories({ module: "directory", orderedIds: ["c1", "c2", "c3"] })
+    await reorderCategories({ module: "directory", parentId: null, orderedIds: ["c1", "c2", "c3"] })
     expect(path(calls[0])).toBe("/admin/categories")
     expect(path(calls[1])).toBe("/admin/categories/C1")
     expect(path(calls[2])).toBe("/admin/categories/reorder")
+    // `parentId` is required by the backend: the top level is an explicit null, never a missing key.
+    expect(calls[2].body).toEqual({ module: "directory", parentId: null, orderedIds: ["c1", "c2", "c3"] })
     const patchBody = calls[1].body as Record<string, unknown>
     // The write-type space makes module / slug unreachable here.
     expect(patchBody).not.toHaveProperty("module")

@@ -36,6 +36,12 @@ interface ListingFormProps {
   categoryLabelText?: string
   defaultValues?: Partial<ListingFormValues>
   onSubmit: (values: ListingFormValues) => void
+  /**
+   * True while the page's write is in flight. `onSubmit` does not return its promise (the page owns
+   * the mutation), so react-hook-form cannot know - without this the button would stay live during a
+   * slow save.
+   */
+  submitting?: boolean
   onBack: () => void
 }
 
@@ -49,7 +55,7 @@ const businessTypeChoices = [
  * For a Business (FD4) a "Business type" choice switches between the General category field and the
  * Food & Dining block; the listing is a Business either way.
  */
-function ListingForm({ kind, categoryModule, categoryLabelText, defaultValues, onSubmit, onBack }: ListingFormProps) {
+function ListingForm({ kind, categoryModule, categoryLabelText, defaultValues, onSubmit, submitting = false, onBack }: ListingFormProps) {
   const {
     register,
     handleSubmit,
@@ -282,7 +288,7 @@ function ListingForm({ kind, categoryModule, categoryLabelText, defaultValues, o
           <Button type="button" variant="outline" onClick={onBack}>
             Back
           </Button>
-          <Button type="submit" disabled={isSubmitting}>
+          <Button type="submit" disabled={isSubmitting || submitting} aria-busy={submitting}>
             Preview Listing
           </Button>
         </Stack>

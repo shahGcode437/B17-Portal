@@ -310,7 +310,10 @@ export function routeWrite(
     if (required) return required
     const target = state.listings.find((l) => l.id === body.providerListingId && l.status === "approved")
     if (!target) return fail(404, "not_found")
-    if (target.kind !== "provider") return fail(422, "not_requestable")
+    if (target.kind !== "provider") {
+      // The real shape (API_CONTRACT §10.8): 422 validation_error with the rule as a detail code.
+      return fail(422, "validation_error", [{ field: "providerListingId", code: "not_requestable", message: "Only service providers can receive requests." }])
+    }
     const requesterName = me.displayName ?? "Requester"
     const providerName = (target as { name: string }).name
     const id = uuid()
@@ -549,6 +552,8 @@ export function routeWrite(
       return ok(row)
     }
     if (path === "/admin/categories/reorder" && method === "POST") {
+      // The real backend requires `parentId` (null = top level); a missing key is `422 missing`.
+      if (!("parentId" in body)) return fail(422, "validation_error", [{ field: "parentId", code: "missing", message: "Field required" }])
       const module = String(body.module ?? "")
       const orderedIds = Array.isArray(body.orderedIds) ? (body.orderedIds as string[]) : []
       const siblings = state.categories.filter((c) => c.module === module)

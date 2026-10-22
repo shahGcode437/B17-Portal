@@ -31,6 +31,12 @@ const MODULES: { module: AdminCategoryView["module"]; label: string }[] = [
   { module: "news", label: "News" },
 ]
 
+/** The toast text for a failed write: the title, plus the reason when the server gave one (e.g. a duplicate name). */
+function failureText(error: unknown, op: "category-create" | "category-patch" | "category-reorder"): string {
+  const { title, description } = userMessageFor(error, op)
+  return description ? `${title}: ${description}` : title
+}
+
 /**
  * Categories (Phase 12H). The read is `GET /admin/categories` (inactive included); the writes are
  * `POST`, `PATCH`, `POST /reorder`. `module` and `slug` are immutable on edit; there is no delete
@@ -67,7 +73,7 @@ function AdminCategoriesPage() {
       setNewName("")
       refresh()
     } catch (error) {
-      show(userMessageFor(error, "category-create").title)
+      show(failureText(error, "category-create"))
     }
   }
 
@@ -83,7 +89,7 @@ function AdminCategoriesPage() {
       setRenamingId(null)
       refresh()
     } catch (error) {
-      show(userMessageFor(error, "category-patch").title)
+      show(failureText(error, "category-patch"))
     }
   }
 
@@ -93,7 +99,7 @@ function AdminCategoriesPage() {
       show(category.isActive ? "Category deactivated" : "Category activated")
       refresh()
     } catch (error) {
-      show(userMessageFor(error, "category-patch").title)
+      show(failureText(error, "category-patch"))
     }
   }
 
@@ -104,11 +110,11 @@ function AdminCategoriesPage() {
     const [row] = reordered.splice(index, 1)
     reordered.splice(nextIndex, 0, row)
     try {
-      await reorderMutation.mutate({ module, orderedIds: reordered.map((c) => c.id) })
+      await reorderMutation.mutate({ module, parentId: null, orderedIds: reordered.map((c) => c.id) })
       show("Order updated")
       refresh()
     } catch (error) {
-      show(userMessageFor(error, "category-reorder").title)
+      show(failureText(error, "category-reorder"))
       refresh()
     }
   }

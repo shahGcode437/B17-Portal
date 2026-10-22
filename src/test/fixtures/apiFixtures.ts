@@ -427,7 +427,7 @@ export const OWNER_LISTINGS: OwnerListingDto[] = [
     categoryLabel: "Plot",
     description: "A residential plot in B-17 Block C, available for sale.",
     rejectionReason: "Please add the plot size and a clearer description.",
-    // An approximate listing stores no address (the contract forbids one); its point is private.
+    // An approximate listing's point is private; an address, when one is on file, is private too (never public).
     location: { visibility: "approximate", block: "C", ...PRIVATE_POINT },
     publicLocation: { visibility: "approximate", block: "C", coordinates: { latitude: 33.71, longitude: 73.1, precision: "approximate" } },
     categories: [ref("plot", "Plot")],

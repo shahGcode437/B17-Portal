@@ -20,7 +20,7 @@ import { fetchOwnerListing } from "@/lib/api/reads/owner"
 import { toOwnerListing } from "@/lib/api/ownerAdapters"
 import { patchListing } from "@/lib/api/writes/listings"
 import type { LocationWrite } from "@/lib/api/writes/listings"
-import { listingPatchFrom, propertyPatchFrom } from "@/features/provider/listingWriteAdapters"
+import { listingPatchFrom, propertyPatchFrom, toLocationWrite } from "@/features/provider/listingWriteAdapters"
 import { foodProfileToFormValues } from "@/features/provider/listingBuilders"
 import { fieldErrors, isApiError } from "@/lib/api/errors"
 import { userMessageFor, isConflict, isNoChanges } from "@/lib/api/writeErrors"
@@ -167,7 +167,7 @@ function EditShell({ listing, onReload }: { listing: OwnerListingView; onReload:
         />
 
         {kind === "property" ? (
-          <PropertyListingForm defaultValues={defaults as PropertyFormValues} onBack={() => navigate(routes.providerListings)} onSubmit={submit} />
+          <PropertyListingForm defaultValues={defaults as PropertyFormValues} onBack={() => navigate(routes.providerListings)} onSubmit={submit} submitting={patchMutation.pending} />
         ) : (
           <ListingForm
             kind={kind === "tutor" ? "provider" : kind === "provider" ? "provider" : "business"}
@@ -176,26 +176,12 @@ function EditShell({ listing, onReload }: { listing: OwnerListingView; onReload:
             defaultValues={defaults as Partial<ListingFormValues>}
             onBack={() => navigate(routes.providerListings)}
             onSubmit={submit}
+            submitting={patchMutation.pending}
           />
         )}
       </Stack>
     </Container>
   )
-}
-
-function toLocationWrite(listing: OwnerListingView): LocationWrite {
-  const l = listing.location
-  const base: LocationWrite = { visibility: l.visibility }
-  if (l.block) base.block = l.block
-  if (l.visibility === "exact") {
-    if (l.address) base.address = l.address
-    if (l.landmark) base.landmark = l.landmark
-  }
-  if (l.visibility !== "area_only" && l.latitude !== undefined && l.longitude !== undefined) {
-    base.latitude = l.latitude
-    base.longitude = l.longitude
-  }
-  return base
 }
 
 function toFormDefaults(listing: OwnerListingView): Partial<ListingFormValues> | Partial<PropertyFormValues> {
