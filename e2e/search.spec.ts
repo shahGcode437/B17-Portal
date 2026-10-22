@@ -148,16 +148,11 @@ test.describe('Search: results, empty and quick look', () => {
     await expect(dialog).toBeVisible()
   })
 
-  test('Save is honestly unavailable: it does not open the preview, does not navigate, and says why', async ({ page }) => {
+  test('Save on a logged-out visitor sends them to Log In (never opens the preview)', async ({ page }) => {
     await openApp(page, '/search?q=pharmacy&type=business', 'Search / Explore')
-    const save = page.getByRole('button', { name: 'Save B-17 Family Pharmacy (coming soon)' })
-    await expect(save).toHaveAttribute('aria-disabled', 'true')
-    // Playwright treats aria-disabled as not-actionable; a real user CAN press it (it stays focusable), so force the click.
-    await save.click({ force: true })
-    await expect(page.getByText('Saving items is coming soon.')).toBeVisible()
+    await page.getByRole('button', { name: 'Save B-17 Family Pharmacy' }).click()
+    await expectPage(page, 'Log In')
     await expect(page.getByRole('dialog')).toHaveCount(0)
-    await expect(page).toHaveURL(/\/search\?/)
-    await expect(page.getByRole('button', { name: /Remove .* from saved/ })).toHaveCount(0)
   })
 
   test('a failing search shows an error with Try again - never an empty list - and recovers', async ({ page }) => {

@@ -23,6 +23,9 @@ export interface OwnerFoodView {
   categories: string[]
   serviceOptions: FoodServiceOption[]
   hoursNote?: string
+  /** Kept so an edit does not silently drop the menu (a PATCH replaces the whole Food block). */
+  menuHighlights?: { id: string; name: string; section?: string; description?: string; price?: string }[]
+  menuImage?: string
 }
 
 export interface OwnerListingView {
@@ -46,6 +49,16 @@ export interface OwnerListingView {
   submittedAt: string
   updatedAt: string
   food?: OwnerFoodView
+  /**
+   * What the EDIT form needs to prefill, kept apart from the display strings above: the primary
+   * category SLUG (the form submits slugs, never labels), a tutor's grade and a property's own fields.
+   */
+  categorySlug?: string
+  grade?: string
+  listingType?: "sale" | "rent"
+  price?: string
+  bedrooms?: number
+  furnished?: "Furnished" | "Unfurnished" | "Semi-Furnished"
   /** Where the PUBLIC page lives, only when the listing is approved (the server 404s it otherwise). */
   publicPath: string | null
 }

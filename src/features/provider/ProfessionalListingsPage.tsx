@@ -1,7 +1,7 @@
 import { useState } from "react"
-import { Link } from "react-router-dom"
+import { Link, useNavigate } from "react-router-dom"
 import { motion } from "motion/react"
-import { PlusCircle, Store, Eye } from "lucide-react"
+import { Archive, PlusCircle, Store, Eye, PenLine } from "lucide-react"
 import { Container } from "@/components/foundation/Container"
 import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
@@ -13,21 +13,42 @@ import { ListingSummaryCard } from "@/features/provider/ListingSummaryCard"
 import { ListingPreviewDialog } from "@/features/provider/ListingPreviewDialog"
 import { useOwnerListings } from "@/hooks/useWorkspaceReads"
 import { useRequireAuth } from "@/hooks/useRequireAuth"
+import { useMutation } from "@/hooks/useMutation"
+import { useToast } from "@/hooks/useToast"
 import { usePlanEntitlements } from "@/hooks/useCapability"
-import { routes } from "@/config/routes"
+import { archiveListing } from "@/lib/api/writes/listings"
+import { userMessageFor, isConflict } from "@/lib/api/writeErrors"
+import { editListingPath, routes } from "@/config/routes"
 import { fadeUp, staggerContainer, staggerItem } from "@/lib/motion"
 import type { OwnerListingView } from "@/types/ownerListing"
 
 /**
- * Listings (Phase 9D) - the professional's own listings with their REAL moderation status, read from
- * `GET /users/me/listings` (Phase 12G): status, revision, the admin's rejection reason and the
- * counts all come from the server. Creating, editing and archiving are not available yet (Phase
- * 12H), so each row offers View only and the page says so - nothing here pretends to save.
+ * Listings — the professional's own listings with their REAL moderation status (Phase 12G reads,
+ * Phase 12H writes). Each active row offers View, Edit and Archive; the actions call
+ * `PATCH /listings/{id}` (through the Edit page) and `POST /listings/{id}/archive`. The server is
+ * the source of truth: a successful archive refreshes the list; a `409 listing_conflict` means
+ * someone else changed the listing — the list refreshes and the owner retries. Archived rows show
+ * no further actions. The "+" opens the create flow.
  */
 function ProfessionalListingsPage() {
   const user = useRequireAuth()
   const listings = useOwnerListings()
+  const navigate = useNavigate()
+  const { show } = useToast()
   const [previewing, setPreviewing] = useState<OwnerListingView | null>(null)
+  const archive = useMutation(({ id, revision }: { id: string; revision: number }) => archiveListing(id, revision))
+
+  const handleArchive = async (listing: OwnerListingView) => {
+    if (!window.confirm(`Archive "${listing.title}"? Archived listings are not public and no longer count toward your plan limit.`)) return
+    try {
+      await archive.mutate({ id: listing.id, revision: listing.revision })
+      show("Listing archived")
+      listings.retry()
+    } catch (error) {
+      show(userMessageFor(error, "archive-listing").title)
+      if (isConflict(error)) listings.retry()
+    }
+  }
   const { plan, entitlements } = usePlanEntitlements()
 
   if (!user) return null
@@ -46,10 +67,16 @@ function ProfessionalListingsPage() {
             <Stack gap={1}>
               <Typography variant="h1">Listings</Typography>
               <Typography variant="body-sm" className="text-muted-foreground">
-                Everything you've submitted, and its current moderation status. Creating, editing and
-                archiving listings is coming soon.
+                Everything you've submitted, and its current moderation status. Material edits return the listing to
+                "pending review"; a privacy-only narrowing keeps the current status.
               </Typography>
             </Stack>
+            <Button asChild size="sm" className="self-start">
+              <Link to={routes.createListing}>
+                <PlusCircle />
+                New listing
+              </Link>
+            </Button>
           </Stack>
 
           {maxListings !== null && counts && (
@@ -93,10 +120,10 @@ function ProfessionalListingsPage() {
                   Creating a listing is coming soon. Your service, business or property will appear here with its review status.
                 </Typography>
               </Stack>
-              <Button asChild size="lg" variant="outline" className="h-11">
+              <Button asChild size="lg" className="h-11">
                 <Link to={routes.createListing}>
                   <PlusCircle />
-                  About creating a listing
+                  Create your first listing
                 </Link>
               </Button>
             </Card>
@@ -114,6 +141,29 @@ function ProfessionalListingsPage() {
                               <Eye />
                               View
                             </Button>
+                            {listing.status !== "archived" && (
+                              <>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-11 sm:h-7"
+                                  onClick={() => navigate(editListingPath(listing.id))}
+                                >
+                                  <PenLine />
+                                  Edit
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-11 sm:h-7"
+                                  onClick={() => void handleArchive(listing)}
+                                  disabled={archive.pending}
+                                >
+                                  <Archive />
+                                  Archive
+                                </Button>
+                              </>
+                            )}
                           </Stack>
                         }
                       />

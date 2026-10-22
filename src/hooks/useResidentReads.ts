@@ -1,6 +1,7 @@
 import { useAuth } from "@/hooks/useAuth"
 import { usePagedRead } from "@/hooks/usePagedRead"
 import { useRead } from "@/hooks/useRead"
+import { savedSetVersion, useSavedSet } from "@/hooks/useSavedSet"
 import { fetchSaved } from "@/lib/api/reads/saved"
 import { fetchLeads, fetchMyRequests, fetchRequest } from "@/lib/api/reads/requests"
 import {
@@ -24,11 +25,18 @@ function useAuthenticated(): boolean {
   return useAuth().status === "authenticated"
 }
 
-/** `GET /saved`: the user's saved listings that are still approved, newest save first. Read only. */
+/**
+ * `GET /saved`: the user's saved listings that are still approved, newest save first. Writes refresh
+ * this list through `savedSetVersion()` (bumped on every save / unsave) — the version is part of the
+ * read key, so a mutation re-fetches without any manual `retry` plumbing on the page.
+ */
 export function useSaved() {
   const enabled = useAuthenticated()
+  // Subscribing to the shared saved set makes this hook re-render on every save / unsave; the
+  // version is folded into the read key so the list refreshes with the server's truth.
+  useSavedSet()
   const paged = usePagedRead(
-    "saved",
+    `saved:${savedSetVersion()}`,
     async (offset, signal) => {
       const page = await fetchSaved({ limit: PAGE, offset }, signal)
       const items = page.items.flatMap((dto) => {

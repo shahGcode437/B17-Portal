@@ -102,6 +102,17 @@ export function toOwnerListing(dto: OwnerListingDto): OwnerListingView {
     publicPath: publicPathFor(dto),
   }
   if (vertical) view.vertical = vertical
+  // The primary category is the first reference the server lists (a Food listing has several; its own
+  // categories travel in `food`). The form submits this SLUG back.
+  const primary = dto.categories.find((ref) => ref.isPrimary) ?? dto.categories[0]
+  if (primary) view.categorySlug = primary.slug
+  if (dto.kind === "tutor") view.grade = dto.grade
+  if (dto.kind === "property") {
+    view.listingType = dto.listingType
+    view.price = dto.price
+    if (dto.bedrooms !== undefined) view.bedrooms = dto.bedrooms
+    if (dto.furnished) view.furnished = dto.furnished
+  }
   if (dto.description) view.description = dto.description
   if (dto.image) view.image = dto.image
   if (dto.rejectionReason) view.rejectionReason = dto.rejectionReason
@@ -110,6 +121,8 @@ export function toOwnerListing(dto: OwnerListingDto): OwnerListingView {
       categories: dto.food.categories,
       serviceOptions: dto.food.serviceOptions.filter(isFoodServiceOption),
       ...(dto.food.hoursNote ? { hoursNote: dto.food.hoursNote } : {}),
+      ...(dto.food.menuHighlights?.length ? { menuHighlights: dto.food.menuHighlights } : {}),
+      ...(dto.food.menuImage ? { menuImage: dto.food.menuImage } : {}),
     }
   }
   return view

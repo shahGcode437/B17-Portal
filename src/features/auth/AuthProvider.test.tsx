@@ -1,13 +1,11 @@
 import { act, render, screen, waitFor } from "@testing-library/react"
 import { StrictMode, useLayoutEffect } from "react"
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import { AuthProvider } from "@/features/auth/AuthProvider"
 import { useAuth, type AuthContextValue } from "@/hooks/useAuth"
 import { resendVerification } from "@/lib/api/auth"
 import { ApiError } from "@/lib/api/errors"
 import { getCsrfToken } from "@/lib/api/session"
-import { usePlanStore } from "@/state/planStore"
-import { useResidentStore } from "@/state/residentStore"
 import { deferred, fail, installFetchMock, meBody, noContent, ok } from "@/test/apiMock"
 
 /**
@@ -174,9 +172,8 @@ describe("AuthProvider — login, register, logout", () => {
     ])
   })
 
-  it("logout: revokes on the server (with the CSRF token), then clears user, token and demo data", async () => {
+  it("logout: revokes on the server (with the CSRF token), then clears user and token", async () => {
     const { calls } = installFetchMock((call) => (call.path === "/auth/logout" ? noContent() : ok(meBody({ csrfToken: "csrf-9" }))))
-    useResidentStore.setState({ savedItems: [{ kind: "business", id: "b1", savedAt: "2026-01-01" }], requests: [] })
     const { auth, state } = setup()
     await waitFor(() => expect(state()).toContain("authenticated"))
 
@@ -187,7 +184,6 @@ describe("AuthProvider — login, register, logout", () => {
     expect(state()).toBe("anonymous|-|-")
     expect(getCsrfToken()).toBeNull()
     expect(calls.find((c) => c.path === "/auth/logout")!.headers.get("X-CSRF-Token")).toBe("csrf-9")
-    expect(useResidentStore.getState().savedItems).toEqual([])
   })
 
   it("logout when the server session already expired still ends locally", async () => {
@@ -356,193 +352,11 @@ describe("AuthProvider — sessions, CSRF and races", () => {
       await auth().logout()
     })
 
-    // The only writes are the demo stores clearing THEIR OWN non-auth data on logout (resident / plan,
-    // until their Phase 12 slices); nothing session-, CSRF- or password-related is ever stored.
+    // Nothing is written to browser storage at all (the demo stores are gone); nothing session-, CSRF- or
+    // password-related is ever stored.
     const written = setItem.mock.calls.map(([key, value]) => ({ key, value }))
-    expect(written.map((entry) => entry.key).filter((key) => !["b17-resident-store", "b17-plan-store"].includes(key))).toEqual([])
+    expect(written.map((entry) => entry.key)).toEqual([])
     expect(JSON.stringify(written)).not.toMatch(/csrf|password|secret|session|token/i)
     expect(JSON.stringify({ ...window.localStorage, ...window.sessionStorage })).not.toMatch(/csrf|password|secret|session|token/i)
-  })
-})
-
-/**
- * User-scoped DEMO state (Saved items, request history, local plan) is persisted per browser, not
- * per account, until the 12F/12H APIs replace it. Property: it may survive an AUTHENTICATED reload,
- * but never a CONFIRMED transition to anonymous; "unavailable" (network / 5xx) proves nothing about
- * the session and must leave it alone.
- */
-describe("AuthProvider — user-scoped demo state isolation", () => {
-  beforeEach(() => {
-    useResidentStore.setState({
-      savedItems: [{ kind: "business", id: "b1", savedAt: "2026-01-01" }],
-      requests: [
-        {
-          id: "r1",
-          providerId: "p1",
-          providerName: "Provider",
-          service: "Wiring",
-          details: "d",
-          area: "B-17",
-          preferredDate: "2026-02-01",
-          requestedBy: "User A",
-          submittedAt: "2026-01-01T00:00:00Z",
-          status: "submitted",
-        },
-      ],
-    })
-    usePlanStore.setState({ plan: "premium" })
-  })
-
-  const expectCleared = () => {
-    expect(useResidentStore.getState().savedItems).toEqual([])
-    expect(useResidentStore.getState().requests).toEqual([])
-    expect(usePlanStore.getState().plan).toBe("free")
-  }
-  const expectPreserved = () => {
-    expect(useResidentStore.getState().savedItems).toHaveLength(1)
-    expect(useResidentStore.getState().requests).toHaveLength(1)
-    expect(usePlanStore.getState().plan).toBe("premium")
-  }
-
-  it("bootstrap 401 (the cookie expired while the browser was closed) clears resident data and resets the plan", async () => {
-    installFetchMock(() => fail(401, "unauthenticated"))
-    const { state } = setup()
-
-    await waitFor(() => expect(state()).toBe("anonymous|-|-"))
-
-    expectCleared()
-  })
-
-  it("bootstrap 401 session_expired clears them too", async () => {
-    installFetchMock(() => fail(401, "session_expired"))
-    const { state } = setup()
-
-    await waitFor(() => expect(state()).toBe("anonymous|-|expired"))
-
-    expectCleared()
-  })
-
-  it("session_expired on an authenticated request clears them", async () => {
-    installFetchMock((call) => (call.path === "/auth/resend-verification" ? fail(401, "session_expired") : ok(meBody())))
-    const { state } = setup()
-    await waitFor(() => expect(state()).toContain("authenticated"))
-    expectPreserved() // the authenticated bootstrap itself did not touch them
-
-    await act(async () => {
-      await resendVerification().catch(() => undefined)
-    })
-
-    expect(state()).toBe("anonymous|-|expired")
-    expectCleared()
-  })
-
-  it("account_disabled (on bootstrap) clears them", async () => {
-    installFetchMock(() => fail(403, "account_disabled"))
-    const { state } = setup()
-
-    await waitFor(() => expect(state()).toBe("anonymous|-|disabled"))
-
-    expectCleared()
-  })
-
-  it("account_disabled on an authenticated request clears them", async () => {
-    installFetchMock((call) => (call.path === "/auth/resend-verification" ? fail(403, "account_disabled") : ok(meBody())))
-    const { state } = setup()
-    await waitFor(() => expect(state()).toContain("authenticated"))
-
-    await act(async () => {
-      await resendVerification().catch(() => undefined)
-    })
-
-    expect(state()).toBe("anonymous|-|disabled")
-    expectCleared()
-  })
-
-  it("explicit logout clears them", async () => {
-    installFetchMock((call) => (call.path === "/auth/logout" ? noContent() : ok(meBody())))
-    const { auth, state } = setup()
-    await waitFor(() => expect(state()).toContain("authenticated"))
-
-    await act(async () => {
-      await auth().logout()
-    })
-
-    expect(state()).toBe("anonymous|-|-")
-    expectCleared()
-  })
-
-  it("logout when the server session had already expired (401) still clears them", async () => {
-    installFetchMock((call) => (call.path === "/auth/logout" ? fail(401, "session_expired") : ok(meBody())))
-    const { auth, state } = setup()
-    await waitFor(() => expect(state()).toContain("authenticated"))
-
-    await act(async () => {
-      await auth().logout()
-    })
-
-    expectCleared()
-  })
-
-  it("a bootstrap NETWORK failure is 'unavailable', not anonymous: nothing is cleared", async () => {
-    installFetchMock(() => "network-error")
-    const { state } = setup()
-
-    await waitFor(() => expect(state()).toContain("unavailable"))
-
-    expectPreserved()
-  })
-
-  it("a bootstrap 5xx is 'unavailable': nothing is cleared", async () => {
-    installFetchMock(() => fail(503, "service_unavailable"))
-    const { state } = setup()
-
-    await waitFor(() => expect(state()).toContain("unavailable"))
-
-    expectPreserved()
-  })
-
-  it("a bootstrap 500 is 'unavailable' too", async () => {
-    installFetchMock(() => fail(500, "internal_error"))
-    const { state } = setup()
-
-    await waitFor(() => expect(state()).toContain("unavailable"))
-
-    expectPreserved()
-  })
-
-  it("an authenticated bootstrap (an ordinary reload) preserves them", async () => {
-    installFetchMock(() => ok(meBody()))
-    const { state } = setup()
-
-    await waitFor(() => expect(state()).toBe("authenticated|Ayesha Khan|-"))
-
-    expectPreserved()
-  })
-
-  it("a logout that fails on the network keeps the session AND the data", async () => {
-    installFetchMock((call) => (call.path === "/auth/logout" ? "network-error" : ok(meBody())))
-    const { auth, state } = setup()
-    await waitFor(() => expect(state()).toContain("authenticated"))
-
-    await act(async () => {
-      await auth().logout().catch(() => undefined)
-    })
-
-    expect(state()).toContain("authenticated")
-    expectPreserved()
-  })
-
-  it("recovering from 'unavailable' into a CONFIRMED anonymous then clears them", async () => {
-    let answer: "down" | "anon" = "down"
-    installFetchMock(() => (answer === "down" ? "network-error" : fail(401, "unauthenticated")))
-    const { auth, state } = setup()
-    await waitFor(() => expect(state()).toContain("unavailable"))
-    expectPreserved()
-
-    answer = "anon"
-    act(() => auth().retryBootstrap())
-    await waitFor(() => expect(state()).toContain("anonymous"))
-
-    expectCleared()
   })
 })

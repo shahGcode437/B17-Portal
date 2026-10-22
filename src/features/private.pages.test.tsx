@@ -55,21 +55,24 @@ describe("auth-aware private reads", () => {
   })
 })
 
-describe("Saved (read only)", () => {
+describe("Saved", () => {
   it("shows the saved public cards grouped by kind, from GET /saved", async () => {
     renderPage(<SavedPage />, { url: "/profile/saved", user: resident() })
     expect(await screen.findByText("Sunrise Solar Solutions")).toBeInTheDocument()
     expect(screen.getByText("Capital Bakers")).toBeInTheDocument()
     expect(screen.getByRole("heading", { name: /Services \(1\)/ })).toBeInTheDocument()
     expect(screen.getByRole("heading", { name: /Businesses \(1\)/ })).toBeInTheDocument()
-    expect(screen.getByText(/2 saved items\. Saving and removing items is coming soon/)).toBeInTheDocument()
+    expect(screen.getByText(/^2 saved items\.?$/)).toBeInTheDocument()
   })
 
-  it("offers no way to remove an item (writes arrive in 12H)", async () => {
+  it("offers a working Remove on each saved card (Phase 12H)", async () => {
     renderPage(<SavedPage />, { url: "/profile/saved", user: resident() })
     await screen.findByText("Sunrise Solar Solutions")
-    expect(screen.queryByRole("button", { name: /remove .* from saved/i })).not.toBeInTheDocument()
-    for (const save of screen.getAllByRole("button", { name: /\(coming soon\)/ })) expect(save).toHaveAttribute("aria-disabled", "true")
+    // Every card renders a toggle whose accessible name is "Remove <item> from saved" when saved.
+    expect(screen.getAllByRole("button", { name: /remove .+ from saved/i }).length).toBeGreaterThanOrEqual(1)
+    for (const button of screen.getAllByRole("button", { name: /remove .+ from saved/i })) {
+      expect(button).toHaveAttribute("aria-pressed", "true")
+    }
   })
 
   it("an empty list is an empty state, not an error", async () => {
@@ -132,7 +135,7 @@ describe("My Requests (read only)", () => {
   })
 })
 
-describe("Professional: listings (read only)", () => {
+describe("Professional: listings", () => {
   it("shows every listing with its REAL status, revision and the admin's rejection reason", async () => {
     renderPage(<ProfessionalListingsPage />, { url: "/provider/listings", user: resident() })
     expect(await screen.findByText("Pending Stationers")).toBeInTheDocument()
@@ -143,11 +146,15 @@ describe("Professional: listings (read only)", () => {
     expect(screen.getByText("Please add the plot size and a clearer description.")).toBeInTheDocument()
   })
 
-  it("offers View only: no create, edit, archive or resubmit that could pretend to save", async () => {
+  it("offers View, Edit and Archive on active rows (Phase 12H); archived rows show View only; no Delete exists", async () => {
     renderPage(<ProfessionalListingsPage />, { url: "/provider/listings", user: resident() })
     await screen.findByText("Pending Stationers")
-    expect(screen.queryByRole("button", { name: /^(edit|archive|resubmit|delete|add)/i })).not.toBeInTheDocument()
+    // There are three active listings (pending, approved, rejected) and one archived in the fixtures.
     expect(screen.getAllByRole("button", { name: "View" }).length).toBe(4)
+    expect(screen.getAllByRole("button", { name: "Edit" }).length).toBe(3)
+    expect(screen.getAllByRole("button", { name: "Archive" }).length).toBe(3)
+    // There is no destructive delete.
+    expect(screen.queryByRole("button", { name: /^delete/i })).not.toBeInTheDocument()
   })
 
   it("the owner preview shows the PRIVATE location (address and point) - owner view only", async () => {
@@ -189,7 +196,7 @@ describe("Professional: leads (read only)", () => {
   })
 })
 
-describe("Admin: moderation queue (read only)", () => {
+describe("Admin: moderation queue", () => {
   beforeEach(() => backend(["admin"]))
 
   it("shows the server's queue with whole-queue counts on the filter buttons", async () => {
@@ -219,10 +226,11 @@ describe("Admin: moderation queue (read only)", () => {
     await user.click(screen.getByRole("button", { name: "Review Pending Stationers" }))
     const dialog = await screen.findByRole("dialog")
     expect(await within(dialog).findByText(PRIVATE_ADDRESS)).toBeInTheDocument()
-    expect(within(dialog).getByRole("button", { name: "Approve" })).toBeDisabled()
-    expect(within(dialog).getByRole("button", { name: "Reject" })).toBeDisabled()
-    expect(within(dialog).getByText(/not connected yet/i)).toBeInTheDocument()
+    // Phase 12H: Approve is enabled for a pending listing; Reject is enabled for pending or approved.
+    expect(within(dialog).getByRole("button", { name: /^Approve$/ })).toBeEnabled()
+    expect(within(dialog).getByRole("button", { name: /^Reject$/ })).toBeEnabled()
     expect(within(dialog).getByText(/Sana Owner \(owner\)/)).toBeInTheDocument() // the status history, from the server
+    // The dialog has not called a write (the user has not clicked anything).
     expect(calls.some((c) => c.method !== "GET" && !c.path.startsWith("/auth"))).toBe(false)
   })
 
@@ -241,7 +249,7 @@ describe("Admin: moderation queue (read only)", () => {
   })
 })
 
-describe("Admin: categories and dashboard (read only)", () => {
+describe("Admin: categories and dashboard", () => {
   beforeEach(() => backend(["admin"]))
 
   it("lists every category including INACTIVE ones, marked, with no editing controls", async () => {
@@ -249,7 +257,10 @@ describe("Admin: categories and dashboard (read only)", () => {
     expect(await screen.findByText("Retired Category")).toBeInTheDocument()
     expect(screen.getAllByText("Inactive")).toHaveLength(1)
     expect(screen.getAllByText("Active").length).toBeGreaterThan(5)
-    expect(screen.queryByRole("button", { name: /add|rename|deactivate|reorder|move|save/i })).not.toBeInTheDocument()
+    // Phase 12H: add / rename / reorder / activate controls are present and enabled.
+    expect(screen.getAllByRole("button", { name: /^Add a/i }).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole("button", { name: /^(Activate|Deactivate)$/ }).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole("button", { name: /^Move .* up$/i }).length).toBeGreaterThan(0)
   })
 
   it("the dashboard counts are the server's (and show an em dash while unknown)", async () => {

@@ -1,5 +1,6 @@
 import type { Page, Route } from '@playwright/test'
 import { routeRead } from '../../src/test/fixtures/readRouter'
+import { publicApprovedListings, resetWriteState, routeWrite, savedRows, writeState } from '../../src/test/fixtures/writeRouter'
 
 /**
  * A deterministic stand-in for the FastAPI authentication endpoints (Phase 12C), installed per test
@@ -75,6 +76,7 @@ export class AuthMock {
 
   /** The routes the frontend uses, answered from this object's state. */
   async install(page: Page): Promise<void> {
+    resetWriteState()
     await page.route('**/api/v1/**', (route) => this.handle(route))
     await page.route('https://tile.openstreetmap.org/**', (route) => {
       this.tileRequests.push(route.request().url())
@@ -182,7 +184,119 @@ export class AuthMock {
       }
       default: {
         const account = this.current()
-        const read = routeRead(method, path, new URL(request.url()).searchParams, account ? { roles: account.roles } : null)
+        const session = account
+          ? { roles: account.roles, displayName: account.displayName, professional: Boolean(account.professional), emailVerified: account.emailVerified }
+          : null
+        // The professional profile is account state (like the real server's professional_profiles row): a verified
+        // user creates it with an idempotent PUT (201 first, then 200), and /auth/me reports it from then on.
+        if (method === 'PUT' && path === '/users/me/professional-profile') {
+          if (!account || !this.session) return error(401, 'unauthenticated')
+          if (!account.emailVerified) return error(403, 'email_not_verified')
+          const first = !account.professional
+          account.professional = { planCode: 'free' }
+          return data(this.me(account, this.session.csrf), first ? 201 : 200)
+        }
+        // Writes first (they also handle the mutable state the subsequent reads see).
+        const write = routeWrite(method, path, body ?? {}, session)
+        if (write) return reply(write.status, write.body)
+        // Read endpoints that would normally come from the static fixtures: for /saved, /users/me/listings
+        // and /admin/listings we return the MUTABLE state so writes are observable on the next read.
+        const url = new URL(request.url())
+        if (method === 'GET' && path === '/saved' && account) {
+          const rows = savedRows()
+          return reply(200, { data: rows, meta: { total: rows.length, limit: 50, offset: 0 } })
+        }
+        // Keep /requests and /users/me/leads on the MUTABLE state so a POST / action is immediately visible.
+        if (method === 'GET' && (path === '/requests' || path === '/users/me/leads') && account) {
+          const rows = path === '/requests' ? writeState().myRequests : writeState().leads
+          const status = url.searchParams.get('status')
+          const filtered = status ? rows.filter((r) => r.status === status) : rows
+          return reply(200, { data: filtered, meta: { total: filtered.length, limit: 50, offset: 0 } })
+        }
+        if (method === 'GET') {
+          const requestDetail = /^\/requests\/(.+)$/.exec(path)
+          if (requestDetail && account) {
+            const id = decodeURIComponent(requestDetail[1])
+            const found = writeState().myRequests.find((r) => r.id === id) ?? writeState().leads.find((r) => r.id === id)
+            if (found) {
+              const lead = writeState().leads.find((r) => r.id === id)
+              return reply(200, { data: { ...found, requesterName: lead?.requesterName ?? account.displayName, viewerRole: lead ? 'provider' : 'requester', history: (writeState().history[id] ?? []) } })
+            }
+            return error(404, 'not_found')
+          }
+        }
+        // Public detail / search should see listings the admin approved during the test, in addition to
+        // the static public fixtures: fall back to the mutable approved set for ids the readRouter does not know.
+        if (method === 'GET') {
+          const detail = /^\/listings\/(.+)$/.exec(path)
+          if (detail) {
+            const id = decodeURIComponent(detail[1])
+            const fromMutable = publicApprovedListings().find((l) => l.id === id)
+            // Let readRouter answer first for its own fixtures; only step in when it would 404.
+            const readFirst = routeRead(method, path, url.searchParams, session)
+            if (readFirst && readFirst.status !== 404) return reply(readFirst.status, readFirst.body)
+            if (fromMutable) return reply(200, { data: fromMutable })
+          }
+          if (path === '/search' || path === '/search/suggestions') {
+            // Augment: run the read router over the mutable approved listings too, so a freshly approved
+            // listing is findable by text search.
+            const readFirst = routeRead(method, path, url.searchParams, session)
+            if (readFirst) return reply(readFirst.status, readFirst.body)
+          }
+        }
+        if (method === 'GET' && path === '/users/me/listings' && account) {
+          const rows = writeState().listings
+          return reply(200, {
+            data: rows,
+            meta: { total: rows.length, limit: 50, offset: 0, counts: rows.reduce((c, l) => ({ ...c, [l.status]: (c[l.status as keyof typeof c] ?? 0) + 1 }), { pending: 0, approved: 0, rejected: 0, archived: 0 }) },
+          })
+        }
+        // Admin category reads use the mutable state so a POST / PATCH / reorder is immediately visible.
+        if (method === 'GET' && path === '/admin/categories' && (account?.roles ?? []).includes('admin')) {
+          const module = url.searchParams.get('module')
+          const rows = writeState().categories.filter((c) => !module || c.module === module)
+          return reply(200, { data: rows })
+        }
+        if (method === 'GET' && path === '/admin/listings' && (account?.roles ?? []).includes('admin')) {
+          // Only non-archived listings go on the moderation queue (matching the ADMIN_LISTINGS fixture used by the read tests).
+          const all = writeState().listings.filter((l) => l.status !== 'archived')
+          const filterStatus = url.searchParams.get('status')
+          const rows = filterStatus ? all.filter((l) => l.status === filterStatus) : all
+          const summaries = rows.map((l) => ({
+            id: l.id,
+            kind: l.kind,
+            ...(l.kind === 'business' ? { vertical: l.vertical } : {}),
+            title: l.kind === 'property' ? l.title : l.name,
+            area: l.area,
+            ...(l.location.block ? { block: l.location.block } : {}),
+            locationVisibility: l.location.visibility,
+            categoryLabel: l.categoryLabel,
+            status: l.status,
+            revision: l.revision,
+            submittedAt: l.submittedAt,
+            updatedAt: l.updatedAt,
+          }))
+          // `counts` is always over the WHOLE queue, not the filtered subset (API_CONTRACT §10.2).
+          return reply(200, {
+            data: summaries,
+            meta: { total: rows.length, limit: 50, offset: 0, counts: all.reduce((c, l) => ({ ...c, [l.status]: (c[l.status as keyof typeof c] ?? 0) + 1 }), { pending: 0, approved: 0, rejected: 0, archived: 0 }) },
+          })
+        }
+        if (method === 'GET') {
+          const admin = /^\/admin\/listings\/(.+)$/.exec(path)
+          if (admin && (account?.roles ?? []).includes('admin')) {
+            const row = writeState().listings.find((l) => l.id === decodeURIComponent(admin[1]))
+            if (row) return reply(200, { data: { ...row, submitter: { displayName: 'Sana Owner' }, history: [{ action: 'submitted', toStatus: 'pending', revision: 1, actor: { displayName: 'Sana Owner', role: 'owner' }, createdAt: row.submittedAt }] } })
+            return error(404, 'not_found')
+          }
+          const ownerDetail = /^\/users\/me\/listings\/(.+)$/.exec(path)
+          if (ownerDetail && account) {
+            const row = writeState().listings.find((l) => l.id === decodeURIComponent(ownerDetail[1]))
+            if (row) return reply(200, { data: row })
+            return error(404, 'not_found')
+          }
+        }
+        const read = routeRead(method, path, url.searchParams, session)
         return read ? reply(read.status, read.body) : error(404, 'not_found')
       }
     }

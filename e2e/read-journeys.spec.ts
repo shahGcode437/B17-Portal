@@ -188,10 +188,10 @@ test.describe('authenticated read journey', () => {
     await signIn(page, 'Rana Resident', 'professional')
     await expectPage(page, 'Saved')
 
-    // Saved: the server's still-approved items, read-only.
+    // Saved: the server's still-approved items; each card renders a Remove toggle (Phase 12H).
     await expect(page.getByText('Sunrise Solar Solutions')).toBeVisible()
     await expect(page.getByText('Capital Bakers')).toBeVisible()
-    await expect(page.getByRole('button', { name: /Remove .* from saved/ })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: /Remove .* from saved/ }).first()).toBeVisible()
 
     // My Requests: status from the server; opening one reads its history.
     await page.goto('/profile/requests')
@@ -201,7 +201,7 @@ test.describe('authenticated read journey', () => {
     const dialog = page.getByRole('dialog')
     await expect(dialog).toBeVisible()
     await expect(dialog.getByText(/History/i)).toBeVisible()
-    await expect(dialog.getByRole('button', { name: /cancel request|accept|start work|complete/i })).toHaveCount(0)
+    // Phase 12H exposes a Cancel on a non-terminal row the requester owns; terminal rows show nothing.
     await page.keyboard.press('Escape')
 
     // Professional: the owner's listings with real statuses, revision, the admin's reason, and the PRIVATE location.
@@ -222,12 +222,14 @@ test.describe('authenticated read journey', () => {
     expect(authMock.calls.filter((c) => c.method !== 'GET' && !c.path.startsWith('/auth'))).toEqual([])
   })
 
-  test('create / edit / archive listing are honestly unavailable (no fake submit)', async ({ page }) => {
+  test('create a listing opens a real form with a kind picker and the location fieldset (Phase 12H)', async ({ page }) => {
     await page.goto('/provider/listings/new')
     await signIn(page, 'Sana Baker', 'professional')
-    await expectPage(page, /coming soon/i)
-    await expect(page.getByRole('textbox')).toHaveCount(0)
-    await expect(page.getByRole('button', { name: /submit/i })).toHaveCount(0)
+    await expectPage(page, 'List Your Business / Service / Property')
+    // Four kinds offered.
+    for (const name of ['Service / Professional', 'Business / Shop', 'Tutor', 'Property']) {
+      await expect(page.getByRole('button', { name: new RegExp(name) })).toBeVisible()
+    }
   })
 })
 
@@ -250,15 +252,16 @@ test.describe('admin read journey', () => {
     await page.getByRole('button', { name: 'Review Pending Stationers' }).click()
     const review = page.getByRole('dialog', { name: 'Review Listing' })
     await expect(review.getByText(PRIVATE_ADDRESS)).toBeVisible() // the private location is for the admin only
-    await expect(review.getByRole('button', { name: 'Approve' })).toBeDisabled()
-    await expect(review.getByRole('button', { name: 'Reject' })).toBeDisabled()
+    // Phase 12H: approve / reject are enabled on a pending listing (the write is covered by write-journeys.spec).
+    await expect(review.getByRole('button', { name: /^Approve$/ })).toBeEnabled()
+    await expect(review.getByRole('button', { name: /^Reject$/ })).toBeEnabled()
     await page.keyboard.press('Escape')
 
     await page.getByRole('link', { name: 'Categories' }).first().click()
     await expectPage(page, 'Categories')
     await expect(page.getByText('Retired Category')).toBeVisible()
     await expect(page.getByText('Inactive', { exact: true })).toHaveCount(1)
-    await expect(page.getByRole('button', { name: /add|rename|deactivate|save/i })).toHaveCount(0)
+    // Phase 12H: add / rename / activate controls are offered on the Categories page.
 
     expect(authMock.calls.filter((c) => c.method !== 'GET' && !c.path.startsWith('/auth'))).toEqual([])
   })

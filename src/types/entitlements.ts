@@ -5,12 +5,10 @@
  * DECISIONS.md: "Premium/Free is modeled through capabilities/entitlements").
  *
  * IMPORTANT: these checks are UX controls only, not a security boundary.
- * There is no backend yet, so a determined user can always change their own
- * local plan (see `planStore`) — exactly like every other piece of demo
- * auth/state in this prototype. Real authorization will live in the backend
- * once it exists (Phase 10+) and will be authoritative; this frontend model
- * exists so the eventual swap only touches `planStore`/`plans.ts`, not every
- * component that gates a feature.
+ * The plan comes from the backend (`/auth/me` `professional.planCode`) and
+ * the API enforces every limit (e.g. `plan_limit_reached`); this frontend
+ * model only decides what to SHOW, so a change in the entitlement source
+ * touches `plans.ts`, not every component that gates a feature.
  */
 export type Plan = "free" | "premium"
 

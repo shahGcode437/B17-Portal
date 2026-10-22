@@ -1,3 +1,4 @@
+import { useState } from "react"
 import { useNavigate, useParams } from "react-router-dom"
 import { MapPin, MessageCircle, Wrench } from "lucide-react"
 import { Typography } from "@/components/foundation/Typography"
@@ -12,7 +13,9 @@ import { DetailTagList } from "@/components/detail/DetailTagList"
 import { FeaturedBadge } from "@/components/detail/FeaturedBadge"
 import { ListingDetailGate } from "@/components/detail/ListingDetailGate"
 import { LocationSection } from "@/components/location/LocationSection"
+import { RequestServiceDialog } from "@/features/services/RequestServiceDialog"
 import { useListing } from "@/hooks/useListings"
+import { useAuth } from "@/hooks/useAuth"
 import { useSeo } from "@/hooks/useSeo"
 import { providerSeo } from "@/seo/entitySeo"
 import { useToast } from "@/hooks/useToast"
@@ -25,9 +28,8 @@ import type { Provider } from "@/types/provider"
  * experience / verification rows are intentionally omitted: nothing here is backed by a real
  * process (Master Spec §9, §19). WhatsApp stays simulated.
  *
- * "Request Service" is NOT available yet: the requests API exists (Phase 12F) but the form is wired
- * to it in Phase 12H, and the old demo dialog only pretended to record a request. Until then the
- * button is disabled and says why, rather than reporting a success that was never persisted.
+ * "Request Service" is real since Phase 12H: the dialog `POST`s to `/requests` with the backend
+ * deriving the provider from this listing's owner. An anonymous visitor is sent to Log In first.
  */
 function ProviderProfilePage() {
   const { id } = useParams<{ id: string }>()
@@ -53,7 +55,17 @@ function ProviderProfilePage() {
 function ProviderProfile({ provider }: { provider: Provider }) {
   const navigate = useNavigate()
   const { show } = useToast()
+  const auth = useAuth()
+  const [requestOpen, setRequestOpen] = useState(false)
   useSeo(providerSeo(provider))
+
+  const handleRequestClick = () => {
+    if (auth.status !== "authenticated") {
+      navigate(routes.login, { state: { from: `${window.location.pathname}${window.location.search}` } })
+      return
+    }
+    setRequestOpen(true)
+  }
 
   return (
     <DetailLayout
@@ -74,12 +86,9 @@ function ProviderProfile({ provider }: { provider: Provider }) {
           facts={<DetailFacts facts={[{ icon: MapPin, label: "Coverage area", value: provider.area, wide: true }]} />}
           actions={
             <>
-              <Button size="lg" className="w-full" disabled aria-describedby="request-service-note">
+              <Button size="lg" className="w-full" onClick={handleRequestClick}>
                 Request Service
               </Button>
-              <Typography id="request-service-note" variant="caption">
-                Sending requests is coming soon.
-              </Typography>
               <Button size="lg" variant="outline" className="w-full" onClick={() => show(SIMULATED_MESSAGES.whatsapp)}>
                 <MessageCircle />
                 Contact on WhatsApp
@@ -102,6 +111,12 @@ function ProviderProfile({ provider }: { provider: Provider }) {
           <DetailTagList tags={provider.tags} />
         </DetailSection>
       )}
+      <RequestServiceDialog
+        provider={provider}
+        requesterName={auth.user?.displayName ?? ""}
+        open={requestOpen}
+        onOpenChange={setRequestOpen}
+      />
     </DetailLayout>
   )
 }

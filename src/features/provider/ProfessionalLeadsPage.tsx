@@ -105,7 +105,14 @@ function ProfessionalLeadsPage() {
         </Stack>
       </motion.div>
 
-      <LeadDetailDialog request={selected} onOpenChange={(open) => !open && setSelected(null)} />
+      <LeadDetailDialog
+        request={selected}
+        onOpenChange={(open) => !open && setSelected(null)}
+        onChanged={() => {
+          leads.retry()
+          setSelected(null)
+        }}
+      />
     </Container>
   )
 }

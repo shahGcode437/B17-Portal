@@ -55,8 +55,9 @@ test('a result card opens its preview with touch, and Save stays independent (an
   await preview.tap()
   await expect(page.getByRole('dialog', { name: 'B-17 Family Pharmacy' })).toBeVisible()
   await page.keyboard.press('Escape')
-  await page.getByRole('button', { name: 'Save B-17 Family Pharmacy (coming soon)' }).tap({ force: true })
-  await expect(page.getByText('Saving items is coming soon.')).toBeVisible() // its own control: it did not open the preview
+  await page.getByRole('button', { name: 'Save B-17 Family Pharmacy' }).tap()
+  // Save redirects a logged-out visitor to Log In (it does not open the preview).
+  await expectPage(page, 'Log In')
   await expect(page.getByRole('dialog')).toHaveCount(0)
 })
 

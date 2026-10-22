@@ -15,6 +15,9 @@ interface ServiceRequestFormProps {
   requesterName: string
   onSubmit: (values: ServiceRequestValues) => void
   onCancel: () => void
+  submitting?: boolean
+  /** Backend 422 field errors (`service`, `details`, `area`, …) mapped onto this form's fields. */
+  fieldErrors?: Record<string, string>
 }
 
 const selectClassName = cn(
@@ -27,7 +30,7 @@ const selectClassName = cn(
 const todayISO = new Date().toISOString().slice(0, 10)
 
 /** Short Service Request form (UI/UX Spec §12) — used inside RequestServiceDialog. */
-function ServiceRequestForm({ provider, requesterName, onSubmit, onCancel }: ServiceRequestFormProps) {
+function ServiceRequestForm({ provider, requesterName, onSubmit, onCancel, submitting, fieldErrors = {} }: ServiceRequestFormProps) {
   const {
     register,
     handleSubmit,
@@ -41,8 +44,10 @@ function ServiceRequestForm({ provider, requesterName, onSubmit, onCancel }: Ser
       preferredDate: "",
       preferredTime: "",
       notes: "",
+      preferredContactChannel: "in_app",
     },
   })
+  const err = (name: keyof ServiceRequestValues) => errors[name]?.message || fieldErrors[name]
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} noValidate>
@@ -133,19 +138,36 @@ function ServiceRequestForm({ provider, requesterName, onSubmit, onCancel }: Ser
         <Stack gap={2}>
           <Label htmlFor="request-notes">Additional Details (optional)</Label>
           <Textarea id="request-notes" placeholder="Anything else the provider should know?" rows={2} {...register("notes")} />
-          {errors.notes && (
+          {err("notes") && (
             <Typography variant="caption" className="text-destructive" role="alert">
-              {errors.notes.message}
+              {err("notes")}
             </Typography>
           )}
+        </Stack>
+
+        <Stack gap={2}>
+          <Label htmlFor="request-contact">Preferred contact method</Label>
+          <select
+            id="request-contact"
+            className={selectClassName}
+            aria-describedby="request-contact-hint"
+            {...register("preferredContactChannel")}
+          >
+            <option value="in_app">In-app (my requests)</option>
+            <option value="whatsapp">WhatsApp (if the provider shares a number)</option>
+            <option value="phone">Phone (if the provider shares a number)</option>
+          </select>
+          <Typography id="request-contact-hint" variant="caption" className="text-muted-foreground">
+            B-17 Portal does not share your phone or WhatsApp number. This is a hint to the provider only.
+          </Typography>
         </Stack>
 
         <Stack gap={2} className="flex-col-reverse sm:flex-row sm:justify-end">
           <Button type="button" variant="outline" onClick={onCancel}>
             Cancel
           </Button>
-          <Button type="submit" disabled={isSubmitting}>
-            Submit Request
+          <Button type="submit" disabled={submitting ?? isSubmitting}>
+            {submitting ? "Sending…" : "Submit Request"}
           </Button>
         </Stack>
       </Stack>

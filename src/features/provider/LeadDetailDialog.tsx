@@ -12,6 +12,7 @@ import { Typography } from "@/components/foundation/Typography"
 import { RequestProgress } from "@/components/workspace/RequestProgress"
 import { RequestStatusBadge } from "@/features/resident/RequestStatusBadge"
 import { RequestHistory } from "@/features/resident/RequestHistory"
+import { RequestActions } from "@/features/resident/RequestActions"
 import { contactPreferenceLabel } from "@/config/requests"
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" })
@@ -19,6 +20,7 @@ const dateFormatter = new Intl.DateTimeFormat("en-US", { weekday: "short", month
 interface LeadDetailDialogProps {
   request: ServiceRequestRecord | null
   onOpenChange: (open: boolean) => void
+  onChanged?: () => void
 }
 
 /**
@@ -27,7 +29,7 @@ interface LeadDetailDialogProps {
  * name only - no e-mail or phone number exists on a request. Accept / start / complete / cancel are
  * wired to the API in Phase 12H, so this dialog offers no action that could pretend to work.
  */
-function LeadDetailDialog({ request, onOpenChange }: LeadDetailDialogProps) {
+function LeadDetailDialog({ request, onOpenChange, onChanged }: LeadDetailDialogProps) {
   const preference = contactPreferenceLabel(request?.preferredContactChannel)
 
   return (
@@ -83,9 +85,16 @@ function LeadDetailDialog({ request, onOpenChange }: LeadDetailDialogProps) {
 
               <RequestHistory requestId={request.id} viewerRole="provider" />
 
+              <RequestActions
+                requestId={request.id}
+                status={request.status}
+                viewerRole="provider"
+                onRefresh={() => onChanged?.()}
+              />
+
               <Typography variant="caption" className="text-muted-foreground">
-                Accepting and updating requests from here is coming soon. B-17 Portal doesn't send the
-                requester a notification yet.
+                B-17 Portal doesn't send the requester a notification yet. The status change will show up when they open
+                this request again.
               </Typography>
             </Stack>
           </>

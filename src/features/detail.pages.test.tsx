@@ -134,11 +134,16 @@ describe("Provider detail", () => {
     expect(drawn()).toHaveLength(0)
   })
 
-  it("does not offer a request that cannot be sent yet (writes arrive in 12H)", async () => {
+  it("Request Service is enabled; an anonymous click sends the visitor to Log In (Phase 12H)", async () => {
+    const user = (await import("@testing-library/user-event")).default.setup()
     renderPage(<ProviderProfilePage />, { url: `/providers/${IDS.provider}`, path: "/providers/:id", user: null })
     await screen.findByRole("heading", { level: 1, name: "Sunrise Solar Solutions" })
     const request = screen.getByRole("button", { name: /request service/i })
-    expect(request).toBeDisabled()
+    expect(request).toBeEnabled()
+    await user.click(request)
+    // The dialog is not shown for an anonymous visitor; they are navigated to Log In instead.
+    expect(screen.queryByRole("dialog", { name: /^Request / })).not.toBeInTheDocument()
+    expect(screen.getByTestId("location")).toHaveTextContent("/login")
   })
 
   it("renders not-found for an unknown id", async () => {

@@ -80,6 +80,12 @@ export const CATEGORIES: AdminCategoryDto[] = [
   ["property", "flat", "Flat", 2],
   ["news", "community", "Community", 1],
   ["news", "utilities", "Utilities", 2],
+  // The owner fixtures below use these, so every fixture category is a real, active taxonomy entry
+  // (the edit form selects its current category by slug; the write router validates slugs).
+  ["services", "plumbing", "Plumbing", 4],
+  ["directory", "stationery", "Stationery", 3],
+  ["education", "english", "English", 3],
+  ["property", "plot", "Plot", 3],
 ].map(([module, slug, name, displayOrder], index) => ({
   id: uuid(900 + index),
   module: module as CategoryDto["module"],
@@ -403,7 +409,7 @@ export const OWNER_LISTINGS: OwnerListingDto[] = [
     name: "Approved Plumbing Co",
     category: "plumbing",
     categoryLabel: "Plumbing",
-    description: "Plumbing repairs.",
+    description: "Plumbing repairs and fittings for homes across B-17.",
     location: { visibility: "area_only", block: "A" },
     publicLocation: { visibility: "area_only", block: "A" },
     categories: [ref("plumbing", "Plumbing")],
@@ -419,8 +425,10 @@ export const OWNER_LISTINGS: OwnerListingDto[] = [
     propertyType: "Plot",
     price: "PKR 1 Cr",
     categoryLabel: "Plot",
+    description: "A residential plot in B-17 Block C, available for sale.",
     rejectionReason: "Please add the plot size and a clearer description.",
-    location: { visibility: "approximate", block: "C", address: PRIVATE_ADDRESS, ...PRIVATE_POINT },
+    // An approximate listing stores no address (the contract forbids one); its point is private.
+    location: { visibility: "approximate", block: "C", ...PRIVATE_POINT },
     publicLocation: { visibility: "approximate", block: "C", coordinates: { latitude: 33.71, longitude: 73.1, precision: "approximate" } },
     categories: [ref("plot", "Plot")],
   },

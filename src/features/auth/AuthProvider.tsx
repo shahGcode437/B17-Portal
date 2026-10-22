@@ -3,8 +3,6 @@ import { AuthContext, type AuthContextValue } from "@/hooks/useAuth"
 import * as authApi from "@/lib/api/auth"
 import { ApiError, isApiError } from "@/lib/api/errors"
 import { clearCsrfToken, setCsrfToken, setSessionHandlers } from "@/lib/api/session"
-import { useResidentStore } from "@/state/residentStore"
-import { usePlanStore } from "@/state/planStore"
 import type { AuthNotice, AuthStatus, AuthUser, CurrentUser } from "@/types/auth"
 
 interface AuthState {
@@ -55,9 +53,10 @@ function adopt(payload: AuthUser): CurrentUser {
  *  - Races: an `epoch` counter is bumped by every auth-changing event (login, register, logout,
  *    session loss); a `/auth/me` answer that was requested in an older epoch is ignored. Concurrent
  *    `refreshMe()` calls share one in-flight request. There is no polling.
- *  - Per-user demo client state (`residentStore`, `planStore`, until their Phase 12 slices) is
- *    cleared on every CONFIRMED transition to anonymous (logout, 401, `account_disabled`, including
- *    a 401 on the bootstrap read) and kept across an authenticated reload; `unavailable` never clears it.
+ *  - Since Phase 12H, there is NO per-user state in client stores — Saved, requests, listings and
+ *    the plan all live on the backend and are refetched on sign-in. `useSavedSet` clears its
+ *    in-memory id set on a confirmed anonymous transition, so a shared browser cannot leak the
+ *    previous user's set to the next one.
  */
 function AuthProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = React.useReducer(reducer, initialState)
@@ -68,12 +67,6 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
   const endSession = React.useCallback((notice: AuthNotice | null) => {
     epoch.current += 1
     clearCsrfToken()
-    // Per-user demo state (Saved, requests, plan) may survive an AUTHENTICATED reload but must never
-    // survive a CONFIRMED anonymous: this runs for logout, a definitive 401 (also on the bootstrap
-    // read, e.g. the cookie expired while the browser was closed) and `account_disabled`. It is never
-    // reached for network / 5xx failures — those are `unavailable`, which proves nothing about the session.
-    useResidentStore.getState().clearResidentData()
-    usePlanStore.getState().resetPlan()
     dispatch({ type: "anonymous", notice })
   }, [])
 

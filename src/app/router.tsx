@@ -47,7 +47,6 @@ const ProfessionalProfilePage = lazyPage(() => import("@/features/provider/Profe
 const ProfessionalAnalyticsPage = lazyPage(() => import("@/features/provider/ProfessionalAnalyticsPage"), "ProfessionalAnalyticsPage")
 const UpgradePage = lazyPage(() => import("@/features/provider/UpgradePage"), "UpgradePage")
 const ListingFormPage = lazyPage(() => import("@/features/provider/ListingFormPage"), "ListingFormPage")
-const ListingPendingPage = lazyPage(() => import("@/features/provider/ListingPendingPage"), "ListingPendingPage")
 const EditListingPage = lazyPage(() => import("@/features/provider/EditListingPage"), "EditListingPage")
 
 const AdminLoginPage = lazyPage(() => import("@/features/admin/AdminLoginPage"), "AdminLoginPage")
@@ -108,7 +107,6 @@ export const router = createBrowserRouter([
           { index: true, element: <ProfessionalOverviewPage /> },
           { path: "listings", element: <ProfessionalListingsPage /> },
           { path: "listings/new", element: <ListingFormPage /> },
-          { path: "listings/pending", element: <ListingPendingPage /> },
           { path: "listings/:id/edit", element: <EditListingPage /> },
           { path: "leads", element: <ProfessionalLeadsPage /> },
           { path: "profile", element: <ProfessionalProfilePage /> },

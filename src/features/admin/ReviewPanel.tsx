@@ -1,4 +1,4 @@
-import { useRef } from "react"
+import { useRef, useState } from "react"
 import { CheckCircle2, XCircle } from "lucide-react"
 import {
   Dialog,
@@ -18,6 +18,12 @@ import { ListingStatusBadge } from "@/features/provider/ListingStatusBadge"
 import { OwnerLocationFacts } from "@/features/provider/OwnerLocationFacts"
 import { useAdminListing } from "@/hooks/useWorkspaceReads"
 import { foodCategoryLabel, foodServiceLabel } from "@/config/food"
+import { useMutation } from "@/hooks/useMutation"
+import { useToast } from "@/hooks/useToast"
+import { approveListing, rejectListing } from "@/lib/api/writes/admin"
+import { userMessageFor, isConflict } from "@/lib/api/writeErrors"
+import { Textarea } from "@/components/ui/textarea"
+import { Label } from "@/components/ui/label"
 import type { AdminQueueRow } from "@/types/ownerListing"
 
 interface ReviewPanelProps {
@@ -25,6 +31,8 @@ interface ReviewPanelProps {
   row: AdminQueueRow | null
   open: boolean
   onOpenChange: (open: boolean) => void
+  /** Called after a successful approve / reject so the queue + counts refresh. */
+  onChanged?: () => void
 }
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", {
@@ -49,12 +57,64 @@ const stampFormatter = new Intl.DateTimeFormat("en-US", {
  * `POST /admin/listings/{id}/approve|reject` in Phase 12H. The old local buttons changed a browser-only
  * copy and reported success, which is exactly what must not happen against real moderation data.
  */
-function ReviewPanel({ row, open, onOpenChange }: ReviewPanelProps) {
+function ReviewPanel({ row, open, onOpenChange, onChanged }: ReviewPanelProps) {
   const contentRef = useRef<HTMLDivElement>(null)
   const read = useAdminListing(open && row ? row.id : null)
+  const { show } = useToast()
+  const [showRejection, setShowRejection] = useState(false)
+  const [reason, setReason] = useState("")
+  const [reasonError, setReasonError] = useState<string | null>(null)
+
+  const approve = useMutation(async ({ id, revision }: { id: string; revision: number }) => approveListing(id, revision))
+  const reject = useMutation(async ({ id, revision, reason: r }: { id: string; revision: number; reason: string }) => rejectListing(id, revision, r))
 
   if (!row) return null
   const listing = read.status === "success" ? read.data : null
+  const currentRevision = listing?.revision ?? row.revision
+  const currentStatus = listing?.status ?? row.status
+  const canApprove = currentStatus === "pending"
+  const canReject = currentStatus === "pending" || currentStatus === "approved"
+
+  const handleApprove = async () => {
+    try {
+      await approve.mutate({ id: row.id, revision: currentRevision })
+      show("Listing approved")
+      onChanged?.()
+      onOpenChange(false)
+    } catch (error) {
+      const copy = userMessageFor(error, "admin-approve")
+      show(copy.title)
+      if (isConflict(error)) read.retry()
+    }
+  }
+
+  const openReject = () => {
+    setShowRejection(true)
+    setReason("")
+    setReasonError(null)
+  }
+
+  const submitReject = async () => {
+    const trimmed = reason.trim()
+    if (trimmed.length < 10) {
+      setReasonError("Please give a reason of at least 10 characters.")
+      return
+    }
+    if (trimmed.length > 500) {
+      setReasonError("Please keep the reason under 500 characters.")
+      return
+    }
+    try {
+      await reject.mutate({ id: row.id, revision: currentRevision, reason: trimmed })
+      show(currentStatus === "approved" ? "Listing taken down" : "Listing rejected")
+      onChanged?.()
+      onOpenChange(false)
+    } catch (error) {
+      const copy = userMessageFor(error, "admin-reject")
+      show(copy.title)
+      if (isConflict(error)) read.retry()
+    }
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -154,19 +214,68 @@ function ReviewPanel({ row, open, onOpenChange }: ReviewPanelProps) {
         </div>
 
         <div className="sticky bottom-0 border-t border-border bg-popover p-4">
-          <Stack gap={2} className="flex-col-reverse sm:flex-row sm:justify-end">
-            <Button type="button" variant="destructive" className={actionClass} disabled aria-describedby="review-actions-note">
-              <XCircle />
-              Reject
-            </Button>
-            <Button type="button" className={actionClass} disabled aria-describedby="review-actions-note">
-              <CheckCircle2 />
-              Approve
-            </Button>
-          </Stack>
-          <Typography id="review-actions-note" variant="caption" className="mt-2 block text-muted-foreground">
-            Approve and reject are not connected yet — this view is read-only.
-          </Typography>
+          {showRejection ? (
+            <Stack gap={2}>
+              <Label htmlFor="review-reason">
+                {currentStatus === "approved" ? "Take down reason" : "Rejection reason"} (10–500 characters)
+              </Label>
+              <Textarea
+                id="review-reason"
+                rows={3}
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                aria-invalid={!!reasonError}
+                disabled={reject.pending}
+              />
+              {reasonError && (
+                <Typography variant="caption" role="alert" className="text-destructive">
+                  {reasonError}
+                </Typography>
+              )}
+              <Stack gap={2} className="flex-col-reverse sm:flex-row sm:justify-end">
+                <Button type="button" variant="outline" className={actionClass} onClick={() => setShowRejection(false)} disabled={reject.pending}>
+                  Back
+                </Button>
+                <Button type="button" variant="destructive" className={actionClass} onClick={submitReject} disabled={reject.pending}>
+                  {reject.pending ? "Submitting…" : currentStatus === "approved" ? "Confirm takedown" : "Confirm Rejection"}
+                </Button>
+              </Stack>
+            </Stack>
+          ) : (
+            <>
+              <Stack gap={2} className="flex-col-reverse sm:flex-row sm:justify-end">
+                <Button
+                  type="button"
+                  variant="destructive"
+                  className={actionClass}
+                  disabled={!canReject || approve.pending || reject.pending}
+                  onClick={openReject}
+                >
+                  <XCircle />
+                  {currentStatus === "approved" ? "Take down" : "Reject"}
+                </Button>
+                <Button
+                  type="button"
+                  className={actionClass}
+                  disabled={!canApprove || approve.pending || reject.pending}
+                  onClick={handleApprove}
+                >
+                  <CheckCircle2 />
+                  {approve.pending ? "Approving…" : "Approve"}
+                </Button>
+              </Stack>
+              {approve.status === "error" && (
+                <Typography variant="caption" role="alert" className="mt-2 block text-destructive">
+                  {userMessageFor(approve.error, "admin-approve").title}
+                </Typography>
+              )}
+              {reject.status === "error" && (
+                <Typography variant="caption" role="alert" className="mt-2 block text-destructive">
+                  {userMessageFor(reject.error, "admin-reject").title}
+                </Typography>
+              )}
+            </>
+          )}
         </div>
       </DialogContent>
     </Dialog>

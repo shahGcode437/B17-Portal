@@ -1,8 +1,20 @@
 import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { ListingForm } from "@/features/provider/ListingForm"
+import { resetCategoryCache } from "@/hooks/useCategories"
+import { installFetchMock } from "@/test/apiMock"
+import { fakeBackend } from "@/test/fixtures/fakeBackend"
 import type { ListingFormValues } from "@/features/provider/listingSchema"
+
+// The category choices are the SERVER's active categories (GET /categories?module=...); the form submits the SLUG.
+beforeEach(() => {
+  resetCategoryCache()
+  installFetchMock(fakeBackend())
+})
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
 
 const SWITCH_WARNING = "Switching to General Business will remove Food-specific details when saved."
 
@@ -116,15 +128,41 @@ describe("ListingForm — submit", () => {
     const onSubmit = vi.fn<(values: ListingFormValues) => void>()
     render(<ListingForm kind="business" onSubmit={onSubmit} onBack={vi.fn()} />)
     await fillBase(user, "Capital Stationers")
-    await fill(user, screen.getByLabelText("Category"), "Stationery")
+    await user.selectOptions(await screen.findByRole("combobox", { name: "Category" }), "pharmacy")
     await user.click(screen.getByRole("button", { name: "Preview Listing" }))
     await vi.waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1))
     const values = onSubmit.mock.calls[0][0]
-    expect(values).toMatchObject({ vertical: "general", category: "Stationery" })
+    // The slug, never the label or free text: the backend refuses anything else (unknown_category).
+    expect(values).toMatchObject({ vertical: "general", category: "pharmacy" })
     expect(values.food).toBeUndefined()
   })
 
-  it("requires a typed category for a General business", async () => {
+  it("offers only the server's ACTIVE categories as the category choices (never a typed value)", async () => {
+    render(<ListingForm kind="business" onSubmit={vi.fn()} onBack={vi.fn()} />)
+    expect(await screen.findByRole("option", { name: "Pharmacy" })).toBeInTheDocument()
+    expect(screen.getByRole("option", { name: "Hairdressing" })).toBeInTheDocument()
+    expect(screen.queryByRole("option", { name: "Retired Category" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("textbox", { name: "Category" })).not.toBeInTheDocument()
+  })
+
+  it("a tutor chooses a Subject from the EDUCATION categories; a provider from the SERVICES categories", async () => {
+    const { unmount } = render(<ListingForm kind="provider" categoryModule="education" categoryLabelText="Subject" onSubmit={vi.fn()} onBack={vi.fn()} />)
+    expect(await screen.findByRole("option", { name: "Physics" })).toBeInTheDocument()
+    expect(screen.queryByRole("option", { name: "Solar" })).not.toBeInTheDocument()
+    expect(screen.getByRole("combobox", { name: "Subject" })).toBeInTheDocument()
+    unmount()
+    render(<ListingForm kind="provider" onSubmit={vi.fn()} onBack={vi.fn()} />)
+    expect(await screen.findByRole("option", { name: "Solar" })).toBeInTheDocument()
+    expect(screen.queryByRole("option", { name: "Physics" })).not.toBeInTheDocument()
+  })
+
+  it("an edit prefill selects the listing's current category once the options have loaded", async () => {
+    render(<ListingForm kind="business" onSubmit={vi.fn()} onBack={vi.fn()} defaultValues={{ name: "Pharma", category: "hairdressing", description: "A description that is long enough.", area: "B-17", tagsInput: "x" }} />)
+    await screen.findByRole("option", { name: "Hairdressing" })
+    expect(screen.getByRole("combobox", { name: "Category" })).toHaveValue("hairdressing")
+  })
+
+  it("requires a category for a General business", async () => {
     const user = userEvent.setup()
     const onSubmit = vi.fn()
     render(<ListingForm kind="business" onSubmit={onSubmit} onBack={vi.fn()} />)

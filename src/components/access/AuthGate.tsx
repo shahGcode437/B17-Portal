@@ -1,11 +1,14 @@
 import { Loader2, ShieldAlert, Store, WifiOff } from "lucide-react"
-import { Link, Navigate, Outlet, useLocation, useNavigate } from "react-router-dom"
+import { Navigate, Outlet, useLocation, useNavigate } from "react-router-dom"
 import { Container } from "@/components/foundation/Container"
 import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
 import { EmptyState } from "@/components/feedback/EmptyState"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/hooks/useAuth"
+import { useMutation } from "@/hooks/useMutation"
+import { createProfessionalProfile } from "@/lib/api/writes/professional"
+import { userMessageFor } from "@/lib/api/writeErrors"
 import { routes } from "@/config/routes"
 
 type Requirement = "authenticated" | "professional" | "admin"
@@ -28,9 +31,13 @@ interface AuthGateProps {
  * with its session-freshness rule) is the authority on every request.
  */
 function AuthGate({ requires = "authenticated" }: AuthGateProps) {
-  const { status, user, retryBootstrap } = useAuth()
+  const { status, user, retryBootstrap, refreshMe } = useAuth()
   const location = useLocation()
   const navigate = useNavigate()
+  const createProfile = useMutation(async () => {
+    await createProfessionalProfile()
+    await refreshMe({ fresh: true })
+  })
 
   if (status === "loading") {
     return (
@@ -81,6 +88,8 @@ function AuthGate({ requires = "authenticated" }: AuthGateProps) {
   }
 
   if (requires === "professional" && !user.professional) {
+    const copy = createProfile.status === "error" ? userMessageFor(createProfile.error, "create-professional-profile") : null
+    const needsVerification = createProfile.status === "error" && createProfile.error.code === "email_not_verified"
     return (
       <Container>
         <Stack align="center" gap={4} className="mx-auto max-w-md py-16 text-center">
@@ -91,12 +100,26 @@ function AuthGate({ requires = "authenticated" }: AuthGateProps) {
             Professional profile needed
           </Typography>
           <Typography variant="body" className="text-muted-foreground">
-            The Professional Workspace is for accounts with a professional profile. Creating one from the app is not
-            available yet — it arrives in an upcoming update.
+            The Professional Workspace is for accounts with a professional profile. One click sets it up on the Free plan;
+            you can upgrade later. You cannot grant yourself an admin role.
           </Typography>
-          <Button asChild variant="outline">
-            <Link to={routes.home}>Back to home</Link>
-          </Button>
+          <Stack direction="row" wrap gap={2} justify="center">
+            <Button
+              onClick={() => void createProfile.mutate(undefined).catch(() => undefined)}
+              disabled={createProfile.pending || needsVerification}
+            >
+              {createProfile.pending ? "Setting up…" : "Create a professional profile"}
+            </Button>
+            <Button variant="outline" onClick={() => navigate(routes.home)}>
+              Back to home
+            </Button>
+          </Stack>
+          {copy && (
+            <Typography variant="body-sm" role="alert" className="text-destructive">
+              {copy.title}
+              {copy.description ? ` — ${copy.description}` : ""}
+            </Typography>
+          )}
         </Stack>
       </Container>
     )

@@ -64,7 +64,7 @@ describe.each(cards)("$name accessibility semantics", ({ label, actions, element
   it("exposes a preview control, a Save button and the action buttons as separate, named controls", () => {
     renderCard(element(vi.fn()))
     expect(screen.getByRole("button", { name: `Preview ${label}` })).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: `Save ${label} (coming soon)` })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: `Save ${label}` })).toBeInTheDocument()
     for (const action of actions) expect(screen.getByRole("button", { name: action })).toBeInTheDocument()
   })
 
@@ -84,18 +84,14 @@ describe.each(cards)("$name accessibility semantics", ({ label, actions, element
     expect(onSelect).toHaveBeenCalledTimes(3)
   })
 
-  it("keeps Save independent of the preview, and is honest that saving is not available yet", async () => {
+  it("keeps Save independent of the preview (anonymous click redirects, but never opens the preview)", async () => {
     const user = userEvent.setup()
     const onSelect = vi.fn()
-    const { show } = renderCard(element(onSelect))
-    const save = screen.getByRole("button", { name: `Save ${label} (coming soon)` })
-    expect(save).toHaveAttribute("aria-disabled", "true")
+    renderCard(element(onSelect))
+    const save = screen.getByRole("button", { name: `Save ${label}` })
     await user.click(save)
     expect(onSelect).not.toHaveBeenCalled()
-    // No fake success: nothing is announced as saved and the control never flips to "saved".
-    expect(show).toHaveBeenCalledWith("Saving items is coming soon.")
-    expect(show).not.toHaveBeenCalledWith(`Saved ${label}`)
-    expect(screen.queryByRole("button", { name: `Remove ${label} from saved` })).not.toBeInTheDocument()
+    // In the browser an anonymous click navigates to Log In; here we only verify Save did not open the preview.
   })
 
   it("lets keyboard users reach every control in a sensible order (preview first)", async () => {
@@ -104,7 +100,7 @@ describe.each(cards)("$name accessibility semantics", ({ label, actions, element
     await user.tab()
     expect(screen.getByRole("button", { name: `Preview ${label}` })).toHaveFocus()
     await user.tab()
-    expect(screen.getByRole("button", { name: `Save ${label} (coming soon)` })).toHaveFocus()
+    expect(screen.getByRole("button", { name: `Save ${label}` })).toHaveFocus()
   })
 })
 

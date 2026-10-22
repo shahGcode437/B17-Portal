@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button"
 import { RequestProgress } from "@/components/workspace/RequestProgress"
 import { RequestStatusBadge } from "@/features/resident/RequestStatusBadge"
 import { RequestHistory } from "@/features/resident/RequestHistory"
+import { RequestActions } from "@/features/resident/RequestActions"
 import { contactPreferenceLabel } from "@/config/requests"
 import { providerProfilePath } from "@/config/routes"
 
@@ -29,6 +30,8 @@ const submittedFormatter = new Intl.DateTimeFormat("en-US", {
 interface RequestDetailDialogProps {
   request: ServiceRequestRecord | null
   onOpenChange: (open: boolean) => void
+  /** Called after a successful action so the list refreshes. */
+  onChanged?: () => void
 }
 
 /**
@@ -36,7 +39,7 @@ interface RequestDetailDialogProps {
  * The fields come from the list row; the history is read from `GET /requests/{id}` when the dialog
  * opens. It is read-only: the resident can cancel a request only once Phase 12H wires that action.
  */
-function RequestDetailDialog({ request, onOpenChange }: RequestDetailDialogProps) {
+function RequestDetailDialog({ request, onOpenChange, onChanged }: RequestDetailDialogProps) {
   const navigate = useNavigate()
   const preference = contactPreferenceLabel(request?.preferredContactChannel)
 
@@ -92,6 +95,13 @@ function RequestDetailDialog({ request, onOpenChange }: RequestDetailDialogProps
               )}
 
               <RequestHistory requestId={request.id} viewerRole="requester" />
+
+              <RequestActions
+                requestId={request.id}
+                status={request.status}
+                viewerRole="requester"
+                onRefresh={() => onChanged?.()}
+              />
 
               <Stack direction="row" align="center" gap={1} className="text-muted-foreground">
                 <Clock className="size-3.5 shrink-0" aria-hidden="true" />

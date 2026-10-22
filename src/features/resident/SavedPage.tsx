@@ -49,7 +49,7 @@ const KIND_ORDER: SavedItemKind[] = ["provider", "business", "tutor", "property"
  * The resident's saved listings (Phase 9C; collection layout in Visual V4), read from `GET /saved`
  * (Phase 12G). The server returns only listings that are still approved - a saved item that was taken
  * down is simply absent, and returns if it is approved again - as the same public cards the rest of
- * the site uses. Saving and removing are NOT available yet (Phase 12H), so this page is read-only and
+ * the site uses. Since Phase 12H the heart button on every card toggles the saved state, and this page refreshes from the server.
  * says so; the browser-local list the old version kept is no longer consulted.
  */
 function SavedPage() {
@@ -77,7 +77,7 @@ function SavedPage() {
                 ? "Things you save show up here."
                 : saved.total === 0
                   ? "Things you save show up here."
-                  : `${saved.total} saved ${saved.total === 1 ? "item" : "items"}. Saving and removing items is coming soon.`}
+                  : `${saved.total} saved ${saved.total === 1 ? "item" : "items"}.`}
             </Typography>
           </Stack>
           <ResidentNav />
@@ -96,7 +96,7 @@ function SavedPage() {
             <EmptyState
               icon={Heart}
               title="Nothing saved yet"
-              description="Saving services, businesses, tutors and properties is coming soon. They'll show up here."
+              description="Tap the heart on any service, business, tutor or property to save it. It will show up here."
               actionLabel="Explore B-17"
               onAction={() => navigate(routes.search)}
             />

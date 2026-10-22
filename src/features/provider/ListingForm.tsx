@@ -20,11 +20,20 @@ import { ListingImageInput } from "@/features/provider/ListingImageInput"
 import { FoodListingFields } from "@/features/provider/FoodListingFields"
 import { emptyFoodFormValues } from "@/features/provider/listingBuilders"
 import { selectClassName } from "@/features/provider/formStyles"
-import { serviceCategories } from "@/data/serviceCategories"
+import { useCategories } from "@/hooks/useCategories"
+import type { CategoryModule } from "@/lib/api/dto/public"
 import { FOOD_VERTICAL_LABEL } from "@/config/food"
 
 interface ListingFormProps {
   kind: ListingKind
+  /**
+   * Which server taxonomy the category choice comes from: `services` (provider), `directory` (general
+   * business) or `education` (a tutor's subject). Defaults from `kind`. The value submitted is the
+   * category SLUG - the backend rejects a label or free text (`unknown_category`).
+   */
+  categoryModule?: CategoryModule
+  /** Overrides the field label (a tutor picks a "Subject"). */
+  categoryLabelText?: string
   defaultValues?: Partial<ListingFormValues>
   onSubmit: (values: ListingFormValues) => void
   onBack: () => void
@@ -40,7 +49,7 @@ const businessTypeChoices = [
  * For a Business (FD4) a "Business type" choice switches between the General category field and the
  * Food & Dining block; the listing is a Business either way.
  */
-function ListingForm({ kind, defaultValues, onSubmit, onBack }: ListingFormProps) {
+function ListingForm({ kind, categoryModule, categoryLabelText, defaultValues, onSubmit, onBack }: ListingFormProps) {
   const {
     register,
     handleSubmit,
@@ -88,7 +97,10 @@ function ListingForm({ kind, defaultValues, onSubmit, onBack }: ListingFormProps
   }
 
   const nameLabel = kind === "provider" ? "Name" : "Business Name"
-  const categoryLabel = kind === "provider" ? "Service Category" : "Category"
+  const categoryLabel = categoryLabelText ?? (kind === "provider" ? "Service Category" : "Category")
+  const module: CategoryModule = categoryModule ?? (kind === "provider" ? "services" : "directory")
+  const categories = useCategories(module, { enabled: !isFood })
+  const categoryOptions = categories.status === "success" ? categories.data : []
   const tagsLabel = kind === "provider" ? "Services Offered" : isFood ? "Dishes / Search Tags" : "Services / Tags"
 
   function submit(values: ListingFormFields) {
@@ -173,32 +185,29 @@ function ListingForm({ kind, defaultValues, onSubmit, onBack }: ListingFormProps
         {!isFood && (
           <Stack gap={2}>
             <Label htmlFor="listing-category">{categoryLabel}</Label>
-            {kind === "provider" ? (
-              <select
-                id="listing-category"
-                className={selectClassName}
-                defaultValue=""
-                aria-invalid={!!errors.category}
-                aria-describedby={errors.category ? "listing-category-error" : undefined}
-                {...register("category")}
-              >
-                <option value="" disabled>
-                  Choose a category
+            {/* `key`: the options arrive after mount; remounting re-applies the form's value (an edit prefill) to the select. */}
+            <select
+              key={categories.status}
+              id="listing-category"
+              className={selectClassName}
+              defaultValue=""
+              aria-invalid={!!errors.category}
+              aria-describedby={errors.category ? "listing-category-error" : undefined}
+              {...register("category")}
+            >
+              <option value="" disabled>
+                {categories.status === "loading" ? "Loading categories…" : categories.status === "error" ? "Categories unavailable" : "Choose a category"}
+              </option>
+              {categoryOptions.map((category) => (
+                <option key={category.slug} value={category.slug}>
+                  {category.name}
                 </option>
-                {serviceCategories.map((category) => (
-                  <option key={category.slug} value={category.slug}>
-                    {category.label}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <Input
-                id="listing-category"
-                placeholder="e.g. Stationery, Grocery, Salon"
-                aria-invalid={!!errors.category}
-                aria-describedby={errors.category ? "listing-category-error" : undefined}
-                {...register("category")}
-              />
+              ))}
+            </select>
+            {categories.status === "error" && (
+              <Typography variant="caption" role="alert" className="text-destructive">
+                The categories could not be loaded. Reload the page to try again.
+              </Typography>
             )}
             {errors.category && (
               <Typography id="listing-category-error" variant="caption" className="text-destructive" role="alert">

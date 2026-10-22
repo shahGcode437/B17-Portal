@@ -110,7 +110,14 @@ function MyRequestsPage() {
         </Stack>
       </motion.div>
 
-      <RequestDetailDialog request={selected} onOpenChange={(open) => !open && setSelected(null)} />
+      <RequestDetailDialog
+        request={selected}
+        onOpenChange={(open) => !open && setSelected(null)}
+        onChanged={() => {
+          requests.retry()
+          setSelected(null)
+        }}
+      />
     </Container>
   )
 }

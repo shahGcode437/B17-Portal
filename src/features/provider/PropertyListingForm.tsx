@@ -10,6 +10,7 @@ import { zodResolver } from "@/lib/zodResolver"
 import { propertySchema, type PropertyFormValues } from "@/features/provider/listingSchema"
 import { ListingImageInput } from "@/features/provider/ListingImageInput"
 import { selectClassName } from "@/features/provider/formStyles"
+import { useCategories } from "@/hooks/useCategories"
 
 interface PropertyListingFormProps {
   defaultValues?: Partial<PropertyFormValues>
@@ -25,6 +26,9 @@ interface PropertyListingFormProps {
  * booking/transaction fields.
  */
 function PropertyListingForm({ defaultValues, onSubmit, onBack }: PropertyListingFormProps) {
+  // The property types are the server's (`GET /categories?module=property`); the submitted value is the SLUG.
+  const types = useCategories("property")
+  const propertyTypes = types.status === "success" ? types.data : []
   const {
     register,
     handleSubmit,
@@ -103,7 +107,9 @@ function PropertyListingForm({ defaultValues, onSubmit, onBack }: PropertyListin
 
           <Stack gap={2} className="flex-1">
             <Label htmlFor="property-type">Property Type</Label>
+            {/* `key`: the options arrive after mount; remounting re-applies the form's value (an edit prefill). */}
             <select
+              key={types.status}
               id="property-type"
               className={selectClassName}
               defaultValue=""
@@ -114,9 +120,11 @@ function PropertyListingForm({ defaultValues, onSubmit, onBack }: PropertyListin
               <option value="" disabled>
                 Choose one
               </option>
-              <option value="House">House</option>
-              <option value="Flat">Flat</option>
-              <option value="Plot">Plot</option>
+              {propertyTypes.map((type) => (
+                <option key={type.slug} value={type.slug}>
+                  {type.name}
+                </option>
+              ))}
             </select>
             {errors.propertyType && (
               <Typography id="property-type-error" variant="caption" className="text-destructive" role="alert">

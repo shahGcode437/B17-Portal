@@ -4,7 +4,7 @@ import type { Plan, Capability, PlanEntitlements } from "@/types/entitlements"
  * The mocked/local entitlement source (Phase 9E) — there is no backend, so
  * this is the single place plan → capabilities is defined. Swapping in real
  * backend-provided entitlements later means replacing this file's internals
- * (and `planStore`'s source), not touching any feature component that calls
+ * (the plan itself already comes from `/auth/me`), not touching any feature component that calls
  * `useCapability`/`hasCapability`.
  */
 export const PLAN_ENTITLEMENTS: Record<Plan, PlanEntitlements> = {

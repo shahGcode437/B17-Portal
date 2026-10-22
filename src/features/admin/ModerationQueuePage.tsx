@@ -169,7 +169,15 @@ function ModerationQueuePage() {
         </Stack>
       </motion.div>
 
-      <ReviewPanel row={reviewing} open={reviewOpen} onOpenChange={setReviewOpen} />
+      <ReviewPanel
+        row={reviewing}
+        open={reviewOpen}
+        onOpenChange={setReviewOpen}
+        onChanged={() => {
+          queue.retry()
+          wholeQueue.retry()
+        }}
+      />
     </Container>
   )
 }

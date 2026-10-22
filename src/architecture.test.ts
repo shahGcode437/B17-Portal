@@ -37,9 +37,10 @@ describe("architecture guards", () => {
     expect(offenders((path, s) => path !== "/src/lib/api/client.ts" && /\bfetch\s*\(/.test(s) && !/\.fetch\(/.test(s))).toEqual([])
   })
 
-  it("only leafletEngine.ts imports Leaflet; nothing imports react-leaflet or a Google Maps SDK", () => {
+  it("only the two leaflet engines import Leaflet; nothing imports react-leaflet or a Google Maps SDK", () => {
+    const engines = new Set(["/src/components/location/leafletEngine.ts", "/src/components/location/leafletPickerEngine.ts"])
     expect(
-      offenders((path, s) => path !== "/src/components/location/leafletEngine.ts" && /from\s+["']leaflet(\/|["'])/.test(s))
+      offenders((path, s) => !engines.has(path) && /from\s+["']leaflet(\/|["'])/.test(s))
     ).toEqual([])
     expect(offenders((_, s) => /react-leaflet|@googlemaps|maps\.googleapis\.com|google\.maps/.test(s))).toEqual([])
   })
@@ -83,15 +84,21 @@ describe("architecture guards", () => {
     }
   })
 
-  it("no component writes to the API yet: no unsafe-method call exists outside the auth module", () => {
+  it("components call writes through the dedicated write modules only (no inline apiRequest outside writes/ and auth)", () => {
     const writers = offenders(
       (path, s) =>
         !path.startsWith("/src/lib/api/client") &&
+        !path.startsWith("/src/lib/api/writes/") &&
         !path.startsWith("/src/features/auth/") &&
         !path.startsWith("/src/lib/api/auth") &&
         /apiRequest\w*(<[^>]*>)?\(\s*["'](POST|PUT|PATCH|DELETE)["']/.test(s)
     )
     expect(writers).toEqual([])
+  })
+
+  it("the plan is never a client decision: nothing persists or reads it outside the server (`/auth/me`)", () => {
+    expect(offenders((_, s) => /@\/state\/(residentStore|planStore)/.test(s))).toEqual([])
+    expect(offenders((_, s) => /usePlanStore|useResidentStore/.test(s))).toEqual([])
   })
 
   it("no Demo label exists for API listings: the DemoBadge component and its copy are gone", () => {

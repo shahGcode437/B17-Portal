@@ -62,9 +62,9 @@ describe("browser auth source audit", () => {
     expect(users).toEqual(["pwa/install.ts"])
   })
 
-  it("the only persisted stores are the two demo stores (saved items / requests, plan) — never auth", () => {
+  it("no Zustand `persist(` call exists in production code (the demo stores were retired in Phase 12H)", () => {
     const persisted = sources.filter(({ code }) => /\bpersist\(/.test(code)).map(({ file }) => file).sort()
-    expect(persisted).toEqual(["state/planStore.ts", "state/residentStore.ts"])
+    expect(persisted).toEqual([])
   })
 
   it("the CSRF token is only ever written through lib/api/session (memory)", () => {
