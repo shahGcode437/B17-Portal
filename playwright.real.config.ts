@@ -4,14 +4,14 @@ import { defineConfig, devices } from '@playwright/test'
  * REAL-STACK acceptance lane (Phase 12I): the React app (Vite dev server) -> FastAPI -> PostgreSQL.
  * No mock backend, no route interception of the happy path. It complements `playwright.config.ts`
  * (the deterministic mock-contract suite that runs in CI); it is NOT part of CI — it needs a running
- * local stack and reads the API's development e-mail console (see docs/development/TESTING.md
+ * local stack and needs the local API and the development verification helper (see docs/development/TESTING.md
  * "Real-stack lane" for the exact commands).
  *
  *  - Topology is the frozen development one: frontend http://127.0.0.1:5173, API http://127.0.0.1:8000.
  *    `127.0.0.1` for BOTH, never `localhost` (same-site cookie, AUTH_RBAC.md §5.1).
  *  - Serial and single-worker: the specs share one database and create / clean up their own `P12I`
  *    records (global teardown removes ONLY those).
- *  - Required environment: B17_API_LOG (the file the API's stdout is redirected to).
+ *  - Verification links come from the development helper `python -m app.cli.dev_verify`; no log file is read.
  */
 const WEB = 'http://127.0.0.1:5173'
 
@@ -34,7 +34,7 @@ export default defineConfig({
     video: 'off',
   },
   webServer: {
-    command: 'npx vite --host 127.0.0.1 --port 5173 --strictPort',
+    command: 'npm run dev', // the supported local run method: host, port, strictPort and the /api proxy live in vite.config.ts
     url: WEB,
     timeout: 120_000,
     reuseExistingServer: true,

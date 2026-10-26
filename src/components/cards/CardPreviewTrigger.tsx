@@ -1,9 +1,9 @@
 /**
  * The "open this card" control for a result card (Phase 9M accessibility fix). A card used to be a
- * `role="button"` element that CONTAINED the Save / WhatsApp / Contact buttons — interactive content
+ * `role="button"` element that CONTAINED the Save / action buttons — interactive content
  * nested inside a button, which ARIA forbids and assistive technology handles poorly. The card is now
  * a plain container and this single, named button is stretched over it, so the whole card is still
- * clickable and looks the same; Save and the action buttons sit above it (z-20) as separate controls.
+ * clickable and looks the same; Save and any action button sit above it (z-20) as separate controls.
  * It is first in the DOM, so it is also the first stop in the keyboard order.
  *
  * The parent card must be `relative isolate` (positioning context + its own stacking context).

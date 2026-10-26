@@ -72,9 +72,24 @@ describe("directions", () => {
 describe("mapOptionsFor", () => {
   it("draws a labelled pin for an exact point", () => {
     const options = mapOptionsFor(exact, "Capital Bakers")
-    expect(options?.marker).toEqual({ position: { latitude: 33.701234, longitude: 73.051234 }, label: "Capital Bakers location" })
+    expect(options?.marker).toEqual({
+      position: { latitude: 33.701234, longitude: 73.051234 },
+      label: "Capital Bakers location",
+      href: "https://www.google.com/maps/dir/?api=1&destination=33.701234%2C73.051234",
+    })
     expect(options?.circle).toBeUndefined()
     expect(options).toMatchObject({ tileUrl: MAP_TILE_URL, attribution: MAP_TILE_ATTRIBUTION })
+  })
+
+  it("the pin destination IS the Get Directions destination: one helper, the public point only", () => {
+    expect(mapOptionsFor(exact, "Capital Bakers")?.marker?.href).toBe(directionsUrlFor(exact))
+    expect(mapOptionsFor(exact, "Capital Bakers")?.marker?.href).toBe(buildDirectionsUrl({ latitude: 33.701234, longitude: 73.051234 }))
+  })
+
+  it("an approximate point gets no pin and no destination of any kind", () => {
+    const options = mapOptionsFor(approximate, "Mocha Corner Cafe")
+    expect(options?.marker).toBeUndefined()
+    expect(JSON.stringify(options)).not.toMatch(/google\.com|destination/)
   })
 
   it("draws only an illustrative circle (no pin) for an approximate point", () => {
@@ -88,6 +103,11 @@ describe("mapOptionsFor", () => {
     expect(mapOptionsFor({ visibility: "exact" }, "x")).toBeNull()
     expect(mapOptionsFor({ visibility: "exact", coordinates: { latitude: 1, longitude: 1, precision: "approximate" } }, "x")).toBeNull()
     expect(mapOptionsFor({ visibility: "approximate", coordinates: { latitude: 1, longitude: 1, precision: "exact" } }, "x")).toBeNull()
+  })
+
+  it("an exact pin whose point is not usable has no link (no destination is invented)", () => {
+    const options = mapOptionsFor({ visibility: "exact", coordinates: { latitude: Number.NaN, longitude: 73.05, precision: "exact" } }, "x")
+    expect(options?.marker?.href).toBeUndefined()
   })
 })
 
@@ -146,6 +166,15 @@ describe("MapView", () => {
 })
 
 describe("LocationSection", () => {
+  it("exact: the pin handed to the map and the Get Directions button go to the very same URL", async () => {
+    const { engine, mounts } = fakeEngine()
+    render(<LocationSection name="Capital Bakers" area="B-17" location={exact} engine={engine} />)
+    await waitFor(() => expect(mounts).toHaveLength(1))
+    const directions = screen.getByRole("link", { name: /get directions/i }).getAttribute("href")
+    expect(directions).toBe("https://www.google.com/maps/dir/?api=1&destination=33.701234%2C73.051234")
+    expect(mounts[0].marker?.href).toBe(directions)
+  })
+
   it("exact: address, landmark, area and block as text, a map and Get Directions", async () => {
     const { engine, mounts } = fakeEngine()
     render(<LocationSection name="Capital Bakers" area="B-17" location={exact} engine={engine} />)
@@ -166,6 +195,7 @@ describe("LocationSection", () => {
     await waitFor(() => expect(mounts).toHaveLength(1))
     expect(mounts[0].marker).toBeUndefined()
     expect(mounts[0].circle).toBeDefined()
+    expect(JSON.stringify(mounts[0])).not.toMatch(/google\.com|destination/) // no directions, no clickable exact marker
   })
 
   it("approximate: no numeric accuracy or privacy radius is ever stated to the user (the circle is only illustrative)", async () => {

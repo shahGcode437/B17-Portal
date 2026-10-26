@@ -1,7 +1,6 @@
 import { useNavigate, useParams } from "react-router-dom"
-import { MapPin, MessageCircle, GraduationCap, BookOpen } from "lucide-react"
+import { MapPin, GraduationCap, BookOpen } from "lucide-react"
 import { Typography } from "@/components/foundation/Typography"
-import { Button } from "@/components/ui/button"
 import { SaveButton } from "@/components/inputs/SaveButton"
 import { DetailLayout } from "@/components/detail/DetailLayout"
 import { DetailHero } from "@/components/detail/DetailHero"
@@ -13,16 +12,15 @@ import { ListingDetailGate } from "@/components/detail/ListingDetailGate"
 import { LocationSection } from "@/components/location/LocationSection"
 import { useListing } from "@/hooks/useListings"
 import { useSeo } from "@/hooks/useSeo"
+import { useGoBack } from "@/hooks/useGoBack"
 import { tutorSeo } from "@/seo/entitySeo"
-import { useToast } from "@/hooks/useToast"
-import { SIMULATED_MESSAGES } from "@/lib/simulatedActions"
 import { routes } from "@/config/routes"
 import type { Tutor } from "@/types/tutor"
 
 /**
  * Public Tutor Profile (Master Spec Screen 14) - read from `GET /listings/{id}` (Phase 12G).
- * Guest-accessible (Master Spec §17). WhatsApp is the only CTA, and it is simulated: there is no
- * contact data, booking, or verification beyond what the listing contains.
+ * Guest-accessible (Master Spec §17). There is no contact action: no contact data, booking or
+ * verification exists beyond what the listing contains, so the page says so.
  */
 function TutorProfilePage() {
   const { id } = useParams<{ id: string }>()
@@ -46,13 +44,12 @@ function TutorProfilePage() {
 }
 
 function TutorProfile({ tutor }: { tutor: Tutor }) {
-  const navigate = useNavigate()
-  const { show } = useToast()
+  const goBack = useGoBack(routes.education)
   useSeo(tutorSeo(tutor))
 
   return (
     <DetailLayout
-      onBack={() => navigate(-1)}
+      onBack={goBack}
       hero={
         <DetailHero
           src={tutor.image}
@@ -74,10 +71,9 @@ function TutorProfile({ tutor }: { tutor: Tutor }) {
             />
           }
           actions={
-            <Button size="lg" className="w-full" onClick={() => show(SIMULATED_MESSAGES.whatsapp)}>
-              <MessageCircle />
-              Chat on WhatsApp
-            </Button>
+            <Typography variant="body-sm" className="text-muted-foreground">
+              Contacting this tutor through B-17 Portal isn&apos;t available yet.
+            </Typography>
           }
         />
       }

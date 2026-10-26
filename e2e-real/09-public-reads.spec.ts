@@ -131,6 +131,13 @@ test('every detail kind opens from the real backend: Provider, Business, Tutor, 
     await expectH1(page, name)
     await page.waitForLoadState('networkidle')
     expect(problems, label).toEqual([])
+    // Phase 12S: no simulated contact action on any real page; Provider keeps its REAL Request Service.
+    const main = page.getByRole('main')
+    await expect(main.getByRole('button', { name: /whatsapp|contact|chat/i }), `${label}: contact button`).toHaveCount(0)
+    await expect(main.getByRole('link', { name: /whatsapp|contact|chat/i }), `${label}: contact link`).toHaveCount(0)
+    await expect(page.getByText(/simulated for this demo|future phase/i), `${label}: simulated copy`).toHaveCount(0)
+    if (label === 'provider') await expect(main.getByRole('button', { name: 'Request Service' })).toBeVisible()
+    else await expect(main.getByRole('button', { name: 'Request Service' })).toHaveCount(0)
   }
 })
 

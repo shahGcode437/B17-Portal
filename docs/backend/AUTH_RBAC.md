@@ -178,7 +178,7 @@ A second short-lived cookie is used only by the OAuth flow (§10.2): `__Host-b17
 | ✘ Frontend and API on different registrable domains (e.g. `b17portal.pk` ↔ `b17-api.example.net`) | Would force `SameSite=None` third-party cookies — not supported |
 | ⚠ Default provider domains (`*.vercel.app`, `*.onrender.com`, `*.herokuapp.com`, …) are on the Public Suffix List, so two such subdomains are **cross-site** | A **custom domain** that makes both sides same-site is a prerequisite for enabling auth in staging/production |
 
-**Development (deterministic topology, frozen):** frontend `http://127.0.0.1:5173` ↔ API `http://127.0.0.1:8000` — same host, different ports ⇒ **same-site, cross-origin**, so it exercises exactly the production mechanics (credentialed CORS, `Lax` cookie, CSRF layers) with non-`Secure` cookies over plain HTTP. **Never mix `localhost` and `127.0.0.1` in auth development or tests** (`localhost` ↔ `127.0.0.1` is cross-site and the cookie would silently not be sent); `http://127.0.0.1:5173` is already in the default development `FRONTEND_ORIGINS`, and the E2E preview (`http://127.0.0.1:4173`) uses the same host. Cookies are scoped by host, not port, so all `127.0.0.1` ports share one cookie jar (harmless for development). Phase 12 starts the Vite dev server with `--host 127.0.0.1` for auth work. A Vite `/api` proxy (making dev same-origin) remains an allowed Phase 12 convenience.
+**Development (same-origin, since Phase 12S):** the browser calls `/api/v1/...` on the page's OWN origin and the Vite dev server (and `vite preview`) proxies `/api` to the API at `http://127.0.0.1:8000`, forwarding `Origin`, `Cookie`, `Set-Cookie` and `Sec-Fetch-Site` untouched. The page can therefore be opened at **either `http://localhost:5173` or `http://127.0.0.1:5173`**: each is its own same-origin world with a host-only `Lax` cookie, `Sec-Fetch-Site: same-origin`, and an `Origin` that is in `FRONTEND_ORIGINS` (both are in the development default; the preview origins `:4173` belong in `FRONTEND_ORIGINS` too). Nothing in §6 is loosened, and no `SameSite=None` is used. *Why:* until 12S the page called `127.0.0.1:8000` directly, so a page at `localhost:5173` was **cross-site** — `Sec-Fetch-Site: cross-site` is refused by design (`csrf_failed`) and the session cookie would not have been sent: register and login dead-ended with "We couldn't verify that request". The cross-site call is still refused (real-stack test `e2e-real/11-origin.spec.ts`). The API itself stays on `127.0.0.1:8000`; **OAuth is the one flow that still touches the API origin directly** (the Google callback URL is `http://127.0.0.1:8000/api/v1/auth/oauth/google/callback`, DEPLOYMENT.md §10) and is not configured in development.
 
 ## 6. CSRF and CORS (D4)
 
@@ -723,3 +723,22 @@ Phase 11 mechanics are unchanged; the new routes use the existing dependencies a
 - **Rate limits** (identity-keyed in PostgreSQL like the others): request create 5 / hour / user and 1 / provider listing / day / user. Counted in the create transaction (`record`), serialised per requester by an advisory lock; actions, saves and reads are not throttled.
 - **Suspended accounts** lose Saved, requests and the inbox at once (the session is dead, `401`); roles and the professional capability are re-read from the database on every request.
 - **Matrix as tested** (`test_service_request_lifecycle_api.py`, `test_service_request_security_api.py`): {requester, provider, stranger, other professional, admin, anonymous} × {accept, start, complete, cancel} × {the five statuses}; Origin / CSRF tampering (six forms) on every new write; no request or contact data on any public surface.
+
+### Development e-mail verification (Phase 12S)
+
+In development the e-mail backend is `console`: **nothing is sent**; the verification link is printed in the API terminal. Because verification gates the Professional profile, listings and requests (§22), a new local account needs a way to get its link without hunting through logs:
+
+```bash
+cd backend
+python -m app.cli.dev_verify someone@example.org                              # link for http://127.0.0.1:5173
+python -m app.cli.dev_verify someone@example.org --origin http://localhost:5173   # link for the origin you actually use
+```
+
+It prints a fresh link; opening it in the browser runs the normal `POST /auth/verify-email` (the session stays valid and `/auth/me` is re-read). It is **not** a bypass and **not** auto-verification:
+
+- it issues a genuine one-time token through the normal token service (hashed at rest, 24 h, single use, older unconsumed ones retired) and records an `email_verification_sent` audit event with `reason: dev_verify_cli` (never the token);
+- it **refuses unless `ENVIRONMENT` is `development` or `test`** (exit 2; hosted configuration that cannot even load is also a refusal, with no traceback and no connection), and refuses a **non-local database host** (only `localhost`, `127.0.0.1`, `::1`, `db`);
+- the link's origin must be one of `FRONTEND_ORIGINS`; an unknown or already-verified account is refused (exit 1);
+- there is **no HTTP endpoint** and **no setting** that verifies anyone automatically, and the raw token is never logged. The development-only copy (`src/config/devMail.ts`, `import.meta.env.DEV`, compiled out of production builds) names this command on the profile page and never claims an e-mail was sent (verification notice, resend confirmation, post-registration toast, the not-verified error, forgot-password); production wording is unchanged.
+
+Tests: `backend/tests/test_dev_verification_guard.py` (environment / database-host guard, CLI exit codes, no HTTP surface) and `backend/tests/db/test_dev_verification.py` (real PostgreSQL: the issued token is accepted by the real endpoint exactly once and verifies nobody by itself).

@@ -1,4 +1,4 @@
-import { MapPin, MessageCircle, Wrench, Star } from "lucide-react"
+import { MapPin, Wrench, Star } from "lucide-react"
 import { useNavigate } from "react-router-dom"
 import type { Provider } from "@/types/provider"
 import { Stack } from "@/components/foundation/Stack"
@@ -9,8 +9,6 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { CardPreviewTrigger } from "@/components/cards/CardPreviewTrigger"
 import { SaveButton } from "@/components/inputs/SaveButton"
-import { useToast } from "@/hooks/useToast"
-import { SIMULATED_MESSAGES } from "@/lib/simulatedActions"
 import { providerProfilePath } from "@/config/routes"
 
 interface ProviderCardProps {
@@ -20,7 +18,6 @@ interface ProviderCardProps {
 
 /** Provider card (Master Spec §11): name, category, area, trust info, CTA. */
 function ProviderCard({ provider, onSelect }: ProviderCardProps) {
-  const { show } = useToast()
   const navigate = useNavigate()
 
   return (
@@ -59,18 +56,6 @@ function ProviderCard({ provider, onSelect }: ProviderCardProps) {
         </Stack>
       </Stack>
       <Stack direction="row" gap={2} className="relative z-20 px-1 pb-1">
-        <Button
-          size="sm"
-          variant="outline"
-          className="flex-1"
-          onClick={(e) => {
-            e.stopPropagation()
-            show(SIMULATED_MESSAGES.whatsapp)
-          }}
-        >
-          <MessageCircle />
-          WhatsApp
-        </Button>
         <Button
           size="sm"
           className="flex-1"

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import { ApiError } from "@/lib/api/errors"
 import { isConflict, isNoChanges, userMessageFor } from "@/lib/api/writeErrors"
 
@@ -29,6 +29,21 @@ describe("writeErrors classification (matches API_CONTRACT §10)", () => {
     const copy = userMessageFor(apiError(409, "conflict", [{ field: "name", code: "duplicate" }]), "category-create")
     expect(copy.title).toBe("That name is already in use")
     expect(userMessageFor(apiError(409, "conflict"), "category-create").title).toBe("This conflicts with the current state")
+  })
+
+  it("the not-verified message never points at an inbox in development, and keeps the real wording in production", () => {
+    const error = apiError(403, "email_not_verified")
+    const dev = userMessageFor(error, "create-professional-profile")
+    expect(dev.title).toBe("Please verify your email first")
+    expect(dev.description).toMatch(/no e-mail is sent/i)
+    expect(dev.description).not.toMatch(/inbox/i)
+
+    vi.stubEnv("DEV", false)
+    try {
+      expect(userMessageFor(error, "create-professional-profile").description).toBe("Open the verification link in your inbox, then try again.")
+    } finally {
+      vi.unstubAllEnvs()
+    }
   })
 
   it("never shows raw server text for a validation error", () => {

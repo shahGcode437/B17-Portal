@@ -1,4 +1,4 @@
-import { MapPin, Search, Store, User } from "lucide-react"
+import { MapPin, Search, Store, User, WifiOff } from "lucide-react"
 import { Link } from "react-router-dom"
 import { Container } from "@/components/foundation/Container"
 import { Stack } from "@/components/foundation/Stack"
@@ -11,7 +11,7 @@ import { site } from "@/data/site"
 
 /** Sticky global header: brand, desktop nav, search entry, auth entry. */
 function Header() {
-  const { user, status } = useAuth()
+  const { user, status, retryBootstrap } = useAuth()
 
   return (
     <header className="sticky top-0 z-sticky border-b border-border bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/80">
@@ -44,6 +44,13 @@ function Header() {
             {status === "loading" ? (
               // Not yet known whether the visitor is signed in: reserve the space, show no wrong button.
               <span aria-hidden="true" className="hidden h-7 w-24 animate-pulse rounded-lg bg-muted sm:inline-block" />
+            ) : status === "unavailable" ? (
+              // The server could not be reached: that says nothing about whether the visitor is signed in, so do
+              // not offer "Log in" (Phase 12S). One honest control that checks again.
+              <Button type="button" variant="outline" size="sm" className="hidden sm:inline-flex" onClick={retryBootstrap}>
+                <WifiOff />
+                Reconnect
+              </Button>
             ) : (
               <Button asChild variant="outline" size="sm" className="hidden sm:inline-flex">
                 <Link to={user ? routes.profile : routes.login}>

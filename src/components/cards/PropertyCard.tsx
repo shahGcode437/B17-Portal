@@ -4,12 +4,9 @@ import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
 import { CardImage } from "@/components/media/CardImage"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { CardPreviewTrigger } from "@/components/cards/CardPreviewTrigger"
 import { SaveButton } from "@/components/inputs/SaveButton"
-import { useToast } from "@/hooks/useToast"
-import { SIMULATED_MESSAGES } from "@/lib/simulatedActions"
 
 interface PropertyCardProps {
   property: Property
@@ -18,7 +15,6 @@ interface PropertyCardProps {
 
 /** Property card (Master Spec §11): image, sale/rent, price, type, location, key facts. */
 function PropertyCard({ property, onSelect }: PropertyCardProps) {
-  const { show } = useToast()
 
   return (
     <Card
@@ -60,18 +56,6 @@ function PropertyCard({ property, onSelect }: PropertyCardProps) {
           )}
         </Stack>
       </Stack>
-      <div className="relative z-20 px-1 pb-1">
-        <Button
-          size="sm"
-          className="w-full"
-          onClick={(e) => {
-            e.stopPropagation()
-            show(SIMULATED_MESSAGES.contact)
-          }}
-        >
-          Contact Agent
-        </Button>
-      </div>
     </Card>
   )
 }

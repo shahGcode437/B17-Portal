@@ -112,7 +112,9 @@ test.describe('map privacy journey', () => {
     await openApp(page, `/businesses/${IDS.foodExact}`, 'Capital Bakers')
     await expect(map(page)).toHaveAttribute('data-map-status', 'ready')
     await expect(page.getByRole('group', { name: 'Map of Capital Bakers' })).toBeVisible()
-    await expect(page.getByRole('img', { name: 'Capital Bakers location' })).toHaveCount(1)
+    // The exact pin is a link (it opens the same Google Maps destination as Get Directions), not a picture.
+    await expect(map(page).getByRole('link', { name: 'Open this location in Google Maps' })).toHaveCount(1)
+    await expect(page.getByRole('img', { name: 'Capital Bakers location' })).toHaveCount(0)
     await expect(map(page).getByRole('button', { name: 'Zoom in' })).toBeVisible()
     await expect(map(page).getByRole('button', { name: 'Zoom out' })).toBeVisible()
 

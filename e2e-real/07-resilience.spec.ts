@@ -1,5 +1,5 @@
 import { expect, test, type Page, type Route } from '@playwright/test'
-import { ApiClient, API, PASSWORD, createUser, expectH1, loginOn, ownerCard, psql, rows, scalar, signInAs, type TestUser, newContext } from './helpers/stack'
+import { ApiClient, WEB_API, PASSWORD, createUser, expectH1, loginOn, ownerCard, psql, rows, scalar, signInAs, type TestUser, newContext } from './helpers/stack'
 import { approvedProvider, createProvider, openCreateForm, unique } from './helpers/ui'
 
 /**
@@ -45,7 +45,7 @@ test('CSRF and Origin: the app’s writes carry the token; a missing or tampered
   const page = await signInAs(browser, owner)
   const seen: Record<string, string | undefined> = {}
   page.on('request', (r) => {
-    if (r.method() !== 'GET' && r.url().startsWith(API)) seen[`${r.method()} ${new URL(r.url()).pathname.replace('/api/v1', '').replace(/[0-9a-f-]{36}/g, ':id')}`] = r.headers()['x-csrf-token']
+    if (r.method() !== 'GET' && r.url().startsWith(WEB_API)) seen[`${r.method()} ${new URL(r.url()).pathname.replace('/api/v1', '').replace(/[0-9a-f-]{36}/g, ':id')}`] = r.headers()['x-csrf-token']
   })
   // Representative unsafe calls made BY THE APP: listing create (UI), Saved PUT and request POST via the UI below.
   const id = await createProvider(page, { name: unique('Csrf Provider'), category: 'Plumbing' })
@@ -81,7 +81,7 @@ test('session expiry: a write after the session was revoked gives no false succe
 
   psql(`UPDATE auth_sessions SET revoked_at = now(), revoke_reason = 'admin_action' WHERE user_id = (SELECT id FROM users WHERE email = '${victim.email}')`) // the session "expires" server-side
   const [response] = await Promise.all([
-    page.waitForResponse((r) => r.request().method() === 'POST' && r.url() === `${API}/listings`),
+    page.waitForResponse((r) => r.request().method() === 'POST' && r.url() === `${WEB_API}/listings`),
     page.getByRole('button', { name: 'Preview Listing' }).click(),
   ])
   expect(response.status()).toBe(401)
@@ -107,7 +107,7 @@ test('login rate limit: repeated failures are throttled (429) and the form says 
   await page.getByLabel('Email').fill(target.email)
   await page.getByLabel('Password', { exact: true }).fill(PASSWORD) // even the CORRECT password is throttled now
   const [response] = await Promise.all([
-    page.waitForResponse((r) => r.url() === `${API}/auth/login`),
+    page.waitForResponse((r) => r.url() === `${WEB_API}/auth/login`),
     page.getByRole('button', { name: 'Log In', exact: true }).click(),
   ])
   expect(response.status()).toBe(429)
@@ -138,7 +138,7 @@ test('Free plan quota: the 4th active listing is refused (plan_limit_reached), n
   await page.getByLabel('Area', { exact: true }).fill('B-17')
   await page.getByLabel(/Services Offered/).fill('plumbing, repairs')
   const [response] = await Promise.all([
-    page.waitForResponse((r) => r.request().method() === 'POST' && r.url() === `${API}/listings`),
+    page.waitForResponse((r) => r.request().method() === 'POST' && r.url() === `${WEB_API}/listings`),
     page.getByRole('button', { name: 'Preview Listing' }).click(),
   ])
   expect(response.status()).toBe(403)

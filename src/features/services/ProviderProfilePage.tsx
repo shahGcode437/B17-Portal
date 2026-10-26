@@ -1,6 +1,6 @@
-import { useState } from "react"
-import { useNavigate, useParams } from "react-router-dom"
-import { MapPin, MessageCircle, Wrench } from "lucide-react"
+import { useEffect, useState } from "react"
+import { useLocation, useNavigate, useParams } from "react-router-dom"
+import { MapPin, Wrench } from "lucide-react"
 import { Typography } from "@/components/foundation/Typography"
 import { Button } from "@/components/ui/button"
 import { SaveButton } from "@/components/inputs/SaveButton"
@@ -17,19 +17,21 @@ import { RequestServiceDialog } from "@/features/services/RequestServiceDialog"
 import { useListing } from "@/hooks/useListings"
 import { useAuth } from "@/hooks/useAuth"
 import { useSeo } from "@/hooks/useSeo"
+import { useGoBack } from "@/hooks/useGoBack"
+import { useSignInGate } from "@/hooks/useSignInGate"
 import { providerSeo } from "@/seo/entitySeo"
-import { useToast } from "@/hooks/useToast"
-import { SIMULATED_MESSAGES } from "@/lib/simulatedActions"
 import { routes } from "@/config/routes"
 import type { Provider } from "@/types/provider"
 
 /**
  * Public Provider Profile (UI/UX Spec §11) - read from `GET /listings/{id}` (Phase 12G). Trust /
  * experience / verification rows are intentionally omitted: nothing here is backed by a real
- * process (Master Spec §9, §19). WhatsApp stays simulated.
+ * process (Master Spec §9, §19).
  *
  * "Request Service" is real since Phase 12H: the dialog `POST`s to `/requests` with the backend
- * deriving the provider from this listing's owner. An anonymous visitor is sent to Log In first.
+ * deriving the provider from this listing's owner. An anonymous visitor is sent to Log In first and comes back
+ * to this dialog (`openRequestFor`); someone whose session is still being checked, or whose server cannot be
+ * reached, is NOT sent to Log In (`useSignInGate`, Phase 12S).
  */
 function ProviderProfilePage() {
   const { id } = useParams<{ id: string }>()
@@ -54,22 +56,24 @@ function ProviderProfilePage() {
 
 function ProviderProfile({ provider }: { provider: Provider }) {
   const navigate = useNavigate()
-  const { show } = useToast()
+  const location = useLocation()
   const auth = useAuth()
-  const [requestOpen, setRequestOpen] = useState(false)
+  const { requireSignIn } = useSignInGate()
+  const goBack = useGoBack(routes.services)
+  // Back from Log In with THIS provider's Request Service pending (LoginRegisterPage): reopen it, once.
+  const resumeRequest = (location.state as { openRequestFor?: string } | null)?.openRequestFor === provider.id
+  const [requestOpen, setRequestOpen] = useState(resumeRequest && auth.status === "authenticated")
   useSeo(providerSeo(provider))
 
-  const handleRequestClick = () => {
-    if (auth.status !== "authenticated") {
-      navigate(routes.login, { state: { from: `${window.location.pathname}${window.location.search}` } })
-      return
-    }
-    setRequestOpen(true)
-  }
+  useEffect(() => {
+    if (resumeRequest) navigate(`${location.pathname}${location.search}`, { replace: true, state: null })
+  }, [resumeRequest, navigate, location.pathname, location.search])
+
+  const handleRequestClick = () => requireSignIn(() => setRequestOpen(true), { loginState: { providerId: provider.id } })
 
   return (
     <DetailLayout
-      onBack={() => navigate(-1)}
+      onBack={goBack}
       hero={
         <DetailHero
           src={provider.image}
@@ -85,15 +89,9 @@ function ProviderProfile({ provider }: { provider: Provider }) {
           subtitle={provider.categoryLabel}
           facts={<DetailFacts facts={[{ icon: MapPin, label: "Coverage area", value: provider.area, wide: true }]} />}
           actions={
-            <>
-              <Button size="lg" className="w-full" onClick={handleRequestClick}>
-                Request Service
-              </Button>
-              <Button size="lg" variant="outline" className="w-full" onClick={() => show(SIMULATED_MESSAGES.whatsapp)}>
-                <MessageCircle />
-                Contact on WhatsApp
-              </Button>
-            </>
+            <Button size="lg" className="w-full" onClick={handleRequestClick}>
+              Request Service
+            </Button>
           }
         />
       }

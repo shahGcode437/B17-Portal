@@ -1,15 +1,12 @@
-import { MapPin, MessageCircle, Building2, Star } from "lucide-react"
+import { MapPin, Building2, Star } from "lucide-react"
 import type { Business } from "@/types/business"
 import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
 import { CardImage } from "@/components/media/CardImage"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { CardPreviewTrigger } from "@/components/cards/CardPreviewTrigger"
 import { SaveButton } from "@/components/inputs/SaveButton"
-import { useToast } from "@/hooks/useToast"
-import { SIMULATED_MESSAGES } from "@/lib/simulatedActions"
 
 interface BusinessCardProps {
   business: Business
@@ -18,7 +15,6 @@ interface BusinessCardProps {
 
 /** Business directory card (Master Spec §11): name, category, location, featured state. */
 function BusinessCard({ business, onSelect }: BusinessCardProps) {
-  const { show } = useToast()
 
   return (
     <Card
@@ -54,30 +50,6 @@ function BusinessCard({ business, onSelect }: BusinessCardProps) {
           <MapPin className="size-3.5 shrink-0" aria-hidden="true" />
           <Typography variant="caption">{business.area}</Typography>
         </Stack>
-      </Stack>
-      <Stack direction="row" gap={2} className="relative z-20 px-1 pb-1">
-        <Button
-          size="sm"
-          variant="outline"
-          className="flex-1"
-          onClick={(e) => {
-            e.stopPropagation()
-            show(SIMULATED_MESSAGES.whatsapp)
-          }}
-        >
-          <MessageCircle />
-          WhatsApp
-        </Button>
-        <Button
-          size="sm"
-          className="flex-1"
-          onClick={(e) => {
-            e.stopPropagation()
-            show(SIMULATED_MESSAGES.contact)
-          }}
-        >
-          Contact
-        </Button>
       </Stack>
     </Card>
   )

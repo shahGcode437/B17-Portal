@@ -1,24 +1,19 @@
-import { MapPin, MessageCircle, GraduationCap } from "lucide-react"
+import { MapPin, GraduationCap } from "lucide-react"
 import type { Tutor } from "@/types/tutor"
 import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
 import { CardImage } from "@/components/media/CardImage"
-import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { CardPreviewTrigger } from "@/components/cards/CardPreviewTrigger"
 import { SaveButton } from "@/components/inputs/SaveButton"
-import { useToast } from "@/hooks/useToast"
-import { SIMULATED_MESSAGES } from "@/lib/simulatedActions"
 
 interface TutorCardProps {
   tutor: Tutor
   onSelect?: () => void
 }
 
-/** Tutor card (Master Spec §11): name, subject, grade, area, bio, WhatsApp. */
+/** Tutor card (Master Spec §11): name, subject, grade, area, bio. No contact action: none exists yet. */
 function TutorCard({ tutor, onSelect }: TutorCardProps) {
-  const { show } = useToast()
-
   return (
     <Card
       variant="interactive"
@@ -48,19 +43,6 @@ function TutorCard({ tutor, onSelect }: TutorCardProps) {
           <Typography variant="caption">{tutor.area}</Typography>
         </Stack>
       </Stack>
-      <div className="relative z-20 px-1 pb-1">
-        <Button
-          size="sm"
-          className="w-full"
-          onClick={(e) => {
-            e.stopPropagation()
-            show(SIMULATED_MESSAGES.whatsapp)
-          }}
-        >
-          <MessageCircle />
-          Chat on WhatsApp
-        </Button>
-      </div>
     </Card>
   )
 }

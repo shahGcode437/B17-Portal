@@ -26,7 +26,7 @@ interface AdminLoginLocationState {
  */
 function AdminLoginPage() {
   const location = useLocation()
-  const { status, user, logout } = useAuth()
+  const { status, user, logout, bootstrapError, retryBootstrap } = useAuth()
   const state = (location.state ?? {}) as AdminLoginLocationState
   const from = safeLocalPath(state.from)
   const [logoutError, setLogoutError] = useState<string | null>(null)
@@ -70,6 +70,19 @@ function AdminLoginPage() {
               </Typography>
             </Stack>
           </Stack>
+
+          {status === "unavailable" && (
+            // Same honesty as the customer Log In: an unreachable server is not "logged out".
+            <div role="alert" className="rounded-lg border border-border bg-muted px-3 py-2">
+              <Typography variant="body-sm">
+                {bootstrapError?.isNetwork ? "We couldn't reach the server." : "The server isn't responding properly."} You
+                can still try to log in.
+              </Typography>
+              <Button type="button" variant="link" size="sm" onClick={retryBootstrap}>
+                Check again
+              </Button>
+            </div>
+          )}
 
           {status === "authenticated" ? (
             <Stack gap={4} align="center" className="text-center">

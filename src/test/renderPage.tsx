@@ -1,10 +1,11 @@
 import type { ReactElement } from "react"
-import { MemoryRouter, Route, Routes } from "react-router-dom"
+import { MemoryRouter, Route, Routes, parsePath } from "react-router-dom"
 import { render } from "@testing-library/react"
 import { vi } from "vitest"
 import { AuthContext } from "@/hooks/useAuth"
 import { ToastContext } from "@/hooks/useToast"
 import { authContextValue, testUser } from "@/test/authFixtures"
+import type { AuthContextValue } from "@/hooks/useAuth"
 import { LocationProbe } from "@/test/LocationProbe"
 import type { CurrentUser } from "@/types/auth"
 
@@ -15,8 +16,12 @@ interface RenderPageOptions {
   path?: string
   /** `null` = signed out; omitted = a plain signed-in resident; or pass roles via `user`. */
   user?: CurrentUser | null
-  /** Auth bootstrap still running. */
-  status?: "loading"
+  /** Auth bootstrap still running (`loading`), or the server could not be reached (`unavailable`). */
+  status?: "loading" | "unavailable"
+  /** Router state of the first entry (e.g. `{ openRequestFor }` when coming back from Log In). */
+  state?: unknown
+  /** Anything else to override on the auth context (e.g. a spy for `retryBootstrap`). */
+  auth?: Partial<AuthContextValue>
 }
 
 /**
@@ -30,9 +35,13 @@ export function renderPage(page: ReactElement, options: RenderPageOptions) {
   window.history.replaceState({}, "", options.url)
   const show = vi.fn()
   const user = options.user === undefined ? testUser() : options.user
-  const auth = authContextValue({ user, ...(options.status === "loading" ? { status: "loading" as const, isAuthenticated: false } : {}) })
+  const auth = authContextValue({
+    user,
+    ...(options.status ? { status: options.status, isAuthenticated: false } : {}),
+    ...options.auth,
+  })
   const utils = render(
-    <MemoryRouter initialEntries={[options.url]}>
+    <MemoryRouter initialEntries={[{ ...parsePath(options.url), state: options.state }]}>
       <AuthContext.Provider value={auth}>
         <ToastContext.Provider value={{ show }}>
           <Routes>

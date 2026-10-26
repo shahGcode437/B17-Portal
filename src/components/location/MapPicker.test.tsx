@@ -49,6 +49,36 @@ describe("MapPicker (writable map)", () => {
     expect(onChange).toHaveBeenCalledWith({ latitude: 33.705, longitude: 73.055 })
   })
 
+  it("a parent that re-renders with a NEW onChange does not re-mount the map (the owner's pan and zoom survive typing)", async () => {
+    const first = vi.fn()
+    const second = vi.fn()
+    const { engine, mounts, destroy } = fakePicker()
+    const point = { latitude: 33.7, longitude: 73.05 }
+    const { rerender } = render(<MapPicker mode="exact" value={point} onChange={first} label="Shop" engine={engine} />)
+    await waitFor(() => expect(mounts).toHaveLength(1))
+
+    // The form re-renders on every keystroke, handing down a fresh handler and an equal-valued point object.
+    rerender(<MapPicker mode="exact" value={{ ...point }} onChange={second} label="Shop" engine={engine} />)
+    rerender(<MapPicker mode="exact" value={{ ...point }} onChange={vi.fn(second)} label="Shop" engine={engine} />)
+    expect(mounts).toHaveLength(1)
+    expect(destroy).not.toHaveBeenCalled()
+
+    // The engine still reports to the CURRENT handler, never a stale one.
+    mounts[0].onPick?.({ latitude: 33.71, longitude: 73.06 })
+    expect(first).not.toHaveBeenCalled()
+    expect(second).toHaveBeenCalledWith({ latitude: 33.71, longitude: 73.06 })
+  })
+
+  it("a changed point or mode still redraws the map", async () => {
+    const { engine, mounts } = fakePicker()
+    const { rerender } = render(<MapPicker mode="exact" value={{ latitude: 33.7, longitude: 73.05 }} onChange={() => {}} label="Shop" engine={engine} />)
+    await waitFor(() => expect(mounts).toHaveLength(1))
+    rerender(<MapPicker mode="exact" value={{ latitude: 33.71, longitude: 73.06 }} onChange={() => {}} label="Shop" engine={engine} />)
+    await waitFor(() => expect(mounts).toHaveLength(2))
+    rerender(<MapPicker mode="approximate" value={{ latitude: 33.71, longitude: 73.06 }} onChange={() => {}} label="Shop" engine={engine} />)
+    await waitFor(() => expect(mounts).toHaveLength(3))
+  })
+
   it("approximate mode adds the illustrative circle around the pin", async () => {
     const { engine, mounts, latest } = fakePicker()
     render(<MapPicker mode="approximate" value={{ latitude: 33.71, longitude: 73.06 }} onChange={() => {}} label="Plot" engine={engine} />)

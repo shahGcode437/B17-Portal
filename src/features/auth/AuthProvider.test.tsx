@@ -105,6 +105,26 @@ describe("AuthProvider — bootstrap", () => {
     await waitFor(() => expect(state()).toContain("authenticated"))
   })
 
+  it("re-checks an unreachable server by itself when the network returns or the person comes back (no retry click)", async () => {
+    let online = false
+    installFetchMock(() => (online ? ok(meBody()) : "network-error"))
+    const { state } = setup()
+    await waitFor(() => expect(state()).toContain("unavailable"))
+
+    // Nothing happens on its own (there is no polling) ...
+    await act(async () => {})
+    expect(state()).toContain("unavailable")
+
+    // ... a failed re-check changes nothing ...
+    await act(async () => void window.dispatchEvent(new Event("focus")))
+    await waitFor(() => expect(state()).toContain("unavailable"))
+
+    // ... and once the API is back, returning to the tab restores the real session.
+    online = true
+    await act(async () => void window.dispatchEvent(new Event("online")))
+    await waitFor(() => expect(state()).toBe("authenticated|Ayesha Khan|-"))
+  })
+
   it("treats a 5xx as unavailable too", async () => {
     installFetchMock(() => fail(503, "service_unavailable"))
     const { state } = setup()

@@ -2,7 +2,6 @@ import { useNavigate, useParams } from "react-router-dom"
 import { MapPin, BedDouble, KeyRound, Home, Sofa } from "lucide-react"
 import { Typography } from "@/components/foundation/Typography"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
 import { SaveButton } from "@/components/inputs/SaveButton"
 import { DetailLayout } from "@/components/detail/DetailLayout"
 import { DetailHero } from "@/components/detail/DetailHero"
@@ -14,16 +13,15 @@ import { ListingDetailGate } from "@/components/detail/ListingDetailGate"
 import { LocationSection } from "@/components/location/LocationSection"
 import { useListing } from "@/hooks/useListings"
 import { useSeo } from "@/hooks/useSeo"
+import { useGoBack } from "@/hooks/useGoBack"
 import { propertySeo } from "@/seo/entitySeo"
-import { useToast } from "@/hooks/useToast"
-import { SIMULATED_MESSAGES } from "@/lib/simulatedActions"
 import { routes } from "@/config/routes"
 import type { Property } from "@/types/property"
 
 /**
  * Public Property Details (Master Spec Screen 17) - read from `GET /listings/{id}` (Phase 12G).
- * Guest-accessible (Master Spec §17). "Contact Agent" is the only CTA and it is simulated - no real
- * agent identity, booking, payment, legal verification, or transaction.
+ * Guest-accessible (Master Spec §17). There is no contact action: no agent identity, booking, payment,
+ * legal verification or transaction exists, so the page says so.
  */
 function PropertyDetailsPage() {
   const { id } = useParams<{ id: string }>()
@@ -47,8 +45,7 @@ function PropertyDetailsPage() {
 }
 
 function PropertyDetails({ property }: { property: Property }) {
-  const navigate = useNavigate()
-  const { show } = useToast()
+  const goBack = useGoBack(routes.property)
   useSeo(propertySeo(property))
 
   // Only facts the listing actually has - optional fields are simply omitted.
@@ -59,7 +56,7 @@ function PropertyDetails({ property }: { property: Property }) {
 
   return (
     <DetailLayout
-      onBack={() => navigate(-1)}
+      onBack={goBack}
       hero={
         <DetailHero
           src={property.image}
@@ -81,9 +78,9 @@ function PropertyDetails({ property }: { property: Property }) {
           highlight={property.price}
           facts={<DetailFacts facts={facts} />}
           actions={
-            <Button size="lg" className="w-full" onClick={() => show(SIMULATED_MESSAGES.contact)}>
-              Contact Agent
-            </Button>
+            <Typography variant="body-sm" className="text-muted-foreground">
+              Contacting the lister through B-17 Portal isn&apos;t available yet.
+            </Typography>
           }
         />
       }

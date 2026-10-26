@@ -51,6 +51,13 @@ export class AuthMock {
   /** The "server session": which account is signed in, and its CSRF token. */
   session: { email: string; csrf: string } | null = null
   googleEnabled = true
+  /**
+   * How `GET /auth/me` behaves (Phase 12S). The real backend is not instant and not always reachable; a mock that
+   * always answers at once hid every bug that lives in the gap (a signed-in person sent to Log In while the
+   * session check was still running, or while the server could not be reached).
+   */
+  meDelayMs = 0
+  meUnreachable = false
   /** Where the fake Google consent page sends the browser back to (the frontend `returnTo`). */
   private googleReturnTo = '/'
   private csrfCounter = 0
@@ -137,6 +144,8 @@ export class AuthMock {
 
     switch (`${method} ${path}`) {
       case 'GET /auth/me': {
+        if (this.meDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, this.meDelayMs))
+        if (this.meUnreachable) return route.abort('failed')
         const account = this.current()
         return account ? data(this.me(account, this.session!.csrf)) : error(401, 'unauthenticated')
       }

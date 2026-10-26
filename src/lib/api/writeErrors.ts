@@ -1,3 +1,4 @@
+import { isDevMail } from "@/config/devMail"
 import { ApiError, NETWORK_ERROR_CODE, isApiError } from "@/lib/api/errors"
 
 /**
@@ -37,10 +38,12 @@ const PROFESSIONAL_REQUIRED: Copy = {
   title: "A professional profile is needed",
   description: "Create a professional profile from your workspace, then try again.",
 }
-const EMAIL_NOT_VERIFIED: Copy = {
+const emailNotVerified = (): Copy => ({
   title: "Please verify your email first",
-  description: "Open the verification link in your inbox, then try again.",
-}
+  description: isDevMail()
+    ? "In development no e-mail is sent: your Profile page shows the command that prints your verification link. Open it, then try again."
+    : "Open the verification link in your inbox, then try again.",
+})
 const SESSION_EXPIRED: Copy = {
   title: "Your session has expired",
   description: "Sign in again to continue.",
@@ -125,7 +128,7 @@ export function userMessageFor(error: unknown, op: WriteOperation): Copy {
     case "professional_profile_required":
       return PROFESSIONAL_REQUIRED
     case "email_not_verified":
-      return EMAIL_NOT_VERIFIED
+      return emailNotVerified()
     case "listing_conflict":
       return conflictCopy(op)
     case "invalid_state_transition":

@@ -42,7 +42,7 @@ export async function setLocation(page: Page, o: LocationInput) {
 /** Clicks Preview Listing, waits for the real `POST /listings` and returns the new id (201 required). */
 export async function submitCreate(page: Page): Promise<string> {
   const [response] = await Promise.all([
-    page.waitForResponse((r) => r.request().method() === 'POST' && r.url() === `${API}/listings`),
+    page.waitForResponse((r) => r.request().method() === 'POST' && new URL(r.url()).pathname === '/api/v1/listings'),
     page.getByRole('button', { name: 'Preview Listing' }).click(),
   ])
   expect(response.status(), await response.text()).toBe(201)

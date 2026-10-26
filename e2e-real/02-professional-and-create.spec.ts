@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { ApiClient, ownerCard, createUser, expectH1, rows, scalar, signInAs, type TestUser } from './helpers/stack'
+import { ApiClient, ownerCard, createUser, expectH1, rows, scalar, signInAs, type TestUser, WEB_API } from './helpers/stack'
 import { createFood, createGeneralBusiness, createProperty, createProvider, createTutor, publicGet, searchHits, unique } from './helpers/ui'
 import type { Page } from '@playwright/test'
 
@@ -36,7 +36,7 @@ test('verified Resident -> Professional area -> creates the profile -> capabilit
   // Reload: still a Professional, because /auth/me says so - not because of anything stored locally.
   await page.reload()
   await expectH1(page, 'List Your Business / Service / Property')
-  const me = (await (await page.request.get('http://127.0.0.1:8000/api/v1/auth/me')).json()).data
+  const me = (await (await page.request.get(`${WEB_API}/auth/me`)).json()).data
   expect(me.professional.planCode).toBe('free')
   const storage = await page.evaluate(() => JSON.stringify({ ...localStorage, ...sessionStorage }))
   expect(storage).not.toMatch(/plan|professional|resident|role/i)

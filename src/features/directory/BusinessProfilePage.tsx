@@ -1,7 +1,6 @@
 import { useNavigate, useParams } from "react-router-dom"
-import { MapPin, MessageCircle, Building2, Clock, Utensils, UtensilsCrossed } from "lucide-react"
+import { MapPin, Building2, Clock, Utensils, UtensilsCrossed } from "lucide-react"
 import { Typography } from "@/components/foundation/Typography"
-import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { SaveButton } from "@/components/inputs/SaveButton"
 import { DetailLayout } from "@/components/detail/DetailLayout"
@@ -18,17 +17,16 @@ import { FOOD_VERTICAL_LABEL, foodCategoryLabel } from "@/config/food"
 import type { DetailFact } from "@/components/detail/DetailFacts"
 import { useListing } from "@/hooks/useListings"
 import { useSeo } from "@/hooks/useSeo"
+import { useGoBack } from "@/hooks/useGoBack"
 import { businessSeo } from "@/seo/entitySeo"
-import { useToast } from "@/hooks/useToast"
-import { SIMULATED_MESSAGES } from "@/lib/simulatedActions"
 import { routes } from "@/config/routes"
 import type { Business } from "@/types/business"
 
 /**
  * Public Business Profile (Master Spec Screen 11) - read from `GET /listings/{id}` (Phase 12G).
  * Guest-accessible, no auth gate (Master Spec §17). Food & Dining is the same page: it is a
- * vertical of Business (`vertical === "food"`), never a separate kind or route. "Contact Business"
- * is a simulated action - there is still no real contact data or delivery (DECISIONS.md, O-3).
+ * vertical of Business (`vertical === "food"`), never a separate kind or route. There is no
+ * contact action: no contact data, chat or delivery exists (DECISIONS.md, O-3), so the page says so.
  */
 function BusinessProfilePage() {
   const { id } = useParams<{ id: string }>()
@@ -52,8 +50,7 @@ function BusinessProfilePage() {
 }
 
 function BusinessProfile({ business }: { business: Business }) {
-  const navigate = useNavigate()
-  const { show } = useToast()
+  const goBack = useGoBack(business.vertical === "food" ? routes.food : routes.directory)
   useSeo(businessSeo(business))
 
   // Food & Dining: everything below is conditional on the Business's own vertical - a general
@@ -70,7 +67,7 @@ function BusinessProfile({ business }: { business: Business }) {
 
   return (
     <DetailLayout
-      onBack={() => navigate(-1)}
+      onBack={goBack}
       hero={
         <DetailHero
           src={business.image}
@@ -95,15 +92,9 @@ function BusinessProfile({ business }: { business: Business }) {
           subtitle={business.category}
           facts={<DetailFacts facts={facts} />}
           actions={
-            <>
-              <Button size="lg" className="w-full" onClick={() => show(SIMULATED_MESSAGES.contact)}>
-                Contact Business
-              </Button>
-              <Button size="lg" variant="outline" className="w-full" onClick={() => show(SIMULATED_MESSAGES.whatsapp)}>
-                <MessageCircle />
-                WhatsApp
-              </Button>
-            </>
+            <Typography variant="body-sm" className="text-muted-foreground">
+              Contacting this business through B-17 Portal isn&apos;t available yet.
+            </Typography>
           }
         />
       }

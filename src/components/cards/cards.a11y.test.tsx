@@ -19,7 +19,7 @@ import type { Tutor } from "@/types/tutor"
 
 /**
  * Regression for the nested-interactive bug found by Playwright MCP (Phase 9M): result cards were a
- * `role="button"` element that CONTAINED the Save / WhatsApp / Contact buttons. ARIA forbids
+ * `role="button"` element that CONTAINED the Save / action buttons. ARIA forbids
  * interactive content inside a button, and assistive tech cannot reach the inner controls reliably.
  * Cards must be a plain container with a separate preview control and independent action buttons.
  */
@@ -49,10 +49,10 @@ const tutor: Tutor = toTutor(TUTORS[0])
 const property: Property = toProperty(PROPERTIES[0])
 
 const cards: { name: string; label: string; actions: RegExp[]; element: (onSelect: () => void) => ReactElement }[] = [
-  { name: "BusinessCard", label: business.name, actions: [/whatsapp/i, /contact/i], element: (onSelect) => <BusinessCard business={business} onSelect={onSelect} /> },
-  { name: "ProviderCard", label: provider.name, actions: [/whatsapp/i, /request/i], element: (onSelect) => <ProviderCard provider={provider} onSelect={onSelect} /> },
-  { name: "TutorCard", label: tutor.name, actions: [/whatsapp/i], element: (onSelect) => <TutorCard tutor={tutor} onSelect={onSelect} /> },
-  { name: "PropertyCard", label: property.title, actions: [/contact/i], element: (onSelect) => <PropertyCard property={property} onSelect={onSelect} /> },
+  { name: "BusinessCard", label: business.name, actions: [], element: (onSelect) => <BusinessCard business={business} onSelect={onSelect} /> },
+  { name: "ProviderCard", label: provider.name, actions: [/^request$/i], element: (onSelect) => <ProviderCard provider={provider} onSelect={onSelect} /> },
+  { name: "TutorCard", label: tutor.name, actions: [], element: (onSelect) => <TutorCard tutor={tutor} onSelect={onSelect} /> },
+  { name: "PropertyCard", label: property.title, actions: [], element: (onSelect) => <PropertyCard property={property} onSelect={onSelect} /> },
 ]
 
 describe.each(cards)("$name accessibility semantics", ({ label, actions, element }) => {
@@ -61,11 +61,21 @@ describe.each(cards)("$name accessibility semantics", ({ label, actions, element
     expect(nestedInteractive(container)).toEqual([])
   })
 
-  it("exposes a preview control, a Save button and the action buttons as separate, named controls", () => {
+  it("exposes a preview control, a Save button and only REAL action buttons as separate, named controls", () => {
     renderCard(element(vi.fn()))
     expect(screen.getByRole("button", { name: `Preview ${label}` })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: `Save ${label}` })).toBeInTheDocument()
     for (const action of actions) expect(screen.getByRole("button", { name: action })).toBeInTheDocument()
+  })
+
+  it("offers no simulated Contact / WhatsApp action (nothing on a card pretends to contact anyone)", async () => {
+    const user = userEvent.setup()
+    const { show } = renderCard(element(vi.fn()))
+    expect(screen.queryByRole("button", { name: /whatsapp|contact|chat/i })).not.toBeInTheDocument()
+    expect(screen.queryByText(/simulated|future phase/i)).not.toBeInTheDocument()
+    // Pressing every button the card does have never raises a "simulated" toast.
+    for (const button of screen.getAllByRole("button")) await user.click(button)
+    expect(show).not.toHaveBeenCalledWith(expect.stringMatching(/simulated|future phase/i))
   })
 
   it("opens the preview from the mouse and from the keyboard (Enter / Space)", async () => {

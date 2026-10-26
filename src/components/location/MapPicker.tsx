@@ -43,6 +43,14 @@ const loadPickerEngine = () =>
   import("@/components/location/leafletPickerEngine").then((module) => module.leafletPickerEngine)
 
 function MapPicker({ mode, value, onChange, label, defaultCenter = B17_CENTER, engine, className }: MapPickerProps) {
+  // The map is re-mounted whenever `options` changes, and a re-mount throws away the owner's pan and zoom. The
+  // parent form re-renders on every keystroke (Block, Address, Landmark) with a NEW `onChange` function, so the
+  // handler must not be one of the things `options` depends on: the engine always calls the latest one through this ref.
+  const onChangeRef = useRef(onChange)
+  useEffect(() => {
+    onChangeRef.current = onChange
+  })
+
   const options = useMemo((): PickerOptions => {
     const center = value ?? defaultCenter
     return {
@@ -59,10 +67,10 @@ function MapPicker({ mode, value, onChange, label, defaultCenter = B17_CENTER, e
           }
         : {}),
       draggable: value !== null,
-      onPick: onChange,
+      onPick: (point) => onChangeRef.current(point),
     }
     // oxlint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, value?.latitude, value?.longitude, label, defaultCenter.latitude, defaultCenter.longitude, onChange])
+  }, [mode, value?.latitude, value?.longitude, label, defaultCenter.latitude, defaultCenter.longitude])
 
   const container = useRef<HTMLDivElement>(null)
   const [ready, setReady] = useState<"loading" | "ready" | "failed">("loading")

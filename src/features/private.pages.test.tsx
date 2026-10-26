@@ -8,7 +8,7 @@ import { ProfessionalLeadsPage } from "@/features/provider/ProfessionalLeadsPage
 import { ModerationQueuePage } from "@/features/admin/ModerationQueuePage"
 import { AdminCategoriesPage } from "@/features/admin/AdminCategoriesPage"
 import { AdminDashboardPage } from "@/features/admin/AdminDashboardPage"
-import { fail, installFetchMock, ok, type MockCall } from "@/test/apiMock"
+import { fail, installFetchMock, ok, okPage, type MockCall } from "@/test/apiMock"
 import { fakeBackend } from "@/test/fixtures/fakeBackend"
 import { IDS, PRIVATE_ADDRESS, PRIVATE_POINT } from "@/test/fixtures/apiFixtures"
 import { adminUser, testUser } from "@/test/authFixtures"
@@ -166,6 +166,34 @@ describe("Professional: listings", () => {
     expect(await within(dialog).findByText(PRIVATE_ADDRESS)).toBeInTheDocument()
     expect(within(dialog).getByText(`${PRIVATE_POINT.latitude}, ${PRIVATE_POINT.longitude}`)).toBeInTheDocument()
     expect(within(dialog).getByText(/exact pin, with the address/i)).toBeInTheDocument()
+  })
+
+  describe("listing entry: a professional with nothing listed yet is pointed at a path that works", () => {
+    const emptyOwner = () =>
+      installFetchMock(
+        fakeBackend({
+          me: me(),
+          overrides: { "/users/me/listings": okPage([], { counts: { pending: 0, approved: 0, rejected: 0, archived: 0 } }) },
+        })
+      )
+
+    it("Listings: 'Create your first listing' goes to the create form, and nothing claims creating is coming soon", async () => {
+      emptyOwner()
+      renderPage(<ProfessionalListingsPage />, { url: "/provider/listings", user: resident() })
+      expect(await screen.findByText("You haven't listed anything yet")).toBeInTheDocument()
+      expect(screen.getByRole("link", { name: "Create your first listing" })).toHaveAttribute("href", "/provider/listings/new")
+      expect(screen.getByRole("link", { name: "New listing" })).toHaveAttribute("href", "/provider/listings/new")
+      expect(screen.queryByText(/coming soon/i)).not.toBeInTheDocument()
+    })
+
+    it("Overview (where 'List Your Business' lands): the empty recent-listings block offers the same create link", async () => {
+      emptyOwner()
+      const { ProfessionalOverviewPage } = await import("@/features/provider/ProfessionalOverviewPage")
+      renderPage(<ProfessionalOverviewPage />, { url: "/provider", user: resident() })
+      expect(await screen.findByText("No listings submitted yet.")).toBeInTheDocument()
+      expect(screen.getByRole("link", { name: "Create your first listing" })).toHaveAttribute("href", "/provider/listings/new")
+      expect(screen.queryByText(/coming soon/i)).not.toBeInTheDocument()
+    })
   })
 
   it("a failure is an error, not an empty dashboard", async () => {

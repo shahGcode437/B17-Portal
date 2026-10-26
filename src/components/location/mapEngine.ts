@@ -18,8 +18,11 @@ export interface MapViewOptions {
   tileUrl: string
   /** Attribution HTML; always shown. */
   attribution: string
-  /** An exact pin, with its accessible label. */
-  marker?: { position: MapPoint; label: string }
+  /**
+   * An exact pin, with its accessible label. `href` makes the pin itself a link to that external destination
+   * (the same public-point directions URL as "Get Directions"); without it the pin is a plain picture.
+   */
+  marker?: { position: MapPoint; label: string; href?: string }
   /** An illustrative circle (approximate locations): no accuracy is claimed by its size. */
   circle?: { center: MapPoint; radiusMeters: number }
 }

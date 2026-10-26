@@ -36,6 +36,9 @@ if (!Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = () => {}
 }
 
+// jsdom's window.scrollTo only logs "Not implemented"; the app's one scroll rule (ScrollManager) calls it on navigation.
+window.scrollTo = () => {}
+
 // jsdom has no IntersectionObserver (scroll-reveal / in-view animations use it). Nothing is ever "in view" here.
 if (!('IntersectionObserver' in window)) {
   class NoopIntersectionObserver {

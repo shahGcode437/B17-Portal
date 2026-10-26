@@ -124,6 +124,23 @@ describe("ForgotPasswordPage", () => {
     expect(second).toBe(first)
   })
 
+  it("in development says no e-mail is sent (the neutral confirmation stays)", async () => {
+    await submit("exists@example.org", (c) => (c.path === "/auth/forgot-password" ? ok({ status: "accepted" }, 202) : fail(401, "unauthenticated")))
+    expect(await screen.findByTestId("dev-reset-hint")).toHaveTextContent(/no e-mail is sent/i)
+    expect(screen.getByText(/if an account exists/i)).toBeInTheDocument()
+  })
+
+  it("a production build shows only the neutral confirmation", async () => {
+    vi.stubEnv("DEV", false)
+    try {
+      await submit("exists@example.org", (c) => (c.path === "/auth/forgot-password" ? ok({ status: "accepted" }, 202) : fail(401, "unauthenticated")))
+      expect(await screen.findByText(/a password reset link is on its way/i)).toBeInTheDocument()
+      expect(screen.queryByTestId("dev-reset-hint")).not.toBeInTheDocument()
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
   it("sends only the email, with no CSRF header (pre-session)", async () => {
     const { calls } = await submit("a@example.org", (c) => (c.path === "/auth/forgot-password" ? ok({ status: "accepted" }, 202) : fail(401, "unauthenticated")))
 
@@ -222,6 +239,10 @@ describe("ResetPasswordPage", () => {
 })
 
 describe("VerificationNotice", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
   function renderNotice(backend: Backend) {
     const mocked = installFetchMock(backend)
     render(
@@ -240,7 +261,8 @@ describe("VerificationNotice", () => {
     expect(screen.queryByText(/verify your email address/i)).not.toBeInTheDocument()
   })
 
-  it("resends through the authenticated, CSRF-protected endpoint and confirms neutrally", async () => {
+  it("resends through the authenticated, CSRF-protected endpoint and confirms neutrally (production wording)", async () => {
+    vi.stubEnv("DEV", false)
     const { calls, user } = renderNotice((c) =>
       c.path === "/auth/resend-verification" ? noContent() : ok(meBody({ emailVerified: false, csrfToken: "csrf-r" }))
     )
@@ -251,6 +273,33 @@ describe("VerificationNotice", () => {
     const resend = calls.find((c) => c.path === "/auth/resend-verification")!
     expect(resend.headers.get("X-CSRF-Token")).toBe("csrf-r")
     expect(resend.body).toBeUndefined() // the session says who; no email is sent
+  })
+
+  it("in development tells the truth: no e-mail is sent, here is the command that prints the link - and never claims one was", async () => {
+    renderNotice(() => ok(meBody({ emailVerified: false, email: "ayesha@example.org" })))
+
+    const hint = await screen.findByTestId("dev-verification-hint")
+    expect(hint).toHaveTextContent(/no e-mail is sent/i)
+    expect(hint).toHaveTextContent("python -m app.cli.dev_verify ayesha@example.org")
+    expect(screen.queryByText(/we sent a link/i)).not.toBeInTheDocument() // no false delivery claim next to the truth
+  })
+
+  it("in development the resend confirmation does not claim a link is on its way either", async () => {
+    const { user } = renderNotice((c) =>
+      c.path === "/auth/resend-verification" ? noContent() : ok(meBody({ emailVerified: false }))
+    )
+    await user.click(await screen.findByRole("button", { name: "Resend verification email" }))
+    expect(await screen.findByText(/nothing is e-mailed in development/i)).toBeInTheDocument()
+    expect(screen.queryByText(/on its way/i)).not.toBeInTheDocument()
+  })
+
+  it("a production build keeps the real wording and never shows any development text", async () => {
+    vi.stubEnv("DEV", false)
+    renderNotice(() => ok(meBody({ emailVerified: false, email: "ayesha@example.org" })))
+    await screen.findByRole("button", { name: "Resend verification email" })
+    expect(screen.getByText(/we sent a link to ayesha@example.org/i)).toBeInTheDocument()
+    expect(screen.queryByTestId("dev-verification-hint")).not.toBeInTheDocument()
+    expect(screen.queryByText(/dev_verify|in development|api terminal/i)).not.toBeInTheDocument()
   })
 
   it("respects rate limiting", async () => {

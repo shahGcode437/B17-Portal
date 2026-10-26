@@ -118,7 +118,11 @@ function ProfessionalOverviewPage() {
             ) : listings.error ? (
               <ReadError error={listings.error} onRetry={listings.retry} title="Couldn't load your listings" />
             ) : listings.items.length === 0 ? (
-              <WorkspaceEmpty icon={Store} message="No listings submitted yet. Creating listings is coming soon." />
+              <WorkspaceEmpty
+                icon={Store}
+                message="No listings submitted yet."
+                action={{ label: "Create your first listing", to: routes.createListing }}
+              />
             ) : (
               <Stack gap={2}>
                 {listings.items.slice(0, 3).map((listing) => (

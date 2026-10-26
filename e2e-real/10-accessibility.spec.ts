@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { API, createUser, expectH1, loginOn, scalar, signInAs, type TestUser, newContext } from './helpers/stack'
+import { WEB_API, createUser, expectH1, loginOn, scalar, signInAs, type TestUser, newContext } from './helpers/stack'
 import { approvedProvider, openCreateForm, unique } from './helpers/ui'
 
 /**
@@ -204,7 +204,7 @@ test('a slow submit disables the control and cannot be double-sent; the form re-
   await page.getByLabel('Area', { exact: true }).fill('B-17')
   await page.getByLabel(/Services Offered/).fill('plumbing, repairs')
   let posts = 0
-  await page.route(`${API}/listings`, async (route) => {
+  await page.route(`${WEB_API}/listings`, async (route) => {
     if (route.request().method() === 'POST') {
       posts += 1
       await new Promise((resolve) => setTimeout(resolve, 1800))

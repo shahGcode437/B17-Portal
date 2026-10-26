@@ -65,6 +65,41 @@ function sitemapPlugin(siteUrl: string): Plugin {
   }
 }
 
+/**
+ * Same-origin API in development AND in `vite preview`: the browser calls `/api/v1/...` on the page's
+ * own origin and Vite forwards it to FastAPI. Nothing is rewritten - `Origin`, `Cookie`, `Set-Cookie`
+ * and `Sec-Fetch-Site` pass through untouched, so the backend's CSRF / Origin checks, the host-only
+ * session cookie and `SameSite=Lax` all keep working exactly as in production, whether the page is
+ * opened at `localhost` or `127.0.0.1`. Override the target with `B17_API_PROXY_TARGET`.
+ */
+export const API_PROXY_TARGET = process.env.B17_API_PROXY_TARGET ?? 'http://127.0.0.1:8000'
+export const apiProxy = {
+  '/api': { target: API_PROXY_TARGET, changeOrigin: false, secure: false },
+}
+
+/**
+ * What the DEV server must not watch. Vite reloads every open page when any file under the project root changes -
+ * even a Markdown doc, the Python backend, an e2e spec or a unit-test file, none of which is part of the running
+ * app. A reload throws the page's state away: it dropped a half-filled listing form back to its first step in the
+ * middle of the real-stack lane whenever a file elsewhere in the repo was saved (found in Phase 12S S3), and it
+ * would reload the browser on every `uvicorn --reload` restart. Only what the frontend serves is watched
+ * (`src/`, `public/`, `pwa/`, `index.html`, this file). Vite already ignores `.git`, `node_modules` and `test-results`.
+ */
+export const devWatchIgnored = [
+  '**/backend/**',
+  '**/docs/**',
+  '**/e2e/**',
+  '**/e2e-real/**',
+  '**/playwright-report/**',
+  '**/.claude/**',
+  '**/*.md',
+  '**/src/test/**',
+  '**/*.test.ts',
+  '**/*.test.tsx',
+  '**/playwright*.config.ts',
+  '**/vitest.config.ts',
+]
+
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => ({
   plugins: [react(), tailwindcss(), serviceWorkerPlugin(), sitemapPlugin(loadEnv(mode, process.cwd(), 'VITE_').VITE_SITE_URL ?? '')],
@@ -73,4 +108,8 @@ export default defineConfig(({ mode }) => ({
       '@': path.resolve(import.meta.dirname, './src'),
     },
   },
+  // Loopback only, fixed ports. `strictPort`: if 5173 is busy, fail loudly - silently moving to 5174 would put
+  // the app on an origin the backend does not allow (FRONTEND_ORIGINS) and look like a broken login.
+  server: { host: '127.0.0.1', port: 5173, strictPort: true, proxy: apiProxy, watch: { ignored: devWatchIgnored } },
+  preview: { host: '127.0.0.1', port: 4173, strictPort: true, proxy: apiProxy },
 }))

@@ -63,7 +63,7 @@ uvicorn app.main:app --reload
 
   Pending, rejected, archived and draft records, unknown ids and malformed ids all answer the same `404`.
   Every listing item also carries a public `location` (Phase 12B): `exact` listings expose their point (and, on detail, address / landmark), `approximate` ones only a 2-decimal rounded point, `area_only` and pre-`0005` legacy rows no point at all. After upgrading an existing development database to `0005`, run `python -m scripts.dev_fixtures` again to give the fixtures their synthetic demo locations (idempotent; it prints how many it relocated), then `python -m app.db.search_index check`. Verified example: `curl "http://127.0.0.1:8000/api/v1/listings/<Mocha Corner Cafe id>"` → `"location": {"visibility": "approximate", "block": "C", "coordinates": {"latitude": 33.71, "longitude": 73.06, "precision": "approximate"}}` (the stored point and the private address are never returned).
-- Authentication (run the API with `uvicorn app.main:app` and use **`127.0.0.1` everywhere** — never mix in `localhost`; the verified examples below were run against that topology; browsers must send an allowed `Origin`, curl needs it explicitly):
+- Authentication (run the API with `uvicorn app.main:app`; the frontend reaches it same-origin through the Vite `/api` proxy, so the app works at `http://localhost:5173` or `http://127.0.0.1:5173`; the curl examples below call the API directly on `127.0.0.1:8000` with an explicit allowed `Origin`):
 
   ```bash
   B=http://127.0.0.1:8000/api/v1; O="Origin: http://127.0.0.1:5173"; J="Content-Type: application/json"
@@ -74,7 +74,7 @@ uvicorn app.main:app --reload
   curl -b jar.txt -H "$O" -H "X-CSRF-Token: <csrfToken from /auth/me>" -X POST $B/auth/logout   # 204
   ```
 
-  In development the email backend is `console`: verification/reset links (with the token in the URL fragment) are printed by the server. Make the first admin with `python -m app.cli.admin grant me@example.org` (needs a verified account) and purge expired auth data with `python -m app.cli.auth_maintenance purge`. Settings and the cookie/CSRF/session rules are in `.env.example` and `docs/backend/AUTH_RBAC.md`.
+  In development the email backend is `console`: **no e-mail is sent**; verification/reset links (with the token in the URL fragment) are printed by the server. To get a verification link for a local account without reading the log, run `python -m app.cli.dev_verify me@example.org` (add `--origin http://localhost:5173` if that is the address you browse; development / test only, refuses anywhere else — see `docs/backend/AUTH_RBAC.md`, "Development e-mail verification"). Make the first admin with `python -m app.cli.admin grant me@example.org` (needs a verified account) and purge expired auth data with `python -m app.cli.auth_maintenance purge`. Settings and the cookie/CSRF/session rules are in `.env.example` and `docs/backend/AUTH_RBAC.md`.
 - Google sign-in, locally and offline. Google is `disabled` by default (the endpoints answer `503`). To exercise the whole flow without Google Cloud, run the API with the in-process fake provider (development/test only — it is refused when `ENVIRONMENT` is `staging` or `production`):
 
   ```bash

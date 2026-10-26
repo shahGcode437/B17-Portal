@@ -16,10 +16,20 @@ import type { MapEngine, MapHandle, MapViewOptions } from "@/components/location
  *  - the attribution control is on, and nothing removes or hides it;
  *  - tile requests carry the standard `Referer` policy OSM needs; no geolocation, no geocoding.
  */
-function pinIcon(label: string): L.DivIcon {
+/** The accessible name (and tooltip) of an exact pin that opens Google Maps. */
+const OPEN_IN_MAPS = "Open this location in Google Maps"
+
+function pinIcon(label: string, href?: string): L.DivIcon {
+  // An exact pin with a destination is a real link: an <a> is focusable, opens with Enter, carries its own accessible
+  // name, and opens in a new tab with `noopener noreferrer` like the "Get Directions" button. Only an https URL is
+  // accepted (defence in depth: the URL is built from numbers by `buildDirectionsUrl`, never from page text).
+  const html =
+    href !== undefined && /^https:\/\//.test(href)
+      ? `<a class="b17-map-pin b17-map-pin--link" href="${escapeAttribute(href)}" target="_blank" rel="noopener noreferrer" aria-label="${OPEN_IN_MAPS}" title="${OPEN_IN_MAPS}"></a>`
+      : `<span class="b17-map-pin" role="img" aria-label="${escapeAttribute(label)}"></span>`
   return L.divIcon({
     className: "b17-map-pin-wrapper",
-    html: `<span class="b17-map-pin" role="img" aria-label="${escapeAttribute(label)}"></span>`,
+    html,
     iconSize: [28, 28],
     iconAnchor: [14, 14],
   })
@@ -53,7 +63,8 @@ export const leafletEngine: MapEngine = {
     }
     if (options.marker) {
       L.marker([options.marker.position.latitude, options.marker.position.longitude], {
-        icon: pinIcon(options.marker.label),
+        icon: pinIcon(options.marker.label, options.marker.href),
+        // Leaflet's own marker interaction stays off: the pin's <a> is the interactive element (see `pinIcon`).
         keyboard: false,
         interactive: false,
       }).addTo(map)

@@ -141,7 +141,7 @@ Nothing here is implemented in 12A; it records what deployment must provide when
 
 | Setting | Where | Meaning |
 |---|---|---|
-| `VITE_API_BASE_URL` | frontend build | API base including `/api/v1`. Default: `http://127.0.0.1:8000/api/v1` in `vite dev`, `/api/v1` in production builds (same-origin reverse proxy). If the API is on another origin (`https://api.…`), set it **and** put the frontend origin in the API's `FRONTEND_ORIGINS` and `FRONTEND_BASE_URL`; cookies need the same-site topology of §9. |
+| `VITE_API_BASE_URL` | frontend build | API base including `/api/v1`. Default: the relative `/api/v1` everywhere — in `vite dev` and `vite preview` Vite proxies `/api` to the local API (`B17_API_PROXY_TARGET`, default `http://127.0.0.1:8000`), in production the reverse proxy does (Phase 12S). If the API is on another origin (`https://api.…`), set it **and** put the frontend origin in the API's `FRONTEND_ORIGINS` and `FRONTEND_BASE_URL`; cookies need the same-site topology of §9. |
 
 - **No secret is ever a `VITE_*` variable.** The frontend holds no key, client secret or token; the Google client secret stays on the API.
 - **Referrer policy.** `/verify-email` and `/reset-password` carry the one-time token in the URL fragment (never sent to servers) and the SPA sets `<meta name="referrer" content="no-referrer">` for them and removes the fragment before anything else runs. Also set `Referrer-Policy: no-referrer` for those two paths at the host/CDN (an HTTP header is stronger than the meta tag); keep a standard policy elsewhere (§11).

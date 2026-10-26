@@ -3,6 +3,7 @@ import { MailWarning } from "lucide-react"
 import { Typography } from "@/components/foundation/Typography"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/hooks/useAuth"
+import { devVerifyCommand, isDevMail } from "@/config/devMail"
 import { resendVerification } from "@/lib/api/auth"
 import { authErrorMessage } from "@/features/auth/authMessages"
 
@@ -19,6 +20,7 @@ function VerificationNotice() {
   const [error, setError] = useState<string | null>(null)
 
   if (!user || user.emailVerified) return null
+  const devMail = isDevMail()
 
   async function resend() {
     setState("sending")
@@ -43,14 +45,26 @@ function VerificationNotice() {
           <Typography variant="body-sm" className="font-medium">
             Verify your email address
           </Typography>
-          <Typography variant="body-sm" className="text-muted-foreground">
-            We sent a link to {user.email}. Verifying lets you list a business and send requests; browsing works
-            either way.
-          </Typography>
+          {devMail ? (
+            // Development: nothing is e-mailed. Say what is true and how to get the link.
+            <Typography variant="body-sm" className="text-muted-foreground" data-testid="dev-verification-hint">
+              Development: no e-mail is sent. In <code>backend/</code> run{" "}
+              <code className="break-all">{devVerifyCommand(user.email)}</code> to get your link, then open it (the same
+              link is also printed in the API terminal). Verifying lets you list a business and send requests; browsing
+              works either way.
+            </Typography>
+          ) : (
+            <Typography variant="body-sm" className="text-muted-foreground">
+              We sent a link to {user.email}. Verifying lets you list a business and send requests; browsing works
+              either way.
+            </Typography>
+          )}
           <div role="status" aria-live="polite">
             {state === "sent" && (
               <Typography variant="body-sm">
-                If your email still needs verifying, a new link is on its way.
+                {devMail
+                  ? "A new link was issued. Nothing is e-mailed in development: run the command above, or read the API terminal."
+                  : "If your email still needs verifying, a new link is on its way."}
               </Typography>
             )}
             {error && (

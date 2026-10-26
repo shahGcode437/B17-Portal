@@ -50,6 +50,8 @@ function adopt(payload: AuthUser): CurrentUser {
  *    `unavailable` (network / server failure — recoverable, never mistaken for "logged out").
  *  - The session is an HttpOnly cookie JavaScript cannot read; the CSRF token lives only in
  *    `lib/api/session` memory. Nothing auth-related touches localStorage / sessionStorage.
+ *  - `unavailable` is re-checked silently on `online` / `focus` / tab-visible (no polling), so a session that was
+ *    only unreachable for a while stops looking logged out without a reload.
  *  - Races: an `epoch` counter is bumped by every auth-changing event (login, register, logout,
  *    session loss); a `/auth/me` answer that was requested in an older epoch is ignored. Concurrent
  *    `refreshMe()` calls share one in-flight request. There is no polling.
@@ -122,6 +124,25 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
     void refreshMe()
     return () => setSessionHandlers(null)
   }, [refreshMe, endSession])
+
+  // `unavailable` is recoverable (the API restarted, the network dropped): re-check quietly when the network comes
+  // back or the person returns to the tab, so a valid session is not left looking logged out. Event-driven, no
+  // polling; a failed re-check simply leaves the state as it was.
+  React.useEffect(() => {
+    if (state.status !== "unavailable") return
+    const recheck = () => void refreshMe()
+    const onVisible = () => {
+      if (document.visibilityState === "visible") recheck()
+    }
+    window.addEventListener("online", recheck)
+    window.addEventListener("focus", recheck)
+    document.addEventListener("visibilitychange", onVisible)
+    return () => {
+      window.removeEventListener("online", recheck)
+      window.removeEventListener("focus", recheck)
+      document.removeEventListener("visibilitychange", onVisible)
+    }
+  }, [state.status, refreshMe])
 
   const login = React.useCallback(async (email: string, password: string) => {
     const payload = await authApi.login(email, password)

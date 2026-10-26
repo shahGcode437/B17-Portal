@@ -211,6 +211,37 @@ describe("LoginRegisterPage — email + password login", () => {
 })
 
 describe("LoginRegisterPage — registration", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  async function register() {
+    const view = renderLogin("/register", (call) => {
+      if (call.path === "/auth/me") return fail(401, "unauthenticated")
+      if (call.path === "/auth/register") return ok(meBody({ emailVerified: false, displayName: "New Person" }), 201)
+      return fail(404, "x")
+    })
+    await screen.findByRole("heading", { level: 1, name: "Create Account" })
+    await view.user.type(screen.getByLabelText("Your name"), "New Person")
+    await view.user.type(screen.getByLabelText("Email"), "new@example.org")
+    await view.user.type(screen.getByLabelText("Password"), "a long passphrase")
+    await view.user.click(screen.getByRole("button", { name: /^create account$/i }))
+    expect(await screen.findByRole("heading", { name: "Home page" })).toBeInTheDocument()
+    return view
+  }
+
+  it("after registering, a production build says to check the e-mail", async () => {
+    vi.stubEnv("DEV", false)
+    const { show } = await register()
+    expect(show).toHaveBeenCalledWith("Account created. Check your email to verify your address.")
+  })
+
+  it("after registering in development, never claims an e-mail was sent", async () => {
+    const { show } = await register()
+    expect(show).toHaveBeenCalledWith(expect.stringMatching(/no e-mail is sent/i))
+    expect(show).not.toHaveBeenCalledWith(expect.stringMatching(/check your email/i))
+  })
+
   it("registers with exactly email, password and displayName, then is signed in", async () => {
     const { calls, user, show } = renderLogin("/register", (call) => {
       if (call.path === "/auth/me") return fail(401, "unauthenticated")
@@ -227,7 +258,7 @@ describe("LoginRegisterPage — registration", () => {
     expect(await screen.findByRole("heading", { name: "Home page" })).toBeInTheDocument()
     const body = calls.find((c) => c.path === "/auth/register")!.body as Record<string, unknown>
     expect(Object.keys(body).sort()).toEqual(["displayName", "email", "password"])
-    expect(show).toHaveBeenCalledWith(expect.stringMatching(/verify your address/i))
+    expect(show).toHaveBeenCalledWith(expect.stringMatching(/verify/i))
   })
 
   it("enforces the stable 10–128 character policy in the UI, but leaves the real check to the server", async () => {

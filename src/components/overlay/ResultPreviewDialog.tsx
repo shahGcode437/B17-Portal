@@ -1,4 +1,4 @@
-import { MapPin, MessageCircle } from "lucide-react"
+import { MapPin } from "lucide-react"
 import { useNavigate } from "react-router-dom"
 import type { SearchResult } from "@/types/search"
 import {
@@ -14,8 +14,6 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
-import { useToast } from "@/hooks/useToast"
-import { SIMULATED_MESSAGES } from "@/lib/simulatedActions"
 import {
   providerProfilePath,
   businessProfilePath,
@@ -30,53 +28,36 @@ interface ResultPreviewDialogProps {
 }
 
 /**
- * Lightweight "Provider/Business Preview" for the Home/Search discovery
- * journey. Provider results now route through to the real Provider Profile
- * (Phase 3A); other kinds keep this dialog until their own profile pages exist.
+ * Lightweight preview for the Home / Search discovery journey. Its one action opens the real detail
+ * page of the result; there is no contact action here because no contact feature exists (a service
+ * request is made from the Provider's own page).
  */
 function ResultPreviewDialog({ result, onOpenChange }: ResultPreviewDialogProps) {
-  const { show } = useToast()
   const navigate = useNavigate()
 
   function handlePrimaryAction() {
     if (!result) return
-    if (result.kind === "provider") {
-      onOpenChange(false)
-      navigate(providerProfilePath(result.id))
-      return
+    onOpenChange(false)
+    switch (result.kind) {
+      case "provider":
+        navigate(providerProfilePath(result.id))
+        return
+      case "business":
+        navigate(businessProfilePath(result.id))
+        return
+      case "tutor":
+        navigate(tutorProfilePath(result.id))
+        return
+      case "property":
+        navigate(propertyDetailsPath(result.id))
+        return
+      case "news":
+        navigate(newsArticlePath(result.id))
+        return
     }
-    if (result.kind === "business") {
-      onOpenChange(false)
-      navigate(businessProfilePath(result.id))
-      return
-    }
-    if (result.kind === "news") {
-      onOpenChange(false)
-      navigate(newsArticlePath(result.id))
-      return
-    }
-    if (result.kind === "tutor") {
-      onOpenChange(false)
-      navigate(tutorProfilePath(result.id))
-      return
-    }
-    if (result.kind === "property") {
-      onOpenChange(false)
-      navigate(propertyDetailsPath(result.id))
-      return
-    }
-    show(SIMULATED_MESSAGES.contact)
   }
 
-  const primaryLabel = result
-    ? result.kind === "provider" || result.kind === "tutor" || result.kind === "business"
-      ? "View Profile"
-      : result.kind === "property"
-        ? "Contact Agent"
-        : result.kind === "news"
-          ? "Read More"
-          : "Request / Contact"
-    : ""
+  const primaryLabel = result ? (result.kind === "news" ? "Read More" : result.kind === "property" ? "View Details" : "View Profile") : ""
 
   return (
     <Dialog open={!!result} onOpenChange={onOpenChange}>
@@ -108,24 +89,9 @@ function ResultPreviewDialog({ result, onOpenChange }: ResultPreviewDialogProps)
                   </Badge>
                 ))}
               </Stack>
-              {result.kind !== "provider" &&
-                result.kind !== "business" &&
-                result.kind !== "news" &&
-                result.kind !== "tutor" &&
-                result.kind !== "property" && (
-                <Typography variant="caption" className="text-muted-foreground">
-                  A full profile page is available in a later phase of the prototype.
-                </Typography>
-              )}
             </Stack>
 
             <DialogFooter className="gap-2 sm:gap-2">
-              {result.kind !== "news" && (
-                <Button variant="outline" className="flex-1" onClick={() => show(SIMULATED_MESSAGES.whatsapp)}>
-                  <MessageCircle />
-                  WhatsApp
-                </Button>
-              )}
               <Button className="flex-1" onClick={handlePrimaryAction}>
                 {primaryLabel}
               </Button>

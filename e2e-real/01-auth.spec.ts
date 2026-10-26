@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { PASSWORD, TAG, emailFor, expectH1, scalar, verificationToken } from './helpers/stack'
+import { PASSWORD, TAG, emailFor, expectH1, scalar, verificationToken, WEB, WEB_API } from './helpers/stack'
 
 /**
  * Auth through the REAL stack (journey §6): anonymous -> register -> verification state -> verify ->
@@ -26,7 +26,7 @@ test('anonymous visitor: public pages open, private pages ask for login, nothing
   await expectH1(page, 'Log In')
   await page.goto('/admin/moderation')
   await expect(page.getByRole('heading', { level: 1, name: /Admin Login|Log In/ })).toBeVisible()
-  const me = await page.request.get('http://127.0.0.1:8000/api/v1/auth/me')
+  const me = await page.request.get(`${WEB_API}/auth/me`)
   expect(me.status()).toBe(401)
 })
 
@@ -83,12 +83,12 @@ test('verify with the e-mailed link, then log in, reload, log out and log in aga
   await expect(page.getByRole('heading', { level: 1, name: 'Log In' })).toHaveCount(0)
 
   // /auth/me is the authority and the browser holds only an HttpOnly cookie.
-  const meResponse = await page.request.get('http://127.0.0.1:8000/api/v1/auth/me')
+  const meResponse = await page.request.get(`${WEB_API}/auth/me`)
   expect(meResponse.status()).toBe(200)
   const me = (await meResponse.json()).data
   expect(me.emailVerified).toBe(true)
   expect(me.roles ?? []).not.toContain('admin')
-  const cookies = (await context.cookies('http://127.0.0.1:8000')).filter((c) => c.httpOnly)
+  const cookies = (await context.cookies(WEB)).filter((c) => c.httpOnly)
   expect(cookies.length).toBeGreaterThan(0)
   const storage = await browserStorage(page)
   const everything = JSON.stringify(storage)
@@ -109,7 +109,7 @@ test('verify with the e-mailed link, then log in, reload, log out and log in aga
   const liveBefore = Number(scalar(`SELECT count(*) FROM auth_sessions WHERE user_id = (SELECT id FROM users WHERE email='${email}') AND revoked_at IS NULL`))
   await page.getByRole('button', { name: 'Log Out' }).click()
   await expect(page.getByRole('banner').getByText(name)).toHaveCount(0)
-  expect((await page.request.get('http://127.0.0.1:8000/api/v1/auth/me')).status()).toBe(401)
+  expect((await page.request.get(`${WEB_API}/auth/me`)).status()).toBe(401)
   await page.goto('/profile/saved')
   await expectH1(page, 'Log In')
   expect(JSON.stringify(await browserStorage(page))).not.toContain(me.csrfToken)

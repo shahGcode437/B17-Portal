@@ -113,6 +113,19 @@ describe("architecture guards", () => {
     expect(consumers.sort()).toEqual(["/src/hooks/useListings.ts", "/src/hooks/useSearchResults.ts"])
   })
 
+  it("no simulated contact action exists: no helper, no 'simulated' toast copy, no WhatsApp / Contact CTA", () => {
+    expect(production.find(([path]) => path === "/src/lib/simulatedActions.ts")).toBeUndefined()
+    expect(offenders((_, s) => /simulatedActions|SIMULATED_MESSAGES/.test(s))).toEqual([])
+    expect(offenders((_, s) => /simulated for this demo|Full request\/contact flow is available/i.test(s))).toEqual([])
+    // A button whose text is a WhatsApp / contact CTA would be a fake action: the only contact feature is the
+    // request form's stored preference (an <option>), never a button.
+    expect(offenders((_, s) => />\s*(Chat on WhatsApp|Contact on WhatsApp|WhatsApp|Contact Business|Contact Agent|Contact)\s*</.test(s))).toEqual([])
+  })
+
+  it("the browser API base is relative (same-origin): nothing in src names the API's own port", () => {
+    expect(offenders((_, s) => /(127\.0\.0\.1|localhost):8000/.test(s))).toEqual([])
+  })
+
   it("the Google directions link is built from numbers in one place only", () => {
     expect(offenders((path, s) => path !== "/src/components/location/directions.ts" && /google\.com\/maps/.test(s))).toEqual([])
   })

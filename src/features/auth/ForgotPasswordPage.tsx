@@ -1,3 +1,4 @@
+import { isDevMail } from "@/config/devMail"
 import { useState } from "react"
 import { useForm } from "react-hook-form"
 import { Link } from "react-router-dom"
@@ -66,6 +67,11 @@ function ForgotPasswordPage() {
                 If an account exists for that email address, a password reset link is on its way. The link expires
                 after one hour.
               </Typography>
+              {isDevMail() && (
+                <Typography variant="body-sm" className="mt-2 text-muted-foreground" data-testid="dev-reset-hint">
+                  Development: no e-mail is sent. The reset link is printed in the API terminal.
+                </Typography>
+              )}
             </div>
           ) : (
             <form onSubmit={handleSubmit(onSubmit)} noValidate>

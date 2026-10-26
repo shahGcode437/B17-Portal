@@ -61,7 +61,10 @@ class ConsoleEmailSender:
     def send(self, message: EmailMessage) -> None:
         print(  # noqa: T201 - the console backend exists to print
             f"\n--- email (development console backend) ---\nTo: {message.to}\n"
-            f"Subject: {message.subject}\n\n{message.body}\n-------------------------------------\n"
+            f"Subject: {message.subject}\n\n{message.body}\n"
+            "-------------------------------------\n",
+            # A redirected stdout is block-buffered: without this the link never reaches a log file.
+            flush=True,
         )
 
 

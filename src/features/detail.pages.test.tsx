@@ -46,6 +46,8 @@ describe("Business detail (general)", () => {
     expect(drawn()[0].marker?.position).toEqual({ latitude: 33.70789, longitude: 73.052109 })
     const directions = screen.getByRole("link", { name: /get directions/i })
     expect(directions).toHaveAttribute("href", "https://www.google.com/maps/dir/?api=1&destination=33.70789%2C73.052109")
+    // The map pin opens the SAME destination (one helper), built from the public point only.
+    expect(drawn()[0].marker?.href).toBe(directions.getAttribute("href"))
     // A General business has no Food sections.
     expect(screen.queryByText(/menu/i)).not.toBeInTheDocument()
   })
@@ -146,6 +148,49 @@ describe("Provider detail", () => {
     expect(screen.getByTestId("location")).toHaveTextContent("/login")
   })
 
+  describe("Request Service follows the REAL auth state (Bug C)", () => {
+    const open = async (options: Parameters<typeof renderPage>[1]) => {
+      const user = (await import("@testing-library/user-event")).default.setup()
+      const view = renderPage(<ProviderProfilePage />, options)
+      // `hidden: true`: an open dialog (the "come back from Log In" case) hides the page behind it from the a11y tree.
+      await screen.findByRole("button", { name: /request service/i, hidden: true })
+      return { user, ...view }
+    }
+    const here = { url: `/providers/${IDS.provider}`, path: "/providers/:id" }
+
+    it("a signed-in person gets the request form, not Log In", async () => {
+      const { user } = await open({ ...here })
+      await user.click(screen.getByRole("button", { name: /request service/i }))
+      expect(await screen.findByRole("dialog", { name: /^Request / })).toBeInTheDocument()
+      expect(screen.getByTestId("location")).toHaveTextContent(here.url)
+    })
+
+    it("while the session check is still running, the click is not sent to Log In", async () => {
+      const { user } = await open({ ...here, user: null, status: "loading" })
+      await user.click(screen.getByRole("button", { name: /request service/i }))
+      expect(screen.getByTestId("location")).toHaveTextContent(here.url)
+      expect(screen.queryByRole("dialog", { name: /^Request / })).not.toBeInTheDocument()
+    })
+
+    it("an unreachable server is not 'logged out': the person stays here and the session is re-checked", async () => {
+      const retryBootstrap = vi.fn()
+      const { user } = await open({ ...here, user: null, status: "unavailable", auth: { retryBootstrap } })
+      await user.click(screen.getByRole("button", { name: /request service/i }))
+      expect(retryBootstrap).toHaveBeenCalledTimes(1)
+      expect(screen.getByTestId("location")).toHaveTextContent(here.url)
+    })
+
+    it("coming back from Log In reopens the request form once, and clears the pending state", async () => {
+      await open({ ...here, state: { openRequestFor: IDS.provider } })
+      expect(await screen.findByRole("dialog", { name: /^Request / })).toBeInTheDocument()
+    })
+
+    it("a pending request for ANOTHER provider does not open this one's form", async () => {
+      await open({ ...here, state: { openRequestFor: "someone-else" } })
+      expect(screen.queryByRole("dialog", { name: /^Request / })).not.toBeInTheDocument()
+    })
+  })
+
   it("renders not-found for an unknown id", async () => {
     renderPage(<ProviderProfilePage />, { url: "/providers/nope", path: "/providers/:id", user: null })
     expect(await screen.findByRole("heading", { level: 1, name: /not found/i })).toBeInTheDocument()
@@ -199,6 +244,33 @@ describe("Property detail", () => {
   })
 })
 
+describe("no simulated contact action on any public detail page (Phase 12S)", () => {
+  const CONTACT = /whatsapp|contact|chat/i
+  const pages = [
+    { name: "Business", page: <BusinessProfilePage />, url: `/businesses/${IDS.generalExact}`, path: "/businesses/:id", heading: "Glow Salon", note: /contacting this business .* isn.t available yet/i },
+    { name: "Food", page: <BusinessProfilePage />, url: `/businesses/${IDS.foodExact}`, path: "/businesses/:id", heading: null, note: /contacting this business .* isn.t available yet/i },
+    { name: "Tutor", page: <TutorProfilePage />, url: `/tutors/${IDS.tutorApproximate}`, path: "/tutors/:id", heading: null, note: /contacting this tutor .* isn.t available yet/i },
+    { name: "Property", page: <PropertyDetailsPage />, url: `/properties/${IDS.propertyExact}`, path: "/properties/:id", heading: null, note: /contacting the lister .* isn.t available yet/i },
+  ]
+
+  it.each(pages)("$name: no Contact / WhatsApp control, and the page says honestly that contact is not available", async ({ page, url, path, note }) => {
+    renderPage(page, { url, path, user: null })
+    expect(await screen.findByRole("heading", { level: 1 })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: CONTACT })).not.toBeInTheDocument()
+    expect(screen.queryByRole("link", { name: CONTACT })).not.toBeInTheDocument()
+    expect(screen.getByText(note)).toBeInTheDocument()
+    expect(screen.queryByText(/simulated|future phase/i)).not.toBeInTheDocument()
+  })
+
+  it("Provider: the real Request Service is the only call to action (no WhatsApp)", async () => {
+    renderPage(<ProviderProfilePage />, { url: `/providers/${IDS.provider}`, path: "/providers/:id", user: null })
+    await screen.findByRole("heading", { level: 1, name: "Sunrise Solar Solutions" })
+    expect(screen.getByRole("button", { name: /request service/i })).toBeEnabled()
+    expect(screen.queryByRole("button", { name: CONTACT })).not.toBeInTheDocument()
+    expect(screen.queryByText(/simulated/i)).not.toBeInTheDocument()
+  })
+})
+
 describe("no private location ever reaches a public page", () => {
   it("renders none of the owner-only address or point on any public detail", async () => {
     for (const [Page, path, id] of [
@@ -214,6 +286,7 @@ describe("no private location ever reaches a public page", () => {
       expect(html).not.toContain(String(PRIVATE_POINT.latitude))
       expect(html).not.toContain(String(PRIVATE_POINT.longitude))
       expect(JSON.stringify(drawn())).not.toContain(String(PRIVATE_POINT.latitude))
+      expect(JSON.stringify(drawn())).not.toContain(String(PRIVATE_POINT.longitude)) // including any pin destination (marker.href)
       unmount()
     }
   })

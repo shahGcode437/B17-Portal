@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom"
+import { Link, MemoryRouter, Route, Routes, useLocation } from "react-router-dom"
 import { describe, expect, it, vi } from "vitest"
 import { AuthGate } from "@/components/access/AuthGate"
 import { AuthContext } from "@/hooks/useAuth"
@@ -79,6 +79,71 @@ describe("AuthGate", () => {
       renderGate("professional", authContextValue({ user: testUser({ professional: { planCode: "free" } }) }))
 
       expect(screen.getByText("protected content")).toBeInTheDocument()
+    })
+  })
+
+  describe("signed-in states are never mistaken for Log In (Bug C)", () => {
+    const pro = () => authContextValue({ user: testUser({ professional: { planCode: "free" } }) })
+
+    function renderTwoPages(auth: AuthContextValue) {
+      const tree = (value: AuthContextValue) => (
+        <AuthContext.Provider value={value}>
+          <MemoryRouter initialEntries={["/provider"]}>
+            <Link to="/provider/listings">to listings</Link>
+            <Link to="/provider">to overview</Link>
+            <Routes>
+              <Route element={<AuthGate requires="professional" />}>
+                <Route path="/provider" element={<p>overview</p>} />
+                <Route path="/provider/listings" element={<p>listings</p>} />
+              </Route>
+              <Route path="/login" element={<Where />} />
+            </Routes>
+          </MemoryRouter>
+        </AuthContext.Provider>
+      )
+      const utils = render(tree(auth))
+      return { rerender: (next: AuthContextValue) => utils.rerender(tree(next)) }
+    }
+
+    it("a resident without a professional profile is told so - there is no Log In in the way", () => {
+      renderTwoPages(authContextValue({ user: testUser() }))
+      expect(screen.getByRole("heading", { level: 1, name: /professional profile needed/i })).toBeInTheDocument()
+      expect(screen.getByRole("button", { name: /create a professional profile/i })).toBeEnabled()
+      expect(screen.queryByTestId("where")).not.toBeInTheDocument()
+      expect(screen.queryByText(/log in/i)).not.toBeInTheDocument()
+    })
+
+    it("reload: loading, then the professional answer - the workspace opens and Log In is never shown", () => {
+      const view = renderTwoPages(authContextValue({ status: "loading", user: null }))
+      expect(screen.getByRole("status")).toHaveTextContent(/checking your session/i)
+      expect(screen.queryByTestId("where")).not.toBeInTheDocument()
+
+      view.rerender(pro())
+      expect(screen.getByText("overview")).toBeInTheDocument()
+      expect(screen.queryByTestId("where")).not.toBeInTheDocument()
+    })
+
+    it("a resident who then gets the professional capability (the /auth/me refresh) moves straight into the workspace", () => {
+      const view = renderTwoPages(authContextValue({ user: testUser() }))
+      expect(screen.getByRole("heading", { level: 1, name: /professional profile needed/i })).toBeInTheDocument()
+      view.rerender(pro())
+      expect(screen.getByText("overview")).toBeInTheDocument()
+    })
+
+    it("a professional keeps access across route navigation inside the workspace", async () => {
+      renderTwoPages(pro())
+      const user = userEvent.setup()
+      await user.click(screen.getByRole("link", { name: "to listings" }))
+      expect(screen.getByText("listings")).toBeInTheDocument()
+      await user.click(screen.getByRole("link", { name: "to overview" }))
+      expect(screen.getByText("overview")).toBeInTheDocument()
+      expect(screen.queryByTestId("where")).not.toBeInTheDocument()
+    })
+
+    it("an unreachable server during a reload is a retryable error, never the Log In page", () => {
+      renderTwoPages(authContextValue({ status: "unavailable", user: null }))
+      expect(screen.getByRole("heading", { level: 1, name: /can't reach the server/i })).toBeInTheDocument()
+      expect(screen.queryByTestId("where")).not.toBeInTheDocument()
     })
   })
 

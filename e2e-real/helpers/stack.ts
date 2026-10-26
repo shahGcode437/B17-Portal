@@ -1,6 +1,5 @@
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import crypto from 'node:crypto'
-import fs from 'node:fs'
 import path from 'node:path'
 import { expect, request, type APIRequestContext, type Browser, type BrowserContext, type BrowserContextOptions, type Page } from '@playwright/test'
 
@@ -13,7 +12,13 @@ import { expect, request, type APIRequestContext, type Browser, type BrowserCont
  * rows reachable from those tags. Nothing here touches other development data.
  */
 export const WEB = 'http://127.0.0.1:5173'
+/** The API itself: used by `ApiClient` (set-up / "someone else did this") and the readiness check. */
 export const API = 'http://127.0.0.1:8000/api/v1'
+/**
+ * The API AS THE BROWSER SEES IT: same-origin `/api/v1` on the frontend (Vite proxies it to `API`). Use this
+ * wherever a test observes or intercepts what the PAGE sent; the browser never talks to port 8000 directly.
+ */
+export const WEB_API = `${WEB}/api/v1`
 const ROOT = process.cwd()
 const BACKEND = path.join(ROOT, 'backend')
 const PY = path.join(BACKEND, '.venv', process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python')
@@ -24,12 +29,6 @@ export const PASSWORD = 'p12i correct horse battery staple'
 /** One tag per process; stable across the specs of one `playwright test` run. */
 export const RUN = process.env.P12I_RUN ?? (process.env.P12I_RUN = Date.now().toString(36))
 export const TAG = `P12I-${RUN}`
-
-export function apiLogPath(): string {
-  const file = process.env.B17_API_LOG
-  if (!file) throw new Error('Set B17_API_LOG to the file the API stdout is redirected to (development e-mail console).')
-  return file
-}
 
 // -- browser contexts -------------------------------------------------------------------------------
 
@@ -69,18 +68,14 @@ export function rows(sql: string): string[][] {
 
 export const emailFor = (label: string) => `p12i.${label}.${RUN}@example.org`
 
-/** Waits for the development e-mail console to print the latest link for `email`, returns its token. */
-export async function verificationToken(email: string, kind: 'verify-email' | 'reset-password' = 'verify-email'): Promise<string> {
-  const pattern = new RegExp(`To: ${email.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[\\s\\S]*?${kind}#token=([A-Za-z0-9_-]+)`, 'g')
-  const deadline = Date.now() + 15_000
-  while (Date.now() < deadline) {
-    const text = fs.readFileSync(apiLogPath(), 'utf8')
-    const all = [...text.matchAll(pattern)]
-    const last = all[all.length - 1]
-    if (last) return last[1]!
-    await new Promise((resolve) => setTimeout(resolve, 300))
-  }
-  throw new Error(`No ${kind} e-mail for ${email} appeared in the API log`)
+/**
+ * The one-time token of a fresh verification link, from the development helper (`python -m app.cli.dev_verify`).
+ * No log scraping: nothing here depends on where the API's stdout goes.
+ */
+export async function verificationToken(email: string): Promise<string> {
+  const issued = devVerify(email)
+  if (issued.status !== 0 || !issued.url) throw new Error(`dev_verify failed for ${email}: ${issued.stderr}`)
+  return issued.url.split('#token=')[1]!
 }
 
 const sharedClients = new Map<string, Promise<ApiClient>>()
@@ -122,6 +117,11 @@ export class ApiClient {
     const unsafe = method !== 'GET'
     const response = await this.ctx.fetch(rel, {
       method,
+      // Playwright keeps sockets alive with no client-side idle limit, and uvicorn closes an idle one after 5 s: a
+      // request sent in that instant fails with `read ECONNRESET` on a slow or busy machine. That is a harness race,
+      // not an API answer, so a SAFE read is retried (only ECONNRESET is). Writes are never retried: a resent POST
+      // could be applied twice.
+      ...(method === 'GET' ? { maxRetries: 3 } : {}),
       ...(data !== undefined ? { data } : {}),
       headers: { ...(unsafe && this.csrf ? { 'X-CSRF-Token': this.csrf } : {}), ...headers },
     })
@@ -151,6 +151,17 @@ export interface TestUser {
   email: string
   name: string
   label: string
+}
+
+/**
+ * Runs the development verification CLI exactly as a developer would (`python -m app.cli.dev_verify`) and
+ * returns what it did. `env` overrides let a test prove it refuses outside development.
+ */
+export function devVerify(email: string, origin?: string, env: Record<string, string> = {}): { status: number; url: string | null; stderr: string } {
+  const args = ['-m', 'app.cli.dev_verify', email, ...(origin ? ['--origin', origin] : [])]
+  const result = spawnSync(PY, args, { cwd: BACKEND, encoding: 'utf8', env: { ...process.env, ...env } })
+  const url = result.stdout.split(/\r?\n/).map((l) => l.trim()).find((l) => /^https?:\/\/.+#token=/.test(l)) ?? null
+  return { status: result.status ?? -1, url, stderr: result.stderr }
 }
 
 /** Registers (API), verifies (token from the API's e-mail console) and optionally grants a capability. */

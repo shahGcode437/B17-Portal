@@ -117,7 +117,7 @@ function ProfessionalListingsPage() {
                   You haven't listed anything yet
                 </Typography>
                 <Typography variant="body-sm" className="mx-auto max-w-xs text-muted-foreground">
-                  Creating a listing is coming soon. Your service, business or property will appear here with its review status.
+                  Your service, business or property will appear here with its review status once you submit it.
                 </Typography>
               </Stack>
               <Button asChild size="lg" className="h-11">

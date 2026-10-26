@@ -1,5 +1,6 @@
 import { lazy, type ComponentType } from "react"
-import { createBrowserRouter } from "react-router-dom"
+import { createBrowserRouter, type RouteObject } from "react-router-dom"
+import { AppRoot } from "@/app/ScrollManager"
 import { ConsumerLayout } from "@/app/ConsumerLayout"
 import { ProviderLayout } from "@/app/ProviderLayout"
 import { AdminLayout } from "@/app/AdminLayout"
@@ -61,7 +62,7 @@ const ContentFormPage = lazyPage(() => import("@/features/admin/ContentFormPage"
  * three layout shells end to end; every screen besides Home is a stub until
  * its phase is implemented — routes are not renamed later, only filled in.
  */
-export const router = createBrowserRouter([
+const appRoutes: RouteObject[] = [
   {
     element: <ConsumerLayout />,
     children: [
@@ -135,4 +136,10 @@ export const router = createBrowserRouter([
       },
     ],
   },
-])
+]
+
+/**
+ * `AppRoot` is a pathless root above all three layouts: it mounts the one scroll rule (`ScrollManager`) for the
+ * whole app, so a navigation between layouts is handled like any other (a link never needs its own `scrollTo`).
+ */
+export const router = createBrowserRouter([{ element: <AppRoot />, children: appRoutes }])

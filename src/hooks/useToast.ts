@@ -11,7 +11,7 @@ export interface ToastContextValue {
 
 export const ToastContext = createContext<ToastContextValue | null>(null)
 
-/** Lightweight toast for simulated actions (WhatsApp/Request stubs). */
+/** Lightweight toast for transient notices (e.g. "Listing submitted for review"). */
 export function useToast(): ToastContextValue {
   const ctx = useContext(ToastContext)
   if (!ctx) {
