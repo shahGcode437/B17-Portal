@@ -175,7 +175,7 @@ function SearchPage() {
 
   const suggestions = useSearchSuggestions(inputValue, type)
   const typeFilter = searchTypeFilters.find((f) => f.value === type)
-  const { results, total, hasMore, loadMore, loading, loadingMore, error, moreError, retry } = useSearchResults(
+  const { results, total, hasMore, loadMore, loading, refreshing, loadingMore, error, moreError, retry } = useSearchResults(
     committedQuery,
     type,
     filters,
@@ -442,9 +442,11 @@ function SearchPage() {
         )}
 
         <Typography variant="label" className="text-foreground" role="status" aria-live="polite">
-          {loading
-            ? "Searching…"
-            : error
+          {refreshing
+            ? "Updating results…"
+            : loading
+              ? "Searching…"
+              : error
               ? "Search unavailable"
               : `${total} result${total === 1 ? "" : "s"}${committedQuery ? ` for “${committedQuery}”` : ""}`}
         </Typography>
@@ -452,10 +454,10 @@ function SearchPage() {
         {error ? (
           <ReadError error={error} onRetry={retry} title={error.status === 422 ? undefined : "Search is unavailable right now"} />
         ) : (
-          <ResultList hits={results} loading={loading} onSelect={preview.open} empty={emptyContent} />
+          <ResultList hits={results} loading={loading} refreshing={refreshing} onSelect={preview.open} empty={emptyContent} />
         )}
 
-        {!loading && !error && hasMore && (
+        {!loading && !refreshing && !error && hasMore && (
           <Stack align="center" gap={2}>
             <Button variant="outline" onClick={loadMore} disabled={loadingMore}>
               {loadingMore ? "Loading…" : "Load More"}

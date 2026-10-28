@@ -99,7 +99,7 @@ test('the create forms: every field of every kind is labelled, including the loc
 test('errors are announced and tied to their field; a failed submit keeps focus recoverable', async ({ browser }) => {
   const page = await signInAs(browser, owner)
   await openCreateForm(page, /Service \/ Professional/)
-  await page.getByRole('button', { name: 'Preview Listing' }).click() // empty required fields
+  await page.getByRole('button', { name: 'Submit for Review' }).click() // empty required fields
   const alerts = page.getByRole('alert')
   await expect(alerts.first()).toBeVisible()
   const invalid = page.locator('[aria-invalid="true"]')
@@ -173,7 +173,7 @@ test('keyboard only: the whole Property form incl. the map numeric fallback is r
     })
     seen.add(label)
   }
-  for (const expected of ['Latitude', 'Longitude', 'Title', 'Price', 'Description', 'Preview Listing']) {
+  for (const expected of ['Latitude', 'Longitude', 'Title', 'Price', 'Description', 'Submit for Review']) {
     expect([...seen].some((s) => s.startsWith(expected)), `Tab never reached "${expected}"`).toBe(true)
   }
   // Fill by keyboard-reachable fields and submit with Enter on the focused button.
@@ -185,9 +185,9 @@ test('keyboard only: the whole Property form incl. the map numeric fallback is r
   await page.getByLabel('Listing Type').selectOption('rent')
   await page.getByLabel('Property Type').selectOption({ label: 'House' })
   await page.getByLabel('Price').fill('PKR 90,000 / month')
-  await page.getByLabel('Area', { exact: true }).fill('B-17')
+  await page.getByLabel('Area', { exact: true }).selectOption('B-17')
   await page.getByLabel('Description').fill('A keyboard-submitted property listing for the accessibility check.')
-  await page.getByRole('button', { name: 'Preview Listing' }).focus()
+  await page.getByRole('button', { name: 'Submit for Review' }).focus()
   await page.keyboard.press('Enter')
   await expectH1(page, 'Listings')
   expect(scalar(`SELECT count(*) FROM listings WHERE title = '${title}'`)).toBe('1')
@@ -201,8 +201,8 @@ test('a slow submit disables the control and cannot be double-sent; the form re-
   await page.getByLabel('Name', { exact: true }).fill(name)
   await page.getByLabel('Service Category').selectOption({ label: 'Plumbing' })
   await page.getByLabel('Description', { exact: true }).fill('A slow submission must not be sent twice by an impatient double click.')
-  await page.getByLabel('Area', { exact: true }).fill('B-17')
-  await page.getByLabel(/Services Offered/).fill('plumbing, repairs')
+  await page.getByLabel('Area', { exact: true }).selectOption('B-17')
+  await page.getByLabel(/Services offered/).fill('plumbing, repairs')
   let posts = 0
   await page.route(`${WEB_API}/listings`, async (route) => {
     if (route.request().method() === 'POST') {
@@ -211,7 +211,7 @@ test('a slow submit disables the control and cannot be double-sent; the form re-
     }
     await route.fallback()
   })
-  const submit = page.getByRole('button', { name: 'Preview Listing' })
+  const submit = page.getByRole('button', { name: 'Submit for Review' })
   await submit.dblclick()
   await expect(submit).toBeDisabled() // submitting state is announced by the control itself
   await expectH1(page, 'Listings')

@@ -65,6 +65,11 @@ function titleOf(listing: OwnerListingDto): string {
   return listing.kind === "property" ? listing.title : listing.name
 }
 
+/**
+ * The one line a person reads under a listing's title. The owner API echoes the WRITE vocabulary in `category` /
+ * `propertyType` (the category SLUGS: `pharmacy`, `flat`) so a form can round-trip them; what is shown is always
+ * the server's human name (`categoryLabel`, `categories[].name`). A slug never reaches the screen.
+ */
 function categoryLineOf(listing: OwnerListingDto): string {
   switch (listing.kind) {
     case "provider":
@@ -75,12 +80,12 @@ function categoryLineOf(listing: OwnerListingDto): string {
         if (names.length > 0) return names.join(", ")
         return listing.food?.categories.map(foodCategoryLabel).join(", ") ?? listing.categoryLabel
       }
-      return listing.category ?? listing.categoryLabel
+      return listing.categoryLabel
     }
     case "tutor":
       return `${listing.categoryLabel} · ${listing.grade}`
     case "property":
-      return `${listing.propertyType} · ${listing.listingType === "sale" ? "For Sale" : "For Rent"}`
+      return `${listing.categoryLabel} · ${listing.listingType === "sale" ? "For Sale" : "For Rent"}`
   }
 }
 

@@ -37,7 +37,7 @@ interface RequestDetailDialogProps {
 /**
  * Detail view for a single request the resident sent (Dialog-based, matching ResultPreviewDialog).
  * The fields come from the list row; the history is read from `GET /requests/{id}` when the dialog
- * opens. It is read-only: the resident can cancel a request only once Phase 12H wires that action.
+ * opens. The resident can cancel while the request is submitted or accepted (`RequestActions`).
  */
 function RequestDetailDialog({ request, onOpenChange, onChanged }: RequestDetailDialogProps) {
   const navigate = useNavigate()

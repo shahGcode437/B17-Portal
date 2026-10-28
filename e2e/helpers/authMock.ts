@@ -58,6 +58,8 @@ export class AuthMock {
    */
   meDelayMs = 0
   meUnreachable = false
+  /** While set, `GET /auth/me` waits for it (see `holdMe`). */
+  private meGate: Promise<void> | null = null
   /** Where the fake Google consent page sends the browser back to (the frontend `returnTo`). */
   private googleReturnTo = '/'
   private csrfCounter = 0
@@ -66,6 +68,23 @@ export class AuthMock {
 
   constructor(origin: string) {
     this.origin = origin
+  }
+
+  /**
+   * Holds every `GET /auth/me` unanswered until the returned function is called. `meDelayMs` only says "slow": it
+   * cannot promise that a click lands BEFORE the answer, because how long Playwright takes to land a click depends on
+   * the machine. A test that must act strictly before the session answer holds it instead.
+   */
+  holdMe(): () => void {
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    this.meGate = gate
+    return () => {
+      if (this.meGate === gate) this.meGate = null
+      release()
+    }
   }
 
   addAccount(account: Partial<MockAccount> & { email: string; displayName: string }): MockAccount {
@@ -144,6 +163,7 @@ export class AuthMock {
 
     switch (`${method} ${path}`) {
       case 'GET /auth/me': {
+        if (this.meGate) await this.meGate
         if (this.meDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, this.meDelayMs))
         if (this.meUnreachable) return route.abort('failed')
         const account = this.current()
@@ -194,7 +214,14 @@ export class AuthMock {
       default: {
         const account = this.current()
         const session = account
-          ? { roles: account.roles, displayName: account.displayName, professional: Boolean(account.professional), emailVerified: account.emailVerified }
+          ? {
+              roles: account.roles,
+              displayName: account.displayName,
+              email: account.email,
+              professional: Boolean(account.professional),
+              planCode: account.professional?.planCode,
+              emailVerified: account.emailVerified,
+            }
           : null
         // The professional profile is account state (like the real server's professional_profiles row): a verified
         // user creates it with an idempotent PUT (201 first, then 200), and /auth/me reports it from then on.

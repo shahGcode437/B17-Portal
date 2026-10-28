@@ -10,7 +10,8 @@ import type { Page } from '@playwright/test'
  *  C. a signed-in person was sent to Log In while `/auth/me` was slow or unreachable.
  *
  * The mock used to answer `/auth/me` instantly and always - which is exactly why no test could see C.
- * `AuthMock.meDelayMs` / `meUnreachable` now model the real backend's gap.
+ * `AuthMock.meDelayMs` / `meUnreachable` now model the real backend's gap, and `holdMe()` holds the answer back until
+ * the test lets it go (for a click that must come strictly before it).
  */
 const scrollY = (page: Page) => page.evaluate(() => Math.round(window.scrollY))
 
@@ -135,18 +136,42 @@ test.describe('Bug C: a signed-in person is never sent to Log In by a slow or un
     expect(visited).not.toContain('/login')
   })
 
-  test('signed in, the heart clicked while /auth/me is still answering: the save is sent and Log In never appears', async ({ page }) => {
+  test('signed in, the heart clicked while /auth/me is still unanswered: the click is held, the save is sent once the answer arrives, Log In never appears', async ({ page }) => {
     await signInFromLoginPage(page, 'Rana Resident')
     const mock = mockFor(page)
     const visited: string[] = []
     page.on('framenavigated', (frame) => frame === page.mainFrame() && visited.push(new URL(frame.url()).pathname))
-    mock.meDelayMs = 1500
+    // HELD, not delayed: with `meDelayMs` this test raced the machine (a click that landed after the answer found the
+    // saved list loaded and the heart reading "Remove ... from saved", and correctly sent a DELETE - see the next test).
+    const answer = mock.holdMe()
     mock.calls.length = 0
     await page.goto(`/providers/${IDS.provider}`, { waitUntil: 'commit' })
-    await page.getByRole('button', { name: /^Save Sunrise Solar Solutions$/ }).click() // before the session answer
-    await expect.poll(() => mock.calls.some((call) => call.method === 'PUT' && call.path === `/saved/${IDS.provider}`), { timeout: 10_000 }).toBe(true)
+    const heart = page.getByRole('button', { name: /^Save Sunrise Solar Solutions$/ })
+    const node = (await heart.elementHandle())!
+    await heart.click() // strictly before the session answer: it cannot come until `answer()` is called
+    const saves = () => mock.calls.filter((call) => call.method === 'PUT' && call.path === `/saved/${IDS.provider}`)
+    expect(saves()).toHaveLength(0) // held: nothing is sent while the session question is open
+    expect(visited).not.toContain('/login')
+
+    answer()
+    await expect.poll(() => saves().length).toBe(1)
+    expect(saves()[0].csrf).toBe(mock.session!.csrf) // sent with the CSRF token that same answer delivered
+    await expect(page.getByRole('button', { name: 'Remove Sunrise Solar Solutions from saved' })).toBeVisible()
+    expect(await node.evaluate((el) => el.isConnected)).toBe(true) // the very heart that was clicked: never re-mounted
     expect(visited).not.toContain('/login')
     await expect(page).toHaveURL(new RegExp(`/providers/${IDS.provider}$`))
+  })
+
+  test('signed in, the heart clicked after the session answer and the saved list: it does what the heart then says (saved becomes removed), nothing is held', async ({ page }) => {
+    await signInFromLoginPage(page, 'Rana Resident')
+    const mock = mockFor(page)
+    mock.calls.length = 0
+    await page.goto(`/providers/${IDS.provider}`)
+    // The mock's person already has this provider saved: once /saved has loaded the heart reads "Remove ... from saved".
+    await page.getByRole('button', { name: 'Remove Sunrise Solar Solutions from saved' }).click()
+    await expect.poll(() => mock.calls.filter((call) => call.method === 'DELETE' && call.path === `/saved/${IDS.provider}`).length).toBe(1)
+    expect(mock.calls.some((call) => call.method === 'PUT' && call.path.startsWith('/saved/'))).toBe(false)
+    await expect(page.getByRole('button', { name: 'Save Sunrise Solar Solutions' })).toBeVisible()
   })
 
   test('an unreachable server: no Log In link, the click says so and stays; when the server returns the session is back', async ({ page }) => {

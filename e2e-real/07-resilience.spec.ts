@@ -76,13 +76,13 @@ test('session expiry: a write after the session was revoked gives no false succe
   await page.getByLabel('Name', { exact: true }).fill(name)
   await page.getByLabel('Service Category').selectOption({ label: 'Plumbing' })
   await page.getByLabel('Description', { exact: true }).fill('A listing submitted after the session expired must not be created.')
-  await page.getByLabel('Area', { exact: true }).fill('B-17')
-  await page.getByLabel(/Services Offered/).fill('plumbing, repairs')
+  await page.getByLabel('Area', { exact: true }).selectOption('B-17')
+  await page.getByLabel(/Services offered/).fill('plumbing, repairs')
 
   psql(`UPDATE auth_sessions SET revoked_at = now(), revoke_reason = 'admin_action' WHERE user_id = (SELECT id FROM users WHERE email = '${victim.email}')`) // the session "expires" server-side
   const [response] = await Promise.all([
     page.waitForResponse((r) => r.request().method() === 'POST' && r.url() === `${WEB_API}/listings`),
-    page.getByRole('button', { name: 'Preview Listing' }).click(),
+    page.getByRole('button', { name: 'Submit for Review' }).click(),
   ])
   expect(response.status()).toBe(401)
   await expect(page.getByText(/submitted for review/i)).toHaveCount(0)
@@ -135,11 +135,11 @@ test('Free plan quota: the 4th active listing is refused (plan_limit_reached), n
   await page.getByLabel('Name', { exact: true }).fill(fourth)
   await page.getByLabel('Service Category').selectOption({ label: 'Plumbing' })
   await page.getByLabel('Description', { exact: true }).fill('The fourth active listing on the Free plan must be refused by the server.')
-  await page.getByLabel('Area', { exact: true }).fill('B-17')
-  await page.getByLabel(/Services Offered/).fill('plumbing, repairs')
+  await page.getByLabel('Area', { exact: true }).selectOption('B-17')
+  await page.getByLabel(/Services offered/).fill('plumbing, repairs')
   const [response] = await Promise.all([
     page.waitForResponse((r) => r.request().method() === 'POST' && r.url() === `${WEB_API}/listings`),
-    page.getByRole('button', { name: 'Preview Listing' }).click(),
+    page.getByRole('button', { name: 'Submit for Review' }).click(),
   ])
   expect(response.status()).toBe(403)
   expect(JSON.stringify(await response.json())).toContain('plan_limit_reached')
@@ -179,17 +179,17 @@ test('network failure: no fake success on listing create / edit, Saved, request 
   await ownerPage.getByLabel('Name', { exact: true }).fill(name)
   await ownerPage.getByLabel('Service Category').selectOption({ label: 'Plumbing' })
   await ownerPage.getByLabel('Description', { exact: true }).fill('This listing is submitted while the network is down, then retried.')
-  await ownerPage.getByLabel('Area', { exact: true }).fill('B-17')
-  await ownerPage.getByLabel(/Services Offered/).fill('plumbing, repairs')
+  await ownerPage.getByLabel('Area', { exact: true }).selectOption('B-17')
+  await ownerPage.getByLabel(/Services offered/).fill('plumbing, repairs')
   let net = await failOnce(ownerPage, 'POST', /\/api\/v1\/listings$/)
-  await ownerPage.getByRole('button', { name: 'Preview Listing' }).click()
+  await ownerPage.getByRole('button', { name: 'Submit for Review' }).click()
   await expect.poll(() => net.hits()).toBe(1)
   await expect(ownerPage.getByText(/submitted for review/i)).toHaveCount(0)
   await expect(ownerPage.getByLabel('Name', { exact: true })).toHaveValue(name) // input retained
-  await expect(ownerPage.getByRole('button', { name: 'Preview Listing' })).toBeEnabled() // recovered
+  await expect(ownerPage.getByRole('button', { name: 'Submit for Review' })).toBeEnabled() // recovered
   expect(scalar(`SELECT count(*) FROM listings WHERE title = '${name}'`)).toBe('0')
   await net.restore()
-  await ownerPage.getByRole('button', { name: 'Preview Listing' }).click() // the retry
+  await ownerPage.getByRole('button', { name: 'Submit for Review' }).click() // the retry
   await expectH1(ownerPage, 'Listings')
   expect(scalar(`SELECT count(*) FROM listings WHERE title = '${name}'`)).toBe('1')
 
@@ -198,13 +198,13 @@ test('network failure: no fake success on listing create / edit, Saved, request 
   await expectH1(ownerPage, 'Edit Listing')
   await ownerPage.getByLabel('Description', { exact: true }).fill('An edit submitted while the network is down, then retried successfully.')
   net = await failOnce(ownerPage, 'PATCH', /\/api\/v1\/listings\/[^/]+$/)
-  await ownerPage.getByRole('button', { name: 'Preview Listing' }).click()
+  await ownerPage.getByRole('button', { name: 'Save Changes' }).click()
   await expect.poll(() => net.hits()).toBe(1)
-  await expect(ownerPage.getByText(/Changes submitted|Listing updated/)).toHaveCount(0)
+  await expect(ownerPage.getByText(/Changes submitted|Listing updated|Listing resubmitted/)).toHaveCount(0)
   await expect(ownerPage).toHaveURL(/\/edit$/)
   expect(scalar(`SELECT status FROM listings WHERE id = '${approvedFor.id}'`)).toBe('approved') // the server never saw it
   await net.restore()
-  await ownerPage.getByRole('button', { name: 'Preview Listing' }).click()
+  await ownerPage.getByRole('button', { name: 'Save Changes' }).click()
   await expect(ownerPage.getByText('Changes submitted for review')).toBeVisible()
   expect(scalar(`SELECT status FROM listings WHERE id = '${approvedFor.id}'`)).toBe('pending')
   await ownerPage.context().close()

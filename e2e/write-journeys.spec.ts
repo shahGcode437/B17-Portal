@@ -100,9 +100,10 @@ test.describe("Listing create: all five variants hit the API with the right payl
     await page.getByLabel("Name", { exact: true }).fill("Imran Electrical Works")
     await page.getByLabel("Service Category").selectOption({ label: "Electrical" })
     await page.getByLabel("Description", { exact: true }).fill("Wiring, repairs and fittings across B-17.")
-    await page.getByLabel("Area", { exact: true }).fill("B-17")
-    await page.getByLabel(/Services Offered/).fill("wiring, repairs")
-    await page.getByRole("button", { name: "Preview Listing" }).click()
+    // Area is a fixed choice (B-17), not free text.
+    await expect(page.getByLabel("Area", { exact: true })).toHaveValue("B-17")
+    await page.getByLabel(/Services offered/).fill("wiring, repairs")
+    await page.getByRole("button", { name: "Submit for Review" }).click()
 
     await expectPage(page, "Listings")
     await expect(page.getByText("Imran Electrical Works")).toBeVisible()
@@ -125,9 +126,10 @@ test.describe("Listing create: all five variants hit the API with the right payl
     await page.getByLabel("Business Name").fill("Capital Stationers")
     await page.getByLabel("Category", { exact: true }).selectOption({ label: "Stationery" })
     await page.getByLabel("Description", { exact: true }).fill("Books, copies and office supplies.")
-    await page.getByLabel("Area", { exact: true }).fill("B-17")
-    await page.getByLabel(/Services \/ Tags/).fill("books, copies")
-    await page.getByRole("button", { name: "Preview Listing" }).click()
+    // Area is a fixed choice (B-17), not free text.
+    await expect(page.getByLabel("Area", { exact: true })).toHaveValue("B-17")
+    await page.getByLabel("Tags (optional)").fill("books, copies")
+    await page.getByRole("button", { name: "Submit for Review" }).click()
     await expectPage(page, "Listings")
 
     const body = sent.find((s) => s.method === "POST" && s.path === "/listings")!.body as Record<string, unknown>
@@ -143,11 +145,12 @@ test.describe("Listing create: all five variants hit the API with the right payl
     await page.getByRole("radio", { name: /Food & Dining/ }).click()
     await page.getByLabel("Business Name").fill("Fresh Bakes")
     await page.getByLabel("Description", { exact: true }).fill("Fresh bread, cakes and savouries baked daily in B-17.")
-    await page.getByLabel("Area", { exact: true }).fill("B-17")
+    // Area is a fixed choice (B-17), not free text.
+    await expect(page.getByLabel("Area", { exact: true })).toHaveValue("B-17")
     await page.getByLabel(/Dishes \/ Search Tags/).fill("cakes, bread")
     await page.getByRole("checkbox", { name: "Bakeries" }).check()
     await page.getByRole("checkbox", { name: "Takeaway" }).check()
-    await page.getByRole("button", { name: "Preview Listing" }).click()
+    await page.getByRole("button", { name: "Submit for Review" }).click()
     await expectPage(page, "Listings")
 
     const body = sent.find((s) => s.method === "POST" && s.path === "/listings")!.body as Record<string, unknown>
@@ -166,9 +169,10 @@ test.describe("Listing create: all five variants hit the API with the right payl
     await expect(page.getByLabel("Service Category")).toHaveCount(0)
     await page.getByLabel("Subject").selectOption({ label: "Physics" })
     await page.getByLabel("Description", { exact: true }).fill("Physics and chemistry for matric and O-level.")
-    await page.getByLabel("Area", { exact: true }).fill("B-17")
-    await page.getByLabel(/Services Offered/).fill("physics, chemistry")
-    await page.getByRole("button", { name: "Preview Listing" }).click()
+    // Area is a fixed choice (B-17), not free text.
+    await expect(page.getByLabel("Area", { exact: true })).toHaveValue("B-17")
+    await page.getByLabel(/Topics you teach/).fill("physics, chemistry")
+    await page.getByRole("button", { name: "Submit for Review" }).click()
     await expectPage(page, "Listings")
 
     const body = sent.find((s) => s.method === "POST" && s.path === "/listings")!.body as Record<string, unknown>
@@ -191,9 +195,10 @@ test.describe("Listing create: all five variants hit the API with the right payl
     await page.getByLabel("Listing Type").selectOption("rent")
     await page.getByLabel("Property Type").selectOption({ label: "Flat" })
     await page.getByLabel("Price").fill("PKR 65,000 / month")
-    await page.getByLabel("Area", { exact: true }).fill("B-17")
+    // Area is a fixed choice (B-17), not free text.
+    await expect(page.getByLabel("Area", { exact: true })).toHaveValue("B-17")
     await page.getByLabel("Description").fill("Bright flat with a balcony in a well-kept block.")
-    await page.getByRole("button", { name: "Preview Listing" }).click()
+    await page.getByRole("button", { name: "Submit for Review" }).click()
     await expectPage(page, "Listings")
 
     const body = sent.find((s) => s.method === "POST" && s.path === "/listings")!.body as Record<string, unknown>
@@ -248,9 +253,10 @@ test.describe("Presentation regression (end-to-end round trip)", () => {
     await page.getByLabel("Name", { exact: true }).fill(name)
     await page.getByLabel("Service Category").selectOption({ label: "Solar" })
     await page.getByLabel("Description", { exact: true }).fill("Rooftop solar design and installation for B-17 homes.")
-    await page.getByLabel("Area", { exact: true }).fill("B-17")
-    await page.getByLabel(/Services Offered/).fill("solar, installation")
-    await page.getByRole("button", { name: "Preview Listing" }).click()
+    // Area is a fixed choice (B-17), not free text.
+    await expect(page.getByLabel("Area", { exact: true })).toHaveValue("B-17")
+    await page.getByLabel(/Services offered/).fill("solar, installation")
+    await page.getByRole("button", { name: "Submit for Review" }).click()
 
     // 2. The owner dashboard shows the new row as pending, revision 1 (both are the server's).
     await expectPage(page, "Listings")
@@ -283,7 +289,7 @@ test.describe("Presentation regression (end-to-end round trip)", () => {
     await ownerCard(page, name).getByRole("button", { name: "Edit" }).click()
     await expectPage(page, "Edit Listing")
     await page.getByLabel("Description", { exact: true }).fill("Rooftop solar design and installation for B-17 - now with inverter and battery options.")
-    await page.getByRole("button", { name: "Preview Listing" }).click()
+    await page.getByRole("button", { name: "Save Changes" }).click()
 
     // 7. The page navigates back to Listings; the server's answer is pending, revision 2.
     await expect(page.getByText("Changes submitted for review")).toBeVisible()
@@ -309,7 +315,7 @@ test.describe("Presentation regression (end-to-end round trip)", () => {
     await ownerCard(page, name).getByRole("button", { name: "Edit" }).click()
     await expectPage(page, "Edit Listing")
     await page.getByLabel("Description", { exact: true }).fill("Rooftop solar design and installation for B-17 - photo gallery of past installs available on request.")
-    await page.getByRole("button", { name: "Preview Listing" }).click()
+    await page.getByRole("button", { name: "Resubmit for Review" }).click()
     await expectPage(page, "Listings")
 
     // 10. Pending again, the stale rejection reason is gone, and all of it survives a reload.
@@ -364,7 +370,7 @@ test.describe("Listing edit / resubmit through the real form", () => {
     await expect(page.getByLabel("Service Category")).toHaveValue("plumbing")
     await expect(page.getByLabel("Name", { exact: true })).toHaveValue("Approved Plumbing Co")
     await page.getByLabel("Description", { exact: true }).fill("Plumbing repairs and bathroom fittings across B-17, same-day call-outs.")
-    await page.getByRole("button", { name: "Preview Listing" }).click()
+    await page.getByRole("button", { name: "Save Changes" }).click()
 
     await expect(page.getByText("Changes submitted for review")).toBeVisible()
     await expect(page).toHaveURL(/\/provider\/listings$/)
@@ -397,9 +403,9 @@ test.describe("Listing edit / resubmit through the real form", () => {
     await expect(page.getByLabel("Property Type")).toHaveValue("plot")
     await expect(page.getByLabel("Price")).toHaveValue("PKR 1 Cr")
     await page.getByLabel("Description").fill("A 10 marla residential plot in B-17 Block C with all utilities, available for sale.")
-    await page.getByRole("button", { name: "Preview Listing" }).click()
+    await page.getByRole("button", { name: "Resubmit for Review" }).click()
 
-    await expect(page.getByText("Listing updated")).toBeVisible()
+    await expect(page.getByText("Listing resubmitted for review")).toBeVisible()
     await expectPage(page, "Listings")
     for (const reload of [false, true]) {
       if (reload) {
@@ -416,10 +422,10 @@ test.describe("Listing edit / resubmit through the real form", () => {
     const card = ownerCard(page, "Rejected Plot")
     await card.getByRole("button", { name: "Edit" }).click()
     await expectPage(page, "Edit Listing")
-    await page.getByRole("button", { name: "Preview Listing" }).click()
+    await page.getByRole("button", { name: "Resubmit for Review" }).click()
 
     await expect(page.getByText("Please change at least one field before resubmitting.")).toBeVisible()
-    await expect(page.getByText(/Listing updated|Changes submitted for review/)).toHaveCount(0)
+    await expect(page.getByText(/Listing updated|Listing resubmitted|Changes submitted for review/)).toHaveCount(0)
     await expect(page).toHaveURL(/\/provider\/listings\/[^/]+\/edit$/)
     // Nothing moved on the server: still rejected, same revision, the reason is still there.
     await navigateInApp(page, "/provider/listings", "Listings")
@@ -441,10 +447,10 @@ test.describe("Listing edit / resubmit through the real form", () => {
         body: JSON.stringify({ error: { code: "listing_conflict", message: "stale", details: [{ field: "revision", code: "stale_revision" }], requestId: "r" } }),
       })
     })
-    await page.getByRole("button", { name: "Preview Listing" }).click()
+    await page.getByRole("button", { name: "Save Changes" }).click()
     await expect(page.getByText("This listing has changed since you opened it")).toBeVisible()
     await expect(page).toHaveURL(/\/edit$/) // never silently navigates, never silently retries
-    await expect(page.getByText(/Changes submitted for review|Listing updated/)).toHaveCount(0)
+    await expect(page.getByText(/Changes submitted for review|Listing updated|Listing resubmitted/)).toHaveCount(0)
   })
 })
 
@@ -483,9 +489,10 @@ test.describe("Professional capability: the server decides", () => {
     await page.getByLabel("Name", { exact: true }).fill("Rana Plumbing")
     await page.getByLabel("Service Category").selectOption({ label: "Plumbing" })
     await page.getByLabel("Description", { exact: true }).fill("Plumbing repairs and fittings for B-17 homes.")
-    await page.getByLabel("Area", { exact: true }).fill("B-17")
-    await page.getByLabel(/Services Offered/).fill("plumbing, repairs")
-    await page.getByRole("button", { name: "Preview Listing" }).click()
+    // Area is a fixed choice (B-17), not free text.
+    await expect(page.getByLabel("Area", { exact: true })).toHaveValue("B-17")
+    await page.getByLabel(/Services offered/).fill("plumbing, repairs")
+    await page.getByRole("button", { name: "Submit for Review" }).click()
     await expectPage(page, "Listings")
     await expect(ownerCard(page, "Rana Plumbing")).toContainText("Pending Review")
   })
@@ -692,12 +699,13 @@ test.describe("Network failure: no fake success on any write", () => {
     await page.getByLabel("Name", { exact: true }).fill("Would-Be Service")
     await page.getByLabel("Service Category").selectOption({ label: "Solar" })
     await page.getByLabel("Description", { exact: true }).fill("A service that should NOT be created when the network fails.")
-    await page.getByLabel("Area", { exact: true }).fill("B-17")
-    await page.getByLabel(/Services Offered/).fill("solar, repairs")
+    // Area is a fixed choice (B-17), not free text.
+    await expect(page.getByLabel("Area", { exact: true })).toHaveValue("B-17")
+    await page.getByLabel(/Services offered/).fill("solar, repairs")
 
     // Simulate a server failure on POST /listings.
     await page.route("**/api/v1/listings", (route) => (route.request().method() === "POST" ? route.abort("failed") : route.continue()))
-    await page.getByRole("button", { name: "Preview Listing" }).click()
+    await page.getByRole("button", { name: "Submit for Review" }).click()
 
     // The form stays, no "submitted" page, and the form data survives.
     await expect(page.getByRole("heading", { level: 1, name: /List Your Business/ })).toBeVisible()

@@ -5,8 +5,6 @@ import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { ListingForm } from "@/features/provider/ListingForm"
 import { PropertyListingForm } from "@/features/provider/PropertyListingForm"
 import { LocationFieldset } from "@/features/provider/LocationFieldset"
@@ -21,9 +19,12 @@ import {
   providerCreate,
   tutorCreate,
 } from "@/features/provider/listingWriteAdapters"
-import { fieldErrors, isApiError } from "@/lib/api/errors"
-import { userMessageFor } from "@/lib/api/writeErrors"
+import { isApiError } from "@/lib/api/errors"
+import { friendlyFieldErrors, userMessageFor } from "@/lib/api/writeErrors"
+import { locationTextProblems } from "@/features/provider/locationRules"
+import { TutorGradeField } from "@/features/provider/TutorGradeField"
 import { routes } from "@/config/routes"
+import { gradeProblem } from "@/features/provider/listingSchema"
 import type { ListingFormValues, PropertyFormValues } from "@/features/provider/listingSchema"
 
 type Kind = "provider" | "business" | "tutor" | "property"
@@ -116,8 +117,14 @@ function ListingFormPage() {
       setLocationErrors({ "location.visibility": "A property must have at least an approximate point." })
       return
     }
-    if (kind === "tutor" && grade.trim().length < 1) {
-      setGradeError("Please enter the grade you teach.")
+    const textProblems = locationTextProblems(location)
+    if (Object.keys(textProblems).length > 0) {
+      setLocationErrors(textProblems)
+      return
+    }
+    const gradeIssue = kind === "tutor" ? gradeProblem(grade) : null
+    if (gradeIssue) {
+      setGradeError(gradeIssue)
       return
     }
     setGradeError(null)
@@ -135,7 +142,7 @@ function ListingFormPage() {
       navigate(routes.providerListings, { state: { highlightId: created.id } })
     } catch (error) {
       if (isApiError(error) && error.code === "validation_error") {
-        setLocationErrors(fieldErrors(error))
+        setLocationErrors(friendlyFieldErrors(error))
       }
     }
   }
@@ -165,23 +172,7 @@ function ListingFormPage() {
           </Typography>
         )}
 
-        {kind === "tutor" && (
-          <Stack gap={2}>
-            <Label htmlFor="tutor-grade">Grade / level you teach</Label>
-            <Input
-              id="tutor-grade"
-              placeholder="e.g. Grade 9 or O-Level"
-              value={grade}
-              onChange={(e) => setGrade(e.target.value)}
-              aria-invalid={!!gradeError}
-            />
-            {gradeError && (
-              <Typography variant="caption" role="alert" className="text-destructive">
-                {gradeError}
-              </Typography>
-            )}
-          </Stack>
-        )}
+        {kind === "tutor" && <TutorGradeField value={grade} onChange={setGrade} error={gradeError} disabled={createMutation.pending} />}
 
         <LocationFieldset
           value={location}

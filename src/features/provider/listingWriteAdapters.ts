@@ -19,6 +19,7 @@
  *    `approximate` / `area_only` they are private data and clearing them would make a privacy
  *    narrowing a moderated content change (LOCATION_MAP.md §7.4).
  */
+import { isValidMediaReference } from "@/features/provider/mediaReference"
 import type { FoodServiceOptionDto } from "@/lib/api/dto/public"
 import type { OwnerListingView } from "@/types/ownerListing"
 import { isFoodServiceOption } from "@/config/food"
@@ -36,11 +37,9 @@ import type {
   TutorCreate,
 } from "@/lib/api/writes/listings"
 
-/** `blob:` / `data:` URLs are not acceptable to the backend; drop them so the server never 422s on media. */
+/** A media reference the API would refuse (`blob:`, `data:`, `http:`, credentials in the address...) is dropped, so the server never 422s on media. */
 function cleanImage(image: string | undefined): string | undefined {
-  if (!image) return undefined
-  if (image.startsWith("https://") || image.startsWith("/")) return image
-  return undefined
+  return image && isValidMediaReference(image) ? image : undefined
 }
 
 function foodToWrite(food: FoodFormValues): FoodWrite {
@@ -58,6 +57,17 @@ function foodToWrite(food: FoodFormValues): FoodWrite {
     ...(menuHighlights.length > 0 ? { menuHighlights } : {}),
     ...(cleanImage(food.menuImage) ? { menuImage: cleanImage(food.menuImage)! } : {}),
   }
+}
+
+/**
+ * The Food block of a PATCH. On a PATCH omitted means "unchanged", so a field the owner EMPTIED must be sent as a
+ * clear: `hoursNote` / `menuImage` as `null` (the two clearable Food fields) and the menu as `[]` (the array is
+ * replaced whole, and `[]` is valid). Without this an edit that removed the hours or the menu was saved as if
+ * nothing had changed there.
+ */
+function foodToPatch(food: FoodFormValues): FoodWrite {
+  const write = foodToWrite(food)
+  return { ...write, hoursNote: write.hoursNote ?? null, menuImage: write.menuImage ?? null, menuHighlights: write.menuHighlights ?? [] }
 }
 
 export function providerCreate(values: ListingFormValues, location: LocationWrite): ProviderCreate {
@@ -167,8 +177,11 @@ export function listingPatchFrom(
   if (kind === "provider") return { ...base, category: values.category }
   if (kind === "tutor") return { ...base, category: values.category, ...(grade !== undefined ? { grade } : {}) }
   // business
-  if (values.vertical === "food") return { ...base, vertical: "food", food: foodToWrite(values.food) }
-  return { ...base, vertical: "general", category: values.category, food: null }
+  if (values.vertical === "food") return { ...base, vertical: "food", food: foodToPatch(values.food) }
+  // A General business has no Food profile: the field is OMITTED. `food: null` is `422 not_nullable` (only `image`,
+  // `bedrooms`, `furnished` and the Food `hoursNote` / `menuImage` are clearable, API_CONTRACT §10.3), which made every
+  // General business edit unsavable until Phase 12S S4. Switching Food -> General needs only `vertical` + `category`.
+  return { ...base, vertical: "general", category: values.category }
 }
 
 export function propertyPatchFrom(revision: number, values: PropertyFormValues, location: LocationWrite): ListingPatch {

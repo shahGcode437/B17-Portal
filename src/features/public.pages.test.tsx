@@ -65,7 +65,7 @@ describe("News", () => {
 
   it("an unknown article is a not-found state (404), a failing server is an error", async () => {
     const { unmount } = renderPage(<NewsArticlePage />, { url: "/news/nope", path: "/news/:id", user: null })
-    expect(await screen.findByRole("heading", { level: 1, name: "Content not found" })).toBeInTheDocument()
+    expect(await screen.findByRole("heading", { level: 1, name: "Article not found" })).toBeInTheDocument()
     unmount()
     failing(`/news/${IDS.news}`, fail(500, "internal_error"))
     renderPage(<NewsArticlePage />, { url: `/news/${IDS.news}`, path: "/news/:id", user: null })

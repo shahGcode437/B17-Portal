@@ -17,12 +17,15 @@ import {
   type ListingFormValues,
 } from "@/features/provider/listingSchema"
 import { ListingImageInput } from "@/features/provider/ListingImageInput"
+import { AreaField } from "@/features/provider/AreaField"
+import { TagsField } from "@/features/provider/TagsField"
 import { FoodListingFields } from "@/features/provider/FoodListingFields"
 import { emptyFoodFormValues } from "@/features/provider/listingBuilders"
 import { selectClassName } from "@/features/provider/formStyles"
 import { useCategories } from "@/hooks/useCategories"
 import type { CategoryModule } from "@/lib/api/dto/public"
 import { FOOD_VERTICAL_LABEL } from "@/config/food"
+import { DEFAULT_LOCALITY, canonicalLocality } from "@/config/localities"
 
 interface ListingFormProps {
   kind: ListingKind
@@ -36,6 +39,12 @@ interface ListingFormProps {
   categoryLabelText?: string
   defaultValues?: Partial<ListingFormValues>
   onSubmit: (values: ListingFormValues) => void
+  /**
+   * What the submit button says. It must name what the action DOES: a create submits the listing to moderation
+   * ("Submit for Review"), an edit saves changes or resubmits a rejected listing. Never "Preview": nothing here
+   * previews anything.
+   */
+  submitLabel?: string
   /**
    * True while the page's write is in flight. `onSubmit` does not return its promise (the page owns
    * the mutation), so react-hook-form cannot know - without this the button would stay live during a
@@ -55,7 +64,16 @@ const businessTypeChoices = [
  * For a Business (FD4) a "Business type" choice switches between the General category field and the
  * Food & Dining block; the listing is a Business either way.
  */
-function ListingForm({ kind, categoryModule, categoryLabelText, defaultValues, onSubmit, submitting = false, onBack }: ListingFormProps) {
+function ListingForm({
+  kind,
+  categoryModule,
+  categoryLabelText,
+  defaultValues,
+  onSubmit,
+  submitLabel = "Submit for Review",
+  submitting = false,
+  onBack,
+}: ListingFormProps) {
   const {
     register,
     handleSubmit,
@@ -67,12 +85,14 @@ function ListingForm({ kind, categoryModule, categoryLabelText, defaultValues, o
       name: "",
       category: "",
       description: "",
-      area: "",
       tagsInput: "",
       ...defaultValues,
+      // `area` is a choice from the configured localities: an old free-text value is shown as B-17 and says so.
+      area: canonicalLocality(defaultValues?.area ?? "") ?? DEFAULT_LOCALITY,
       vertical: defaultValues?.vertical ?? "general",
     },
   })
+  const legacyArea = defaultValues?.area && !canonicalLocality(defaultValues.area) ? defaultValues.area : null
 
   // Kept outside react-hook-form: the value is a browser-local object URL,
   // not something a native input can hold via register(), and the image
@@ -107,7 +127,16 @@ function ListingForm({ kind, categoryModule, categoryLabelText, defaultValues, o
   const module: CategoryModule = categoryModule ?? (kind === "provider" ? "services" : "directory")
   const categories = useCategories(module, { enabled: !isFood })
   const categoryOptions = categories.status === "success" ? categories.data : []
-  const tagsLabel = kind === "provider" ? "Services Offered" : isFood ? "Dishes / Search Tags" : "Services / Tags"
+  const tagsValue = useWatch({ control, name: "tagsInput" })
+  // What the tags ARE differs by listing kind (and is shown under a heading of its own on the public page).
+  const isTutor = categoryModule === "education"
+  const tagsCopy = isTutor
+    ? { label: "Topics you teach (optional)", placeholder: "e.g. matric physics, O-level chemistry", purpose: "Topics and levels you teach; shown on your page and matched by search." }
+    : kind === "provider"
+      ? { label: "Services offered (optional)", placeholder: "e.g. solar panels, net metering, rooftop", purpose: "What you do, in short keywords; shown on your page and matched by search." }
+      : isFood
+        ? { label: "Dishes / Search Tags (optional)", placeholder: "e.g. biryani, karahi, family dining", purpose: "Dishes or keywords people might search for." }
+        : { label: "Tags (optional)", placeholder: "e.g. stationery, printing, school supplies", purpose: "Keywords people might search for; shown on your page and matched by search." }
 
   function submit(values: ListingFormFields) {
     if (isFood) {
@@ -240,41 +269,17 @@ function ListingForm({ kind, categoryModule, categoryLabelText, defaultValues, o
           )}
         </Stack>
 
-        <Stack gap={2}>
-          <Label htmlFor="listing-area">Area</Label>
-          <Input
-            id="listing-area"
-            placeholder="e.g. B-17, Block C"
-            aria-invalid={!!errors.area}
-            aria-describedby={errors.area ? "listing-area-error" : undefined}
-            {...register("area")}
-          />
-          {errors.area && (
-            <Typography id="listing-area-error" variant="caption" className="text-destructive" role="alert">
-              {errors.area.message}
-            </Typography>
-          )}
-        </Stack>
+        <AreaField id="listing-area" inputProps={register("area")} error={errors.area?.message} legacyArea={legacyArea} />
 
-        <Stack gap={2}>
-          <Label htmlFor="listing-tags">{tagsLabel}</Label>
-          <Input
-            id="listing-tags"
-            placeholder={isFood ? "e.g. biryani, karahi, family dining" : "e.g. solar panels, net metering, rooftop"}
-            aria-invalid={!!errors.tagsInput}
-            aria-describedby={errors.tagsInput ? "listing-tags-error" : "listing-tags-hint"}
-            {...register("tagsInput")}
-          />
-          {errors.tagsInput ? (
-            <Typography id="listing-tags-error" variant="caption" className="text-destructive" role="alert">
-              {errors.tagsInput.message}
-            </Typography>
-          ) : (
-            <Typography id="listing-tags-hint" variant="caption" className="text-muted-foreground">
-              Separate with commas.
-            </Typography>
-          )}
-        </Stack>
+        <TagsField
+          id="listing-tags"
+          label={tagsCopy.label}
+          placeholder={tagsCopy.placeholder}
+          purpose={tagsCopy.purpose}
+          value={tagsValue}
+          error={errors.tagsInput?.message}
+          inputProps={register("tagsInput")}
+        />
 
         <ListingImageInput id="listing-image" value={image} onChange={setImage} />
 
@@ -285,11 +290,11 @@ function ListingForm({ kind, categoryModule, categoryLabelText, defaultValues, o
         )}
 
         <Stack gap={2} className="flex-col-reverse sm:flex-row sm:justify-end">
-          <Button type="button" variant="outline" onClick={onBack}>
+          <Button type="button" variant="outline" className="h-11 md:h-8" onClick={onBack}>
             Back
           </Button>
-          <Button type="submit" disabled={isSubmitting || submitting} aria-busy={submitting}>
-            Preview Listing
+          <Button type="submit" className="h-11 md:h-8" disabled={isSubmitting || submitting} aria-busy={submitting}>
+            {submitLabel}
           </Button>
         </Stack>
       </Stack>

@@ -4,6 +4,7 @@ import { Typography } from "@/components/foundation/Typography"
 import { readErrorCopy } from "@/components/feedback/readErrorCopy"
 import { useRequestDetail } from "@/hooks/useResidentReads"
 import type { RequestStatus } from "@/types/resident"
+import { isResourceNotFound } from "@/lib/api/errors"
 
 const STATUS_WORDS: Record<RequestStatus, string> = {
   submitted: "Submitted",
@@ -41,7 +42,9 @@ function RequestHistory({ requestId, viewerRole }: { requestId: string; viewerRo
       )}
       {read.status === "error" && (
         <Typography variant="body-sm" role="alert" className="text-muted-foreground">
-          {readErrorCopy(read.error).title}. The history couldn't be loaded.{" "}
+          {isResourceNotFound(read.error)
+            ? "This request could not be found, so its history isn't available."
+            : `${readErrorCopy(read.error).title}. The history couldn't be loaded.`}{" "}
           {readErrorCopy(read.error).retryable && (
             <button type="button" onClick={read.retry} className="font-medium text-primary underline-offset-4 hover:underline">
               Try again

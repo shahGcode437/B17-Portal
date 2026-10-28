@@ -6,7 +6,7 @@ import { useMutation } from "@/hooks/useMutation"
 import { useToast } from "@/hooks/useToast"
 import { actOnRequest, type RequestAction } from "@/lib/api/writes/requests"
 import { toRequestDetailView } from "@/lib/api/privateAdapters"
-import { userMessageFor, isInvalidTransition } from "@/lib/api/writeErrors"
+import { copyAsSentence, userMessageFor, isInvalidTransition } from "@/lib/api/writeErrors"
 import type { RequestStatus } from "@/types/resident"
 
 /**
@@ -79,7 +79,7 @@ function RequestActions({ requestId, status, viewerRole, onRefresh }: RequestAct
       onRefresh()
     } catch (error) {
       const copy = userMessageFor(error, "request-action")
-      show(copy.title)
+      show(copyAsSentence(copy), { tone: "error" })
       // On a stale state, refresh so the controls update.
       if (isInvalidTransition(error)) onRefresh()
     } finally {

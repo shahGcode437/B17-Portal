@@ -16,8 +16,8 @@ import type { ServiceRequestValues } from "@/features/services/serviceRequestSch
 import { useRequireOnline } from "@/hooks/useRequireOnline"
 import { useMutation } from "@/hooks/useMutation"
 import { createRequest } from "@/lib/api/writes/requests"
-import { userMessageFor } from "@/lib/api/writeErrors"
-import { fieldErrors, isApiError } from "@/lib/api/errors"
+import { friendlyFieldErrors, userMessageFor } from "@/lib/api/writeErrors"
+import { isApiError } from "@/lib/api/errors"
 
 interface RequestServiceDialogProps {
   provider: Provider
@@ -58,7 +58,7 @@ function RequestServiceDialog({ provider, requesterName, open, onOpenChange }: R
       setSubmittedValues(values)
     } catch (error) {
       if (isApiError(error) && error.code === "validation_error") {
-        setFieldErrorMap(fieldErrors(error))
+        setFieldErrorMap(friendlyFieldErrors(error))
       }
     }
   }

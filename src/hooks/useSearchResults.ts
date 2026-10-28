@@ -13,7 +13,9 @@ export const SEARCH_PAGE_SIZE = 12
  * The committed URL state (query, type, filters, sort) is the request: a change aborts the previous
  * request, so an old answer can never replace a newer one. "Load more" fetches the NEXT server page
  * and appends it, and `total` is the server's true match count. Typing is already debounced into the
- * URL by the Search page, so this sends one request per committed state.
+ * URL by the Search page, so this sends one request per committed state. While the next state's first page is
+ * on its way the previous results stay on screen (`refreshing`), so changing a filter mid-page does not blank
+ * the list; a late answer to an older state is still ignored.
  */
 export function useSearchResults(
   query: string,
@@ -23,9 +25,13 @@ export function useSearchResults(
 ) {
   const params = toSearchParams(query, type, filters, sort)
   const key = paramsKey(params)
-  const paged = usePagedRead(key, async (offset, signal) => {
-    const page = await fetchSearch({ ...params, limit: SEARCH_PAGE_SIZE, offset }, signal)
-    return { items: toSearchHits(page.items), raw: page.items.length, total: page.meta.total, extra: undefined }
-  })
+  const paged = usePagedRead(
+    key,
+    async (offset, signal) => {
+      const page = await fetchSearch({ ...params, limit: SEARCH_PAGE_SIZE, offset }, signal)
+      return { items: toSearchHits(page.items), raw: page.items.length, total: page.meta.total, extra: undefined }
+    },
+    { keepPrevious: true }
+  )
   return { ...paged, results: paged.items }
 }

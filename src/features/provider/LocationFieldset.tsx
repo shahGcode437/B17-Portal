@@ -7,6 +7,8 @@ import { Typography } from "@/components/foundation/Typography"
 import { MapPicker } from "@/components/location/MapPicker"
 import { selectClassName } from "@/features/provider/formStyles"
 import { isValidCoordinate } from "@/lib/api/adapters"
+import { MAX_ADDRESS_LENGTH, MAX_LANDMARK_LENGTH } from "@/config/listingLimits"
+import { MAX_BLOCK_LENGTH, addressProblem, blockProblem, landmarkProblem } from "@/features/provider/locationRules"
 import type { LocationWrite } from "@/lib/api/writes/listings"
 
 interface LocationFieldsetProps {
@@ -71,6 +73,11 @@ function LocationFieldset({ value, onChange, itemLabel, allowedVisibilities, err
     if (isValidCoordinate(lat, lng)) commitPoint(Number(lat.toFixed(6)), Number(lng.toFixed(6)))
   }
 
+  // The server's own message wins (it arrives after a submit); until then the same rule is checked as the owner types.
+  const blockError = errors["location.block"] ?? blockProblem(value.block)
+  const addressError = errors["location.address"] ?? addressProblem(value.address)
+  const landmarkError = errors["location.landmark"] ?? landmarkProblem(value.landmark)
+
   const needsPoint = value.visibility === "exact" || value.visibility === "approximate"
   const needsAddress = value.visibility === "exact"
   const point = value.latitude !== undefined && value.longitude !== undefined ? { latitude: value.latitude, longitude: value.longitude } : null
@@ -105,15 +112,21 @@ function LocationFieldset({ value, onChange, itemLabel, allowedVisibilities, err
         <Label htmlFor="location-block">Block (optional)</Label>
         <Input
           id="location-block"
-          placeholder="e.g. C"
+          placeholder="e.g. C or Block C"
+          maxLength={MAX_BLOCK_LENGTH}
           value={value.block ?? ""}
           disabled={disabled}
           onChange={(e) => onChange({ ...value, block: e.target.value || undefined })}
-          aria-invalid={!!errors["location.block"]}
+          aria-invalid={!!blockError}
+          aria-describedby={blockError ? "location-block-error" : "location-block-hint"}
         />
-        {errors["location.block"] && (
-          <Typography variant="caption" className="text-destructive" role="alert">
-            {errors["location.block"]}
+        {blockError ? (
+          <Typography id="location-block-error" variant="caption" className="text-destructive" role="alert">
+            {blockError}
+          </Typography>
+        ) : (
+          <Typography id="location-block-hint" variant="caption" className="text-muted-foreground">
+            Your block or sector within B-17. The area itself is always B-17.
           </Typography>
         )}
       </Stack>
@@ -125,15 +138,17 @@ function LocationFieldset({ value, onChange, itemLabel, allowedVisibilities, err
             <Textarea
               id="location-address"
               rows={2}
-              placeholder="e.g. Shop 4, Demo Plaza"
+              placeholder="e.g. Shop 4, Main Market"
               value={value.address ?? ""}
               disabled={disabled}
               onChange={(e) => onChange({ ...value, address: e.target.value || undefined })}
-              aria-invalid={!!errors["location.address"]}
+              maxLength={MAX_ADDRESS_LENGTH}
+              aria-invalid={!!addressError}
+              aria-describedby={addressError ? "location-address-error" : undefined}
             />
-            {errors["location.address"] && (
-              <Typography variant="caption" className="text-destructive" role="alert">
-                {errors["location.address"]}
+            {addressError && (
+              <Typography id="location-address-error" variant="caption" className="text-destructive" role="alert">
+                {addressError}
               </Typography>
             )}
           </Stack>
@@ -145,8 +160,15 @@ function LocationFieldset({ value, onChange, itemLabel, allowedVisibilities, err
               value={value.landmark ?? ""}
               disabled={disabled}
               onChange={(e) => onChange({ ...value, landmark: e.target.value || undefined })}
-              aria-invalid={!!errors["location.landmark"]}
+              maxLength={MAX_LANDMARK_LENGTH}
+              aria-invalid={!!landmarkError}
+              aria-describedby={landmarkError ? "location-landmark-error" : undefined}
             />
+            {landmarkError && (
+              <Typography id="location-landmark-error" variant="caption" className="text-destructive" role="alert">
+                {landmarkError}
+              </Typography>
+            )}
           </Stack>
         </>
       )}

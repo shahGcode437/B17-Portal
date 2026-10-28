@@ -7,6 +7,7 @@ import { ReadError } from "@/components/feedback/ReadError"
 import { Skeleton } from "@/components/ui/skeleton"
 import type { ReadResult } from "@/hooks/useRead"
 import type { ListingDetail } from "@/hooks/useListings"
+import { isResourceNotFound } from "@/lib/api/errors"
 
 type Kind = "provider" | "business" | "tutor" | "property"
 
@@ -65,7 +66,7 @@ function ListingDetailGate<K extends Kind>({ read, notFound, children }: Listing
   )
   if (read.status === "loading") return <DetailSkeleton />
   if (read.status === "error") {
-    if (read.error.status === 404) return missing
+    if (isResourceNotFound(read.error)) return missing
     return (
       <Container className="py-16">
         <ReadError error={read.error} onRetry={read.retry} headingLevel={1} />

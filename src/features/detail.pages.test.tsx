@@ -74,6 +74,14 @@ describe("Business detail (general)", () => {
     expect(await screen.findByRole("heading", { level: 1, name: "Business not found" })).toBeInTheDocument()
   })
 
+  it("a 404 that is NOT the API's own not_found (a proxy or a wrong URL) is an unexpected answer with a retry - never 'Business not found'", async () => {
+    installFetchMock(() => ({ status: 404, body: "<html>Cannot GET</html>" }))
+    renderPage(<BusinessProfilePage />, { url: `/businesses/${IDS.generalExact}`, path: "/businesses/:id", user: null })
+    expect(await screen.findByRole("alert")).toBeInTheDocument()
+    expect(screen.queryByText("Business not found")).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /try again|retry/i })).toBeInTheDocument()
+  })
+
   it("shows a retryable error - not content, not 'not found' - when the server fails, and recovers", async () => {
     let healthy = false
     installFetchMock((call) => (healthy ? fakeBackend()(call) : fail(500, "internal_error")))

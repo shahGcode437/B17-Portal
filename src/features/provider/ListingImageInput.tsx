@@ -1,15 +1,13 @@
-import { useRef, useState } from "react"
 import { ImagePlus, X } from "lucide-react"
 import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
 import { Button } from "@/components/ui/button"
 
-const ACCEPTED_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/webp"]
-
 interface ListingImageInputProps {
   id: string
-  /** A browser-local object URL (from a prior selection), or undefined if none chosen. */
+  /** The image already on file for this listing (an `https://` URL or a site path), or undefined. */
   value?: string
+  /** Only ever called with `undefined`: the one thing that can be done today is to remove the stored image. */
   onChange: (value: string | undefined) => void
   /** Field label and preview alt noun; defaults to the cover-image wording. */
   label?: string
@@ -17,41 +15,20 @@ interface ListingImageInputProps {
   contain?: boolean
 }
 
+/** The one honest sentence: media storage is not built (Phase 13), so no picture can be added yet. */
+export const IMAGE_UPLOAD_NOTICE = "Image upload isn't available yet. It is planned for a later release."
+
 /**
- * Optional listing image picker shared by Service/Business/Property
- * onboarding (Onboarding Fix §7). Prototype-only: creates a browser-local
- * `URL.createObjectURL()` preview for this session — nothing is uploaded,
- * no backend or cloud storage is involved, and the domain data only ever
- * stores the resulting string, never a File object. The previous object URL
- * is revoked whenever it's replaced or removed so a single edit session
- * doesn't leak blob URLs; the URL kept at submit time is left alone since it
- * needs to keep working for the rest of the browser session (Dashboard,
- * Moderation, Search, Detail page).
+ * Optional listing image (Phase 12S, S4: made honest). Real media storage does not exist until Phase 13 and the
+ * API accepts only an `https://` URL or a site path (`API_CONTRACT §10.1`), so a picture picked in the browser
+ * could never be saved. The old picker showed such a picture as if it were part of the listing and then
+ * silently dropped it on submit (and, on an edit, sent `image: null`, which CLEARED the stored image).
+ *
+ * Now nothing can be picked: the choose button is present but disabled, with the reason written next to it, and
+ * an image that is already on file is shown and kept unless the owner removes it. No `blob:` URL is ever made.
  */
 function ListingImageInput({ id, value, onChange, label = "Listing Image", contain = false }: ListingImageInputProps) {
-  const inputRef = useRef<HTMLInputElement>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    e.target.value = ""
-    if (!file) return
-
-    if (!ACCEPTED_TYPES.includes(file.type)) {
-      setError("Please choose a JPG, PNG or WEBP image.")
-      return
-    }
-
-    setError(null)
-    const nextUrl = URL.createObjectURL(file)
-    if (value) URL.revokeObjectURL(value)
-    onChange(nextUrl)
-  }
-
-  function handleRemove() {
-    if (value) URL.revokeObjectURL(value)
-    onChange(undefined)
-  }
+  const noticeId = `${id}-notice`
 
   return (
     <Stack gap={2}>
@@ -62,7 +39,7 @@ function ListingImageInput({ id, value, onChange, label = "Listing Image", conta
       {value && (
         <img
           src={value}
-          alt={`Preview of the selected ${label.toLowerCase()}`}
+          alt={`Current ${label.toLowerCase()}`}
           className={
             contain
               ? "max-h-64 w-full rounded-lg bg-muted object-contain"
@@ -72,41 +49,21 @@ function ListingImageInput({ id, value, onChange, label = "Listing Image", conta
       )}
 
       <Stack direction="row" gap={2}>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="w-fit"
-          aria-describedby={error ? `${id}-label ${id}-error` : `${id}-label`}
-          onClick={() => inputRef.current?.click()}
-        >
+        <Button type="button" variant="outline" size="sm" className="w-fit" disabled aria-describedby={noticeId}>
           <ImagePlus />
           Choose Image
         </Button>
         {value && (
-          <Button type="button" variant="ghost" size="sm" aria-describedby={`${id}-label`} onClick={handleRemove}>
+          <Button type="button" variant="ghost" size="sm" aria-describedby={`${id}-label`} onClick={() => onChange(undefined)}>
             <X />
             Remove
           </Button>
         )}
       </Stack>
 
-      <input
-        ref={inputRef}
-        type="file"
-        accept="image/jpeg,image/png,image/webp"
-        hidden
-        aria-labelledby={`${id}-label`}
-        onChange={handleFileChange}
-      />
-
-      {error && (
-        <Typography id={`${id}-error`} variant="caption" className="text-destructive" role="alert">
-          {error}
-        </Typography>
-      )}
-      <Typography variant="caption" className="text-muted-foreground">
-        Optional. This is a prototype preview only — no image is uploaded anywhere.
+      <Typography id={noticeId} variant="caption" className="text-muted-foreground">
+        {IMAGE_UPLOAD_NOTICE}
+        {value ? " The image on file is kept unless you remove it." : " This listing will be submitted without an image."}
       </Typography>
     </Stack>
   )

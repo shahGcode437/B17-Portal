@@ -34,9 +34,10 @@ export interface FoodMenuItemWrite {
 export interface FoodWrite {
   categories: string[]
   serviceOptions: FoodServiceOptionDto[]
-  hoursNote?: string
+  /** `null` is only ever sent by a PATCH, to clear the stored value (the only clearable Food fields, API_CONTRACT §10.3). */
+  hoursNote?: string | null
   menuHighlights?: FoodMenuItemWrite[]
-  menuImage?: string
+  menuImage?: string | null
 }
 
 interface Base {

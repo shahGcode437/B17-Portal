@@ -63,7 +63,7 @@ function AdminCategoriesPage() {
   const handleCreate = async (module: AdminCategoryView["module"]) => {
     const name = newName.trim()
     if (name.length < 2) {
-      show("Please enter at least two characters.")
+      show("Please enter at least two characters.", { tone: "error" })
       return
     }
     try {
@@ -73,7 +73,7 @@ function AdminCategoriesPage() {
       setNewName("")
       refresh()
     } catch (error) {
-      show(failureText(error, "category-create"))
+      show(failureText(error, "category-create"), { tone: "error" })
     }
   }
 
@@ -89,7 +89,7 @@ function AdminCategoriesPage() {
       setRenamingId(null)
       refresh()
     } catch (error) {
-      show(failureText(error, "category-patch"))
+      show(failureText(error, "category-patch"), { tone: "error" })
     }
   }
 
@@ -99,7 +99,7 @@ function AdminCategoriesPage() {
       show(category.isActive ? "Category deactivated" : "Category activated")
       refresh()
     } catch (error) {
-      show(failureText(error, "category-patch"))
+      show(failureText(error, "category-patch"), { tone: "error" })
     }
   }
 
@@ -114,7 +114,7 @@ function AdminCategoriesPage() {
       show("Order updated")
       refresh()
     } catch (error) {
-      show(failureText(error, "category-reorder"))
+      show(failureText(error, "category-reorder"), { tone: "error" })
       refresh()
     }
   }

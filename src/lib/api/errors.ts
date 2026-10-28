@@ -62,6 +62,15 @@ export function errorFromBody(status: number, body: unknown, headerRequestId?: s
   return new ApiError({ status, code, message, details, requestId })
 }
 
+/**
+ * The API said "this resource does not exist" (`404` with the envelope's `code: not_found`). Any OTHER 404 - a
+ * proxy, a wrong URL, an HTML error page - says nothing about the thing being looked for, so a page must not
+ * announce "Provider not found" for it (Phase 12S, S4).
+ */
+export function isResourceNotFound(error: ApiError): boolean {
+  return error.status === 404 && error.code === "not_found"
+}
+
 /** First message per field, for mapping a 422 onto form fields. */
 export function fieldErrors(error: ApiError): Record<string, string> {
   const result: Record<string, string> = {}

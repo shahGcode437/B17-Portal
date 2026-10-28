@@ -4,8 +4,6 @@ import { PenLine } from "lucide-react"
 import { Container } from "@/components/foundation/Container"
 import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/feedback/EmptyState"
 import { ReadError } from "@/components/feedback/ReadError"
@@ -22,10 +20,14 @@ import { patchListing } from "@/lib/api/writes/listings"
 import type { LocationWrite } from "@/lib/api/writes/listings"
 import { listingPatchFrom, propertyPatchFrom, toLocationWrite } from "@/features/provider/listingWriteAdapters"
 import { foodProfileToFormValues } from "@/features/provider/listingBuilders"
-import { fieldErrors, isApiError } from "@/lib/api/errors"
-import { userMessageFor, isConflict, isNoChanges } from "@/lib/api/writeErrors"
+import { isApiError, isResourceNotFound } from "@/lib/api/errors"
+import { copyAsSentence, friendlyFieldErrors, userMessageFor, isConflict, isNoChanges } from "@/lib/api/writeErrors"
+import { locationTextProblems } from "@/features/provider/locationRules"
+import { TutorGradeField } from "@/features/provider/TutorGradeField"
+import { ListingStatusBadge } from "@/features/provider/ListingStatusBadge"
 import { routes } from "@/config/routes"
 import type { OwnerListingView } from "@/types/ownerListing"
+import { gradeProblem } from "@/features/provider/listingSchema"
 import type { ListingFormValues, PropertyFormValues } from "@/features/provider/listingSchema"
 
 type Kind = "provider" | "business" | "tutor" | "property"
@@ -35,7 +37,9 @@ type Kind = "provider" | "business" | "tutor" | "property"
  * `GET /users/me/listings/{id}` (with its `revision`); the submitted PATCH carries that revision as
  * the concurrency token. A stale `409 listing_conflict` reloads the record (so the owner sees the
  * other change) and preserves their current form state. `no_changes` on a rejected resubmission is
- * surfaced plainly; a `pending`→`approved` transition is explained with "Changes submitted for review".
+ * surfaced plainly. The button and the success message say what the save DOES: a rejected listing is
+ * "resubmitted for review", an approved one "returns to review" when the change is material (a pure privacy
+ * narrowing keeps its status), a pending one is simply saved.
  */
 function EditListingPage() {
   const { id } = useParams<{ id: string }>()
@@ -55,7 +59,7 @@ function EditListingPage() {
       </Container>
     )
   if (read.status === "error") {
-    if (read.error.status === 404) {
+    if (isResourceNotFound(read.error)) {
       return (
         <Container className="py-16">
           <EmptyState
@@ -87,10 +91,13 @@ function EditShell({ listing, onReload }: { listing: OwnerListingView; onReload:
   const kind = listing.kind as Kind
   const [location, setLocation] = useState<LocationWrite>(() => toLocationWrite(listing))
   const [grade, setGrade] = useState<string>(() => (kind === "tutor" ? listing.grade ?? "" : ""))
+  const [gradeError, setGradeError] = useState<string | null>(null)
   const [locationErrors, setLocationErrors] = useState<Record<string, string>>({})
   const patchMutation = useMutation(({ body }: { body: Parameters<typeof patchListing>[1] }) => patchListing(listing.id, body))
 
   const defaults = useMemo(() => toFormDefaults(listing), [listing])
+  // The button names the action: a rejected listing goes back to moderation; any other save is a save.
+  const submitLabel = listing.status === "rejected" ? "Resubmit for Review" : "Save Changes"
 
   const submit = async (values: ListingFormValues | PropertyFormValues) => {
     setLocationErrors({})
@@ -98,6 +105,17 @@ function EditShell({ listing, onReload }: { listing: OwnerListingView; onReload:
       setLocationErrors({ "location.visibility": "A property must have at least an approximate point." })
       return
     }
+    const textProblems = locationTextProblems(location)
+    if (Object.keys(textProblems).length > 0) {
+      setLocationErrors(textProblems)
+      return
+    }
+    const gradeIssue = kind === "tutor" ? gradeProblem(grade) : null
+    if (gradeIssue) {
+      setGradeError(gradeIssue)
+      return
+    }
+    setGradeError(null)
     const body =
       kind === "property"
         ? propertyPatchFrom(listing.revision, values as PropertyFormValues, location)
@@ -106,22 +124,24 @@ function EditShell({ listing, onReload }: { listing: OwnerListingView; onReload:
       const updated = await patchMutation.mutate({ body })
       if (updated.status === "pending" && listing.status === "approved") {
         show("Changes submitted for review")
+      } else if (updated.status === "pending" && listing.status === "rejected") {
+        show("Listing resubmitted for review")
       } else {
         show("Listing updated")
       }
       navigate(routes.providerListings)
     } catch (error) {
       if (isConflict(error)) {
-        show(userMessageFor(error, "patch-listing").title)
+        show(copyAsSentence(userMessageFor(error, "patch-listing")), { tone: "error" })
         onReload()
         return
       }
       if (isNoChanges(error)) {
-        show("Please change at least one field before resubmitting.")
+        show("Please change at least one field before resubmitting.", { tone: "error" })
         return
       }
       if (isApiError(error) && error.code === "validation_error") {
-        setLocationErrors(fieldErrors(error))
+        setLocationErrors(friendlyFieldErrors(error))
       }
     }
   }
@@ -133,8 +153,18 @@ function EditShell({ listing, onReload }: { listing: OwnerListingView; onReload:
       <Stack gap={6} className="mx-auto max-w-2xl">
         <Stack gap={1}>
           <Typography variant="h1">Edit Listing</Typography>
+          <Stack direction="row" align="center" gap={2} wrap>
+            <ListingStatusBadge status={listing.status} />
+            <Typography variant="body-sm" className="text-muted-foreground">
+              revision {listing.revision}
+            </Typography>
+          </Stack>
           <Typography variant="body-sm" className="text-muted-foreground">
-            Status: {listing.status} · revision {listing.revision}
+            {listing.status === "approved"
+              ? "This listing is live. A change to its content sends it back to review; narrowing who can see its location does not."
+              : listing.status === "rejected"
+                ? "Edit what the review asked for, then resubmit."
+                : "This listing is waiting for review. Saving changes keeps it in the queue."}
           </Typography>
           {listing.status === "rejected" && listing.rejectionReason && (
             <Typography variant="body-sm" className="rounded-lg bg-destructive/5 px-3 py-2 text-destructive">
@@ -150,12 +180,7 @@ function EditShell({ listing, onReload }: { listing: OwnerListingView; onReload:
           </Typography>
         )}
 
-        {kind === "tutor" && (
-          <Stack gap={2}>
-            <Label htmlFor="tutor-grade">Grade / level you teach</Label>
-            <Input id="tutor-grade" value={grade} onChange={(e) => setGrade(e.target.value)} />
-          </Stack>
-        )}
+        {kind === "tutor" && <TutorGradeField value={grade} onChange={setGrade} error={gradeError} disabled={patchMutation.pending} />}
 
         <LocationFieldset
           value={location}
@@ -167,7 +192,7 @@ function EditShell({ listing, onReload }: { listing: OwnerListingView; onReload:
         />
 
         {kind === "property" ? (
-          <PropertyListingForm defaultValues={defaults as PropertyFormValues} onBack={() => navigate(routes.providerListings)} onSubmit={submit} submitting={patchMutation.pending} />
+          <PropertyListingForm defaultValues={defaults as PropertyFormValues} onBack={() => navigate(routes.providerListings)} onSubmit={submit} submitLabel={submitLabel} submitting={patchMutation.pending} />
         ) : (
           <ListingForm
             kind={kind === "tutor" ? "provider" : kind === "provider" ? "provider" : "business"}
@@ -176,6 +201,7 @@ function EditShell({ listing, onReload }: { listing: OwnerListingView; onReload:
             defaultValues={defaults as Partial<ListingFormValues>}
             onBack={() => navigate(routes.providerListings)}
             onSubmit={submit}
+            submitLabel={submitLabel}
             submitting={patchMutation.pending}
           />
         )}

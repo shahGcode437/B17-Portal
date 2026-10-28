@@ -146,6 +146,16 @@ describe("Professional: listings", () => {
     expect(screen.getByText("Please add the plot size and a clearer description.")).toBeInTheDocument()
   })
 
+  it("names each listing's category in words, never as its slug (the owner API echoes slugs; S4)", async () => {
+    renderPage(<ProfessionalListingsPage />, { url: "/provider/listings", user: resident() })
+    await screen.findByText("Pending Stationers")
+    // The whole category line, exactly: the kind, then the category's NAME (`Stationery`, not `stationery`).
+    expect(screen.getByText("Business / Shop · Stationery")).toBeInTheDocument()
+    expect(screen.getByText("Service / Professional · Plumbing")).toBeInTheDocument()
+    expect(screen.getByText("Property · Plot · For Sale")).toBeInTheDocument()
+    expect(screen.getByText("Tutor · English · Grade 8")).toBeInTheDocument()
+  })
+
   it("offers View, Edit and Archive on active rows (Phase 12H); archived rows show View only; no Delete exists", async () => {
     renderPage(<ProfessionalListingsPage />, { url: "/provider/listings", user: resident() })
     await screen.findByText("Pending Stationers")

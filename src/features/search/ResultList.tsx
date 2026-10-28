@@ -31,6 +31,8 @@ export interface ResultEmptyContent {
 interface ResultListProps {
   hits: SearchHit[]
   loading: boolean
+  /** The previous results are still shown while a new query answers: announce it (`aria-busy`) and dim them a little. */
+  refreshing?: boolean
   onSelect: (result: SearchResult) => void
   empty: ResultEmptyContent
 }
@@ -51,7 +53,7 @@ function renderHit(hit: SearchHit, onSelect: (result: SearchResult) => void) {
 }
 
 /** Search/Explore result grid: skeleton → empty state → mixed-kind result cards. */
-function ResultList({ hits, loading, onSelect, empty }: ResultListProps) {
+function ResultList({ hits, loading, refreshing = false, onSelect, empty }: ResultListProps) {
   const stateKey = loading ? "loading" : hits.length === 0 ? "empty" : "results"
 
   return (
@@ -83,8 +85,10 @@ function ResultList({ hits, loading, onSelect, empty }: ResultListProps) {
       ) : (
         <motion.div
           key={`results-${stateKey}`}
+          aria-busy={refreshing || undefined}
+          data-refreshing={refreshing || undefined}
           initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
+          animate={{ opacity: refreshing ? 0.7 : 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: duration.route }}
         >

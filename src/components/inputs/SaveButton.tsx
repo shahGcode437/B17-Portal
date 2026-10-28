@@ -4,7 +4,7 @@ import { useToast } from "@/hooks/useToast"
 import { useMutation } from "@/hooks/useMutation"
 import { useSavedSet } from "@/hooks/useSavedSet"
 import { useSignInGate } from "@/hooks/useSignInGate"
-import { userMessageFor } from "@/lib/api/writeErrors"
+import { copyAsSentence, userMessageFor } from "@/lib/api/writeErrors"
 import { cn } from "@/lib/utils"
 import type { SavedItemKind } from "@/types/resident"
 
@@ -48,7 +48,7 @@ function SaveButton({ id, name, className }: SaveButtonProps) {
         show(save ? `Saved ${name}` : `Removed ${name} from saved`)
       } catch (error) {
         const copy = userMessageFor(error, save ? "save-listing" : "unsave-listing")
-        show(copy.title)
+        show(copyAsSentence(copy), { tone: "error" })
       }
     })
   }

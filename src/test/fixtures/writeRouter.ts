@@ -9,6 +9,7 @@
  *
  * Call `resetWriteState()` between tests to drop everything created by the previous run.
  */
+import { canonicalLocality, validateListingBody, validateRequestBody } from "./listingRules"
 import { BUSINESSES, CATEGORIES, LEADS, MY_REQUESTS, OWNER_LISTINGS, PROPERTIES, PROVIDERS, REQUEST_HISTORY, TUTORS } from "./apiFixtures"
 import type {
   AdminCategoryDto,
@@ -44,6 +45,13 @@ interface State {
   history: Record<string, RequestHistoryEntryDto[]>
   categories: AdminCategoryDto[]
   nextSerial: number
+  /** Who created a listing in this session (the fixtures have no owner identity): the basis of `own_listing`. */
+  owners: Record<string, string>
+  /** Counters the real API keeps per user (AUTH_RBAC §22.1): listing creates and request creates "this hour". */
+  listingCreates: Record<string, number>
+  requestCreates: Record<string, number>
+  /** `<user>|<provider listing>` pairs that already sent a request "today" (one per provider per day). */
+  requestedToday: Set<string>
 }
 
 let state: State = freshState()
@@ -60,6 +68,10 @@ function freshState(): State {
     history: Object.fromEntries(Object.entries(REQUEST_HISTORY).map(([id, rows]) => [id, rows.map((r) => ({ ...r }))])),
     categories: CATEGORIES.map((c) => ({ ...c })),
     nextSerial: 1000,
+    owners: {},
+    listingCreates: {},
+    requestCreates: {},
+    requestedToday: new Set<string>(),
   }
 }
 
@@ -226,7 +238,7 @@ function applyPatch(l: OwnerListingDto, body: Record<string, unknown>): void {
   if (typeof body.name === "string" && "name" in l) l.name = body.name
   if (typeof body.title === "string" && "title" in l) l.title = body.title
   if (typeof body.description === "string") l.description = body.description
-  if (typeof body.area === "string") l.area = body.area
+  if (typeof body.area === "string") l.area = canonicalLocality(body.area) ?? body.area
   if (Array.isArray(body.tags)) l.tags = body.tags as string[]
   if (body.image === null) delete l.image
   else if (typeof body.image === "string") l.image = body.image
@@ -245,7 +257,7 @@ function applyPatch(l: OwnerListingDto, body: Record<string, unknown>): void {
     if (typeof body.propertyType === "string") {
       l.categories = categoryRefs("property", body)
       l.categoryLabel = categoryLabelFor("property", body)
-      l.propertyType = l.categoryLabel
+      l.propertyType = String(body.propertyType)
     }
   } else if (l.kind === "business") {
     if (body.vertical === "food" && body.food) {
@@ -260,16 +272,24 @@ function applyPatch(l: OwnerListingDto, body: Record<string, unknown>): void {
       if (typeof body.category === "string") {
         l.categories = categoryRefs("business", body)
         l.categoryLabel = categoryLabelFor("business", body)
-        l.category = l.categoryLabel
+        l.category = body.category
       }
     }
   } else if (l.kind === "provider" || l.kind === "tutor") {
     if (typeof body.category === "string") {
       l.categories = categoryRefs(l.kind, body)
       l.categoryLabel = categoryLabelFor(l.kind, body)
-      if (l.kind === "provider") l.category = body.category
+      l.category = body.category
     }
   }
+}
+
+// -- the real API's field rules live in `listingRules.ts` (listing bodies and request bodies) -----------------------
+
+/** The Free plan allows 3 ACTIVE (pending + approved) listings; Premium is unlimited (API_CONTRACT §10.9). */
+function planIsFull(planCode: "free" | "premium" | undefined): boolean {
+  if (planCode === "premium") return false
+  return state.listings.filter((l) => l.status === "pending" || l.status === "approved").length >= 3
 }
 
 /**
@@ -280,7 +300,7 @@ export function routeWrite(
   method: string,
   path: string,
   body: Record<string, unknown>,
-  me: { roles?: string[]; displayName?: string; professional?: boolean; emailVerified?: boolean } | null
+  me: { roles?: string[]; displayName?: string; email?: string; professional?: boolean; planCode?: "free" | "premium"; emailVerified?: boolean } | null
 ): WriteReply | null {
   // Everything below is session-bound.
   if (!me) {
@@ -306,10 +326,22 @@ export function routeWrite(
 
   // -- Requests ---------------------------------------------------------------------------------
   if (path === "/requests" && method === "POST") {
+    // The real guard order (API_CONTRACT §10.8): a verified e-mail first, then the body, then the rate limits, then eligibility.
+    if (me.emailVerified === false) return fail(403, "email_not_verified")
     const required = requireFields(body, ["providerListingId", "service", "details", "area", "preferredDate", "preferredContactChannel"])
     if (required) return required
+    const requestProblems = validateRequestBody(body)
+    if (requestProblems.length > 0) return fail(422, "validation_error", requestProblems)
+    const user = me.email ?? me.displayName ?? "anonymous"
+    // One request per user per provider per day, and 5 per user per hour (AUTH_RBAC §22.1): `429 rate_limited`.
+    if (state.requestedToday.has(`${user}|${String(body.providerListingId)}`)) return fail(429, "rate_limited")
+    if ((state.requestCreates[user] ?? 0) >= 5) return fail(429, "rate_limited")
     const target = state.listings.find((l) => l.id === body.providerListingId && l.status === "approved")
     if (!target) return fail(404, "not_found")
+    // Never to your own listing (`422 validation_error` + `details[].code = own_listing`).
+    if (state.owners[target.id] !== undefined && state.owners[target.id] === me.email) {
+      return fail(422, "validation_error", [{ field: "providerListingId", code: "own_listing", message: "You cannot send a request to your own listing." }])
+    }
     if (target.kind !== "provider") {
       // The real shape (API_CONTRACT §10.8): 422 validation_error with the rule as a detail code.
       return fail(422, "validation_error", [{ field: "providerListingId", code: "not_requestable", message: "Only service providers can receive requests." }])
@@ -332,6 +364,8 @@ export function routeWrite(
       createdAt: nowIso(),
       updatedAt: nowIso(),
     }
+    state.requestCreates[user] = (state.requestCreates[user] ?? 0) + 1
+    state.requestedToday.add(`${user}|${target.id}`)
     state.myRequests.unshift(row)
     state.leads.unshift({ ...row, requesterName })
     state.history[id] = [{ toStatus: "submitted", actorRole: "requester", createdAt: nowIso() }]
@@ -394,10 +428,20 @@ export function routeWrite(
     if (!["exact", "approximate", "area_only"].includes(String(location.visibility ?? "")))
       return fail(422, "validation_error", [{ field: "location.visibility", code: "required" }])
     if (kind === "property" && location.visibility === "area_only")
-      return fail(422, "validation_error", [{ field: "location.visibility", code: "required" }])
+      return fail(422, "validation_error", [{ field: "location.visibility", code: "not_allowed", message: "A property needs a map pin; choose exact or approximate." }])
+
+    // The field rules the real schemas enforce (locality, tags, block, lengths, media): one aggregated 422, like the API.
+    const problems = validateListingBody(kind, body, "create")
+    if (problems.length > 0) return fail(422, "validation_error", problems)
 
     const categoryError = checkCategories(kind, body)
     if (categoryError) return categoryError.reply
+
+    // 10 creates per user per hour (a refused request does not use a slot), then the Free plan's 3 active listings.
+    const owner = me.email ?? me.displayName ?? "anonymous"
+    if ((state.listingCreates[owner] ?? 0) >= 10) return fail(429, "rate_limited")
+    if (planIsFull(me.planCode)) return fail(403, "plan_limit_reached")
+    state.listingCreates[owner] = (state.listingCreates[owner] ?? 0) + 1
 
     const id = uuid()
     const privateLocation = toPrivateLocation(location)
@@ -405,7 +449,7 @@ export function routeWrite(
       id,
       status: "pending" as const,
       revision: 1,
-      area: String(body.area ?? "B-17"),
+      area: canonicalLocality(String(body.area ?? "")) ?? "B-17",
       location: privateLocation,
       publicLocation: toPublicLocation(privateLocation),
       description: typeof body.description === "string" ? body.description : "",
@@ -424,7 +468,7 @@ export function routeWrite(
         kind: "property",
         title: String(body.title),
         listingType: body.listingType as "sale" | "rent",
-        propertyType: categoryLabelFor(kind, body),
+        propertyType: String(body.propertyType ?? ""), // the SLUG, like the real owner API (the label is `categoryLabel`)
         price: String(body.price),
         ...(typeof body.bedrooms === "number" ? { bedrooms: body.bedrooms } : {}),
         ...(body.furnished ? { furnished: body.furnished as "Furnished" | "Unfurnished" | "Semi-Furnished" } : {}),
@@ -437,13 +481,14 @@ export function routeWrite(
         kind: "business",
         name: String(body.name),
         vertical: (body.vertical as "general" | "food") ?? "general",
-        ...(body.vertical === "food" ? {} : { category: categoryLabelFor(kind, body) }),
+        ...(body.vertical === "food" ? {} : { category: String(body.category ?? "") }), // the SLUG, like the real owner API
         ...(body.vertical === "food" ? { food: body.food as Extract<OwnerListingDto, { kind: "business" }>["food"] } : {}),
       }
     } else {
       listing = { ...base, kind: "provider", name: String(body.name), category: String(body.category ?? "") }
     }
     state.listings.push(listing)
+    if (me.email) state.owners[listing.id] = me.email
     return created(listing)
   }
 
@@ -469,11 +514,17 @@ export function routeWrite(
     if (body.revision !== listing.revision) return fail(409, "listing_conflict", [{ field: "revision", code: "stale_revision" }])
     if (listing.status === "archived") return fail(409, "invalid_state_transition")
 
+    // The field rules of a PATCH are the create's, for whatever the body carries.
+    // (a field the stored kind does not have - a Food block on a General business - is `not_allowed`, also in the rules)
+    const patchProblems = validateListingBody(listing.kind, body, "patch", { vertical: listing.kind === "business" ? listing.vertical : undefined })
+    if (patchProblems.length > 0) return fail(422, "validation_error", patchProblems)
+
     // The category fields of a PATCH are validated against the server taxonomy exactly like a create.
     const categoryError = checkCategories(listing.kind, body, true)
     if (categoryError) return categoryError.reply
 
     const before = JSON.stringify(editableView(listing))
+    const snapshot = JSON.parse(JSON.stringify(listing)) as OwnerListingDto
     applyPatch(listing, body)
     const changed = JSON.stringify(editableView(listing)) !== before
     if (!changed) {
@@ -481,6 +532,11 @@ export function routeWrite(
       // through moderation without an edit (API_CONTRACT §10.3).
       if (listing.status === "rejected") return fail(422, "validation_error", [{ field: "request", code: "no_changes" }])
       return ok(listing)
+    }
+    // Resubmitting a REJECTED listing takes an active slot again, so the Free plan's quota applies (API_CONTRACT §10.9).
+    if (listing.status === "rejected" && planIsFull(me.planCode)) {
+      state.listings[state.listings.indexOf(listing)] = snapshot // a refused write changes nothing
+      return fail(403, "plan_limit_reached")
     }
     // Every effective change by the owner returns the listing to pending. (The real backend keeps the
     // status for a PURE visibility narrowing; this mock does not simulate that single exception.)

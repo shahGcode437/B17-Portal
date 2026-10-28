@@ -37,7 +37,7 @@ test.describe('unknown entities are handled, not crashed', () => {
     ['/properties/does-not-exist', 'Property not found'],
     ['/providers/does-not-exist', /not found/i],
     ['/tutors/does-not-exist', /not found/i],
-    ['/news/does-not-exist', 'Content not found'],
+    ['/news/does-not-exist', 'Article not found'],
     // A real id on the wrong route is the same "not found": each kind has one canonical route.
     [`/businesses/${IDS.tutorApproximate}`, 'Business not found'],
   ] as const) {

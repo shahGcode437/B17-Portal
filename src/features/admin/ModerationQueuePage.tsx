@@ -78,7 +78,7 @@ function ModerationQueuePage() {
           <Stack gap={1}>
             <Typography variant="h1">Listing Review</Typography>
             <Typography variant="body-sm" className="text-muted-foreground">
-              Pending listings are listed longest-waiting first. Approving and rejecting from here is coming soon.
+              Pending listings are listed longest-waiting first. Open one to approve, reject or (for a live listing) take it down.
             </Typography>
           </Stack>
 

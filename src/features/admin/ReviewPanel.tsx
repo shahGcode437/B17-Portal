@@ -21,7 +21,7 @@ import { foodCategoryLabel, foodServiceLabel } from "@/config/food"
 import { useMutation } from "@/hooks/useMutation"
 import { useToast } from "@/hooks/useToast"
 import { approveListing, rejectListing } from "@/lib/api/writes/admin"
-import { userMessageFor, isConflict } from "@/lib/api/writeErrors"
+import { copyAsSentence, userMessageFor, isConflict } from "@/lib/api/writeErrors"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import type { AdminQueueRow } from "@/types/ownerListing"
@@ -83,7 +83,7 @@ function ReviewPanel({ row, open, onOpenChange, onChanged }: ReviewPanelProps) {
       onOpenChange(false)
     } catch (error) {
       const copy = userMessageFor(error, "admin-approve")
-      show(copy.title)
+      show(copyAsSentence(copy), { tone: "error" })
       if (isConflict(error)) read.retry()
     }
   }
@@ -111,7 +111,7 @@ function ReviewPanel({ row, open, onOpenChange, onChanged }: ReviewPanelProps) {
       onOpenChange(false)
     } catch (error) {
       const copy = userMessageFor(error, "admin-reject")
-      show(copy.title)
+      show(copyAsSentence(copy), { tone: "error" })
       if (isConflict(error)) read.retry()
     }
   }
@@ -131,7 +131,9 @@ function ReviewPanel({ row, open, onOpenChange, onChanged }: ReviewPanelProps) {
           <DialogHeader className="pr-8">
             <DialogTitle className="break-words">Review Listing</DialogTitle>
             <DialogDescription>
-              Check the details. Approving and rejecting from here is coming soon.
+              {currentStatus === "approved"
+                ? "This listing is live. Check the details, or take it down with a reason."
+                : "Check the details, then approve or reject the listing."}
             </DialogDescription>
           </DialogHeader>
 

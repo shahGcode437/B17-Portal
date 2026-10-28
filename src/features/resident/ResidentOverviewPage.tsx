@@ -117,7 +117,7 @@ function ResidentOverviewPage() {
             ) : saved.items.length === 0 ? (
               <WorkspaceEmpty
                 icon={Heart}
-                message="Nothing saved yet — saving items is coming soon."
+                message="Nothing saved yet. Tap the heart on a listing to keep it here."
                 action={{ label: "Explore B-17", to: routes.search }}
               />
             ) : (

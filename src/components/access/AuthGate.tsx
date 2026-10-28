@@ -100,8 +100,8 @@ function AuthGate({ requires = "authenticated" }: AuthGateProps) {
             Professional profile needed
           </Typography>
           <Typography variant="body" className="text-muted-foreground">
-            The Professional Workspace is for accounts with a professional profile. One click sets it up on the Free plan;
-            you can upgrade later. You cannot grant yourself an admin role.
+            The Professional Workspace is for accounts with a professional profile. One click sets one up for you on the
+            Free plan. You cannot grant yourself an admin role.
           </Typography>
           <Stack direction="row" wrap gap={2} justify="center">
             <Button

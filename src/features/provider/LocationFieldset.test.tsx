@@ -101,6 +101,47 @@ describe("LocationFieldset (the writable location block)", () => {
     expect(options).toEqual(["exact", "approximate"])
   })
 
+  describe("Block (S4): the backend's rule, checked as the person types", () => {
+    it("explains what the field is for, and that the area itself is always B-17", () => {
+      render(<Harness initial={{ visibility: "area_only" }} />)
+      const block = screen.getByLabelText("Block (optional)")
+      expect(block).not.toHaveAttribute("aria-invalid", "true")
+      expect(screen.getByText(/The area itself is always B-17/)).toBeInTheDocument()
+      expect(block).toHaveAttribute("maxlength", "40")
+      expect(block).toHaveAttribute("placeholder", expect.stringContaining("Block C")) // an example of a BLOCK, not of an area
+    })
+
+    it.each(["Block C-2/1.", "C", "12", "Sector 4 (East)".replace("(East)", "East")])("accepts %j with no error", async (text) => {
+      const user = userEvent.setup()
+      render(<Harness initial={{ visibility: "area_only" }} />)
+      await user.click(screen.getByLabelText("Block (optional)"))
+      await user.paste(text)
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+      expect(latest.block).toBe(text)
+    })
+
+    it.each(["C <b>", "-C", "C#4", "Block_C"])("flags %j at once, tied to the field, in plain words", async (text) => {
+      const user = userEvent.setup()
+      render(<Harness initial={{ visibility: "area_only" }} />)
+      const block = screen.getByLabelText("Block (optional)")
+      await user.click(block)
+      await user.paste(text)
+      const alert = await screen.findByRole("alert")
+      expect(alert).toHaveTextContent(/letters, numbers, spaces/i)
+      expect(block).toHaveAttribute("aria-invalid", "true")
+      expect(block.getAttribute("aria-describedby")).toBe(alert.id)
+      expect(alert.textContent).not.toMatch(/invalid_format|String should/)
+    })
+
+    it("a blank block is fine: it is optional", async () => {
+      const user = userEvent.setup()
+      render(<Harness initial={{ visibility: "area_only", block: "C" }} />)
+      await user.clear(screen.getByLabelText("Block (optional)"))
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+      expect(latest.block).toBeUndefined()
+    })
+  })
+
   it("never calls the network (no OSM tile or geocoder request from the picker or the fallback)", async () => {
     const user = userEvent.setup()
     render(<Harness initial={{ visibility: "exact" }} />)

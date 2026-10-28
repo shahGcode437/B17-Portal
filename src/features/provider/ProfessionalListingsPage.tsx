@@ -17,7 +17,7 @@ import { useMutation } from "@/hooks/useMutation"
 import { useToast } from "@/hooks/useToast"
 import { usePlanEntitlements } from "@/hooks/useCapability"
 import { archiveListing } from "@/lib/api/writes/listings"
-import { userMessageFor, isConflict } from "@/lib/api/writeErrors"
+import { copyAsSentence, userMessageFor, isConflict } from "@/lib/api/writeErrors"
 import { editListingPath, routes } from "@/config/routes"
 import { fadeUp, staggerContainer, staggerItem } from "@/lib/motion"
 import type { OwnerListingView } from "@/types/ownerListing"
@@ -39,13 +39,13 @@ function ProfessionalListingsPage() {
   const archive = useMutation(({ id, revision }: { id: string; revision: number }) => archiveListing(id, revision))
 
   const handleArchive = async (listing: OwnerListingView) => {
-    if (!window.confirm(`Archive "${listing.title}"? Archived listings are not public and no longer count toward your plan limit.`)) return
+    if (!window.confirm(`Archive "${listing.title}"? It will no longer be public and no longer counts toward your plan limit. This cannot be undone.`)) return
     try {
       await archive.mutate({ id: listing.id, revision: listing.revision })
       show("Listing archived")
       listings.retry()
     } catch (error) {
-      show(userMessageFor(error, "archive-listing").title)
+      show(copyAsSentence(userMessageFor(error, "archive-listing")), { tone: "error" })
       if (isConflict(error)) listings.retry()
     }
   }

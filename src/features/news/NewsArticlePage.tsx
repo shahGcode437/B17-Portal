@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { EmptyState } from "@/components/feedback/EmptyState"
 import { ReadError } from "@/components/feedback/ReadError"
+import { isResourceNotFound } from "@/lib/api/errors"
 import { DetailSkeleton } from "@/components/detail/ListingDetailGate"
 import { useNewsItem } from "@/hooks/useNews"
 import { useSeo } from "@/hooks/useSeo"
@@ -35,7 +36,7 @@ function NewsArticlePage() {
   useSeo(newsSeo(article))
 
   if (read.status === "loading") return <DetailSkeleton />
-  if (read.status === "error" && read.error.status !== 404) {
+  if (read.status === "error" && !isResourceNotFound(read.error)) {
     return (
       <Container className="py-16">
         <ReadError error={read.error} onRetry={read.retry} headingLevel={1} />
@@ -49,7 +50,7 @@ function NewsArticlePage() {
         <EmptyState
           headingLevel={1}
           icon={Newspaper}
-          title="Content not found"
+          title="Article not found"
           description="This news item or update doesn't exist or may no longer be available."
           actionLabel="Back to News & Daily Updates"
           onAction={() => navigate(routes.news)}

@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { zodResolver } from "@/lib/zodResolver"
-import { serviceRequestSchema, type ServiceRequestValues } from "@/features/services/serviceRequestSchema"
+import { requestDateBounds, serviceRequestSchema, type ServiceRequestValues } from "@/features/services/serviceRequestSchema"
 
 interface ServiceRequestFormProps {
   provider: Provider
@@ -27,10 +27,9 @@ const selectClassName = cn(
   "md:text-sm dark:bg-input/30"
 )
 
-const todayISO = new Date().toISOString().slice(0, 10)
-
 /** Short Service Request form (UI/UX Spec §12) — used inside RequestServiceDialog. */
 function ServiceRequestForm({ provider, requesterName, onSubmit, onCancel, submitting, fieldErrors = {} }: ServiceRequestFormProps) {
+  const dateBounds = requestDateBounds()
   const {
     register,
     handleSubmit,
@@ -117,7 +116,8 @@ function ServiceRequestForm({ provider, requesterName, onSubmit, onCancel, submi
             <Input
               id="request-date"
               type="date"
-              min={todayISO}
+              min={dateBounds.min}
+              max={dateBounds.max}
               aria-invalid={!!errors.preferredDate}
               aria-describedby={errors.preferredDate ? "request-date-error" : undefined}
               {...register("preferredDate")}

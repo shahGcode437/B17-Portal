@@ -6,6 +6,7 @@ import { SaveButton } from "@/components/inputs/SaveButton"
 import { AuthContext, type AuthContextValue } from "@/hooks/useAuth"
 import { _resetSavedSetForTests } from "@/hooks/useSavedSet"
 import { ToastContext } from "@/hooks/useToast"
+import { ApiError } from "@/lib/api/errors"
 import { saveListing, unsaveListing } from "@/lib/api/writes/saved"
 import { authContextValue } from "@/test/authFixtures"
 
@@ -54,6 +55,15 @@ describe("SaveButton: only an ANONYMOUS visitor is sent to Log In (Bug C)", () =
     await waitFor(() => expect(saveListing).toHaveBeenCalledWith("p-1"))
     expect(show).toHaveBeenCalledWith("Saved Sunrise Solar")
     expect(screen.queryByTestId("where")).not.toBeInTheDocument()
+  })
+
+  it("a save the server refuses is an ERROR toast that says what to do - never a success-toned one-word title", async () => {
+    vi.mocked(saveListing).mockRejectedValueOnce(new ApiError({ status: 404, code: "not_found", message: "x" }))
+    const { show, user } = setup(authContextValue())
+    await user.click(heart())
+    await waitFor(() => expect(show).toHaveBeenCalledTimes(1))
+    expect(show).toHaveBeenCalledWith(expect.stringMatching(/not available/i), { tone: "error" })
+    expect(String(show.mock.calls[0][0]).split(". ").length).toBeGreaterThan(1) // the title AND the next step
   })
 
   it("an anonymous visitor is sent to Log In and nothing is saved", async () => {

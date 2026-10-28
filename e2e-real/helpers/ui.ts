@@ -39,11 +39,11 @@ export async function setLocation(page: Page, o: LocationInput) {
   }
 }
 
-/** Clicks Preview Listing, waits for the real `POST /listings` and returns the new id (201 required). */
+/** Clicks Submit for Review, waits for the real `POST /listings` and returns the new id (201 required). */
 export async function submitCreate(page: Page): Promise<string> {
   const [response] = await Promise.all([
     page.waitForResponse((r) => r.request().method() === 'POST' && new URL(r.url()).pathname === '/api/v1/listings'),
-    page.getByRole('button', { name: 'Preview Listing' }).click(),
+    page.getByRole('button', { name: 'Submit for Review' }).click(),
   ])
   expect(response.status(), await response.text()).toBe(201)
   const id = ((await response.json()) as { data: { id: string } }).data.id
@@ -64,8 +64,8 @@ export async function createProvider(page: Page, f: ProviderFields): Promise<str
   await page.getByLabel('Name', { exact: true }).fill(f.name)
   await page.getByLabel('Service Category').selectOption({ label: f.category })
   await page.getByLabel('Description', { exact: true }).fill(f.description ?? `${f.name} - professional services across B-17.`)
-  await page.getByLabel('Area', { exact: true }).fill('B-17')
-  await page.getByLabel(/Services Offered/).fill(f.tags ?? 'repairs, installation')
+  await page.getByLabel('Area', { exact: true }).selectOption('B-17')
+  await page.getByLabel(/Services offered/).fill(f.tags ?? 'repairs, installation')
   if (f.location) await setLocation(page, f.location)
   return submitCreate(page)
 }
@@ -75,8 +75,8 @@ export async function createGeneralBusiness(page: Page, f: { name: string; categ
   await page.getByLabel('Business Name').fill(f.name)
   await page.getByLabel('Category', { exact: true }).selectOption({ label: f.category })
   await page.getByLabel('Description', { exact: true }).fill(`${f.name} - books, copies and office supplies for B-17.`)
-  await page.getByLabel('Area', { exact: true }).fill('B-17')
-  await page.getByLabel(/Services \/ Tags/).fill('books, copies')
+  await page.getByLabel('Area', { exact: true }).selectOption('B-17')
+  await page.getByLabel('Tags (optional)').fill('books, copies')
   if (f.location) await setLocation(page, f.location)
   return submitCreate(page)
 }
@@ -86,7 +86,7 @@ export async function createFood(page: Page, f: { name: string; location?: Locat
   await page.getByRole('radio', { name: /Food & Dining/ }).click()
   await page.getByLabel('Business Name').fill(f.name)
   await page.getByLabel('Description', { exact: true }).fill(`${f.name} - fresh bread, cakes and savouries baked daily in B-17.`)
-  await page.getByLabel('Area', { exact: true }).fill('B-17')
+  await page.getByLabel('Area', { exact: true }).selectOption('B-17')
   await page.getByLabel(/Dishes \/ Search Tags/).fill('cakes, bread')
   await page.getByRole('checkbox', { name: 'Bakeries' }).check()
   await page.getByRole('checkbox', { name: 'Takeaway' }).check()
@@ -100,8 +100,8 @@ export async function createTutor(page: Page, f: { name: string; subject: string
   await page.getByLabel('Name', { exact: true }).fill(f.name)
   await page.getByLabel('Subject').selectOption({ label: f.subject })
   await page.getByLabel('Description', { exact: true }).fill(`${f.name} - physics and chemistry for matric and O-level.`)
-  await page.getByLabel('Area', { exact: true }).fill('B-17')
-  await page.getByLabel(/Services Offered/).fill('physics, chemistry')
+  await page.getByLabel('Area', { exact: true }).selectOption('B-17')
+  await page.getByLabel(/Topics you teach/).fill('physics, chemistry')
   if (f.location) await setLocation(page, f.location)
   return submitCreate(page)
 }
@@ -116,7 +116,7 @@ export async function createProperty(
   await page.getByLabel('Listing Type').selectOption(f.listingType ?? 'rent')
   await page.getByLabel('Property Type').selectOption({ label: f.type })
   await page.getByLabel('Price').fill(f.price ?? 'PKR 65,000 / month')
-  await page.getByLabel('Area', { exact: true }).fill('B-17')
+  await page.getByLabel('Area', { exact: true }).selectOption('B-17')
   await page.getByLabel('Description').fill(`${f.title} - a bright, well-kept home in a quiet B-17 block.`)
   return submitCreate(page)
 }

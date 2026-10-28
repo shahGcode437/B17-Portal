@@ -93,7 +93,7 @@ test('3. material edit of an approved listing: PATCH with the current revision -
   await expectH1(ownerPage, 'Edit Listing')
   await expect(ownerPage.getByLabel('Name', { exact: true })).toHaveValue(NAME) // prefilled from the owner read
   await ownerPage.getByLabel('Description', { exact: true }).fill('Rooftop solar design and installation - now with inverter and battery storage options.')
-  await ownerPage.getByRole('button', { name: 'Preview Listing' }).click()
+  await ownerPage.getByRole('button', { name: 'Save Changes' }).click()
 
   await expect(ownerPage.getByText('Changes submitted for review')).toBeVisible()
   await expectH1(ownerPage, 'Listings')
@@ -130,12 +130,12 @@ test('5. rejected + submit unchanged -> no_changes: no false success, a useful m
   await expect(ownerPage.getByText(new RegExp(`Rejected: ${REASON.slice(0, 20)}`))).toBeVisible()
   const [response] = await Promise.all([
     ownerPage.waitForResponse((r) => r.request().method() === 'PATCH' && r.url().includes('/api/v1/listings/')),
-    ownerPage.getByRole('button', { name: 'Preview Listing' }).click(),
+    ownerPage.getByRole('button', { name: 'Resubmit for Review' }).click(),
   ])
   expect(response.status()).toBe(422)
   expect(JSON.stringify(await response.json())).toContain('no_changes')
   await expect(ownerPage.getByText('Please change at least one field before resubmitting.')).toBeVisible()
-  await expect(ownerPage.getByText(/Changes submitted|Listing updated/)).toHaveCount(0)
+  await expect(ownerPage.getByText(/Changes submitted|Listing updated|Listing resubmitted/)).toHaveCount(0)
   await expect(ownerPage).toHaveURL(/\/edit$/)
   expect(dbListing(id).slice(0, 2)).toEqual(['rejected', revisionBefore])
   expect(historyActions(id)).toBe(historyBefore)
@@ -143,7 +143,7 @@ test('5. rejected + submit unchanged -> no_changes: no false success, a useful m
 
 test('6. rejected + a meaningful change -> pending, revision + 1, the stale reason is gone, the Admin queue sees it again; reload keeps it', async () => {
   await ownerPage.getByLabel('Description', { exact: true }).fill('Rooftop solar design and installation. Photo gallery of past installs available on request.')
-  await ownerPage.getByRole('button', { name: 'Preview Listing' }).click()
+  await ownerPage.getByRole('button', { name: 'Resubmit for Review' }).click()
   await expectH1(ownerPage, 'Listings')
   for (const reload of [false, true]) {
     if (reload) await ownerPage.reload()
@@ -185,7 +185,7 @@ test('8. pure privacy narrowing (exact -> approximate, nothing else changed): st
   await ownerCard(ownerPage, narrow.name).getByRole('button', { name: 'Edit' }).click()
   await expectH1(ownerPage, 'Edit Listing')
   await ownerPage.getByLabel('Visibility').selectOption('approximate')
-  await ownerPage.getByRole('button', { name: 'Preview Listing' }).click()
+  await ownerPage.getByRole('button', { name: 'Save Changes' }).click()
   await expectH1(ownerPage, 'Listings')
 
   expect(dbListing(narrow.id).slice(0, 2)).toEqual(['approved', String(narrow.revision + 1)])
@@ -210,7 +210,7 @@ test('8. pure privacy narrowing (exact -> approximate, nothing else changed): st
   await ownerPage.goto(`/provider/listings/${narrow.id}/edit`)
   await expectH1(ownerPage, 'Edit Listing')
   await expect(ownerPage.getByLabel('Visibility')).toHaveValue('approximate')
-  await ownerPage.getByRole('button', { name: 'Preview Listing' }).click()
+  await ownerPage.getByRole('button', { name: 'Save Changes' }).click()
   await expectH1(ownerPage, 'Listings')
   expect(dbListing(narrow.id).slice(0, 2)).toEqual(['approved', revisionAfterNarrowing])
   expect(rows(`SELECT address, landmark FROM listings WHERE id = '${narrow.id}'`)[0]).toEqual(['Shop 7, Narrow Plaza', 'Behind the clinic'])
@@ -230,10 +230,10 @@ test('9. stale owner revision: another update lands after the form opened -> 409
   expect(bumped.status).toBe(200)
   await other.dispose()
 
-  await ownerPage.getByRole('button', { name: 'Preview Listing' }).click()
+  await ownerPage.getByRole('button', { name: 'Save Changes' }).click()
   await expect(ownerPage.getByText(/changed since you opened it/i)).toBeVisible()
   await expect(ownerPage).toHaveURL(/\/edit$/) // never silently navigates away
-  await expect(ownerPage.getByText(/Changes submitted|Listing updated/)).toHaveCount(0)
+  await expect(ownerPage.getByText(/Changes submitted|Listing updated|Listing resubmitted/)).toHaveCount(0)
   expect(dbListing(stale.id)[2]).toContain('NEWER description') // nothing was overwritten
   // The form rehydrated from the latest revision.
   await expect(ownerPage.getByLabel('Description', { exact: true })).toHaveValue(/NEWER description/)

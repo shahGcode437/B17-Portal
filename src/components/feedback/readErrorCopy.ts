@@ -32,11 +32,10 @@ export function readErrorCopy(error: ApiError): ReadErrorCopy {
         retryable: false,
       }
     case 404:
-      return {
-        title: "Not found",
-        description: "This doesn't exist or may no longer be available.",
-        retryable: false,
-      }
+      // The API's own "not found" is final; a 404 from anywhere else is an unexpected answer, which a retry can fix.
+      return error.code === "not_found"
+        ? { title: "Not found", description: "This doesn't exist or may no longer be available.", retryable: false }
+        : { title: "We couldn't load this", description: "The service gave an unexpected answer. Please try again in a moment.", retryable: true }
     case 422:
       return {
         title: "That search isn't valid",

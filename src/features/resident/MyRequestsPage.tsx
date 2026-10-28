@@ -77,7 +77,7 @@ function MyRequestsPage() {
             <EmptyState
               icon={ClipboardList}
               title="No requests yet"
-              description="Requests you send to providers will show up here. Sending requests is coming soon."
+              description="Requests you send to providers will show up here, with their progress."
               actionLabel="Browse Services"
               onAction={() => navigate(routes.services)}
             />
