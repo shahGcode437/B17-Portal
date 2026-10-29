@@ -1,24 +1,17 @@
 import type { ReactNode } from "react"
-import { Wrench, Building2, KeyRound, GraduationCap, Utensils } from "lucide-react"
-import type { OwnerListingKind, OwnerListingView } from "@/types/ownerListing"
+import type { OwnerListingView } from "@/types/ownerListing"
 import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
 import { CardImage } from "@/components/media/CardImage"
 import { Card } from "@/components/ui/card"
 import { ListingStatusBadge } from "@/features/provider/ListingStatusBadge"
+import { ownerListingIcon } from "@/features/provider/ownerListingIcon"
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", {
   month: "short",
   day: "numeric",
   year: "numeric",
 })
-
-const kindIcon: Record<OwnerListingKind, typeof Wrench> = {
-  provider: Wrench,
-  business: Building2,
-  tutor: GraduationCap,
-  property: KeyRound,
-}
 
 interface ListingSummaryCardProps {
   listing: OwnerListingView
@@ -32,7 +25,7 @@ interface ListingSummaryCardProps {
  * for a rejected listing - the reason the admin gave.
  */
 function ListingSummaryCard({ listing, actions }: ListingSummaryCardProps) {
-  const Icon = listing.vertical === "food" ? Utensils : kindIcon[listing.kind]
+  const Icon = ownerListingIcon(listing)
 
   return (
     <Card variant="workspace" className="sm:flex-row">

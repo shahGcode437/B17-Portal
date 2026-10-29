@@ -11,6 +11,8 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { ReadError } from "@/components/feedback/ReadError"
 import { ListingSummaryCard } from "@/features/provider/ListingSummaryCard"
 import { ListingPreviewDialog } from "@/features/provider/ListingPreviewDialog"
+import { ListingLimitNotice } from "@/features/provider/ListingLimitNotice"
+import { listingQuota } from "@/features/provider/listingQuota"
 import { useOwnerListings } from "@/hooks/useWorkspaceReads"
 import { useRequireAuth } from "@/hooks/useRequireAuth"
 import { useMutation } from "@/hooks/useMutation"
@@ -21,6 +23,8 @@ import { copyAsSentence, userMessageFor, isConflict } from "@/lib/api/writeError
 import { editListingPath, routes } from "@/config/routes"
 import { fadeUp, staggerContainer, staggerItem } from "@/lib/motion"
 import type { OwnerListingView } from "@/types/ownerListing"
+
+const LIMIT_NOTICE_ID = "listing-limit-notice"
 
 /**
  * Listings — the professional's own listings with their REAL moderation status (Phase 12G reads,
@@ -58,6 +62,10 @@ function ProfessionalListingsPage() {
   const counts = listings.extra
   const activeListingCount = counts ? counts.pending + counts.approved : 0
   const maxListings = entitlements.maxListings
+  // At the limit the primary action is toned down and explained, never disabled: the count can be stale
+  // and the server owns the limit (it still answers `plan_limit_reached`).
+  const quota = listingQuota(maxListings, counts)
+  const atLimit = quota.state === "full"
 
   return (
     <Container className="py-8 sm:py-12">
@@ -71,13 +79,20 @@ function ProfessionalListingsPage() {
                 "pending review"; a privacy-only narrowing keeps the current status.
               </Typography>
             </Stack>
-            <Button asChild size="sm" className="self-start">
-              <Link to={routes.createListing}>
+            <Button
+              asChild
+              size="sm"
+              variant={atLimit ? "outline" : "default"}
+              className="h-11 self-start sm:h-7"
+            >
+              <Link to={routes.createListing} aria-describedby={atLimit ? LIMIT_NOTICE_ID : undefined}>
                 <PlusCircle />
                 New listing
               </Link>
             </Button>
           </Stack>
+
+          {quota.state === "full" && <ListingLimitNotice id={LIMIT_NOTICE_ID} where="listings" used={quota.used} max={quota.max} />}
 
           {maxListings !== null && counts && (
             <Card variant="workspace" className="gap-2">

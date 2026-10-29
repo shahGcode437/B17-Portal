@@ -191,3 +191,37 @@ describe("copyAsSentence: a toast shows ONE line, so it carries the title and th
     expect(copyAsSentence({ title: "Saved", description: "" })).toBe("Saved")
   })
 })
+
+describe("plan_limit_reached points only at an action that exists today (Step A: archiving, never an upgrade)", () => {
+  const planLimit = (op: WriteOperation) => userMessageFor(apiError(403, "plan_limit_reached"), op)
+
+  it("creating: the limit, and archive an active listing before creating another", () => {
+    expect(planLimit("create-listing")).toEqual({
+      title: "Active listing limit reached",
+      description: "You've reached the active listing limit for your current plan. Archive an active listing before creating another.",
+    })
+  })
+
+  it("resubmitting a rejected listing (a failed edit) needs a free slot too, and says so", () => {
+    expect(planLimit("patch-listing").description).toBe(
+      "You've reached the active listing limit for your current plan. Archive an active listing before resubmitting this one."
+    )
+  })
+
+  it("never mentions an upgrade, a Premium plan, the raw code or the server's own text, for any operation", () => {
+    const operations: WriteOperation[] = [
+      "create-listing", "patch-listing", "archive-listing", "save-listing", "unsave-listing", "create-request", "request-action",
+      "admin-approve", "admin-reject", "category-create", "category-patch", "category-reorder", "create-professional-profile",
+    ]
+    for (const op of operations) {
+      const text = JSON.stringify(planLimit(op))
+      expect(text, op).not.toMatch(/upgrade|premium|subscri|payment|plan_limit_reached|server text/i)
+    }
+  })
+
+  it("reads as one toast sentence", () => {
+    expect(copyAsSentence(planLimit("create-listing"))).toBe(
+      "Active listing limit reached. You've reached the active listing limit for your current plan. Archive an active listing before creating another."
+    )
+  })
+})

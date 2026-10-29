@@ -41,8 +41,8 @@ function AnalyticsLocked() {
           Analytics is a Premium feature
         </Typography>
         <Typography variant="body-sm" className="mx-auto max-w-sm text-muted-foreground">
-          Upgrade to Premium to see a breakdown of your listings by moderation status and your
-          leads by status.
+          Premium includes a breakdown of your listings by moderation status and your leads by
+          status. Plans can't be changed yet.
         </Typography>
       </Stack>
       <Button asChild className="h-11">

@@ -114,6 +114,7 @@ export function toOwnerListing(dto: OwnerListingDto): OwnerListingView {
   if (dto.kind === "tutor") view.grade = dto.grade
   if (dto.kind === "property") {
     view.listingType = dto.listingType
+    view.propertyTypeLabel = dto.categoryLabel
     view.price = dto.price
     if (dto.bedrooms !== undefined) view.bedrooms = dto.bedrooms
     if (dto.furnished) view.furnished = dto.furnished

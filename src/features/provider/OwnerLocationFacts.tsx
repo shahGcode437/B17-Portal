@@ -1,4 +1,5 @@
 import { Typography } from "@/components/foundation/Typography"
+import { FactList } from "@/features/provider/FactList"
 import type { PrivateLocationView } from "@/types/ownerListing"
 
 const VISIBILITY_COPY: Record<PrivateLocationView["visibility"], string> = {
@@ -26,14 +27,7 @@ function OwnerLocationFacts({ location, area }: { location: PrivateLocationView;
       <Typography as="h3" variant="label" className="text-xs">
         Location · {VISIBILITY_COPY[location.visibility]}
       </Typography>
-      <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1 rounded-lg bg-muted p-3 text-sm">
-        {rows.map(([label, value]) => (
-          <div key={label} className="contents">
-            <dt className="text-muted-foreground">{label}</dt>
-            <dd className="break-words font-medium">{value}</dd>
-          </div>
-        ))}
-      </dl>
+      <FactList rows={rows} />
     </section>
   )
 }

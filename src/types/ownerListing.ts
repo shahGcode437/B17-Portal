@@ -56,6 +56,8 @@ export interface OwnerListingView {
   categorySlug?: string
   grade?: string
   listingType?: "sale" | "rent"
+  /** The property type's human name ("Flat", "Plot"); `categoryLabel` above is the combined line ("Flat · For Rent"). */
+  propertyTypeLabel?: string
   price?: string
   bedrooms?: number
   furnished?: "Furnished" | "Unfurnished" | "Semi-Furnished"

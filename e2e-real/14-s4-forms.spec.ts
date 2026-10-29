@@ -454,9 +454,10 @@ test('12. errors are explained in plain words: plan limit, own listing, unverifi
   await freePage.getByLabel('Service Category').selectOption({ label: 'Plumbing' })
   await freePage.getByLabel('Description', { exact: true }).fill('The fourth active listing on the Free plan must be refused in words.')
   await freePage.getByRole('button', { name: 'Submit for Review' }).click()
-  const limit = freePage.getByRole('alert').filter({ hasText: "Your plan's listing limit is reached" })
+  const limit = freePage.getByRole('alert').filter({ hasText: 'Active listing limit reached' })
   await expect(limit).toBeVisible()
-  await expect(limit).toContainText('Archive one of your active listings, or upgrade to Premium, then try again.')
+  await expect(limit).toContainText("You've reached the active listing limit for your current plan. Archive an active listing before creating another.")
+  await expect(limit).not.toContainText(/upgrade|premium/i)
   await expect(freePage.locator('body')).not.toContainText(/plan_limit_reached|server text/)
 
   // csrf_failed: the page's own secure token is replaced by a wrong one on the way out.

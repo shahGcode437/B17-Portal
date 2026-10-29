@@ -35,7 +35,6 @@ export const routes = {
   providerAnalytics: "/provider/analytics",
   providerUpgrade: "/provider/upgrade",
   createListing: "/provider/listings/new",
-  listingPending: "/provider/listings/pending",
   editListing: "/provider/listings/:id/edit",
 
   adminLogin: "/admin/login",

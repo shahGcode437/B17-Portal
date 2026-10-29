@@ -94,6 +94,20 @@ function rateLimitedCopy(op: WriteOperation): Copy {
   return RATE_LIMITED
 }
 
+/**
+ * `403 plan_limit_reached`: the account already has the most ACTIVE (pending + approved) listings its plan allows. Today the
+ * only thing a person can do about it is archive one - there is no billing, so the copy never points at an upgrade.
+ * Resubmitting a REJECTED listing needs a free slot too (it becomes pending again), which arrives as a failed edit.
+ */
+function planLimitCopy(op: WriteOperation): Copy {
+  const title = "Active listing limit reached"
+  const reached = "You've reached the active listing limit for your current plan."
+  if (op === "patch-listing") {
+    return { title, description: `${reached} Archive an active listing before resubmitting this one.` }
+  }
+  return { title, description: `${reached} Archive an active listing before creating another.` }
+}
+
 /** What a 404 means depends on what was being written: say which thing is gone. */
 function notFoundCopy(op: WriteOperation): Copy {
   switch (op) {
@@ -291,10 +305,7 @@ export function userMessageFor(error: unknown, op: WriteOperation): Copy {
       }
       return { title: "This conflicts with the current state", description: "Reload the page and try again." }
     case "plan_limit_reached":
-      return {
-        title: "Your plan's listing limit is reached",
-        description: "Archive one of your active listings, or upgrade to Premium, then try again.",
-      }
+      return planLimitCopy(op)
     case "rate_limited":
       return rateLimitedCopy(op)
     case "not_found":

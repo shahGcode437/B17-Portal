@@ -8,6 +8,8 @@ import { Card } from "@/components/ui/card"
 import { ListingForm } from "@/features/provider/ListingForm"
 import { PropertyListingForm } from "@/features/provider/PropertyListingForm"
 import { LocationFieldset } from "@/features/provider/LocationFieldset"
+import { ListingLimitNotice } from "@/features/provider/ListingLimitNotice"
+import { useListingQuota } from "@/features/provider/listingQuota"
 import { useMutation } from "@/hooks/useMutation"
 import { useRequireAuth } from "@/hooks/useRequireAuth"
 import { useToast } from "@/hooks/useToast"
@@ -57,6 +59,10 @@ const ALLOWED_VISIBILITY: Record<Kind, ReadonlyArray<"exact" | "approximate" | "
  * submits to `POST /listings`. The server is the authority: a success navigates to the real owner
  * listings page (with the new row visible, backed by `GET /users/me/listings`); a `422` maps field
  * errors back onto the location block; a plan-limit or verification problem is announced plainly.
+ *
+ * Step A: a Free owner who is already at the active-listing limit sees a warning above the kind picker and the
+ * form instead of finding out on submit. It is advice from the counts the browser has - it blocks nothing, and
+ * the `plan_limit_reached` refusal is still mapped when the count was stale or never loaded.
  */
 function ListingFormPage() {
   const user = useRequireAuth()
@@ -68,6 +74,9 @@ function ListingFormPage() {
   const [gradeError, setGradeError] = useState<string | null>(null)
   const [locationErrors, setLocationErrors] = useState<Record<string, string>>({})
   const createMutation = useMutation(createListing)
+  // A warning only: the count can be stale or missing, and the server still answers `plan_limit_reached`.
+  const quota = useListingQuota()
+  const limitNotice = quota.state === "full" ? <ListingLimitNotice where="create" used={quota.used} max={quota.max} /> : null
 
   if (!user) return null
 
@@ -81,6 +90,7 @@ function ListingFormPage() {
               What are you listing? You can change this on the next step.
             </Typography>
           </Stack>
+          {limitNotice}
           <Stack gap={3}>
             {KIND_CHOICES.map((choice) => (
               <Card key={choice.value} variant="workspace" className="p-0">
@@ -164,6 +174,8 @@ function ListingFormPage() {
             {KIND_CHOICES.find((c) => c.value === kind)?.title}. Everything you submit is reviewed before it is public.
           </Typography>
         </Stack>
+
+        {limitNotice}
 
         {errorCopy && (
           <Typography variant="body-sm" role="alert" className="rounded-lg bg-destructive/5 px-3 py-2 text-destructive">

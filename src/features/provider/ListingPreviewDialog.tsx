@@ -13,8 +13,11 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
 import { ReadError } from "@/components/feedback/ReadError"
+import { CardImage } from "@/components/media/CardImage"
 import { ListingStatusBadge } from "@/features/provider/ListingStatusBadge"
+import { OwnerListingFacts } from "@/features/provider/OwnerListingFacts"
 import { OwnerLocationFacts } from "@/features/provider/OwnerLocationFacts"
+import { ownerListingIcon } from "@/features/provider/ownerListingIcon"
 import { useOwnerListing } from "@/hooks/useWorkspaceReads"
 import { foodCategoryLabel, foodServiceLabel } from "@/config/food"
 import type { OwnerListingView } from "@/types/ownerListing"
@@ -31,7 +34,9 @@ interface ListingPreviewDialogProps {
  * Read-only "View" for one of the professional's own listings. It reads `GET /users/me/listings/{id}`
  * when it opens, so what it shows - status, revision, the admin's reason for a rejection, and the
  * location AS THE OWNER ENTERED IT - is the server's current truth, not a copy that may have gone
- * stale. Approved listings additionally link to their real public page.
+ * stale. Approved listings additionally link to their real public page. Step A: it also shows the stored
+ * photo (or the placeholder) and the listing's own facts - a property's sale / rent, type, price, bedrooms and
+ * furnishing - from the fields the owner API already returns; it adds no request and no public-preview route.
  */
 function ListingPreviewDialog({ listing, onOpenChange }: ListingPreviewDialogProps) {
   const navigate = useNavigate()
@@ -43,7 +48,8 @@ function ListingPreviewDialog({ listing, onOpenChange }: ListingPreviewDialogPro
     <Dialog open={!!listing} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-md">
         <DialogHeader>
-          <Stack direction="row" align="start" justify="between" gap={2}>
+          {/* pr-8 keeps the status badge clear of the dialog's close button (which sits in the top-right corner). */}
+          <Stack direction="row" align="start" justify="between" gap={2} className="pr-8">
             <DialogTitle className="min-w-0 break-words">{current.title}</DialogTitle>
             <ListingStatusBadge status={current.status} />
           </Stack>
@@ -53,6 +59,9 @@ function ListingPreviewDialog({ listing, onOpenChange }: ListingPreviewDialogPro
         </DialogHeader>
 
         <Stack gap={4} className="text-left">
+          {/* The stored photo, or the placeholder (which says there is none): upload is not available yet, so a photo is only ever one the listing already had. */}
+          <CardImage src={current.image} icon={ownerListingIcon(current)} label={current.title} tone="accent" />
+
           <Typography variant="caption" className="text-muted-foreground">
             Submitted {dateFormatter.format(new Date(current.submittedAt))} · revision {current.revision}
           </Typography>
@@ -62,6 +71,8 @@ function ListingPreviewDialog({ listing, onOpenChange }: ListingPreviewDialogPro
               <span className="font-medium">Reason:</span> {current.rejectionReason}
             </Typography>
           )}
+
+          <OwnerListingFacts listing={current} />
 
           {current.description && (
             <Typography variant="body-sm" className="break-words text-muted-foreground">

@@ -96,7 +96,6 @@ const entries: RouteEntry[] = [
   { path: routes.comingSoon, seo: privatePage("Coming Soon") },
 
   { path: routes.createListing, seo: privatePage("New Listing") },
-  { path: routes.listingPending, seo: privatePage("Listing Submitted") },
   { path: routes.editListing, seo: privatePage("Edit Listing") },
   { path: routes.providerListings, seo: privatePage("My Listings") },
   { path: routes.providerLeads, seo: privatePage("Leads") },
@@ -107,6 +106,7 @@ const entries: RouteEntry[] = [
 
   { path: routes.adminLogin, seo: privatePage("Admin Login") },
   { path: routes.adminModeration, seo: privatePage("Listing Review") },
+  { path: routes.adminCategories, seo: privatePage("Categories (Admin)") },
   { path: routes.adminContentNew, seo: privatePage("Create Content") },
   { path: routes.adminContentEdit, seo: privatePage("Edit Content") },
   { path: routes.adminContent, seo: privatePage("News & Updates (Admin)") },

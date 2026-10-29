@@ -117,14 +117,25 @@ test('the Free plan limit is explained in plain words, and the form keeps what w
   await page.getByRole('button', { name: 'Submit for Review' }).click()
   await expectPage(page, 'Listings')
 
+  // Three active listings on the Free plan: the dashboard says so next to "New listing", with no upgrade action.
+  const limitNotice = page.getByRole('status').filter({ hasText: 'Active listing limit reached' })
+  await expect(limitNotice).toContainText('You have 3 of 3 active listings')
+  await expect(limitNotice).not.toContainText(/upgrade|premium/i)
+  await expect(page.getByRole('link', { name: /upgrade|subscribe|buy/i })).toHaveCount(0)
+
   await page.getByRole('link', { name: 'New listing' }).click()
   await expectPage(page, 'List Your Business / Service / Property')
+  // ... and so does the create page, BEFORE a kind is chosen or a field is filled (it blocks nothing; the server decides).
+  await expect(limitNotice).toBeVisible()
+  await expect(limitNotice.getByRole('link', { name: 'Manage my listings' })).toHaveAttribute('href', '/provider/listings')
   await page.getByRole('button', { name: /Service \/ Professional/ }).click()
+  await expect(limitNotice).toBeVisible()
   await fillProvider(page, 'Fourth Listing Works')
   await page.getByRole('button', { name: 'Submit for Review' }).click()
-  const alert = page.getByRole('alert').filter({ hasText: "Your plan's listing limit is reached" })
+  const alert = page.getByRole('alert').filter({ hasText: 'Active listing limit reached' })
   await expect(alert).toBeVisible()
-  await expect(alert).toContainText('Archive one of your active listings, or upgrade to Premium')
+  await expect(alert).toContainText("You've reached the active listing limit for your current plan. Archive an active listing before creating another.")
+  await expect(alert).not.toContainText(/upgrade|premium/i)
   await expect(page.getByLabel('Name', { exact: true })).toHaveValue('Fourth Listing Works')
   await expect(page.getByRole('button', { name: 'Submit for Review' })).toBeEnabled()
 })

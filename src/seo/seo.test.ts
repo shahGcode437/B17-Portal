@@ -78,6 +78,7 @@ describe("route indexing rules", () => {
     "/admin",
     "/admin/login",
     "/admin/moderation",
+    "/admin/categories",
     "/admin/content",
     "/admin/content/new",
     "/admin/content/abc/edit",
@@ -90,7 +91,7 @@ describe("route indexing rules", () => {
   })
 
   it("treats every unknown URL, including removed routes, as a noindex 404", () => {
-    for (const path of ["/definitely-missing", "/services/home-construction", "/provider/xyz/abc/def", "/food/some-id"]) {
+    for (const path of ["/definitely-missing", "/services/home-construction", "/provider/xyz/abc/def", "/food/some-id", "/provider/listings/pending"]) {
       expect(resolveRouteSeo(path)).toMatchObject({ title: "Page Not Found | B-17 Portal", indexing: "noindex,nofollow" })
     }
   })

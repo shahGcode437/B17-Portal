@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { createUser, expectH1, loginOn, ownerCard, scalar, type TestUser, newContext } from './helpers/stack'
+import { ApiClient, createUser, expectH1, loginOn, ownerCard, scalar, type TestUser, newContext } from './helpers/stack'
 import { approvedProvider, createProperty, createProvider, unique } from './helpers/ui'
 
 /**
@@ -179,4 +179,57 @@ test('375px (Phase 12S S3): a footer link opens at the top; a resident is asked 
   await expectH1(proPage, 'List Your Business / Service / Property')
   await fits(proPage, 'create listing entry')
   await proContext.close()
+})
+
+test('375px (Phase 12S Step A): a Free owner at 3 of 3 sees the limit notice on the dashboard and the create page - it wraps, nothing overflows, the controls stay tappable', async ({ browser }) => {
+  const owner = await createUser('mob-limit', { professional: 'free' })
+  const api = await ApiClient.shared(owner.email)
+  for (const n of ['One', 'Two', 'Three']) {
+    const r = await api.call('POST', '/listings', {
+      kind: 'provider',
+      name: unique(`Mobile Limit ${n}`),
+      category: 'plumbing',
+      description: 'An active listing that fills the Free plan quota on a phone.',
+      area: 'B-17',
+      location: { visibility: 'area_only' },
+    })
+    expect(r.status).toBe(201)
+  }
+  const context = await newContext(browser, { viewport: { width: 375, height: 812 } })
+  const page = await context.newPage()
+  await loginOn(page, owner, '/provider/listings')
+  await expectH1(page, 'Listings')
+
+  const notice = page.getByRole('status').filter({ hasText: 'Active listing limit reached' })
+  await expect(notice).toBeVisible()
+  await expect(notice).toContainText('You have 3 of 3 active listings')
+  await fits(page, 'dashboard at the limit')
+  await tappable(notice, 'limit notice', 44)
+  const newListing = page.getByRole('link', { name: 'New listing' })
+  await tappable(newListing, 'New listing at the limit', 44)
+  await newListing.focus()
+  await expect(newListing).toBeFocused()
+
+  // The owner preview stays usable on a phone: it fits, the status badge is clear of the close button, and Escape closes it.
+  await page.getByRole('button', { name: 'View' }).first().click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog.getByRole('img', { name: /No photo available/ })).toBeVisible()
+  const badge = await dialog.getByText('Pending Review').boundingBox()
+  const close = await dialog.getByRole('button', { name: 'Close' }).boundingBox()
+  expect(badge!.x + badge!.width, 'badge vs close button').toBeLessThanOrEqual(close!.x)
+  await fits(page, 'owner preview')
+  await page.keyboard.press('Escape')
+  await expect(dialog).toHaveCount(0)
+
+  await newListing.click()
+  await expectH1(page, 'List Your Business / Service / Property')
+  await expect(notice).toBeVisible()
+  await fits(page, 'create page at the limit')
+  const manage = notice.getByRole('link', { name: 'Manage my listings' })
+  await tappable(manage, 'Manage my listings', 44)
+  await manage.focus()
+  await expect(manage).toBeFocused()
+  // The kind choices below the notice are still reachable.
+  await tappable(page.getByRole('button', { name: /Service \/ Professional/ }), 'kind choice', 36)
+  await context.close()
 })

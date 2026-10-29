@@ -1,16 +1,19 @@
 # B-17 Portal — Media Storage
 
-**Status:** direction frozen by Phase 10A — **design only; no upload, storage or media table exists.**
+**Status:** direction frozen by Phase 10A — **design only; no upload, storage or media table exists.** §1 is the CURRENT state (updated in Phase 12S); §2 to §6 are the DEFERRED Phase 13 design and are unchanged. Nothing here is built.
 **Owns:** the current image limitation, the future object-storage architecture, media metadata, the upload lifecycle direction, and provider neutrality.
 **Does not own:** which listing columns reference media → [`DATA_MODEL.md`](DATA_MODEL.md) · endpoint shapes → [`API_CONTRACT.md`](API_CONTRACT.md) · hosting/secrets → [`DEPLOYMENT.md`](DEPLOYMENT.md).
 
-## 1. Current frontend limitation
+## 1. Current state (as of Phase 12S Step A)
 
 - **Seed content** references static files shipped with the app (`/images/…`, ~4 MB after Phase 9L). These are real public assets served by the frontend host.
-- **User-submitted images** (listing cover, Food `menuImage`) are created with `URL.createObjectURL()` — a **browser-local `blob:` URL**, valid only in that tab/session. `ListingImageInput` accepts JPG/PNG/WEBP, stores only the URL string (never a `File`), and the image is lost on reload.
+- **User-submitted images do not exist.** There is no upload: since Phase 12S S4 `ListingImageInput` shows a disabled "Choose Image" button and the notice "Image upload isn't available yet. It is planned for a later release."; it has no file input and never produces a `blob:`, `data:` or base64 value. (Before S4 the picker created browser-local `blob:` URLs with `URL.createObjectURL()`, which were lost on reload and are meaningless server-side; that behaviour is gone.)
+- **An image a listing already has** (seed content, or a reference the API accepted) is shown, kept on edit (sent back unchanged only if `isValidMediaReference` accepts it) and removable (**Remove** sends `image: null`). Since Step A the owner's "View" dialog shows it too, or the placeholder, which says there is no photo.
 - The domain types carry `image?: string` / `menuImage?: string` — strings, no metadata (no alt text, size, dimensions, owner).
 
-Consequence for the backend: a `blob:` URL is **meaningless server-side and must never be stored or accepted**. Until the media phase exists, the API accepts only public `https://` URLs or site-relative asset paths in the interim `image_url` columns (`DATA_MODEL.md` §1) and rejects `blob:`/`data:` values. Creating a listing with a photo therefore needs the media phase; listings without photos use the existing placeholder fallback (`CardImage`).
+Consequence for the backend: a `blob:` URL is **meaningless server-side and must never be stored or accepted**. Until the media phase exists, the API accepts only public `https://` URLs or site-relative asset paths in the interim `image_url` columns (`DATA_MODEL.md` §1) and rejects `blob:`/`data:` values (`422 invalid_media_reference`). Creating a listing with a photo therefore needs the media phase; listings without photos use the existing placeholder fallback (`CardImage`). There is no media route, no `media_assets` table, no multipart or storage dependency, no storage setting and no request-body size limit.
+
+**Not current state:** everything from §2 on (signed direct upload, `media_assets`, orphan cleanup, EXIF stripping) is the deferred Phase 13 design. A smaller first slice (a development-only local-disk `StorageBackend` behind the same interface) is one possible way to start; it is a product decision and is not scheduled.
 
 ## 2. Target architecture
 
