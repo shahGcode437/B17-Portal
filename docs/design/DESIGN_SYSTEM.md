@@ -238,9 +238,11 @@ Current state (confirmed live on a Business detail page): large hero image → n
 **PROPOSED** richer, reusable detail-page composition (Visual Phase V3, not built in this document):
 1. **Cover region** — current large hero image, unchanged ratio.
 2. **Identity + trust region** — name, category badge, `DemoBadge`, area — visually grouped more deliberately than today's flat stack (e.g., a title block with clearer vertical rhythm), without inventing trust signals that don't exist (no star ratings, no verification badges beyond what's real today).
-3. **Primary CTA** — unchanged (WhatsApp/Request or Contact), kept visually prominent, ideally sticky-positioned on mobile scroll (PROPOSED, not committed).
+3. **Primary CTA** — Request Service for a provider today (the Contact CTAs of Contact Model v1 for the other kinds once they exist; see the paragraph below), kept visually prominent, ideally sticky-positioned on mobile scroll (PROPOSED, not committed).
 4. **Supporting information sections** — description, tags/services, area — given clearer section separation (e.g., `Divider` + `SectionHeader`-style labels) instead of one undifferentiated text block.
 5. **Related/supporting content** — e.g., "More in this category," reusing existing card components — only if the underlying data/search seam already supports the query cheaply; this is a nice-to-have for a later visual phase, not a requirement.
+
+**Contact CTA hierarchy — LOCKED for the redesign (Contact Model v1, `docs/product/CONTACT_MODEL.md`; PLANNED, not built).** Reserve one primary contact CTA per kind: Provider **Request Service** (exists today), Business **Contact Business**, Food **Order Inquiry**, Tutor **Contact Tutor**, Property **Contact Lister** (these four do not exist yet; today those pages show an honest "isn't available yet" note). A secondary **WhatsApp** or **Call** action belongs in a design only where real capability data can enable it (an owner opt-in); never draw a fake, disabled or placeholder contact button for visual completeness, and never present a channel the product cannot fulfil. The orange `brand-accent` rule above applies to these CTAs.
 
 Do not add ratings or review features — none exist in the product today and none are approved by this document. **Maps are approved** (Phase 12A) as a bounded location feature — see §11.1.
 

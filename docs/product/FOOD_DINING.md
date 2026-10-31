@@ -15,10 +15,10 @@ It is **not**: a separate application, a separate top-level listing kind, a sepa
 Core V1 journey:
 
 ```
-Discover → Search / Filter → View Food Business → Inspect profile / menu preview → Save → Call / WhatsApp
+Discover → Search / Filter → View Food Business → Inspect profile / menu preview → Save → (planned) Order Inquiry
 ```
 
-The current phase is **free and discovery-first**. A useful basic Food profile never requires Premium. "Call / WhatsApp" means the existing simulated contact actions already used by `BusinessCard` and the Business detail page (no real contact data is introduced).
+The current phase is **free and discovery-first**. A useful basic Food profile never requires Premium. **Contact:** the simulated Call / WhatsApp actions this spec once relied on were removed in Phase 12S S2, and no real contact data exists, so today a Food business page says contacting it through B-17 Portal isn't available yet. **Planned (Contact Model v1, LOCKED 2026-10-31, not built; `docs/product/CONTACT_MODEL.md`):** the primary Food CTA will be **Order Inquiry**, a lightweight `new → read → closed` inquiry to the owner; Contact Model v1 does **not** include a cart, checkout, payment or order lifecycle.
 
 ## 2. What Food reuses
 
@@ -178,7 +178,7 @@ The API may still embed `business.food` for convenience; the filters above map o
 
 ## 14. Free-first scope
 
-The current release supports: business identity, Food categories, description, area, cover image, tags, service options, hours note, menu highlights, optional menu image, Save and Call/WhatsApp. Nothing here is gated behind Premium.
+The current release supports: business identity, Food categories, description, area, cover image, tags, service options, hours note, menu highlights, optional menu image and Save (no contact action today; see Contact above). Nothing here is gated behind Premium.
 
 ## 15. Future directions — reserved, NOT implemented
 
