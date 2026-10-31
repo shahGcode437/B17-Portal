@@ -105,7 +105,7 @@ function ProfessionalOverviewPage() {
               />
               <MetricTile label="Pending review" value={n(c?.pending)} icon={Clock} to={routes.providerListings} />
               <MetricTile label="Approved" value={n(c?.approved)} icon={CheckCircle2} to={routes.providerListings} />
-              <MetricTile label="Rejected" value={n(c?.rejected)} icon={XCircle} to={routes.providerListings} />
+              <MetricTile label="Rejected / taken down" value={n(c?.rejected)} icon={XCircle} to={routes.providerListings} />
               <MetricTile label="Archived" value={n(c?.archived)} icon={Archive} to={routes.providerListings} />
             </Grid>
           </WorkspaceSection>
@@ -129,7 +129,7 @@ function ProfessionalOverviewPage() {
                   <RecentRow
                     key={listing.id}
                     title={listing.title}
-                    badge={<ListingStatusBadge status={listing.status} />}
+                    badge={<ListingStatusBadge status={listing.status} takenDown={listing.takenDown} />}
                     date={dateFormatter.format(new Date(listing.submittedAt))}
                   />
                 ))}

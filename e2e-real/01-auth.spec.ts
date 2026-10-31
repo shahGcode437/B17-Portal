@@ -39,6 +39,11 @@ test('register through the real form: the account is created unverified and the 
   await page.getByRole('button', { name: 'Create Account', exact: true }).click()
   // Registration signs the new account in (cookie session) and shows the verification reminder.
   await expect(page.getByRole('banner').getByText(name)).toBeVisible()
+  // S5A: the page the new account lands on already says verification is required (development wording: nothing is e-mailed).
+  const banner = page.getByRole('complementary', { name: 'Your email is not verified' })
+  await expect(banner).toBeVisible()
+  await expect(banner).toContainText(/list a business, service, tutor or property, or send a request/i)
+  await expect(banner).toContainText(/no e-mail is sent/i)
   await page.goto('/profile')
   await expect(page.getByRole('region', { name: 'Email verification' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Resend verification email' })).toBeVisible()
@@ -58,10 +63,22 @@ test('verification state: an unverified account is told to verify before the Pro
   await expect(page.getByRole('heading', { level: 1, name: 'Log In' })).toHaveCount(0)
   await page.goto('/profile')
   await expect(page.getByRole('region', { name: 'Email verification' })).toBeVisible()
-  // The server (not the notice) refuses verified-only work: creating the profile needs a verified e-mail.
+  // S5A gate order: verify first, BEFORE any "create a professional profile" prompt.
   await page.goto('/provider/listings/new')
-  await page.getByRole('button', { name: 'Create a professional profile' }).click()
-  await expect(page.getByRole('alert')).toContainText(/verify your email/i)
+  await expectH1(page, 'Verify your email first')
+  await expect(page.getByRole('button', { name: 'Create a professional profile' })).toHaveCount(0)
+  await expect(page.getByRole('region', { name: 'Email verification' })).toBeVisible()
+  // The gate is UX only: the SERVER still refuses (so removing the button weakened nothing), and nothing was stored.
+  const refused = await page.evaluate(async () => {
+    const me = (await (await fetch('/api/v1/auth/me', { credentials: 'include' })).json()) as { data: { csrfToken: string } }
+    const response = await fetch('/api/v1/users/me/professional-profile', {
+      method: 'PUT',
+      credentials: 'include',
+      headers: { 'X-CSRF-Token': me.data.csrfToken },
+    })
+    return { status: response.status, code: ((await response.json()) as { error?: { code: string } }).error?.code }
+  })
+  expect(refused).toEqual({ status: 403, code: 'email_not_verified' })
   expect(scalar(`SELECT count(*) FROM professional_profiles WHERE user_id = (SELECT id FROM users WHERE email = '${email}')`)).toBe('0')
 })
 

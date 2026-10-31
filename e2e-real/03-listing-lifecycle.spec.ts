@@ -277,13 +277,15 @@ test('11. archive: owner archives in the UI -> archived (row kept), gone from pu
   await expect(ownerCard(ownerPage, doomed.name).getByRole('button', { name: 'Edit' })).toHaveCount(0)
 })
 
-test('12. takedown: admin takes an approved listing down with a reason -> public hidden, the owner sees Rejected and the reason', async () => {
+test('12. takedown: admin takes an approved listing down with a reason -> public hidden, the owner sees Taken down (not Rejected) and the reason', async () => {
   const taken = await approvedProvider(owner, admin, 'Takedown Provider')
   await takedownInUi(adminPage, taken.name, 'This listing no longer meets the community guidelines.')
   expect(dbListing(taken.id)[0]).toBe('rejected')
   expect((await publicGet(`/listings/${taken.id}`)).status).toBe(404)
   expect((await searchHits(taken.name)).some((h) => h.id === taken.id)).toBe(false)
   await ownerPage.goto('/provider/listings')
-  await expect(ownerCard(ownerPage, taken.name)).toContainText('Rejected')
+  // S5A / B-03: the status is `rejected` either way, but a listing that was LIVE reads "Taken down".
+  await expect(ownerCard(ownerPage, taken.name)).toContainText('Taken down')
+  await expect(ownerCard(ownerPage, taken.name)).not.toContainText('Rejected')
   await expect(ownerCard(ownerPage, taken.name)).toContainText('no longer meets the community guidelines')
 })

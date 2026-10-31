@@ -286,6 +286,10 @@ def test_rejecting_a_pending_listing_keeps_it_private_and_tells_the_owner_why(
     seen_by_owner = mine(owner, listing_id)
     assert (seen_by_owner["status"], seen_by_owner["rejectionReason"]) == ("rejected", REASON)
     assert owner.get("/users/me/listings").json()["data"][0]["rejectionReason"] == REASON
+    # a pending listing that was refused is a REJECTION, not a takedown (S5A / B-03)
+    assert "takenDown" not in data and "takenDown" not in seen_by_owner
+    assert "takenDown" not in owner.get("/users/me/listings").json()["data"][0]
+    assert "takenDown" not in detail(admin, listing_id)
 
 
 def test_the_reason_is_normalised_before_it_is_stored_and_shown(auth_env: AuthEnv) -> None:
@@ -453,6 +457,62 @@ def test_an_approved_listing_can_be_taken_down_and_disappears_at_once(auth_env: 
     )
     seen = mine(owner, listing_id)
     assert seen["status"] == "rejected" and "closed" in seen["rejectionReason"]
+
+
+def test_a_takedown_is_marked_for_the_owner_and_the_admin_and_a_plain_rejection_is_not(
+    auth_env: AuthEnv,
+) -> None:
+    """S5A / B-03: the status is ``rejected`` either way, but the owner is told WHICH it was."""
+    owner = owner_signed_in(auth_env)
+    admin = admin_signed_in(auth_env)
+    taken_down = approved_listing(auth_env, owner, admin, provider_body(name="Marked Takedown"))
+    refused = pending(owner, provider_body(name="Marked Rejection"))
+    reason = "Reported as closed; please confirm you still trade."
+
+    response = reject(admin, taken_down, 1, reason)
+    assert reject(admin, refused, 1, REASON).status_code == 200
+
+    assert response.status_code == 200, response.text
+    assert response.json()["data"]["takenDown"] is True
+    assert response.json()["data"]["rejectionReason"] == reason
+    assert mine(owner, taken_down)["takenDown"] is True
+    assert detail(admin, taken_down)["takenDown"] is True
+    by_id = {item["id"]: item for item in owner.get("/users/me/listings").json()["data"]}
+    assert by_id[taken_down]["takenDown"] is True and by_id[taken_down]["status"] == "rejected"
+    assert "takenDown" not in by_id[refused] and by_id[refused]["status"] == "rejected"
+    # the visibility and the history are exactly what they were: only the label differs
+    assert public_status(auth_env, taken_down) == 404 and public_status(auth_env, refused) == 404
+    assert history_of(detail(admin, taken_down))[-1] == ("rejected", "approved", "rejected", 1)
+    assert history_of(detail(admin, refused))[-1] == ("rejected", "pending", "rejected", 1)
+
+
+def test_the_takedown_marker_follows_the_latest_rejection_only(auth_env: AuthEnv) -> None:
+    owner = owner_signed_in(auth_env)
+    admin = admin_signed_in(auth_env)
+    listing_id = approved_listing(auth_env, owner, admin, provider_body(name="Marker Lifecycle"))
+    taken = reject(admin, listing_id, 1, "Reported as closed; please confirm you still trade.")
+    assert taken.status_code == 200
+    assert mine(owner, listing_id)["takenDown"] is True
+    age_history(auth_env.session, listing_id, 20)
+
+    # fixed and resubmitted: pending again, so neither the reason nor the marker applies
+    assert patch(owner, listing_id, 1, tags=["open", "again"]).json()["data"]["status"] == "pending"
+    seen = mine(owner, listing_id)
+    assert seen["status"] == "pending" and "takenDown" not in seen and "rejectionReason" not in seen
+
+    # refused again while PENDING: a plain rejection, not a takedown
+    age_history(auth_env.session, listing_id, 10)
+    assert reject(admin, listing_id, 2, REASON).status_code == 200
+    seen = mine(owner, listing_id)
+    assert seen["rejectionReason"] == REASON and "takenDown" not in seen
+
+    # approved and then taken down once more: the marker is back
+    age_history(auth_env.session, listing_id, 5)
+    assert patch(owner, listing_id, 2, tags=["open", "again", "later"]).status_code == 200
+    assert approve(admin, listing_id, 3).status_code == 200
+    age_history(auth_env.session, listing_id, 2)
+    assert reject(admin, listing_id, 3, "Closed again; please confirm.").status_code == 200
+    assert mine(owner, listing_id)["takenDown"] is True
 
 
 def test_a_takedown_needs_a_reason_and_the_current_revision(auth_env: AuthEnv) -> None:

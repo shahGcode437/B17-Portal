@@ -56,7 +56,7 @@ test('every critical page: no visible control without an accessible name; exactl
   const requesterPage = await signInAs(browser, requester)
   const targets: [Page, string, string | RegExp][] = [
     [ownerPage, '/provider/listings', 'Listings'],
-    [ownerPage, '/provider/listings/new', 'List Your Business / Service / Property'],
+    [ownerPage, '/provider/listings/new', 'List a Service, Business, Tutor or Property'],
     [ownerPage, '/provider/leads', 'Leads'],
     [adminPage, '/admin/moderation', 'Listing Review'],
     [adminPage, '/admin/categories', 'Categories'],

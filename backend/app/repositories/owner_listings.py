@@ -13,7 +13,7 @@ the session is then expired, so no stale ORM state survives a replacement; calle
 
 import uuid
 from collections.abc import Sequence
-from typing import Any
+from typing import Any, NamedTuple
 
 from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.dialects.postgresql import distinct_on
@@ -39,6 +39,15 @@ from app.models.enums import (
     PlanCode,
 )
 from app.repositories.listing_reads import detail_options
+
+
+class LatestRejection(NamedTuple):
+    """The latest moderator rejection of a listing: its reason, and whether it TOOK DOWN a listing
+    that was live (the rejected row's ``from_status`` is ``approved``) rather than refusing a
+    pending one."""
+
+    reason: str
+    taken_down: bool
 
 
 def owner_options() -> list[Any]:
@@ -117,13 +126,20 @@ class OwnerListingRepository:
             counts[status] = int(count)
         return counts
 
-    def current_rejection_reasons(self, listing_ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, str]:
-        """The latest ``rejected`` history reason per listing (the single source of truth for the
-        reason; callers only show it while the listing is still ``rejected``)."""
+    def latest_rejections(
+        self, listing_ids: Sequence[uuid.UUID]
+    ) -> dict[uuid.UUID, LatestRejection]:
+        """The latest ``rejected`` history row per listing: the single source of truth for the
+        reason AND for whether it was a takedown of a live listing (callers only show either while
+        the listing is still ``rejected``)."""
         if not listing_ids:
             return {}
         rows = self._session.execute(
-            select(ListingStatusHistory.listing_id, ListingStatusHistory.reason)
+            select(
+                ListingStatusHistory.listing_id,
+                ListingStatusHistory.reason,
+                ListingStatusHistory.from_status,
+            )
             .where(
                 ListingStatusHistory.listing_id.in_(listing_ids),
                 ListingStatusHistory.action == HistoryAction.REJECTED,
@@ -138,7 +154,15 @@ class OwnerListingRepository:
                 ListingStatusHistory.id.desc(),
             )
         ).all()
-        return {listing_id: reason for listing_id, reason in rows if reason}
+        return {
+            listing_id: LatestRejection(reason, from_status is ListingStatus.APPROVED)
+            for listing_id, reason, from_status in rows
+            if reason
+        }
+
+    def current_rejection_reasons(self, listing_ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, str]:
+        """The latest ``rejected`` history reason per listing (see :meth:`latest_rejections`)."""
+        return {key: value.reason for key, value in self.latest_rejections(listing_ids).items()}
 
     def count_active(self, owner_id: uuid.UUID, *, excluding: uuid.UUID | None = None) -> int:
         """Listings that count against the plan quota: ``pending`` + ``approved``."""

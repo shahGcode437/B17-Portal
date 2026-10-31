@@ -22,7 +22,7 @@ export interface LocationInput {
 
 export async function openCreateForm(page: Page, kind: KindButton) {
   await page.goto('/provider/listings/new')
-  await expectH1(page, 'List Your Business / Service / Property')
+  await expectH1(page, 'List a Service, Business, Tutor or Property')
   await page.getByRole('button', { name: kind }).click()
 }
 

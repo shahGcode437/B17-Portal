@@ -309,6 +309,7 @@ export class AuthMock {
             categoryLabel: l.categoryLabel,
             status: l.status,
             revision: l.revision,
+            ...(l.status === 'rejected' && l.takenDown ? { takenDown: true } : {}),
             submittedAt: l.submittedAt,
             updatedAt: l.updatedAt,
           }))

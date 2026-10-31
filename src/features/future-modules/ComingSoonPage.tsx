@@ -26,7 +26,7 @@ function ComingSoonPage({ title = "Coming Soon" }: ComingSoonPageProps) {
           {title}
         </Typography>
         <Typography variant="body" className="text-muted-foreground">
-          This part of the B-17 Portal prototype is still being built. Check back soon.
+          This part of B-17 Portal is still being built. Check back soon.
         </Typography>
         <Button asChild className="mt-2">
           <Link to={routes.home}>Back to Home</Link>

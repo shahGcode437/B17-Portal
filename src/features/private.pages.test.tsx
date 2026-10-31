@@ -355,6 +355,6 @@ describe("Overview pages (real counts)", () => {
     renderPage(<ProfessionalOverviewPage />, { url: "/provider", user: resident() })
     await waitFor(() => expect(within(tile("Total listings")).getByText("4")).toBeInTheDocument())
     expect(within(tile("Pending review")).getByText("1")).toBeInTheDocument()
-    expect(within(tile("Rejected")).getByText("1")).toBeInTheDocument()
+    expect(within(tile("Rejected / taken down")).getByText("1")).toBeInTheDocument()
   })
 })

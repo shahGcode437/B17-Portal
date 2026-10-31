@@ -154,7 +154,7 @@ function EditShell({ listing, onReload }: { listing: OwnerListingView; onReload:
         <Stack gap={1}>
           <Typography variant="h1">Edit Listing</Typography>
           <Stack direction="row" align="center" gap={2} wrap>
-            <ListingStatusBadge status={listing.status} />
+            <ListingStatusBadge status={listing.status} takenDown={listing.takenDown} />
             <Typography variant="body-sm" className="text-muted-foreground">
               revision {listing.revision}
             </Typography>
@@ -163,12 +163,14 @@ function EditShell({ listing, onReload }: { listing: OwnerListingView; onReload:
             {listing.status === "approved"
               ? "This listing is live. A change to its content sends it back to review; narrowing who can see its location does not."
               : listing.status === "rejected"
-                ? "Edit what the review asked for, then resubmit."
+                ? listing.takenDown
+                  ? "A moderator took this listing down, so it is no longer public. Fix what they raised, then resubmit it for review."
+                  : "Edit what the review asked for, then resubmit."
                 : "This listing is waiting for review. Saving changes keeps it in the queue."}
           </Typography>
           {listing.status === "rejected" && listing.rejectionReason && (
             <Typography variant="body-sm" className="rounded-lg bg-destructive/5 px-3 py-2 text-destructive">
-              Rejected: {listing.rejectionReason}
+              {listing.takenDown ? "Taken down" : "Rejected"}: {listing.rejectionReason}
             </Typography>
           )}
         </Stack>

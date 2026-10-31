@@ -230,10 +230,11 @@ describe("LoginRegisterPage — registration", () => {
     return view
   }
 
-  it("after registering, a production build says to check the e-mail", async () => {
+  it("after registering, a production build says to verify the address and never claims an e-mail was sent", async () => {
     vi.stubEnv("DEV", false)
     const { show } = await register()
-    expect(show).toHaveBeenCalledWith("Account created. Check your email to verify your address.")
+    expect(show).toHaveBeenCalledWith("Account created. Verify your email address to list a business or send requests.")
+    expect(show).not.toHaveBeenCalledWith(expect.stringMatching(/check your e-?mail|we sent|inbox|on its way/i))
   })
 
   it("after registering in development, never claims an e-mail was sent", async () => {

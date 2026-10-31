@@ -40,14 +40,14 @@ function ListingSummaryCard({ listing, actions }: ListingSummaryCardProps) {
               {listing.typeLabel} · {listing.categoryLabel}
             </Typography>
           </Stack>
-          <ListingStatusBadge status={listing.status} />
+          <ListingStatusBadge status={listing.status} takenDown={listing.takenDown} />
         </Stack>
         <Typography variant="caption" className="text-muted-foreground">
           Submitted {dateFormatter.format(new Date(listing.submittedAt))} · revision {listing.revision}
         </Typography>
         {listing.status === "rejected" && listing.rejectionReason && (
           <Typography variant="body-sm" className="rounded-lg bg-destructive/5 px-3 py-2 text-destructive">
-            <span className="font-medium">Reason:</span> {listing.rejectionReason}
+            <span className="font-medium">{listing.takenDown ? "Taken down:" : "Reason:"}</span> {listing.rejectionReason}
           </Typography>
         )}
         {actions}

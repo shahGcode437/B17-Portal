@@ -53,7 +53,7 @@ const emailNotVerified = (): Copy => ({
   title: "Please verify your email first",
   description: isDevMail()
     ? "In development no e-mail is sent: your Profile page shows the command that prints your verification link. Open it, then try again."
-    : "Open the verification link in your inbox, then try again.",
+    : "Verify your email address from your Profile page, then try again.",
 })
 const SESSION_EXPIRED: Copy = {
   title: "Your session has expired",
@@ -275,9 +275,15 @@ function validationCopy(error: ApiError, op: WriteOperation): Copy {
     const description = describeDetail(detail)
     if (description) return { title, description }
   }
-  // Last resort: a code nobody mapped yet. The server's own sentence is better than silence; never a bare code.
-  const first = error.details.find((detail) => detail.message)
-  return { title, description: first?.message ?? "Some fields need attention." }
+  // Last resort: a code nobody mapped yet. The server's own sentence is Pydantic's ("String should have at least 2
+  // characters"), which is a diagnostic, not copy, so it is never shown; neither is a bare code. S5A / B-07.
+  return {
+    title,
+    description:
+      op === "create-request"
+        ? "Some details need a change. Check them and try again."
+        : "Some fields need a change. Check the form and try again.",
+  }
 }
 
 export function userMessageFor(error: unknown, op: WriteOperation): Copy {

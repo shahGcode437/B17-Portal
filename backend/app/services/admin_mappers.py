@@ -8,7 +8,7 @@ a session or a token.
 """
 
 from app.models import Listing, ListingStatusHistory
-from app.models.enums import BusinessVertical, ListingKind
+from app.models.enums import BusinessVertical, ListingKind, ListingStatus
 from app.schemas.admin import (
     AdminActor,
     AdminBusiness,
@@ -55,9 +55,10 @@ def map_admin_listing(
     submitter_name: str | None,
     history: list[tuple[ListingStatusHistory, str]],
     rejection_reason: str | None,
+    taken_down: bool = False,
 ) -> AdminListing:
     """The full review shape of one listing, in any status."""
-    owner = map_owner_listing(listing, rejection_reason=rejection_reason)
+    owner = map_owner_listing(listing, rejection_reason=rejection_reason, taken_down=taken_down)
     admin_class = _ADMIN_CLASS[listing.kind]
     return admin_class(  # type: ignore[no-any-return]
         **owner.model_dump(),
@@ -66,9 +67,12 @@ def map_admin_listing(
     )
 
 
-def map_admin_summary(listing: Listing, submitter_name: str | None) -> AdminListingSummary:
+def map_admin_summary(
+    listing: Listing, submitter_name: str | None, *, taken_down: bool = False
+) -> AdminListingSummary:
     """One queue row. Reads only columns that are loaded on the light queue path (never the private
-    point, address or landmark)."""
+    point, address or landmark). ``taken_down`` is derived from the latest rejection by the caller
+    and shown only while the listing is ``rejected``."""
     vertical: BusinessVertical | None = None
     if listing.kind is ListingKind.BUSINESS and listing.business is not None:
         vertical = listing.business.vertical
@@ -84,6 +88,7 @@ def map_admin_summary(listing: Listing, submitter_name: str | None) -> AdminList
         category_label=primary.name if primary else "",
         status=listing.status,
         revision=listing.revision,
+        taken_down=True if listing.status is ListingStatus.REJECTED and taken_down else None,
         featured=True if listing.is_featured else None,
         submitted_at=listing.submitted_at,
         updated_at=listing.updated_at,

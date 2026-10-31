@@ -98,3 +98,18 @@ describe("PropertyListingForm (S4)", () => {
     expect(screen.getByText(/Image upload isn't available yet/)).toBeInTheDocument()
   })
 })
+
+describe("PropertyListingForm: a one-character title says it is too short (S5A / B-04)", () => {
+  it("names the minimum for a single character, and the limit for a long one", async () => {
+    const user = userEvent.setup()
+    render(<PropertyListingForm onSubmit={vi.fn()} onBack={vi.fn()} />)
+    await fill(user, screen.getByLabelText("Title"), "x")
+    await user.click(screen.getByRole("button", { name: "Submit for Review" }))
+    expect(await screen.findByText("Title must be at least 2 characters.")).toBeInTheDocument()
+
+    await user.clear(screen.getByLabelText("Title"))
+    await fill(user, screen.getByLabelText("Title"), "t".repeat(101))
+    await user.click(screen.getByRole("button", { name: "Submit for Review" }))
+    expect(await screen.findByText("Title must be at most 100 characters.")).toBeInTheDocument()
+  })
+})

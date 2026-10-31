@@ -37,6 +37,24 @@ test.describe('public read journey', () => {
     expect(authMock.calls.every((c) => c.method === 'GET' || c.path.startsWith('/auth'))).toBe(true)
   })
 
+  test('Home, the footer and Coming Soon never call the product a prototype, and Home has no mock Featured & Sponsored block', async ({ page }) => {
+    await openApp(page, '/')
+    await expect(page.getByText('Sunrise Solar Solutions').first()).toBeVisible()
+    await expect(page.getByText(/prototype/i)).toHaveCount(0)
+    await expect(page.getByRole('heading', { name: /Featured & Sponsored/ })).toHaveCount(0)
+    await expect(page.getByText(/sponsored/i)).toHaveCount(0)
+    await expect(page.locator('img[src*="/images/ads/"]')).toHaveCount(0)
+    // The legitimate future-module teaser stays, labelled as not available yet.
+    await expect(page.getByText('Modules planned for B-17 Portal. They are not available yet.')).toBeVisible()
+    await expect(page.getByText('Coming Soon', { exact: true }).first()).toBeVisible()
+    // The footer disclaimer is the production wording.
+    await expect(page.locator('footer')).toContainText('Nothing on B-17 Portal is a binding offer.')
+
+    await openApp(page, '/coming-soon', 'Coming Soon')
+    await expect(page.getByText('This part of B-17 Portal is still being built. Check back soon.')).toBeVisible()
+    await expect(page.getByText(/prototype/i)).toHaveCount(0)
+  })
+
   test('Search offers no Area / Grade dropdown and never asks for a 50-listing page to build one', async ({ page }) => {
     const sizes: string[] = []
     page.on('request', (request) => {
@@ -227,7 +245,7 @@ test.describe('authenticated read journey', () => {
   test('create a listing opens a real form with a kind picker and the location fieldset (Phase 12H)', async ({ page }) => {
     await page.goto('/provider/listings/new')
     await signIn(page, 'Sana Baker', 'professional')
-    await expectPage(page, 'List Your Business / Service / Property')
+    await expectPage(page, 'List a Service, Business, Tutor or Property')
     // Four kinds offered.
     for (const name of ['Service / Professional', 'Business / Shop', 'Tutor', 'Property']) {
       await expect(page.getByRole('button', { name: new RegExp(name) })).toBeVisible()

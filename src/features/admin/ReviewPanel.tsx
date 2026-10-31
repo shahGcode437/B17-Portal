@@ -9,22 +9,23 @@ import {
 } from "@/components/ui/dialog"
 import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ReadError } from "@/components/feedback/ReadError"
 import { rowActionClass as actionClass } from "@/features/admin/adminStyles"
+import { FoodListingSummary } from "@/features/provider/FoodListingSummary"
 import { ListingStatusBadge } from "@/features/provider/ListingStatusBadge"
+import { TAKEN_DOWN_LABEL } from "@/features/provider/listingStatusLabel"
+import { OwnerListingFacts, OwnerTagList } from "@/features/provider/OwnerListingFacts"
 import { OwnerLocationFacts } from "@/features/provider/OwnerLocationFacts"
 import { useAdminListing } from "@/hooks/useWorkspaceReads"
-import { foodCategoryLabel, foodServiceLabel } from "@/config/food"
 import { useMutation } from "@/hooks/useMutation"
 import { useToast } from "@/hooks/useToast"
 import { approveListing, rejectListing } from "@/lib/api/writes/admin"
 import { copyAsSentence, userMessageFor, isConflict } from "@/lib/api/writeErrors"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
-import type { AdminQueueRow } from "@/types/ownerListing"
+import type { AdminHistoryView, AdminQueueRow } from "@/types/ownerListing"
 
 interface ReviewPanelProps {
   /** The queue row that was opened (its fields show at once); the dialog then reads the full review view. */
@@ -47,6 +48,11 @@ const stampFormatter = new Intl.DateTimeFormat("en-US", {
   minute: "2-digit",
 })
 
+/** A rejection of a listing that was live is a TAKEDOWN; every other action is shown under its own name. */
+function historyLabel(entry: AdminHistoryView): string {
+  return entry.action === "rejected" && entry.fromStatus === "approved" ? TAKEN_DOWN_LABEL : entry.action
+}
+
 /**
  * The review dialog for one listing (Master Spec §17), READ-ONLY in Phase 12G. It reads
  * `GET /admin/listings/{id}`: the full review shape, including the PRIVATE location the owner entered
@@ -67,6 +73,25 @@ function ReviewPanel({ row, open, onOpenChange, onChanged }: ReviewPanelProps) {
 
   const approve = useMutation(async ({ id, revision }: { id: string; revision: number }) => approveListing(id, revision))
   const reject = useMutation(async ({ id, revision, reason: r }: { id: string; revision: number; reason: string }) => rejectListing(id, revision, r))
+
+  // A half-made decision (the open reject form, its text and error, the last attempt's outcome) belongs to ONE opening
+  // of the dialog for ONE listing. Opening the dialog - for another listing, or the same one again - starts clean, so
+  // rejecting A can never leave A's reason, its open reject form or its error on B. It resets on OPENING, not on
+  // closing, so the dialog does not change shape while it fades out. (State adjusted during render, React's pattern
+  // for state that must follow a prop; the panel stays mounted between listings, which is why it cannot rely on a
+  // fresh mount.)
+  const openingFor = open && row ? row.id : null
+  const [decisionFor, setDecisionFor] = useState<string | null>(null)
+  if (openingFor !== decisionFor) {
+    setDecisionFor(openingFor)
+    if (openingFor !== null) {
+      setShowRejection(false)
+      setReason("")
+      setReasonError(null)
+      approve.reset()
+      reject.reset()
+    }
+  }
 
   if (!row) return null
   const listing = read.status === "success" ? read.data : null
@@ -150,13 +175,13 @@ function ReviewPanel({ row, open, onOpenChange, onChanged }: ReviewPanelProps) {
             <dd className="font-medium">{dateFormatter.format(new Date(row.submittedAt))}</dd>
             <dt className="text-muted-foreground">Status</dt>
             <dd>
-              <ListingStatusBadge status={listing?.status ?? row.status} />
+              <ListingStatusBadge status={listing?.status ?? row.status} takenDown={listing ? listing.takenDown : row.takenDown} />
             </dd>
             <dt className="text-muted-foreground">Revision</dt>
             <dd className="font-medium">{listing?.revision ?? row.revision}</dd>
             {listing?.status === "rejected" && listing.rejectionReason && (
               <>
-                <dt className="text-muted-foreground">Rejection reason</dt>
+                <dt className="text-muted-foreground">{listing.takenDown ? "Takedown reason" : "Rejection reason"}</dt>
                 <dd className="break-words">{listing.rejectionReason}</dd>
               </>
             )}
@@ -177,22 +202,11 @@ function ReviewPanel({ row, open, onOpenChange, onChanged }: ReviewPanelProps) {
                   {listing.description}
                 </Typography>
               )}
+              {/* What the moderator is judging (S5A / B-01): the kind's own facts, its Food block and its tags. */}
+              <OwnerListingFacts listing={listing} />
+              {listing.food && <FoodListingSummary food={listing.food} listingId={listing.id} name={listing.title} />}
+              <OwnerTagList listing={listing} />
               <OwnerLocationFacts location={listing.location} area={listing.area} />
-              {listing.food && (
-                <section aria-label="Food and dining" className="flex flex-col gap-2">
-                  <Typography as="h3" variant="label" className="text-xs">
-                    Food & Dining
-                  </Typography>
-                  <Typography variant="body-sm">{listing.food.categories.map(foodCategoryLabel).join(", ")}</Typography>
-                  <Stack direction="row" wrap gap={2}>
-                    {listing.food.serviceOptions.map((option) => (
-                      <Badge key={option} variant="outline" className="font-normal">
-                        {foodServiceLabel(option)}
-                      </Badge>
-                    ))}
-                  </Stack>
-                </section>
-              )}
               <section aria-label="History" className="flex flex-col gap-2">
                 <Typography as="h3" variant="label" className="text-xs">
                   History
@@ -200,7 +214,7 @@ function ReviewPanel({ row, open, onOpenChange, onChanged }: ReviewPanelProps) {
                 <ol className="flex flex-col gap-1.5">
                   {listing.history.map((entry, index) => (
                     <li key={`${entry.action}-${index}`} className="text-sm">
-                      <span className="font-medium capitalize">{entry.action}</span>
+                      <span className="font-medium capitalize">{historyLabel(entry)}</span>
                       <span className="text-muted-foreground">
                         {" "}
                         · revision {entry.revision} · {entry.actorName} ({entry.actorRole}) ·{" "}

@@ -46,6 +46,12 @@ export interface OwnerListingView {
   image?: string
   tags: string[]
   rejectionReason?: string
+  /**
+   * True only while the listing is `rejected` because a moderator TOOK DOWN a listing that was live (S5A,
+   * B-03). A listing refused before it ever went live is a plain rejection and leaves this absent; the status
+   * is `rejected` either way, so this is what tells the two apart.
+   */
+  takenDown?: boolean
   submittedAt: string
   updatedAt: string
   food?: OwnerFoodView
@@ -54,6 +60,8 @@ export interface OwnerListingView {
    * category SLUG (the form submits slugs, never labels), a tutor's grade and a property's own fields.
    */
   categorySlug?: string
+  /** A tutor's subject (the category's human name), so a review can show Subject and Grade apart. */
+  subjectLabel?: string
   grade?: string
   listingType?: "sale" | "rent"
   /** The property type's human name ("Flat", "Plot"); `categoryLabel` above is the combined line ("Flat · For Rent"). */
@@ -95,6 +103,8 @@ export interface AdminQueueRow {
   locationVisibility: LocationVisibility
   status: ListingStatus
   revision: number
+  /** True only while `rejected` because a moderator took down a live listing (the same marker as the review view). */
+  takenDown?: boolean
   submitterName?: string
   submittedAt: string
 }

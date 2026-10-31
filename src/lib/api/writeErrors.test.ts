@@ -47,7 +47,7 @@ describe("writeErrors classification (matches API_CONTRACT §10)", () => {
     expect(userMessageFor(apiError(409, "conflict"), "category-create").title).toBe("This conflicts with the current state")
   })
 
-  it("the not-verified message never points at an inbox in development, and keeps the real wording in production", () => {
+  it("the not-verified message never points at an inbox in development, and never claims an e-mail in production", () => {
     const error = apiError(403, "email_not_verified")
     const dev = userMessageFor(error, "create-professional-profile")
     expect(dev.title).toBe("Please verify your email first")
@@ -56,7 +56,10 @@ describe("writeErrors classification (matches API_CONTRACT §10)", () => {
 
     vi.stubEnv("DEV", false)
     try {
-      expect(userMessageFor(error, "create-professional-profile").description).toBe("Open the verification link in your inbox, then try again.")
+      const production = userMessageFor(error, "create-professional-profile")
+      expect(production.description).toBe("Verify your email address from your Profile page, then try again.")
+      // Production e-mail delivery does not exist yet: nothing here may say or imply that a message was sent (S5A).
+      expect(JSON.stringify(production)).not.toMatch(/inbox|we sent|on its way|check your e-?mail/i)
     } finally {
       vi.unstubAllEnvs()
     }
@@ -107,9 +110,43 @@ describe("write errors are mapped to plain copy, never to the server's raw text 
     }
   })
 
-  it("only an UNMAPPED code falls back to the server's sentence, and never to a bare code", () => {
-    expect(copyFor([{ field: "x", code: "brand_new_rule", message: "Brand new rule broken." }]).description).toBe("Brand new rule broken.")
-    expect(copyFor([{ field: "x", code: "brand_new_rule" }]).description).toBe("Some fields need attention.")
+  it("an UNMAPPED code never falls back to the server's sentence or to a bare code: it gets one concise generic line (S5A / B-07)", () => {
+    const generic = "Some fields need a change. Check the form and try again."
+    expect(copyFor([{ field: "x", code: "brand_new_rule", message: "Brand new rule broken." }]).description).toBe(generic)
+    expect(copyFor([{ field: "x", code: "brand_new_rule" }]).description).toBe(generic)
+    expect(copyFor([{ field: "x", code: "brand_new_rule", message: "Brand new rule broken." }], "create-request").description).toBe(
+      "Some details need a change. Check them and try again."
+    )
+    // No details at all (or an empty list) is the same: a validation error always reads as one clean sentence.
+    expect(copyFor([]).description).toBe(generic)
+  })
+
+  it("no raw Pydantic or technical sentence reaches the user, for a mapped or an unmapped code, for any operation", () => {
+    const technical = [
+      "String should have at least 2 characters",
+      "Field required",
+      "Input should be a valid string",
+      "value is not a valid email address: An email address must have an @-sign.",
+      "List should have at most 20 items after validation, not 21",
+      "Input should be 'in_app', 'whatsapp' or 'phone'",
+    ]
+    const operations: WriteOperation[] = ["create-listing", "patch-listing", "create-request", "request-action", "admin-reject", "category-create"]
+    for (const op of operations) {
+      for (const message of technical) {
+        for (const code of ["string_too_short", "missing", "enum", "value_error", "totally_new_code"]) {
+          const copy = copyFor([{ field: "somefield", code, message }], op)
+          expect(JSON.stringify(copy), `${op} ${code}`).not.toContain(message)
+          expect(JSON.stringify(copy), `${op} ${code}`).not.toMatch(/should have|Field required|Input should|not a valid|after validation/)
+        }
+      }
+    }
+  })
+
+  it("a mapped code keeps its useful sentence (the generic line replaces nothing that was mapped)", () => {
+    expect(copyFor([{ field: "name", code: "string_too_short", message: "String should have at least 2 characters" }]).description).toBe(
+      "The name is too short."
+    )
+    expect(copyFor([{ field: "description", code: "missing", message: "Field required" }]).description).toBe("The description is required.")
   })
 
   it("describeDetail and friendlyFieldErrors share the mapping (the form's inline messages are the same sentences)", () => {

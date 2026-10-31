@@ -130,15 +130,39 @@ describe("ForgotPasswordPage", () => {
     expect(screen.getByText(/if an account exists/i)).toBeInTheDocument()
   })
 
-  it("a production build shows only the neutral confirmation", async () => {
+  it("a production build shows only the neutral confirmation, and never claims a link was sent, delivered or is on its way", async () => {
     vi.stubEnv("DEV", false)
     try {
       await submit("exists@example.org", (c) => (c.path === "/auth/forgot-password" ? ok({ status: "accepted" }, 202) : fail(401, "unauthenticated")))
-      expect(await screen.findByText(/a password reset link is on its way/i)).toBeInTheDocument()
+      const confirmation = await screen.findByRole("status")
+      expect(confirmation).toHaveTextContent(
+        "If an account exists for that email address, a password reset link was requested for it. Reset links expire after one hour."
+      )
       expect(screen.queryByTestId("dev-reset-hint")).not.toBeInTheDocument()
+      // Production e-mail delivery does not exist yet (S5A): no screen text may imply a message was sent.
+      expect(document.body).not.toHaveTextContent(/on its way|we'll send|we sent|has been sent|was sent|delivered|check your (inbox|e-?mail)|no e-mail is sent/i)
     } finally {
       vi.unstubAllEnvs()
     }
+  })
+
+  it("the page does not promise to send anything before the request is made either", async () => {
+    vi.stubEnv("DEV", false)
+    try {
+      renderRoute("/forgot-password", <ForgotPasswordPage />, () => fail(401, "unauthenticated"), "/forgot-password")
+      await screen.findByRole("heading", { level: 1, name: /forgot password/i })
+      expect(screen.getByText("Enter your email address to request a link to reset your password.")).toBeInTheDocument()
+      expect(document.body).not.toHaveTextContent(/we'll send|we will send|send you/i)
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
+  it("in development the hint says nothing is e-mailed and where the link is, and still claims no delivery", async () => {
+    await submit("exists@example.org", (c) => (c.path === "/auth/forgot-password" ? ok({ status: "accepted" }, 202) : fail(401, "unauthenticated")))
+    const hint = await screen.findByTestId("dev-reset-hint")
+    expect(hint).toHaveTextContent("Development: no e-mail is sent. The reset link is printed in the API terminal.")
+    expect(document.body).not.toHaveTextContent(/on its way|we'll send|we sent|has been sent|was sent|delivered/i)
   })
 
   it("sends only the email, with no CSRF header (pre-session)", async () => {
@@ -269,7 +293,9 @@ describe("VerificationNotice", () => {
 
     await user.click(await screen.findByRole("button", { name: "Resend verification email" }))
 
-    expect(await screen.findByText(/if your email still needs verifying/i)).toBeInTheDocument()
+    expect(await screen.findByText(/a new verification link was requested/i)).toBeInTheDocument()
+    // Production e-mail delivery does not exist yet: the confirmation says what was asked, never that mail is coming.
+    expect(screen.queryByText(/on its way|we sent|inbox/i)).not.toBeInTheDocument()
     const resend = calls.find((c) => c.path === "/auth/resend-verification")!
     expect(resend.headers.get("X-CSRF-Token")).toBe("csrf-r")
     expect(resend.body).toBeUndefined() // the session says who; no email is sent
@@ -293,11 +319,15 @@ describe("VerificationNotice", () => {
     expect(screen.queryByText(/on its way/i)).not.toBeInTheDocument()
   })
 
-  it("a production build keeps the real wording and never shows any development text", async () => {
+  it("a production build says what verification is for, never claims an e-mail was sent, and shows no development text", async () => {
     vi.stubEnv("DEV", false)
     renderNotice(() => ok(meBody({ emailVerified: false, email: "ayesha@example.org" })))
     await screen.findByRole("button", { name: "Resend verification email" })
-    expect(screen.getByText(/we sent a link to ayesha@example.org/i)).toBeInTheDocument()
+    const reason = screen.getByTestId("verification-reason")
+    expect(reason).toHaveTextContent("ayesha@example.org is not verified yet.")
+    expect(reason).toHaveTextContent(/lets you create a professional profile, list a business, service, tutor or property, or send a service request/i)
+    expect(reason).toHaveTextContent(/browsing works either way/i)
+    expect(screen.queryByText(/we sent|on its way|check your inbox|check your e-?mail/i)).not.toBeInTheDocument()
     expect(screen.queryByTestId("dev-verification-hint")).not.toBeInTheDocument()
     expect(screen.queryByText(/dev_verify|in development|api terminal/i)).not.toBeInTheDocument()
   })

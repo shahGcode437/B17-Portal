@@ -80,8 +80,9 @@ export const listingSchema = z
     name: z
       .string()
       .trim()
-      .min(2, "Please enter a name.")
-      .max(MAX_NAME_LENGTH, "That name is a bit too long.")
+      .min(1, "Please enter a name.")
+      .min(2, "Name must be at least 2 characters.")
+      .max(MAX_NAME_LENGTH, `Name must be at most ${MAX_NAME_LENGTH} characters.`)
       .refine(isOneLine, NOT_PLAIN_TEXT),
     category: z.string().trim(),
     description: z
@@ -173,8 +174,9 @@ export const propertySchema = z.object({
   title: z
     .string()
     .trim()
-    .min(2, "Please enter a title.")
-    .max(MAX_TITLE_LENGTH, "That title is a bit too long.")
+    .min(1, "Please enter a title.")
+    .min(2, "Title must be at least 2 characters.")
+    .max(MAX_TITLE_LENGTH, `Title must be at most ${MAX_TITLE_LENGTH} characters.`)
     .refine(isOneLine, NOT_PLAIN_TEXT),
   listingType: z.string().trim().min(1, "Please choose Sale or Rent."),
   propertyType: z.string().trim().min(1, "Please choose a property type."),

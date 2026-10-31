@@ -98,10 +98,22 @@ test('registration signs in an UNVERIFIED account: a notice, a neutral resend, a
   const register = mock.calls.find((call) => call.path === '/auth/register')
   expect(Object.keys(register!.body as object).sort()).toEqual(['displayName', 'email', 'password'])
 
-  await page.goto('/profile')
+  // S5A: the new account is told, on the page it lands on, that verification is required - without any claim that an
+  // e-mail was sent (this is the production build: production e-mail delivery does not exist yet).
+  const banner = page.getByRole('complementary', { name: 'Your email is not verified' })
+  await expect(banner).toBeVisible()
+  await expect(banner).toContainText('Verify your email.')
+  await expect(banner).toContainText(/list a business, service, tutor or property, or send a request/i)
+  await expect(page.locator('body')).not.toContainText(/we sent|on its way|check your inbox|check your email|no e-mail is sent|dev_verify/i)
+  await banner.getByRole('link', { name: 'Open your Profile' }).click()
+  await expectPage(page, 'Nadia New')
+
   await expect(page.getByRole('region', { name: 'Email verification' })).toBeVisible()
+  // The Profile page carries the full notice, so the banner steps aside there.
+  await expect(page.getByRole('complementary', { name: 'Your email is not verified' })).toHaveCount(0)
   await page.getByRole('button', { name: 'Resend verification email' }).click()
-  await expect(page.getByText(/if your email still needs verifying/i)).toBeVisible()
+  await expect(page.getByText('A new verification link was requested.')).toBeVisible()
+  await expect(page.getByText(/on its way/i)).toHaveCount(0)
 
   // The e-mail link: the token is in the FRAGMENT, which the app removes from the address bar.
   await page.goto('/verify-email#token=verify-nadia.new@example.org')
@@ -111,6 +123,10 @@ test('registration signs in an UNVERIFIED account: a notice, a neutral resend, a
   await page.goto('/profile')
   await expectPage(page, 'Nadia New')
   await expect(page.getByRole('region', { name: 'Email verification' })).toHaveCount(0)
+  // Verified: the banner is gone everywhere.
+  await page.goto('/services')
+  await expectPage(page)
+  await expect(page.getByRole('complementary', { name: 'Your email is not verified' })).toHaveCount(0)
 })
 
 test('an invalid verification link is reported without leaving the token in the URL', async ({ page }) => {
@@ -127,6 +143,9 @@ test('forgot password gives the same neutral answer for any address', async ({ p
   await page.getByRole('button', { name: 'Send reset link' }).click()
 
   await expect(page.getByRole('status').filter({ hasText: /if an account exists/i })).toBeVisible()
+  // S5A: production e-mail delivery does not exist, so nothing here says a link was sent or is on its way.
+  await expect(page.getByRole('status').filter({ hasText: /if an account exists/i })).toContainText('a password reset link was requested for it')
+  await expect(page.locator('body')).not.toContainText(/on its way|we.ll send|we sent|check your inbox|no e-mail is sent/i)
 })
 
 test('reset password: the token leaves the URL at once, the reset does NOT log in, the new password works', async ({ page }) => {

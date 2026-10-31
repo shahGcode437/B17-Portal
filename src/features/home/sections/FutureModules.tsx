@@ -24,7 +24,7 @@ function FutureModules() {
     <Container className="py-12 sm:py-16">
       <SectionHeader
         title="What's Next for B-17 Portal"
-        description="Future modules on the roadmap — not part of this prototype."
+        description="Modules planned for B-17 Portal. They are not available yet."
       />
       <Grid cols={5} gap={4}>
         {futureModules.map(({ label, icon: Icon }) => (

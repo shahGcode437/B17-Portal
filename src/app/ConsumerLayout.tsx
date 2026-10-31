@@ -4,6 +4,7 @@ import { Footer } from "@/components/navigation/Footer"
 import { SkipLink } from "@/components/navigation/SkipLink"
 import { MobileNav } from "@/components/navigation/MobileNav"
 import { InstallPrompt } from "@/components/pwa/InstallPrompt"
+import { UnverifiedBanner } from "@/features/auth/UnverifiedBanner"
 
 /** Shell for all public/resident-facing screens (Home, Services, Directory, …). */
 function ConsumerLayout() {
@@ -11,6 +12,7 @@ function ConsumerLayout() {
     <div className="flex min-h-svh flex-col bg-background">
       <SkipLink />
       <Header />
+      <UnverifiedBanner />
       <main id="main-content" tabIndex={-1} className="flex-1 outline-none">
         <RouteOutlet />
       </main>

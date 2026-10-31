@@ -14,7 +14,7 @@ async function openCreateForm(page: Page, name: string) {
   await page.goto('/provider/listings/new')
   await expectPage(page, 'Log In')
   await signIn(page, name)
-  await expectPage(page, 'List Your Business / Service / Property')
+  await expectPage(page, 'List a Service, Business, Tutor or Property')
   await page.getByRole('button', { name: /Service \/ Professional/ }).click()
 }
 

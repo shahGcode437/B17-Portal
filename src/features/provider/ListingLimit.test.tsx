@@ -136,7 +136,7 @@ describe("creating a listing at the limit", () => {
   it("with room left there is no warning", async () => {
     backend(ROOM)
     createPage()
-    await screen.findByRole("heading", { name: "List Your Business / Service / Property" })
+    await screen.findByRole("heading", { name: "List a Service, Business, Tutor or Property" })
     await new Promise((resolve) => setTimeout(resolve, 60))
     expect(screen.queryByRole("heading", { name: "Active listing limit reached" })).not.toBeInTheDocument()
   })
@@ -144,7 +144,7 @@ describe("creating a listing at the limit", () => {
   it("a Premium owner is never warned", async () => {
     backend(ownerListings({ pending: 20, approved: 20, rejected: 0, archived: 0 }))
     createPage(PREMIUM())
-    await screen.findByRole("heading", { name: "List Your Business / Service / Property" })
+    await screen.findByRole("heading", { name: "List a Service, Business, Tutor or Property" })
     await new Promise((resolve) => setTimeout(resolve, 60))
     expect(screen.queryByRole("heading", { name: "Active listing limit reached" })).not.toBeInTheDocument()
   })
@@ -153,7 +153,7 @@ describe("creating a listing at the limit", () => {
     const { calls } = backend(fail(500, "internal_error"), (call) => (isCreate(call) ? fail(403, "plan_limit_reached") : undefined))
     const user = userEvent.setup()
     createPage()
-    await screen.findByRole("heading", { name: "List Your Business / Service / Property" })
+    await screen.findByRole("heading", { name: "List a Service, Business, Tutor or Property" })
     await new Promise((resolve) => setTimeout(resolve, 60))
     expect(screen.queryByRole("heading", { name: "Active listing limit reached" })).not.toBeInTheDocument()
 

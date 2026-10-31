@@ -38,8 +38,15 @@ class OwnerListingService:
     def present_all(self, listings: list[Listing]) -> list[OwnerListing]:
         """Map a page; the rejection reasons of its rejected listings come from ONE query."""
         rejected = [item.id for item in listings if item.status is ListingStatus.REJECTED]
-        reasons = self._listings.current_rejection_reasons(rejected)
-        return [map_owner_listing(item, rejection_reason=reasons.get(item.id)) for item in listings]
+        rejections = self._listings.latest_rejections(rejected)
+        return [
+            map_owner_listing(
+                item,
+                rejection_reason=rejections[item.id].reason if item.id in rejections else None,
+                taken_down=item.id in rejections and rejections[item.id].taken_down,
+            )
+            for item in listings
+        ]
 
     def list(
         self, owner_id: uuid.UUID, query: OwnerListingsQuery

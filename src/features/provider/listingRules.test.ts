@@ -116,7 +116,7 @@ describe("plain text only (the server refuses control and hidden characters)", (
 describe("field limits that match the API", () => {
   it("name 2-80 and description 20-400 for the shared form", () => {
     expect(listingSchema.safeParse({ ...base, name: "x".repeat(80) }).success).toBe(true)
-    expect(messageFor(listingSchema.safeParse({ ...base, name: "x".repeat(81) }), "name")).toBe("That name is a bit too long.")
+    expect(messageFor(listingSchema.safeParse({ ...base, name: "x".repeat(81) }), "name")).toBe("Name must be at most 80 characters.")
     expect(listingSchema.safeParse({ ...base, description: "d".repeat(20) }).success).toBe(true)
     expect(listingSchema.safeParse({ ...base, description: "d".repeat(19) }).success).toBe(false)
     expect(listingSchema.safeParse({ ...base, description: "d".repeat(400) }).success).toBe(true)
@@ -164,5 +164,29 @@ describe("location text: block, address and landmark", () => {
     expect(locationTextProblems({ block: "C", address: "Shop 4", landmark: "Park" })).toEqual({})
     const problems = locationTextProblems({ block: "C <b>", address: "a".repeat(201), landmark: "l".repeat(101) })
     expect(Object.keys(problems).sort()).toEqual(["location.address", "location.block", "location.landmark"])
+  })
+})
+
+describe("B-04: a name that is too short says so (S5A)", () => {
+  it("an empty or blank name asks for a name; a single character says the minimum", () => {
+    expect(messageFor(listingSchema.safeParse({ ...base, name: "" }), "name")).toBe("Please enter a name.")
+    expect(messageFor(listingSchema.safeParse({ ...base, name: "   " }), "name")).toBe("Please enter a name.")
+    expect(messageFor(listingSchema.safeParse({ ...base, name: "x" }), "name")).toBe("Name must be at least 2 characters.")
+    expect(listingSchema.safeParse({ ...base, name: "xy" }).success).toBe(true)
+    // The trim happens first: a letter between spaces is still one character.
+    expect(messageFor(listingSchema.safeParse({ ...base, name: "  x  " }), "name")).toBe("Name must be at least 2 characters.")
+  })
+
+  it("the longest accepted name and the first refused one match the stated limit", () => {
+    expect(listingSchema.safeParse({ ...base, name: "n".repeat(80) }).success).toBe(true)
+    expect(messageFor(listingSchema.safeParse({ ...base, name: "n".repeat(81) }), "name")).toBe("Name must be at most 80 characters.")
+  })
+
+  it("a property title says the same, with its own limits", () => {
+    expect(messageFor(propertySchema.safeParse({ ...property, title: "" }), "title")).toBe("Please enter a title.")
+    expect(messageFor(propertySchema.safeParse({ ...property, title: "x" }), "title")).toBe("Title must be at least 2 characters.")
+    expect(propertySchema.safeParse({ ...property, title: "xy" }).success).toBe(true)
+    expect(propertySchema.safeParse({ ...property, title: "t".repeat(100) }).success).toBe(true)
+    expect(messageFor(propertySchema.safeParse({ ...property, title: "t".repeat(101) }), "title")).toBe("Title must be at most 100 characters.")
   })
 })

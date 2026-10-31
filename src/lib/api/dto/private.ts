@@ -48,6 +48,11 @@ interface OwnerFieldsDto {
   categories: CategoryRefDto[]
   categoryLabel: string
   rejectionReason?: string
+  /**
+   * `true` only while the listing is `rejected` BECAUSE a moderator took down a listing that was live
+   * (S5A). Absent for a plain rejection of a pending listing. Status and visibility are the same either way.
+   */
+  takenDown?: boolean
   featured?: boolean
   submittedAt: string
   createdAt: string
@@ -117,6 +122,8 @@ export interface AdminListingSummaryDto {
   categoryLabel: string
   status: ListingStatusDto
   revision: number
+  /** `true` only while `rejected` BECAUSE a moderator took down a live listing (S5A; same meaning as on the owner shape). */
+  takenDown?: boolean
   featured?: boolean
   submittedAt: string
   updatedAt: string

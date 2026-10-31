@@ -11,15 +11,14 @@ import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Badge } from "@/components/ui/badge"
 import { ReadError } from "@/components/feedback/ReadError"
 import { CardImage } from "@/components/media/CardImage"
+import { FoodListingSummary } from "@/features/provider/FoodListingSummary"
 import { ListingStatusBadge } from "@/features/provider/ListingStatusBadge"
-import { OwnerListingFacts } from "@/features/provider/OwnerListingFacts"
+import { OwnerListingFacts, OwnerTagList } from "@/features/provider/OwnerListingFacts"
 import { OwnerLocationFacts } from "@/features/provider/OwnerLocationFacts"
 import { ownerListingIcon } from "@/features/provider/ownerListingIcon"
 import { useOwnerListing } from "@/hooks/useWorkspaceReads"
-import { foodCategoryLabel, foodServiceLabel } from "@/config/food"
 import type { OwnerListingView } from "@/types/ownerListing"
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" })
@@ -51,7 +50,7 @@ function ListingPreviewDialog({ listing, onOpenChange }: ListingPreviewDialogPro
           {/* pr-8 keeps the status badge clear of the dialog's close button (which sits in the top-right corner). */}
           <Stack direction="row" align="start" justify="between" gap={2} className="pr-8">
             <DialogTitle className="min-w-0 break-words">{current.title}</DialogTitle>
-            <ListingStatusBadge status={current.status} />
+            <ListingStatusBadge status={current.status} takenDown={current.takenDown} />
           </Stack>
           <DialogDescription>
             {current.typeLabel} · {current.categoryLabel}
@@ -68,7 +67,7 @@ function ListingPreviewDialog({ listing, onOpenChange }: ListingPreviewDialogPro
 
           {current.status === "rejected" && current.rejectionReason && (
             <Typography variant="body-sm" className="rounded-lg bg-destructive/5 px-3 py-2 text-destructive">
-              <span className="font-medium">Reason:</span> {current.rejectionReason}
+              <span className="font-medium">{current.takenDown ? "Taken down:" : "Reason:"}</span> {current.rejectionReason}
             </Typography>
           )}
 
@@ -90,35 +89,8 @@ function ListingPreviewDialog({ listing, onOpenChange }: ListingPreviewDialogPro
           {read.status === "success" && (
             <>
               <OwnerLocationFacts location={read.data.location} area={read.data.area} />
-              {read.data.food && (
-                <section aria-label="Food and dining" className="flex flex-col gap-2">
-                  <Typography as="h3" variant="label" className="text-xs">
-                    Food & Dining
-                  </Typography>
-                  <Typography variant="body-sm">{read.data.food.categories.map(foodCategoryLabel).join(", ")}</Typography>
-                  <Stack direction="row" wrap gap={2}>
-                    {read.data.food.serviceOptions.map((option) => (
-                      <Badge key={option} variant="outline" className="font-normal">
-                        {foodServiceLabel(option)}
-                      </Badge>
-                    ))}
-                  </Stack>
-                  {read.data.food.hoursNote && (
-                    <Typography variant="body-sm" className="text-muted-foreground">
-                      {read.data.food.hoursNote}
-                    </Typography>
-                  )}
-                </section>
-              )}
-              {read.data.tags.length > 0 && (
-                <Stack direction="row" wrap gap={2}>
-                  {read.data.tags.map((tag) => (
-                    <Badge key={tag} variant="outline" className="font-normal">
-                      {tag}
-                    </Badge>
-                  ))}
-                </Stack>
-              )}
+              {read.data.food && <FoodListingSummary food={read.data.food} listingId={read.data.id} name={read.data.title} />}
+              <OwnerTagList listing={read.data} />
             </>
           )}
         </Stack>

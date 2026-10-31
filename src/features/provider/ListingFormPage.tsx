@@ -85,7 +85,7 @@ function ListingFormPage() {
       <Container className="py-8 sm:py-12">
         <Stack gap={6} className="mx-auto max-w-2xl">
           <Stack gap={1}>
-            <Typography variant="h1">List Your Business / Service / Property</Typography>
+            <Typography variant="h1">List a Service, Business, Tutor or Property</Typography>
             <Typography variant="body-sm" className="text-muted-foreground">
               What are you listing? You can change this on the next step.
             </Typography>
@@ -169,7 +169,7 @@ function ListingFormPage() {
     <Container className="py-8 sm:py-12">
       <Stack gap={6} className="mx-auto max-w-2xl">
         <Stack gap={1}>
-          <Typography variant="h1">List Your Business / Service / Property</Typography>
+          <Typography variant="h1">List a Service, Business, Tutor or Property</Typography>
           <Typography variant="body-sm" className="text-muted-foreground">
             {KIND_CHOICES.find((c) => c.value === kind)?.title}. Everything you submit is reviewed before it is public.
           </Typography>

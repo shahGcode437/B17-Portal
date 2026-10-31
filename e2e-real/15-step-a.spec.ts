@@ -39,7 +39,7 @@ test('a Free owner with room: no warning, New listing works, and the third listi
 
   // New listing works normally, and the create page has no warning either.
   await page.getByRole('link', { name: 'New listing' }).click()
-  await expectH1(page, 'List Your Business / Service / Property')
+  await expectH1(page, 'List a Service, Business, Tutor or Property')
   await expect(noticeOf(page)).toHaveCount(0)
   await createProvider(page, { name: unique('StepA Three'), category: 'Plumbing' })
 
@@ -61,7 +61,7 @@ test('at 3 of 3 the create page warns before any field, the server still refuses
   const newListing = page.getByRole('link', { name: 'New listing' })
   await expect(newListing).toHaveAttribute('aria-describedby', 'listing-limit-notice')
   await newListing.click()
-  await expectH1(page, 'List Your Business / Service / Property')
+  await expectH1(page, 'List a Service, Business, Tutor or Property')
 
   // Before a kind is chosen or a field touched.
   const notice = noticeOf(page)
@@ -101,7 +101,7 @@ test('at 3 of 3 the create page warns before any field, the server still refuses
   await expect(noticeOf(page)).toHaveCount(0)
   expect(activeCount(free.email)).toBe(2)
   await page.getByRole('link', { name: 'New listing' }).click()
-  await expectH1(page, 'List Your Business / Service / Property')
+  await expectH1(page, 'List a Service, Business, Tutor or Property')
   await expect(noticeOf(page)).toHaveCount(0)
   await page.context().close()
 })
@@ -142,7 +142,7 @@ test('a Premium owner is never warned', async ({ browser }) => {
   await expect(noticeOf(page)).toHaveCount(0)
   await expect(page.getByText(/active listings used/)).toHaveCount(0)
   await page.getByRole('link', { name: 'New listing' }).click()
-  await expectH1(page, 'List Your Business / Service / Property')
+  await expectH1(page, 'List a Service, Business, Tutor or Property')
   await expect(noticeOf(page)).toHaveCount(0)
   await page.context().close()
 })

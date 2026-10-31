@@ -334,3 +334,52 @@ describe("ListingForm — submit", () => {
     expect(screen.getByLabelText("Opening hours (optional)")).toHaveValue("Daily")
   })
 })
+
+describe("ListingForm: a one-character name says it is too short (S5A / B-04)", () => {
+  const TOO_SHORT = "Name must be at least 2 characters."
+
+  async function submitWithName(user: ReturnType<typeof userEvent.setup>, label: string, name: string) {
+    await fill(user, screen.getByLabelText(label), name)
+    await user.click(screen.getByRole("button", { name: "Submit for Review" }))
+  }
+
+  it("service provider", async () => {
+    const user = userEvent.setup()
+    render(<ListingForm kind="provider" onSubmit={vi.fn()} onBack={vi.fn()} />)
+    await submitWithName(user, "Name", "x")
+    expect(await screen.findByText(TOO_SHORT)).toBeInTheDocument()
+    expect(screen.queryByText("Please enter a name.")).not.toBeInTheDocument()
+  })
+
+  it("tutor (the same form with the Education categories)", async () => {
+    const user = userEvent.setup()
+    render(<ListingForm kind="provider" categoryModule="education" categoryLabelText="Subject" onSubmit={vi.fn()} onBack={vi.fn()} />)
+    await submitWithName(user, "Name", "x")
+    expect(await screen.findByText(TOO_SHORT)).toBeInTheDocument()
+  })
+
+  it("general business", async () => {
+    const user = userEvent.setup()
+    render(<ListingForm kind="business" onSubmit={vi.fn()} onBack={vi.fn()} />)
+    await submitWithName(user, "Business Name", "x")
+    expect(await screen.findByText(TOO_SHORT)).toBeInTheDocument()
+  })
+
+  it("Food & Dining business", async () => {
+    const user = userEvent.setup()
+    render(<ListingForm kind="business" onSubmit={vi.fn()} onBack={vi.fn()} />)
+    await user.click(screen.getByRole("radio", { name: /Food & Dining/ }))
+    await submitWithName(user, "Business Name", "x")
+    expect(await screen.findByText(TOO_SHORT)).toBeInTheDocument()
+  })
+
+  it("an empty name still asks for a name, and an 81-character name says the limit", async () => {
+    const user = userEvent.setup()
+    render(<ListingForm kind="provider" onSubmit={vi.fn()} onBack={vi.fn()} />)
+    await user.click(screen.getByRole("button", { name: "Submit for Review" }))
+    expect(await screen.findByText("Please enter a name.")).toBeInTheDocument()
+    await fill(user, screen.getByLabelText("Name"), "n".repeat(81))
+    await user.click(screen.getByRole("button", { name: "Submit for Review" }))
+    expect(await screen.findByText("Name must be at most 80 characters.")).toBeInTheDocument()
+  })
+})

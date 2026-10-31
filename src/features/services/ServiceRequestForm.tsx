@@ -43,6 +43,9 @@ function ServiceRequestForm({ provider, requesterName, onSubmit, onCancel, submi
       preferredDate: "",
       preferredTime: "",
       notes: "",
+      // The only way a provider can reach a requester is the request itself (in B-17 Portal): WhatsApp and phone
+      // were offered as "hints" that nothing acted on, so they are no longer offered (S5A / B-13). The API still
+      // accepts all three values, so historic requests keep their stored preference.
       preferredContactChannel: "in_app",
     },
   })
@@ -143,23 +146,6 @@ function ServiceRequestForm({ provider, requesterName, onSubmit, onCancel, submi
               {err("notes")}
             </Typography>
           )}
-        </Stack>
-
-        <Stack gap={2}>
-          <Label htmlFor="request-contact">Preferred contact method</Label>
-          <select
-            id="request-contact"
-            className={selectClassName}
-            aria-describedby="request-contact-hint"
-            {...register("preferredContactChannel")}
-          >
-            <option value="in_app">In-app (my requests)</option>
-            <option value="whatsapp">WhatsApp (if the provider shares a number)</option>
-            <option value="phone">Phone (if the provider shares a number)</option>
-          </select>
-          <Typography id="request-contact-hint" variant="caption" className="text-muted-foreground">
-            B-17 Portal does not share your phone or WhatsApp number. This is a hint to the provider only.
-          </Typography>
         </Stack>
 
         <Stack gap={2} className="flex-col-reverse sm:flex-row sm:justify-end">

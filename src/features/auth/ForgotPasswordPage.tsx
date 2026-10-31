@@ -28,6 +28,10 @@ type Values = z.infer<typeof schema>
  * and so does this screen: ONE neutral confirmation, identical for every address, never reworded by
  * the response, its timing or anything inferred about the account. Only rate limiting and a network
  * failure produce a different message — they say nothing about the account.
+ *
+ * The wording says a link was REQUESTED, never that it was sent, delivered or is on its way: production e-mail
+ * delivery does not exist yet (Phase 13). The development line (nothing is e-mailed; the link is in the API
+ * terminal) is the only place that names how a link is obtained, and it is behind `isDevMail()`.
  */
 function ForgotPasswordPage() {
   const [sent, setSent] = useState(false)
@@ -57,15 +61,15 @@ function ForgotPasswordPage() {
           <Stack gap={2} className="text-center">
             <Typography variant="h1">Forgot password</Typography>
             <Typography variant="body-sm" className="text-muted-foreground">
-              Enter your email address and we'll send a link to reset your password.
+              Enter your email address to request a link to reset your password.
             </Typography>
           </Stack>
 
           {sent ? (
             <div role="status" className="rounded-lg border border-border bg-muted px-4 py-3">
               <Typography variant="body-sm">
-                If an account exists for that email address, a password reset link is on its way. The link expires
-                after one hour.
+                If an account exists for that email address, a password reset link was requested for it. Reset links
+                expire after one hour.
               </Typography>
               {isDevMail() && (
                 <Typography variant="body-sm" className="mt-2 text-muted-foreground" data-testid="dev-reset-hint">

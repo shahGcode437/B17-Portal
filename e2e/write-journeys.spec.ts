@@ -68,12 +68,61 @@ test.describe("Admin: approve a pending listing", () => {
   })
 })
 
+test.describe("Admin: the queue row says Taken down for a takedown and Rejected for a rejection (S5A)", () => {
+  const queueRow = (page: import("@playwright/test").Page, title: string) =>
+    page.getByRole("button", { name: `Review ${title}` }).locator('xpath=ancestor::*[@data-slot="card"][1]')
+
+  test("a pending listing that is rejected reads Rejected; an approved one that is taken down reads Taken down", async ({ page }) => {
+    await openApp(page, "/")
+    await enterAdmin(page)
+    await navigateInApp(page, "/admin/moderation", "Listing Review")
+
+    // A plain rejection of a pending listing.
+    await page.getByRole("button", { name: "Review Pending Stationers" }).click()
+    const refuse = page.getByRole("dialog", { name: "Review Listing" })
+    await refuse.getByRole("button", { name: /^Reject$/ }).click()
+    await refuse.getByLabel(/Rejection reason/).fill("Please add the shop opening hours.")
+    await refuse.getByRole("button", { name: /Confirm Rejection/ }).click()
+    await expect(refuse).toBeHidden({ timeout: 10_000 })
+
+    // No reload: the SAME mounted panel opens for the next listing, and it must not inherit the reject form or the text
+    // typed for the first one (it used to open already on "Rejection reason" with that text in it).
+    await page.getByRole("button", { name: "Review Approved Plumbing Co" }).click()
+    const takedown = page.getByRole("dialog", { name: "Review Listing" })
+    await expect(takedown.getByRole("button", { name: /^Take down$/ })).toBeVisible()
+    await expect(takedown.getByLabel(/Rejection reason|Take down reason/)).toHaveCount(0)
+    await expect(takedown).not.toContainText("Please add the shop opening hours.")
+    await takedown.getByRole("button", { name: /^Take down$/ }).click()
+    await expect(takedown.getByLabel(/Take down reason/)).toHaveValue("")
+    await takedown.getByLabel(/Take down reason/).fill("Reported as closed; please confirm you still trade.")
+    await takedown.getByRole("button", { name: /Confirm takedown/ }).click()
+    await expect(takedown).toBeHidden({ timeout: 10_000 })
+
+    // The queue rows themselves (not only the dialog) say which it was; both are still filed under Rejected.
+    await page.getByRole("radio", { name: /^Rejected/ }).click()
+    await expect(queueRow(page, "Approved Plumbing Co")).toContainText("Taken down")
+    await expect(queueRow(page, "Approved Plumbing Co")).not.toContainText("Rejected")
+    await expect(queueRow(page, "Pending Stationers")).toContainText("Rejected")
+    await expect(queueRow(page, "Pending Stationers")).not.toContainText("Taken down")
+    await page.getByRole("radio", { name: /^All/ }).click()
+    await expect(queueRow(page, "Approved Plumbing Co")).toContainText("Taken down")
+
+    // A reload reads the same answer from the server, and the review dialog agrees with the row.
+    await page.reload()
+    await expectPage(page, "Listing Review")
+    await page.getByRole("radio", { name: /^All/ }).click()
+    await expect(queueRow(page, "Approved Plumbing Co")).toContainText("Taken down")
+    await page.getByRole("button", { name: "Review Approved Plumbing Co" }).click()
+    await expect(page.getByRole("dialog", { name: "Review Listing" })).toContainText("Taken down")
+  })
+})
+
 test.describe("Listing create: all five variants hit the API with the right payload", () => {
   async function enterCreateFlow(page: import("@playwright/test").Page, name: string, kindLabel: RegExp) {
     await page.goto("/provider/listings/new")
     await expectPage(page, "Log In")
     await signIn(page, name)
-    await expectPage(page, "List Your Business / Service / Property")
+    await expectPage(page, "List a Service, Business, Tutor or Property")
     await page.getByRole("button", { name: kindLabel }).click()
   }
 
@@ -248,7 +297,7 @@ test.describe("Presentation regression (end-to-end round trip)", () => {
     await page.goto("/provider/listings/new")
     await expectPage(page, "Log In")
     await signIn(page, "Sana Owner")
-    await expectPage(page, "List Your Business / Service / Property")
+    await expectPage(page, "List a Service, Business, Tutor or Property")
     await page.getByRole("button", { name: /Service \/ Professional/ }).click()
     await page.getByLabel("Name", { exact: true }).fill(name)
     await page.getByLabel("Service Category").selectOption({ label: "Solar" })
@@ -484,7 +533,7 @@ test.describe("Professional capability: the server decides", () => {
     await signIn(page, "Rana Resident", "resident")
     await expectPage(page, "Professional profile needed")
     await page.getByRole("button", { name: "Create a professional profile" }).click()
-    await expectPage(page, "List Your Business / Service / Property")
+    await expectPage(page, "List a Service, Business, Tutor or Property")
     await page.getByRole("button", { name: /Service \/ Professional/ }).click()
     await page.getByLabel("Name", { exact: true }).fill("Rana Plumbing")
     await page.getByLabel("Service Category").selectOption({ label: "Plumbing" })
@@ -497,16 +546,55 @@ test.describe("Professional capability: the server decides", () => {
     await expect(ownerCard(page, "Rana Plumbing")).toContainText("Pending Review")
   })
 
-  test("an unverified e-mail is told to verify first and cannot create the profile", async ({ page, authMock }) => {
+  test("an unverified e-mail is told to verify FIRST (before any profile prompt), and the API still refuses the profile", async ({ page, authMock }) => {
     authMock.addAccount({ email: "unverified.pro@example.org", displayName: "Unverified Una", emailVerified: false })
     await page.goto("/provider/listings/new")
     await expectPage(page, "Log In")
     await page.getByLabel("Email").fill("unverified.pro@example.org")
     await page.getByLabel("Password", { exact: true }).fill("correct horse battery")
     await page.getByRole("button", { name: "Log In", exact: true }).click()
-    await expectPage(page, "Professional profile needed")
-    await page.getByRole("button", { name: "Create a professional profile" }).click()
-    await expect(page.getByRole("alert")).toContainText("verify your email")
+
+    // S5A gate order: loading -> anonymous -> e-mail unverified -> profile missing -> allowed. The person who cannot yet
+    // create a profile is not offered the button; the verification notice is on the gate itself.
+    await expectPage(page, "Verify your email first")
+    await expect(page.getByRole("heading", { level: 1, name: "Log In" })).toHaveCount(0)
+    await expect(page.getByRole("button", { name: "Create a professional profile" })).toHaveCount(0)
+    await expect(page.getByText("Professional profile needed")).toHaveCount(0)
+    await expect(page.getByRole("region", { name: "Email verification" })).toBeVisible()
+    await expect(page.locator("main")).not.toContainText(/we sent|on its way|check your inbox/i)
+
+    // The gate is UX only: the server still refuses, so removing a button weakened nothing.
+    const attempt = await page.evaluate(async () => {
+      const me = (await (await fetch("/api/v1/auth/me", { credentials: "include" })).json()) as { data: { csrfToken?: string } }
+      const response = await fetch("/api/v1/users/me/professional-profile", {
+        method: "PUT",
+        credentials: "include",
+        headers: { "X-CSRF-Token": me.data.csrfToken ?? "" },
+      })
+      return { status: response.status, body: (await response.json()) as { error?: { code: string } } }
+    })
+    expect(attempt.status).toBe(403)
+    expect(attempt.body.error?.code).toBe("email_not_verified")
+  })
+
+  test("an unverified account opening Request Service is told to verify before it fills the form in", async ({ page, authMock }) => {
+    authMock.addAccount({ email: "unverified.req@example.org", displayName: "Unverified Uzma", emailVerified: false })
+    await page.goto("/login")
+    await expectPage(page, "Log In")
+    await page.getByLabel("Email").fill("unverified.req@example.org")
+    await page.getByLabel("Password", { exact: true }).fill("correct horse battery")
+    await page.getByRole("button", { name: "Log In", exact: true }).click()
+    await expectPage(page)
+
+    await navigateInApp(page, `/providers/${IDS.ownerApproved}`, /./)
+    await page.getByRole("button", { name: "Request Service" }).click()
+    const dialog = page.getByRole("dialog")
+    await expect(dialog.getByRole("heading", { name: "Verify your email first" })).toBeVisible()
+    await expect(dialog.getByRole("button", { name: "Submit Request" })).toHaveCount(0)
+    await expect(dialog.getByLabel("What do you need?")).toHaveCount(0)
+    await expect(dialog).not.toContainText(/we sent|on its way|check your inbox/i)
+    await dialog.getByRole("button", { name: "Not now" }).click()
+    await expect(dialog).toHaveCount(0)
   })
 })
 
@@ -523,6 +611,9 @@ test.describe("Service requests: full lifecycle", () => {
     await page.getByRole("button", { name: "Request Service" }).click()
     const dialog = page.getByRole("dialog", { name: /Request / })
     await expect(dialog).toBeVisible()
+    // S5A / B-13: no contact-method choice that does nothing - the request goes to the provider in B-17 Portal.
+    await expect(dialog.getByLabel("Preferred contact method")).toHaveCount(0)
+    await expect(dialog.getByRole("option", { name: /whatsapp|phone/i })).toHaveCount(0)
     const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
     const uniqueDetails = `Please quote a kitchen plumbing fix - UNIQUE${Date.now()}`
     await dialog.getByLabel("What do you need?").fill(uniqueDetails)
@@ -694,7 +785,7 @@ test.describe("Network failure: no fake success on any write", () => {
     await page.goto("/provider/listings/new")
     await expectPage(page, "Log In")
     await signIn(page, "Sana Offline")
-    await expectPage(page, "List Your Business / Service / Property")
+    await expectPage(page, "List a Service, Business, Tutor or Property")
     await page.getByRole("button", { name: /Service \/ Professional/ }).click()
     await page.getByLabel("Name", { exact: true }).fill("Would-Be Service")
     await page.getByLabel("Service Category").selectOption({ label: "Solar" })
@@ -708,7 +799,7 @@ test.describe("Network failure: no fake success on any write", () => {
     await page.getByRole("button", { name: "Submit for Review" }).click()
 
     // The form stays, no "submitted" page, and the form data survives.
-    await expect(page.getByRole("heading", { level: 1, name: /List Your Business/ })).toBeVisible()
+    await expect(page.getByRole("heading", { level: 1, name: /List a Service, Business, Tutor or Property/ })).toBeVisible()
     await expect(page.getByLabel("Name", { exact: true })).toHaveValue("Would-Be Service")
     await expect(page.getByText(/submitted for review/i)).toHaveCount(0)
   })

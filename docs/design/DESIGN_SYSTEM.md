@@ -212,7 +212,7 @@ Imagery is the single highest-leverage lever identified in the Visual/UI audit �
 | Tutor cards | Placeholder (no tutor photography exists) | Acceptable for now — avatars could be a lighter-weight future treatment than full `aspect-video` photos |
 | Property cards | Real photo | — |
 | News cards | Real photo | — |
-| Ads/sponsored | Placeholder/example copy, explicitly labeled "Coming in a future release" | Correct — do not fabricate real sponsor imagery |
+| Ads/sponsored | No Home block or card exists (S5A removed the labelled mock `SponsoredSection` / `FeaturedCard` and the two demo ad images: there is no advertising feature in V1) | An ad or featured placement needs its own approved phase, API and disclosure design; never fabricate real sponsor imagery |
 | Avatars (resident/professional profile) | Generic circular icon (`User` icon in a colored circle), no photo upload exists | Acceptable for a no-backend prototype; a future avatar-upload feature is out of this document's scope |
 | Placeholders | Icon + tint, `aspect-video`, accessible `aria-label` | Keep as the universal fallback contract |
 

@@ -25,6 +25,7 @@ Legend — **R** required by the current forms/seed · **O** optional · **Demo*
 | `submittedAt` (ISO; reset on resubmit) | R | BE | `listings.submitted_at timestamptz`. |
 | `submittedBy` (a **name string**) | R | **¬P** | Replaced by `owner_id` FK → `users`. A display name is not an identity. |
 | `rejectionReason?` (cleared on resubmit) | O | BE | Stored on the history row; the current reason is derived (§7). |
+| `takenDown?` (S5A; present only while `rejected`) | O | BE | Not stored: derived from the same history row (`action = rejected` with `from_status = approved`), so a moderator's takedown of a live listing reads differently from a rejection of a pending one. The status is `rejected` either way. |
 | `kind` (`provider\|business\|property`; Tutor is seed-only) | R | persist | `listings.kind` enum with the **frontend vocabulary** (`provider`, `business`, `tutor`, `property`). |
 | "Demo Listing" badge, `(Demo)`/`(Demo Area)` suffixes in seed names | — | Demo | Presentation/seed content only. No `is_demo` column; demo fixtures are loaded in dev/staging only (O-4). |
 
@@ -65,7 +66,7 @@ Legend — **R** required by the current forms/seed · **O** optional · **Demo*
 | `ServiceRequestRecord` (service, details 10–500, area, preferredDate, preferredTime?, notes? ≤500, `requestedBy` name, `providerName` snapshot, status `submitted→accepted→in-progress→completed`, `cancelled`) | `service_requests` (§6); `requestedBy` → `requester_id` FK; `providerName` snapshot kept. Transition table is the existing `REQUEST_TRANSITIONS`. |
 | `Plan` `free\|premium`, `maxListings` 3 / unlimited, quota counts **pending+approved** only | Backend-authoritative: `professional_profiles.plan_code` + code-level entitlement map mirroring `config/plans.ts`. Billing is out of scope. |
 | `DemoUser {name}`; separate in-memory admin login | Replaced by real `users` (see `AUTH_RBAC.md`). Professional ≠ a separate login: any signed-in user can use `/provider`. |
-| `SponsoredCard`, Home "discovery categories", `site` copy | **Not persisted in V1** — static content/config (sponsored/ad CRUD is Phase 9F scope, undecided). |
+| `SponsoredCard` (removed from the frontend in S5A), Home "discovery categories", `site` copy | **Not persisted in V1** — static content/config; there is no sponsored/ad feature to persist (it would need its own approved phase). |
 
 ### Gaps the frontend does not model (not invented here)
 

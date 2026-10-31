@@ -245,3 +245,29 @@ describe("mock parity: service requests", () => {
     expect(detailsOf(send(requestBody({ providerListingId: business.id })))).toContain("providerListingId:not_requestable")
   })
 })
+
+describe("mock parity: a takedown is marked, a plain rejection is not (S5A / B-03)", () => {
+  const reason = "Reported as closed; please confirm you still trade."
+  const reject = (id: string, revision: number) => routeWrite("POST", `/admin/listings/${id}/reject`, { revision, reason }, admin)
+  type Owned = { status: string; takenDown?: boolean; rejectionReason?: string; revision: number }
+  const stored = (id: string) => writeState().listings.find((l) => l.id === id) as unknown as Owned
+
+  it("rejecting a pending listing is a plain rejection (no takenDown)", () => {
+    const pending = writeState().listings.find((l) => l.status === "pending")!
+    expect(statusOf(reject(pending.id, pending.revision))).toBe(200)
+    expect(stored(pending.id).status).toBe("rejected")
+    expect(stored(pending.id).takenDown).toBeUndefined()
+  })
+
+  it("rejecting an APPROVED listing is a takedown, and an owner edit clears the marker with the reason", () => {
+    const live = writeState().listings.find((l) => l.status === "approved" && l.kind === "provider")!
+    expect(statusOf(reject(live.id, live.revision))).toBe(200)
+    expect(stored(live.id)).toMatchObject({ status: "rejected", takenDown: true, rejectionReason: reason })
+
+    const edited = routeWrite("PATCH", `/listings/${live.id}`, { revision: live.revision, description: "Open again, with a longer description of the work." }, owner)
+    expect(statusOf(edited)).toBe(200)
+    expect(stored(live.id).status).toBe("pending")
+    expect(stored(live.id).takenDown).toBeUndefined()
+    expect(stored(live.id).rejectionReason).toBeUndefined()
+  })
+})

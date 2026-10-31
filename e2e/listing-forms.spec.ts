@@ -13,7 +13,7 @@ async function openCreateForm(page: Page, name: string, kind: RegExp) {
   await page.goto('/provider/listings/new')
   await expectPage(page, 'Log In')
   await signIn(page, name)
-  await expectPage(page, 'List Your Business / Service / Property')
+  await expectPage(page, 'List a Service, Business, Tutor or Property')
   await page.getByRole('button', { name: kind }).click()
 }
 
@@ -124,7 +124,7 @@ test('the Free plan limit is explained in plain words, and the form keeps what w
   await expect(page.getByRole('link', { name: /upgrade|subscribe|buy/i })).toHaveCount(0)
 
   await page.getByRole('link', { name: 'New listing' }).click()
-  await expectPage(page, 'List Your Business / Service / Property')
+  await expectPage(page, 'List a Service, Business, Tutor or Property')
   // ... and so does the create page, BEFORE a kind is chosen or a field is filled (it blocks nothing; the server decides).
   await expect(limitNotice).toBeVisible()
   await expect(limitNotice.getByRole('link', { name: 'Manage my listings' })).toHaveAttribute('href', '/provider/listings')

@@ -162,7 +162,7 @@ function RegisterForm() {
     setFormError(null)
     try {
       await registerAccount({ email: values.email, password: values.password, displayName: values.displayName })
-      show(isDevMail() ? "Account created. In development no e-mail is sent: your Profile page shows how to verify." : "Account created. Check your email to verify your address.")
+      show(isDevMail() ? "Account created. In development no e-mail is sent: your Profile page shows how to verify." : "Account created. Verify your email address to list a business or send requests.")
     } catch (cause) {
       if (isApiError(cause) && cause.code === "email_already_registered") {
         setError("email", { message: authErrorMessage(cause) })

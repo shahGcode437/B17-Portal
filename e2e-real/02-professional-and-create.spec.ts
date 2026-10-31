@@ -30,12 +30,12 @@ test('verified Resident -> Professional area -> creates the profile -> capabilit
     page.getByRole('button', { name: 'Create a professional profile' }).click(),
   ])
   expect([200, 201]).toContain(put.status())
-  await expectH1(page, 'List Your Business / Service / Property')
+  await expectH1(page, 'List a Service, Business, Tutor or Property')
   expect(scalar(`SELECT plan_code FROM professional_profiles WHERE user_id = (SELECT id FROM users WHERE email='${resident.email}')`)).toBe('free')
 
   // Reload: still a Professional, because /auth/me says so - not because of anything stored locally.
   await page.reload()
-  await expectH1(page, 'List Your Business / Service / Property')
+  await expectH1(page, 'List a Service, Business, Tutor or Property')
   const me = (await (await page.request.get(`${WEB_API}/auth/me`)).json()).data
   expect(me.professional.planCode).toBe('free')
   const storage = await page.evaluate(() => JSON.stringify({ ...localStorage, ...sessionStorage }))
@@ -105,7 +105,7 @@ test('a Property cannot choose area_only (the option is absent) and a map-less p
   const before = scalar(`SELECT count(*) FROM listings WHERE title = '${unique('No Point')}'`)
   await ownerPage.getByRole('button', { name: 'Submit for Review' }).click()
   await expect(ownerPage.getByText(/submitted for review/i)).toHaveCount(0)
-  await expectH1(ownerPage, 'List Your Business / Service / Property')
+  await expectH1(ownerPage, 'List a Service, Business, Tutor or Property')
   expect(scalar(`SELECT count(*) FROM listings WHERE title = '${unique('No Point')}'`)).toBe(before)
 })
 

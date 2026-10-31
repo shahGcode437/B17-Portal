@@ -121,7 +121,7 @@ function ModerationQueuePage() {
                     <motion.div key={row.id} variants={staggerItem}>
                       <AdminRow
                         leading={<AdminThumb icon={rowIcon(row)} label={row.title} />}
-                        status={<ListingStatusBadge status={row.status} />}
+                        status={<ListingStatusBadge status={row.status} takenDown={row.takenDown} />}
                         actions={
                           <Button
                             variant={row.status === "pending" ? "default" : "outline"}

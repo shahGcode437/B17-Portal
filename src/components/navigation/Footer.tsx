@@ -78,7 +78,8 @@ function Footer() {
         <Divider className="my-8" />
 
         <Typography variant="caption">
-          {site.name} is an early prototype. Details may change, and nothing here is a binding offer.
+          Listing details come from the people and businesses who post them and may change. Nothing on {site.name} is a
+          binding offer.
         </Typography>
       </Container>
     </footer>

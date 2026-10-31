@@ -496,12 +496,33 @@ test('12. errors are explained in plain words: plan limit, own listing, unverifi
   await unverifiedPage.goto(`/providers/${mine.id}`)
   await expectH1(unverifiedPage, mine.name)
   await unverifiedPage.getByRole('button', { name: 'Request Service' }).click()
-  const form = unverifiedPage.getByRole('dialog', { name: /Request / })
-  await form.getByLabel('What do you need?').fill('An unverified e-mail must be told to verify first.')
-  await form.getByLabel('Area / Location').fill('B-17')
-  await form.getByLabel('Preferred Date').fill(tomorrow())
-  await form.getByRole('button', { name: /Submit Request/ }).click()
-  await expect(form.getByRole('alert').filter({ hasText: 'Please verify your email first' })).toBeVisible()
+  // S5A gate order: the dialog says "Verify your email first" BEFORE the form is filled in, and offers no form.
+  const gate = unverifiedPage.getByRole('dialog')
+  await expect(gate.getByRole('heading', { name: 'Verify your email first' })).toBeVisible()
+  await expect(gate.getByRole('button', { name: /Submit Request/ })).toHaveCount(0)
+  await expect(gate.getByLabel('What do you need?')).toHaveCount(0)
+  // The gate is UX only: the server still refuses an unverified account's request.
+  const refusedRequest = await unverifiedPage.evaluate(
+    async ({ providerListingId, preferredDate }) => {
+      const me = (await (await fetch('/api/v1/auth/me', { credentials: 'include' })).json()) as { data: { csrfToken: string } }
+      const response = await fetch('/api/v1/requests', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': me.data.csrfToken },
+        body: JSON.stringify({
+          providerListingId,
+          service: 'Plumbing',
+          details: 'An unverified e-mail must be refused by the server.',
+          area: 'B-17',
+          preferredDate,
+          preferredContactChannel: 'in_app',
+        }),
+      })
+      return { status: response.status, code: ((await response.json()) as { error?: { code: string } }).error?.code }
+    },
+    { providerListingId: mine.id, preferredDate: tomorrow() }
+  )
+  expect(refusedRequest).toEqual({ status: 403, code: 'email_not_verified' })
   await unverifiedPage.context().close()
 })
 

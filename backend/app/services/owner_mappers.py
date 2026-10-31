@@ -31,9 +31,12 @@ def map_owner_location(listing: Listing) -> OwnerLocation:
     )
 
 
-def map_owner_listing(listing: Listing, *, rejection_reason: str | None = None) -> OwnerListing:
-    """One of the owner's listings -> its kind-specific owner shape. ``rejection_reason`` is shown
-    only while the listing is ``rejected`` (it is derived from the latest rejection)."""
+def map_owner_listing(
+    listing: Listing, *, rejection_reason: str | None = None, taken_down: bool = False
+) -> OwnerListing:
+    """One of the owner's listings -> its kind-specific owner shape. ``rejection_reason`` and
+    ``taken_down`` are shown only while the listing is ``rejected`` (both are derived from the
+    latest rejection)."""
     primary = listing.categories[0].category if listing.categories else None
     common = {
         "id": listing.id,
@@ -53,6 +56,7 @@ def map_owner_listing(listing: Listing, *, rejection_reason: str | None = None) 
         ],
         "category_label": primary.name if primary else "",
         "rejection_reason": rejection_reason if listing.status is ListingStatus.REJECTED else None,
+        "taken_down": True if listing.status is ListingStatus.REJECTED and taken_down else None,
         "featured": True if listing.is_featured else None,
         "submitted_at": listing.submitted_at,
         "created_at": listing.created_at,

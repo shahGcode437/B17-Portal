@@ -19,15 +19,14 @@ const production = Object.entries(modules)
   .map(([path, source]): [string, string] => [path, stripComments(source)])
 
 /** Phrases that say a feature is unfinished. */
-const UNFINISHED = /coming soon|is coming\b|not available yet|isn't available yet|is still being built|\bprototype\b|simulated/i
+const UNFINISHED = /coming soon|is coming\b|not available yet|isn't available yet|is still being built|simulated/i
 
 /** Files where such a phrase is TRUE today, and why. */
 const GENUINELY_DEFERRED: Record<string, string> = {
   "/src/features/future-modules/ComingSoonPage.tsx": "the page for Marketplace, Pharmacy, Pick & Drop, Community and the Vault (outside Production V1)",
   "/src/features/home/sections/FutureModules.tsx": "the Home teaser for those same future modules",
-  "/src/components/navigation/Footer.tsx": "the 'Coming Soon' footer column for them, and the product-level 'early prototype' disclaimer",
+  "/src/components/navigation/Footer.tsx": "the 'Coming Soon' footer column for them",
   "/src/seo/routeSeo.ts": "the page title of that future-modules page",
-  "/src/data/site.ts": "the site's own description ('a prototype hyperlocal ecosystem')",
   "/src/features/admin/NewsAdminSoon.tsx": "news administration: the backend has no news write API",
   "/src/features/admin/ContentListPage.tsx": "news administration (no write API)",
   "/src/features/admin/ContentFormPage.tsx": "news administration (no write API)",
@@ -52,6 +51,27 @@ describe("copy guards", () => {
       return source === undefined || !UNFINISHED.test(source)
     })
     expect(stale).toEqual([])
+  })
+
+  it("no production source says 'prototype' (S5A / B-02): the product is not presented as one", () => {
+    // Comments are stripped like everywhere in this file, and there is no allowlist: JS never needs the word (a
+    // `.prototype` access would be the only legitimate use, and no production module has one).
+    const offenders = production.filter(([, source]) => /prototype/i.test(source)).map(([path]) => path)
+    expect(offenders).toEqual([])
+  })
+
+  it("the public page shell and manifest do not call the product a prototype either", () => {
+    const shell = import.meta.glob<string>(["/index.html", "/public/manifest.webmanifest"], { query: "?raw", import: "default", eager: true })
+    expect(Object.keys(shell).sort()).toEqual(["/index.html", "/public/manifest.webmanifest"])
+    for (const [path, source] of Object.entries(shell)) expect(source, path).not.toMatch(/prototype/i)
+  })
+
+  it("the Home page carries no mock Featured & Sponsored block (there is no advertising feature in V1)", () => {
+    const all = production.map(([, source]) => source).join("\n")
+    for (const gone of ["Featured & Sponsored", "how sponsored placements will appear", "Feature Your Business on B-17 Portal"]) {
+      expect(all, gone).not.toContain(gone)
+    }
+    expect(production.filter(([path]) => /sponsored|FeaturedCard/i.test(path)).map(([path]) => path)).toEqual([])
   })
 
   it("the stale lines S4 removed stay removed", () => {

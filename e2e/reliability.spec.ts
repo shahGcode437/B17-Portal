@@ -204,9 +204,9 @@ test.describe('Bug C: a signed-in person is never sent to Log In by a slow or un
     await expectPage(page, 'Overview')
 
     await page.goto('/provider/listings/new')
-    await expectPage(page, 'List Your Business / Service / Property')
+    await expectPage(page, 'List a Service, Business, Tutor or Property')
     await page.reload()
-    await expectPage(page, 'List Your Business / Service / Property')
+    await expectPage(page, 'List a Service, Business, Tutor or Property')
   })
 
   test('a slow /auth/me on a hard reload of the create form shows the session check, then the form', async ({ page }) => {
@@ -214,7 +214,7 @@ test.describe('Bug C: a signed-in person is never sent to Log In by a slow or un
     mockFor(page).meDelayMs = 1200
     await page.goto('/provider/listings/new', { waitUntil: 'commit' })
     await expect(page.getByRole('status').filter({ hasText: /checking your session/i })).toBeVisible()
-    await expectPage(page, 'List Your Business / Service / Property')
+    await expectPage(page, 'List a Service, Business, Tutor or Property')
   })
 })
 

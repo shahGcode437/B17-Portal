@@ -67,6 +67,78 @@ describe("AuthGate", () => {
     expect(retryBootstrap).toHaveBeenCalledTimes(1)
   })
 
+  describe("the order of the gates for the Professional Workspace (S5A)", () => {
+    // loading -> unavailable -> anonymous -> e-mail unverified -> professional profile missing -> allowed
+    const unverified = () => testUser({ emailVerified: false, email: "new@example.org" })
+
+    it("an unverified account is told to verify first: no 'Create a professional profile', no content, no Log In", () => {
+      renderGate("professional", authContextValue({ user: unverified() }))
+
+      expect(screen.getByRole("heading", { level: 1, name: "Verify your email first" })).toBeInTheDocument()
+      expect(screen.queryByRole("heading", { name: /professional profile needed/i })).not.toBeInTheDocument()
+      expect(screen.queryByRole("button", { name: /create a professional profile/i })).not.toBeInTheDocument()
+      expect(screen.queryByText("protected content")).not.toBeInTheDocument()
+      expect(screen.queryByTestId("where")).not.toBeInTheDocument()
+      // The full notice (with the resend button) is on the gate itself.
+      expect(screen.getByRole("region", { name: "Email verification" })).toBeInTheDocument()
+      expect(screen.getByRole("button", { name: "Back to home" })).toBeInTheDocument()
+    })
+
+    it("verification comes before the missing profile for any role (an unverified admin is not a shortcut)", () => {
+      renderGate("professional", authContextValue({ user: { ...unverified(), roles: ["admin"] } }))
+      expect(screen.getByRole("heading", { level: 1, name: "Verify your email first" })).toBeInTheDocument()
+    })
+
+    it("a verified resident without a profile gets the profile gate next, never Log In and never the verify gate", () => {
+      renderGate("professional", authContextValue({ user: testUser({ emailVerified: true }) }))
+
+      expect(screen.getByRole("heading", { level: 1, name: /professional profile needed/i })).toBeInTheDocument()
+      expect(screen.queryByText("Verify your email first")).not.toBeInTheDocument()
+      expect(screen.queryByTestId("where")).not.toBeInTheDocument()
+      expect(screen.getByRole("button", { name: "Create a professional profile" })).toBeEnabled()
+    })
+
+    it("a verified professional is let in", () => {
+      renderGate("professional", authContextValue({ user: testUser({ emailVerified: true, professional: { planCode: "free" } }) }))
+      expect(screen.getByText("protected content")).toBeInTheDocument()
+    })
+
+    it("the earlier gates still win: loading, unreachable and anonymous are decided before verification", () => {
+      renderGate("professional", authContextValue({ status: "loading", user: null }))
+      expect(screen.getByRole("status")).toHaveTextContent(/checking your session/i)
+      expect(screen.queryByText("Verify your email first")).not.toBeInTheDocument()
+    })
+
+    it("unreachable server: the retry, not the verify gate", () => {
+      renderGate("professional", authContextValue({ status: "unavailable", user: null }))
+      expect(screen.getByRole("heading", { level: 1, name: /can't reach the server/i })).toBeInTheDocument()
+      expect(screen.queryByText("Verify your email first")).not.toBeInTheDocument()
+    })
+
+    it("anonymous: Log In (remembering the page), not the verify gate", () => {
+      renderGate("professional", authContextValue({ user: null }))
+      expect(screen.getByTestId("where")).toHaveTextContent("/login|/area?tab=1")
+      expect(screen.queryByText("Verify your email first")).not.toBeInTheDocument()
+    })
+
+    it("the plain signed-in gate does not ask for verification (the Profile pages show the notice instead)", () => {
+      renderGate("authenticated", authContextValue({ user: unverified() }))
+      expect(screen.getByText("protected content")).toBeInTheDocument()
+    })
+
+    it("production wording on the verify gate never claims an e-mail was sent", () => {
+      vi.stubEnv("DEV", false)
+      try {
+        renderGate("professional", authContextValue({ user: unverified() }))
+        const gate = screen.getByRole("heading", { level: 1, name: "Verify your email first" }).closest("div") as HTMLElement
+        expect(gate).toHaveTextContent("new@example.org is not verified yet.")
+        expect(gate).not.toHaveTextContent(/we sent|on its way|inbox|dev_verify|in development/i)
+      } finally {
+        vi.unstubAllEnvs()
+      }
+    })
+  })
+
   describe("professional (a capability from /auth/me, not a role)", () => {
     it("blocks an account without a professional profile", () => {
       renderGate("professional", authContextValue({ user: testUser({ roles: ["admin"] }) })) // even an admin

@@ -2,35 +2,35 @@ import { Utensils } from "lucide-react"
 import { Typography } from "@/components/foundation/Typography"
 import { CardImage } from "@/components/media/CardImage"
 import { FOOD_VERTICAL_LABEL, foodCategoryLabel, foodServiceLabel } from "@/config/food"
-import type { Business } from "@/types/business"
+import type { OwnerFoodView } from "@/types/ownerListing"
 
 interface FoodListingSummaryProps {
-  business: Business
+  /** The Food block of the listing as its owner / an admin reads it (`OwnerListingView.food`). */
+  food: OwnerFoodView
+  /** The listing's id and name: the heading id must be unique on the page, the menu image needs a label. */
+  listingId: string
+  name: string
   /** Heading level to fit the surrounding page/dialog outline (2 on a page, 3 inside a dialog). */
   headingLevel?: 2 | 3
 }
 
 /**
- * Compact read-only Food & Dining metadata for a submitted Business (FD4):
- * used by the create/edit preview, the Professional "View" dialog and the
- * Admin review panel, so the submitter and the moderator both see the Food
- * data the generic `BusinessCard` does not show. It is a summary, not a menu
- * editor — nothing here is interactive. Renders nothing for a general Business.
+ * Compact read-only Food & Dining facts of a submitted Business: categories (the first is the primary one), the
+ * service options, the hours note, the menu highlights and the menu image. Used by the Professional "View" dialog
+ * and the Admin review panel, so the submitter and the moderator both see the Food data the generic business
+ * line does not carry (S5A / B-01). It is a summary, not a menu editor - nothing here is interactive.
  */
-function FoodListingSummary({ business, headingLevel = 3 }: FoodListingSummaryProps) {
-  const food = business.vertical === "food" ? business.food : undefined
-  if (!food) return null
-
+function FoodListingSummary({ food, listingId, name, headingLevel = 3 }: FoodListingSummaryProps) {
   const menuHighlights = food.menuHighlights ?? []
   const [primary, ...secondary] = food.categories
 
   return (
-    <section aria-labelledby={`food-summary-${business.id}`} className="flex min-w-0 flex-col gap-2">
+    <section aria-labelledby={`food-summary-${listingId}`} className="flex min-w-0 flex-col gap-2">
       <Typography
         as={`h${headingLevel}`}
         variant="label"
-        id={`food-summary-${business.id}`}
-        className="text-muted-foreground"
+        id={`food-summary-${listingId}`}
+        className="text-xs"
       >
         {FOOD_VERTICAL_LABEL} details
       </Typography>
@@ -80,7 +80,7 @@ function FoodListingSummary({ business, headingLevel = 3 }: FoodListingSummaryPr
         <CardImage
           src={food.menuImage}
           icon={Utensils}
-          label={`${business.name} menu`}
+          label={`${name} menu`}
           tone="accent"
           className="aspect-auto max-h-48 bg-muted object-contain"
         />

@@ -29,11 +29,23 @@ test('a fresh user is told to verify, and the Professional area refuses them unt
   await expect(page.getByRole('banner').getByText(name)).toBeVisible()
   expect(scalar(`SELECT email_verified_at IS NULL FROM users WHERE email = '${email}'`)).toBe('t')
 
-  // The Professional gate lets them try - and the server (not the UI) refuses, with a clear message.
+  // S5A: the Professional gate tells them to verify FIRST; it does not offer a profile they cannot create. The server
+  // still refuses if asked (so the missing button weakened nothing), and nothing is stored.
   await page.getByRole('banner').getByRole('link', { name: /List Your Business/ }).first().click()
-  await expect(page.getByText('Professional profile needed')).toBeVisible()
-  await page.getByRole('button', { name: 'Create a professional profile' }).click()
-  await expect(page.getByRole('alert')).toContainText('Please verify your email first')
+  await expectH1(page, 'Verify your email first')
+  await expect(page.getByText('Professional profile needed')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Create a professional profile' })).toHaveCount(0)
+  // The gate is UX only: the SERVER still refuses (so removing the button weakened nothing), and nothing was stored.
+  const refused = await page.evaluate(async () => {
+    const me = (await (await fetch('/api/v1/auth/me', { credentials: 'include' })).json()) as { data: { csrfToken: string } }
+    const response = await fetch('/api/v1/users/me/professional-profile', {
+      method: 'PUT',
+      credentials: 'include',
+      headers: { 'X-CSRF-Token': me.data.csrfToken },
+    })
+    return { status: response.status, code: ((await response.json()) as { error?: { code: string } }).error?.code }
+  })
+  expect(refused).toEqual({ status: 403, code: 'email_not_verified' })
   expect(scalar(`SELECT count(*) FROM professional_profiles WHERE user_id = (SELECT id FROM users WHERE email = '${email}')`)).toBe('0')
 
   // The notice is honest in development: it names the command that gets the link.
@@ -96,9 +108,9 @@ test('verified with the helper link: still signed in, then Professional profile 
   await page.goto('/provider/listings/new')
   await expect(page.getByText('Professional profile needed')).toBeVisible()
   await page.getByRole('button', { name: 'Create a professional profile' }).click()
-  await expectH1(page, 'List Your Business / Service / Property')
+  await expectH1(page, 'List a Service, Business, Tutor or Property')
   await page.reload()
-  await expectH1(page, 'List Your Business / Service / Property')
+  await expectH1(page, 'List a Service, Business, Tutor or Property')
   expect(scalar(`SELECT plan_code FROM professional_profiles WHERE user_id = (SELECT id FROM users WHERE email = '${email}')`)).toBe('free')
 
   // A Provider listing, and the owner dashboard after a reload.

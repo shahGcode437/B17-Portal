@@ -326,6 +326,10 @@ class _OwnerBase(ApiModel):
     category_label: str
     #: Present while the listing is ``rejected``: the moderator's current reason.
     rejection_reason: str | None = None
+    #: ``true`` only while the listing is ``rejected`` BECAUSE a moderator took down a listing that
+    #: was live (approved); absent for a plain rejection of a pending listing. Status and visibility
+    #: are the same either way - this only lets the owner be told which one happened.
+    taken_down: bool | None = None
     featured: bool | None = None
     submitted_at: datetime.datetime
     created_at: datetime.datetime

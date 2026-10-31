@@ -111,7 +111,10 @@ export function toOwnerListing(dto: OwnerListingDto): OwnerListingView {
   // categories travel in `food`). The form submits this SLUG back.
   const primary = dto.categories.find((ref) => ref.isPrimary) ?? dto.categories[0]
   if (primary) view.categorySlug = primary.slug
-  if (dto.kind === "tutor") view.grade = dto.grade
+  if (dto.kind === "tutor") {
+    view.grade = dto.grade
+    view.subjectLabel = dto.categoryLabel
+  }
   if (dto.kind === "property") {
     view.listingType = dto.listingType
     view.propertyTypeLabel = dto.categoryLabel
@@ -122,6 +125,8 @@ export function toOwnerListing(dto: OwnerListingDto): OwnerListingView {
   if (dto.description) view.description = dto.description
   if (dto.image) view.image = dto.image
   if (dto.rejectionReason) view.rejectionReason = dto.rejectionReason
+  // Only a rejected listing can have been taken down; anything else the server sends is ignored.
+  if (dto.takenDown && dto.status === "rejected") view.takenDown = true
   if (dto.kind === "business" && dto.vertical === "food" && dto.food) {
     view.food = {
       categories: dto.food.categories,
@@ -168,6 +173,8 @@ export function toAdminQueueRow(dto: AdminListingSummaryDto): AdminQueueRow {
     locationVisibility: dto.locationVisibility,
     status: dto.status,
     revision: dto.revision,
+    // Only a rejected row can be a takedown; the queue row says so the same way the review dialog does.
+    ...(dto.takenDown && dto.status === "rejected" ? { takenDown: true } : {}),
     ...(dto.submitter ? { submitterName: dto.submitter.displayName } : {}),
     submittedAt: dto.submittedAt,
   }

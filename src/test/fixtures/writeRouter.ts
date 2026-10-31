@@ -542,6 +542,7 @@ export function routeWrite(
     // status for a PURE visibility narrowing; this mock does not simulate that single exception.)
     listing.status = "pending"
     delete listing.rejectionReason
+    delete listing.takenDown
     listing.revision += 1
     listing.submittedAt = nowIso()
     listing.updatedAt = nowIso()
@@ -573,6 +574,9 @@ export function routeWrite(
       const reason = typeof body.reason === "string" ? body.reason.trim() : ""
       if (reason.length < 10) return fail(422, "validation_error", [{ field: "reason", code: "too_short" }])
       if (listing.status !== "pending" && listing.status !== "approved") return fail(409, "invalid_state_transition")
+      // Rejecting a listing that was LIVE is a takedown: the status is `rejected` either way, the marker tells them apart (S5A).
+      if (listing.status === "approved") listing.takenDown = true
+      else delete listing.takenDown
       listing.status = "rejected"
       listing.rejectionReason = reason
       listing.updatedAt = nowIso()

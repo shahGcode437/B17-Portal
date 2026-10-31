@@ -43,7 +43,7 @@ SUMMARY_KEYS = {
     "id", "kind", "title", "area", "locationVisibility", "categoryLabel", "status", "revision",
     "submittedAt", "updatedAt",
 }  # fmt: skip
-OPTIONAL_SUMMARY_KEYS = {"vertical", "block", "featured", "submitter"}
+OPTIONAL_SUMMARY_KEYS = {"vertical", "block", "featured", "submitter", "takenDown"}
 PRIVATE_TEXT = ("Shop 4, Main Market", "Opposite the mosque", "33.123456", "72.123456")
 
 
@@ -306,6 +306,117 @@ def test_the_queue_does_not_issue_a_query_per_listing(auth_env: AuthEnv) -> None
     assert small.status_code == large.status_code == 200
     assert len(large.json()["data"]) == 10
     assert statements_large <= statements_small + 1  # bounded: independent of the page size
+
+
+def by_id(admin: Any, **params: Any) -> dict[str, dict[str, Any]]:
+    response = queue(admin, **params)
+    assert response.status_code == 200, response.text
+    return {row["id"]: row for row in response.json()["data"]}
+
+
+def test_the_queue_row_itself_says_taken_down_for_a_takedown_and_not_for_a_rejection(
+    auth_env: AuthEnv,
+) -> None:
+    """S5A: the status is ``rejected`` either way; the row carries the same derived marker as the
+    review shape, so the queue and the review dialog cannot disagree."""
+    owner = owner_signed_in(auth_env)
+    admin = admin_signed_in(auth_env)
+    taken_down = pending(owner, provider_body(name="Row Takedown"))
+    refused = pending(owner, provider_body(name="Row Rejection"))
+    still_pending = pending(owner, provider_body(name="Row Pending"))
+    live = pending(owner, provider_body(name="Row Live"))
+    for listing_id in (taken_down, live):
+        assert approve(admin, listing_id, 1).status_code == 200
+    age_history(auth_env.session, taken_down, 5)
+    reason = "Reported as closed; please confirm you still trade."
+    assert reject(admin, taken_down, 1, reason).status_code == 200
+    assert reject(admin, refused, 1).status_code == 200
+
+    rows = by_id(admin)
+    assert rows[taken_down]["status"] == "rejected" and rows[taken_down]["takenDown"] is True
+    assert rows[refused]["status"] == "rejected" and "takenDown" not in rows[refused]
+    # Every other status is unmarked, whatever its history.
+    assert rows[still_pending]["status"] == "pending" and "takenDown" not in rows[still_pending]
+    assert rows[live]["status"] == "approved" and "takenDown" not in rows[live]
+    # The row agrees with the review shape of the same listing.
+    assert detail(admin, taken_down)["takenDown"] is True
+    assert "takenDown" not in detail(admin, refused)
+    # The status filter and the whole-queue counts are untouched: both are still "rejected".
+    filtered = by_id(admin, status="rejected")
+    assert set(filtered) == {taken_down, refused}
+    assert filtered[taken_down]["takenDown"] is True and "takenDown" not in filtered[refused]
+    assert queue(admin).json()["meta"]["counts"] == {
+        "pending": 1, "approved": 1, "rejected": 2, "archived": 0
+    }  # fmt: skip
+    # No row carries the reason or the history: the queue stays light.
+    assert "rejectionReason" not in rows[taken_down] and "history" not in rows[taken_down]
+
+
+def test_the_queue_marker_follows_the_latest_rejection_only(auth_env: AuthEnv) -> None:
+    owner = owner_signed_in(auth_env)
+    admin = admin_signed_in(auth_env)
+    listing_id = pending(owner, provider_body(name="Row Lifecycle"))
+    assert approve(admin, listing_id, 1).status_code == 200
+    age_history(auth_env.session, listing_id, 20)
+    assert reject(admin, listing_id, 1, "Reported as closed; please confirm.").status_code == 200
+    assert by_id(admin)[listing_id]["takenDown"] is True
+
+    # Fixed and resubmitted: pending again, so the row is unmarked.
+    age_history(auth_env.session, listing_id, 15)
+    patched = owner.request(
+        "PATCH", f"/listings/{listing_id}", json={"revision": 1, "tags": ["open", "again"]}
+    )
+    assert patched.status_code == 200
+    assert "takenDown" not in by_id(admin)[listing_id]
+
+    # Refused while PENDING: a plain rejection, even though the listing was live once.
+    age_history(auth_env.session, listing_id, 10)
+    assert reject(admin, listing_id, 2).status_code == 200
+    row = by_id(admin)[listing_id]
+    assert row["status"] == "rejected" and "takenDown" not in row
+
+    # Approved and then taken down again: the marker is back.
+    age_history(auth_env.session, listing_id, 6)
+    patched = owner.request(
+        "PATCH", f"/listings/{listing_id}", json={"revision": 2, "tags": ["open", "later"]}
+    )
+    assert patched.status_code == 200
+    assert approve(admin, listing_id, 3).status_code == 200
+    age_history(auth_env.session, listing_id, 2)
+    assert reject(admin, listing_id, 3, "Closed again; please confirm.").status_code == 200
+    assert by_id(admin)[listing_id]["takenDown"] is True
+
+
+def test_telling_takedowns_apart_costs_one_statement_whatever_the_page_size(
+    auth_env: AuthEnv,
+) -> None:
+    owner = owner_signed_in(auth_env)
+    admin = admin_signed_in(auth_env)
+    ids = [pending(owner, provider_body(name=f"Row Statement {index}")) for index in range(8)]
+    for listing_id in ids[:4]:
+        assert approve(admin, listing_id, 1).status_code == 200
+    for listing_id in ids:
+        assert reject(admin, listing_id, 1).status_code == 200
+    engine: Engine = auth_env.session.get_bind().engine
+    counted: list[str] = []
+
+    def count(_c: Any, _cur: Any, statement: str, *_: Any) -> None:
+        counted.append(statement)
+
+    event.listen(engine, "before_cursor_execute", count)
+    try:
+        small = queue(admin, limit=2)
+        statements_small = len(counted)
+        counted.clear()
+        large = queue(admin, limit=8)
+        statements_large = len(counted)
+    finally:
+        event.remove(engine, "before_cursor_execute", count)
+
+    assert small.status_code == large.status_code == 200
+    assert len(large.json()["data"]) == 8
+    assert statements_large <= statements_small  # one lookup for the page, not one per rejected row
+    assert sum(1 for row in large.json()["data"] if row.get("takenDown")) == 4
 
 
 # -- the detail --------------------------------------------------------------------------------------

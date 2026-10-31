@@ -44,9 +44,9 @@ test('login -> Professional -> create -> approve -> edit -> reject -> resubmit -
     await ownerPage.goto('/provider/listings/new')
     await expect(ownerPage.getByText('Professional profile needed')).toBeVisible()
     await ownerPage.getByRole('button', { name: 'Create a professional profile' }).click()
-    await expectH1(ownerPage, 'List Your Business / Service / Property')
+    await expectH1(ownerPage, 'List a Service, Business, Tutor or Property')
     await ownerPage.reload()
-    await expectH1(ownerPage, 'List Your Business / Service / Property')
+    await expectH1(ownerPage, 'List a Service, Business, Tutor or Property')
     expect(scalar(`SELECT plan_code FROM professional_profiles WHERE user_id = (SELECT id FROM users WHERE email = '${owner.email}')`)).toBe('free')
   })
 

@@ -167,6 +167,11 @@ class AdminListingSummary(ApiModel):
     category_label: str
     status: ListingStatus
     revision: int
+    #: ``true`` only while the listing is ``rejected`` BECAUSE a moderator took down a listing that
+    #: was live (the same derived marker as the owner and review shapes: the latest ``rejected``
+    #: history row has ``from_status = approved``); absent for a plain rejection and for every other
+    #: status. The status stays ``rejected`` either way, so the queue can say "Taken down".
+    taken_down: bool | None = None
     featured: bool | None = None
     submitted_at: datetime.datetime
     updated_at: datetime.datetime

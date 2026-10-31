@@ -6,6 +6,7 @@ import { useAuth } from "@/hooks/useAuth"
 import { devVerifyCommand, isDevMail } from "@/config/devMail"
 import { resendVerification } from "@/lib/api/auth"
 import { authErrorMessage } from "@/features/auth/authMessages"
+import { VERIFICATION_REASON, VERIFICATION_UNLOCKS } from "@/features/auth/verificationCopy"
 
 /**
  * Non-blocking reminder for a signed-in account whose e-mail is not yet verified (Phase 12C).
@@ -50,13 +51,13 @@ function VerificationNotice() {
             <Typography variant="body-sm" className="text-muted-foreground" data-testid="dev-verification-hint">
               Development: no e-mail is sent. In <code>backend/</code> run{" "}
               <code className="break-all">{devVerifyCommand(user.email)}</code> to get your link, then open it (the same
-              link is also printed in the API terminal). Verifying lets you list a business and send requests; browsing
-              works either way.
+              link is also printed in the API terminal). Verifying lets you {VERIFICATION_UNLOCKS}; browsing works either
+              way.
             </Typography>
           ) : (
-            <Typography variant="body-sm" className="text-muted-foreground">
-              We sent a link to {user.email}. Verifying lets you list a business and send requests; browsing works
-              either way.
+            // Production: production e-mail delivery does not exist yet, so this never says a message was sent.
+            <Typography variant="body-sm" className="text-muted-foreground" data-testid="verification-reason">
+              {user.email} is not verified yet. {VERIFICATION_REASON}
             </Typography>
           )}
           <div role="status" aria-live="polite">
@@ -64,7 +65,7 @@ function VerificationNotice() {
               <Typography variant="body-sm">
                 {devMail
                   ? "A new link was issued. Nothing is e-mailed in development: run the command above, or read the API terminal."
-                  : "If your email still needs verifying, a new link is on its way."}
+                  : "A new verification link was requested."}
               </Typography>
             )}
             {error && (

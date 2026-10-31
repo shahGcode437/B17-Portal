@@ -3,6 +3,7 @@
 No transaction beyond the session default and nothing is written. The queue is three statements
 however many rows a page holds (page + categories, the status counts, the total); the detail is the
 owner-shape load plus two small lookups (submitter, history) and the current rejection reason.
+A page that holds rejected rows costs one more statement (which were takedowns), whatever its size.
 """
 
 import uuid
@@ -12,7 +13,7 @@ from sqlalchemy.orm import Session
 from app.models import Listing
 from app.models.enums import ListingStatus
 from app.repositories.admin_listings import AdminListingRepository
-from app.repositories.owner_listings import OwnerListingRepository
+from app.repositories.owner_listings import LatestRejection, OwnerListingRepository
 from app.schemas.admin import (
     AdminListing,
     AdminListingsMeta,
@@ -47,7 +48,19 @@ class AdminListingReadService:
                 archived=counts[ListingStatus.ARCHIVED],
             ),
         )
-        return [map_admin_summary(listing, name) for listing, name in rows], meta
+        # One extra statement for the whole page, and only when it holds a rejected row: which of
+        # them were TAKEDOWNS (a live listing a moderator removed) rather than plain rejections.
+        rejected = [listing.id for listing, _ in rows if listing.status is ListingStatus.REJECTED]
+        rejections = self._owner_listings.latest_rejections(rejected)
+        summaries = [
+            map_admin_summary(
+                listing,
+                name,
+                taken_down=listing.id in rejections and rejections[listing.id].taken_down,
+            )
+            for listing, name in rows
+        ]
+        return summaries, meta
 
     def get(self, raw_id: str) -> AdminListing:
         listing = self._listings.get(parse_listing_id(raw_id))
@@ -57,14 +70,16 @@ class AdminListingReadService:
 
     def present(self, listing: Listing) -> AdminListing:
         """The review shape of a listing already loaded through the admin repository."""
+        rejection = self._rejection(listing.id, listing.status)
         return map_admin_listing(
             listing,
             submitter_name=self._listings.submitter_name(listing.owner_id),
             history=self._listings.history(listing.id),
-            rejection_reason=self._reason(listing.id, listing.status),
+            rejection_reason=rejection.reason if rejection else None,
+            taken_down=bool(rejection and rejection.taken_down),
         )
 
-    def _reason(self, listing_id: uuid.UUID, status: ListingStatus) -> str | None:
+    def _rejection(self, listing_id: uuid.UUID, status: ListingStatus) -> LatestRejection | None:
         if status is not ListingStatus.REJECTED:
             return None
-        return self._owner_listings.current_rejection_reasons([listing_id]).get(listing_id)
+        return self._owner_listings.latest_rejections([listing_id]).get(listing_id)
