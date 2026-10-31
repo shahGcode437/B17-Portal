@@ -38,11 +38,17 @@
     --color-sidebar-primary: var(--sidebar-primary);
     --color-sidebar-foreground: var(--sidebar-foreground);
     --color-sidebar: var(--sidebar);
+    --color-chart-6: var(--chart-6);
     --color-chart-5: var(--chart-5);
     --color-chart-4: var(--chart-4);
     --color-chart-3: var(--chart-3);
     --color-chart-2: var(--chart-2);
     --color-chart-1: var(--chart-1);
+
+    /* VR1 surface tokens — opaque fallbacks beneath the translucent glass layers. */
+    --color-surface: var(--surface);
+    --color-elevated: var(--elevated);
+    --color-canvas: var(--canvas);
     --color-ring: var(--ring);
     --color-input: var(--input);
     --color-border: var(--border);
@@ -101,6 +107,16 @@
     --z-index-dropdown: 30;
     --z-index-modal: 40;
     --z-index-toast: 50;
+
+    /* VR1 gradient presets (Glassmorphism + Controlled Maximalism). Each resolves a
+       theme-aware CSS variable, so `bg-ambient` / `bg-hero` / `bg-brand-gradient` /
+       `bg-dashboard-glow` / `bg-glow` are the ONLY approved gradients — never a
+       one-off per-page gradient (DESIGN_SYSTEM.md). */
+    --background-image-ambient: var(--gradient-ambient);
+    --background-image-hero: var(--gradient-hero);
+    --background-image-brand-gradient: var(--gradient-brand);
+    --background-image-dashboard-glow: var(--gradient-dashboard);
+    --background-image-glow: var(--gradient-glow);
 }
 
 :root {
@@ -156,11 +172,47 @@
     --warning-text: #92400e;
     --info-text: #1d4ed8;
 
-    --chart-1: oklch(0.87 0 0);
-    --chart-2: oklch(0.556 0 0);
-    --chart-3: oklch(0.439 0 0);
-    --chart-4: oklch(0.371 0 0);
-    --chart-5: oklch(0.269 0 0);
+    /* VR1 chart palette — brand-aligned, mid-lightness, restrained saturation
+       (never neon). Categorical series use these; status charts use the semantic
+       success/warning/destructive/neutral tokens instead (see chartColors.ts). */
+    --chart-1: oklch(0.62 0.13 162); /* emerald — primary family */
+    --chart-2: oklch(0.68 0.10 210); /* teal */
+    --chart-3: oklch(0.70 0.15 55);  /* amber/orange — accent family */
+    --chart-4: oklch(0.60 0.13 262); /* indigo */
+    --chart-5: oklch(0.64 0.16 20);  /* rose */
+    --chart-6: oklch(0.60 0.12 300); /* violet */
+
+    /* VR1 atmospheric canvas + surface + glass system. The canvas is a touch
+       off-white so translucent white glass reads as a distinct surface. */
+    --canvas: #f5f8fb;
+    --surface: #ffffff;
+    --elevated: #ffffff;
+
+    /* Glass hierarchy (Level 1-4). Backgrounds are the card color mixed toward
+       transparent; content-heavy levels stay more opaque (readability wins). */
+    --glass-border: rgb(15 23 42 / 0.08);
+    --glass-highlight: rgb(255 255 255 / 0.65);
+    --glass-1-bg: color-mix(in srgb, var(--card) 90%, transparent);
+    --glass-2-bg: color-mix(in srgb, var(--card) 74%, transparent);
+    --glass-3-bg: color-mix(in srgb, var(--card) 86%, transparent);
+    --glass-4-bg: color-mix(in srgb, var(--card) 92%, transparent);
+    --glass-panel-bg: color-mix(in srgb, var(--card) 88%, transparent);
+    --glass-blur-1: 6px;
+    --glass-blur-2: 14px;
+    --glass-blur-3: 22px;
+    --glass-shadow-2: var(--shadow-medium);
+    --glass-shadow-3: var(--shadow-elevated);
+
+    /* Gradient presets — restrained luminous fields in the brand hues. */
+    --gradient-ambient:
+        radial-gradient(1200px 620px at 10% -8%, color-mix(in srgb, var(--primary) 10%, transparent), transparent 60%),
+        radial-gradient(1020px 560px at 102% -4%, color-mix(in srgb, var(--brand-accent) 8%, transparent), transparent 55%),
+        radial-gradient(1000px 760px at 50% 118%, color-mix(in srgb, var(--info) 6%, transparent), transparent 62%);
+    --gradient-hero: linear-gradient(180deg, color-mix(in srgb, var(--primary) 12%, transparent), transparent 62%);
+    --gradient-brand: linear-gradient(135deg, var(--primary), color-mix(in srgb, var(--primary) 50%, var(--info)));
+    --gradient-dashboard: radial-gradient(940px 520px at 100% -12%, color-mix(in srgb, var(--primary) 9%, transparent), transparent 55%);
+    --gradient-glow: radial-gradient(420px 320px at 50% 0%, color-mix(in srgb, var(--primary) 16%, transparent), transparent 70%);
+
     --radius: 0.625rem;
     --sidebar: oklch(0.985 0 0);
     --sidebar-foreground: oklch(0.145 0 0);
@@ -211,11 +263,42 @@
     --warning-text: #fbbf24;
     --info-text: #60a5fa;
 
-    --chart-1: oklch(0.87 0 0);
-    --chart-2: oklch(0.556 0 0);
-    --chart-3: oklch(0.439 0 0);
-    --chart-4: oklch(0.371 0 0);
-    --chart-5: oklch(0.269 0 0);
+    /* VR1 chart palette — dark-canvas variants (slightly lighter for contrast). */
+    --chart-1: oklch(0.70 0.13 162);
+    --chart-2: oklch(0.74 0.10 210);
+    --chart-3: oklch(0.76 0.15 60);
+    --chart-4: oklch(0.70 0.13 262);
+    --chart-5: oklch(0.72 0.16 20);
+    --chart-6: oklch(0.70 0.12 300);
+
+    /* VR1 atmospheric canvas + surface + glass system (dark tokens — structurally
+       correct though dark mode is not user-facing in VR1). */
+    --canvas: #0b1120;
+    --surface: #111827;
+    --elevated: #161f33;
+
+    --glass-border: rgb(255 255 255 / 0.10);
+    --glass-highlight: rgb(255 255 255 / 0.06);
+    --glass-1-bg: color-mix(in srgb, var(--card) 82%, transparent);
+    --glass-2-bg: color-mix(in srgb, var(--card) 60%, transparent);
+    --glass-3-bg: color-mix(in srgb, var(--card) 80%, transparent);
+    --glass-4-bg: color-mix(in srgb, var(--card) 88%, transparent);
+    --glass-panel-bg: color-mix(in srgb, var(--card) 82%, transparent);
+    --glass-blur-1: 6px;
+    --glass-blur-2: 14px;
+    --glass-blur-3: 22px;
+    --glass-shadow-2: 0 4px 14px -2px rgb(0 0 0 / 0.5), 0 2px 6px -2px rgb(0 0 0 / 0.4);
+    --glass-shadow-3: 0 18px 40px -10px rgb(0 0 0 / 0.6), 0 6px 14px -6px rgb(0 0 0 / 0.5);
+
+    --gradient-ambient:
+        radial-gradient(1200px 620px at 10% -8%, color-mix(in srgb, var(--primary) 20%, transparent), transparent 58%),
+        radial-gradient(1020px 560px at 102% -4%, color-mix(in srgb, var(--brand-accent) 14%, transparent), transparent 55%),
+        radial-gradient(1000px 760px at 50% 118%, color-mix(in srgb, var(--info) 12%, transparent), transparent 62%);
+    --gradient-hero: linear-gradient(180deg, color-mix(in srgb, var(--primary) 22%, transparent), transparent 62%);
+    --gradient-brand: linear-gradient(135deg, var(--primary), color-mix(in srgb, var(--primary) 50%, var(--info)));
+    --gradient-dashboard: radial-gradient(940px 520px at 100% -12%, color-mix(in srgb, var(--primary) 18%, transparent), transparent 55%);
+    --gradient-glow: radial-gradient(420px 320px at 50% 0%, color-mix(in srgb, var(--primary) 26%, transparent), transparent 70%);
+
     --sidebar: oklch(0.205 0 0);
     --sidebar-foreground: oklch(0.985 0 0);
     --sidebar-primary: #10b981;
@@ -317,4 +400,91 @@
     height: 44px;
     line-height: 44px;
   }
+}
+
+/* ============================================================================
+   VR1 — Glassmorphism + Controlled Maximalism: reusable surface utilities.
+   Every glass surface in the product composes ONE of these (never hand-rolled
+   per page). Levels follow the hierarchy in DESIGN_SYSTEM.md:
+     atmos-canvas  Level 0  application background
+     glass-1       Level 1  large shell / page surfaces
+     glass-2       Level 2  cards / navigation / feature containers
+     glass-3       Level 3  elevated dialogs / popovers / floating controls
+     glass-4       Level 4  focused / selected / active surfaces
+     glass-panel   content-heavy readable panel (dashboards / forms)
+   Accessibility and contrast always win over transparency.
+   ========================================================================== */
+
+@utility atmos-canvas {
+  background-color: var(--canvas);
+  background-image: var(--gradient-ambient);
+  background-repeat: no-repeat;
+  background-position: center top;
+  background-size: 100% 920px;
+}
+
+@utility glass-1 {
+  background-color: var(--glass-1-bg);
+  backdrop-filter: blur(var(--glass-blur-1)) saturate(1.1);
+  -webkit-backdrop-filter: blur(var(--glass-blur-1)) saturate(1.1);
+  border: 1px solid var(--glass-border);
+}
+
+@utility glass-2 {
+  background-color: var(--glass-2-bg);
+  backdrop-filter: blur(var(--glass-blur-2)) saturate(1.3);
+  -webkit-backdrop-filter: blur(var(--glass-blur-2)) saturate(1.3);
+  border: 1px solid var(--glass-border);
+  box-shadow: inset 0 1px 0 0 var(--glass-highlight), var(--glass-shadow-2);
+}
+
+@utility glass-3 {
+  background-color: var(--glass-3-bg);
+  backdrop-filter: blur(var(--glass-blur-3)) saturate(1.35);
+  -webkit-backdrop-filter: blur(var(--glass-blur-3)) saturate(1.35);
+  border: 1px solid var(--glass-border);
+  box-shadow: inset 0 1px 0 0 var(--glass-highlight), var(--glass-shadow-3);
+}
+
+@utility glass-4 {
+  background-color: var(--glass-4-bg);
+  backdrop-filter: blur(var(--glass-blur-2)) saturate(1.2);
+  -webkit-backdrop-filter: blur(var(--glass-blur-2)) saturate(1.2);
+  border: 1px solid color-mix(in srgb, var(--primary) 40%, var(--glass-border));
+  box-shadow: inset 0 1px 0 0 var(--glass-highlight), var(--glass-shadow-2);
+}
+
+@utility glass-panel {
+  background-color: var(--glass-panel-bg);
+  backdrop-filter: blur(var(--glass-blur-1)) saturate(1.1);
+  -webkit-backdrop-filter: blur(var(--glass-blur-1)) saturate(1.1);
+  border: 1px solid var(--glass-border);
+  box-shadow: inset 0 1px 0 0 var(--glass-highlight), var(--shadow-subtle);
+}
+
+/* Decorative luminous field — put on an absolutely-positioned, aria-hidden,
+   pointer-events-none layer behind content. Pure CSS, no blur, GPU-cheap. */
+@utility glow-field {
+  background-image: var(--gradient-glow);
+  pointer-events: none;
+}
+
+/* Where backdrop-filter is unsupported, raise the surface opacity so text never
+   sits on a see-through background (readability > effect). */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root, .dark {
+    --glass-1-bg: var(--card);
+    --glass-2-bg: color-mix(in srgb, var(--card) 96%, transparent);
+    --glass-3-bg: var(--card);
+    --glass-4-bg: var(--card);
+    --glass-panel-bg: var(--card);
+  }
+}
+
+/* Navigation bars: translucent blurred background only, so the element keeps its
+   own single-edge border (border-b on headers, border-t on the mobile tab bar). */
+@utility glass-nav {
+  background-color: var(--glass-1-bg);
+  backdrop-filter: blur(12px) saturate(1.2);
+  -webkit-backdrop-filter: blur(12px) saturate(1.2);
 }

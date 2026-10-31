@@ -6,6 +6,46 @@ Companion documents: `docs/development/CURRENT_STATE.md` (implementation status)
 
 ---
 
+## 0. Governing visual identity — Glassmorphism + Controlled Maximalism (VR1)
+
+**Status: VR1 foundation implemented (uncommitted at time of writing), not the full product redesign.** The official B-17 Portal design language is **Glassmorphism + Controlled Maximalism**. "Premium" is the quality bar; this is the identity that governs every surface. VR1 builds the *foundation* (tokens, canvas, glass hierarchy, shell, primitives, dashboard + chart systems, motion); later VR phases apply it deeply to individual page bodies. Locked decisions: **light atmospheric canvas is the default** (dark tokens stay structurally correct; no user-facing dark toggle in VR1); **charts are dependency-free inline SVG** (no chart library).
+
+> **Distinct from the shipped "Visual V1–V6".** Those phases (in git history, §23 below) were a *completed lightweight refresh* of the prior flat design. VR1 is a **new** design language layered on top of that token system — do not read §1–§23 as describing VR1's glass look; they describe the pre-VR1 baseline that VR1 evolves.
+
+**Palette.** Identity greens (`--primary` emerald-700 light / emerald-400 dark) + action orange (`--brand-accent`) are retained as the brand; slate neutrals are the foundation; `--success`/`--warning`/`--info`/`--destructive` are the semantic family. All contrast ratios documented in §4 still hold.
+
+**Semantic surface tokens** (`src/index.css`): `--canvas` (off-white app background), `--surface`/`--elevated` (opaque fallbacks), and the glass scale `--glass-1-bg…--glass-4-bg` + `--glass-panel-bg` (card color mixed toward transparent; content-heavy levels stay more opaque), plus `--glass-border`, `--glass-highlight`, `--glass-blur-1..3`, `--glass-shadow-2/3`.
+
+**Gradient presets** (only these; never a one-off per-page gradient): `--gradient-ambient` (the canvas luminous field), `--gradient-hero`, `--gradient-brand`, `--gradient-dashboard`, `--gradient-glow`, exposed as `bg-ambient` / `bg-hero` / `bg-brand-gradient` / `bg-dashboard-glow` / `bg-glow` utilities.
+
+**Glass hierarchy** — reusable `@utility` recipes, the single source of glass CSS (never hand-rolled per page):
+- **Level 0 `atmos-canvas`** — application background (canvas color + ambient gradient). On the three layout roots.
+- **Level 1 `glass-1` / `glass-nav`** — large shell / page surfaces and nav bars (translucent + light blur).
+- **Level 2 `glass-2`** — cards, feature containers (the default `Card` surface).
+- **Level 3 `glass-3`** — elevated dialogs / popovers / floating controls (more opaque, stronger blur + shadow).
+- **Level 4 `glass-4`** — focused / selected / active surfaces (accent-tinted border).
+- **`glass-panel`** — content-heavy readable panel (dashboards, forms); the `Card` `workspace`/`panel` surface. A `@supports` fallback raises opacity where `backdrop-filter` is unsupported, so **accessibility/readability always beats transparency**.
+
+**Typography.** Poppins (display/headings/KPI values/strong labels) + Open Sans (body/forms/dense content), via the `Typography` scale. `display` is now an editorial `text-4xl → lg:text-6xl font-bold`.
+
+**Spacing / radius / shadows.** Unchanged token scales (`Container` gutters, Tailwind spacing, `--radius-*`, `--shadow-subtle/medium/elevated`); glass adds inset highlight + layered shadow on top of these.
+
+**Surfaces & cards.** One `Card` primitive (variants `default`/`interactive`/`elevated`/`workspace`/`featured`/`glass`/`panel`) — all now compose a glass utility. `DashboardPanel` is a labelled glass region (`<section>` + `aria-labelledby`) for dashboards; `ChartPanel` wraps one chart + legend + honest empty state.
+
+**Dashboard composition.** Varied-span glass panels (not a wall of equal rectangles): KPI/story region → charts/analytics → operational lists → recent activity. `MetricTile` is the KPI: real number + label + icon + optional context, trend cue and sparkline — **real data only, never fabricated growth/revenue/visitor figures**.
+
+**Chart language.** Dependency-free inline SVG (`Sparkline`, `MiniBarChart`, `DonutChart`, `ProgressRing`) in glass `ChartPanel` containers. Categorical series use `--chart-1..6`; **status charts use the same semantic colors as the status badges** (`chartColors.ts`). Every chart is `role="img"` with a textual summary; charts render real data only and show an empty state otherwise.
+
+**Status system (unchanged, §18 below).** Listing `Pending Review / Approved / Rejected / Taken down / Archived` and request `Submitted / Accepted / In progress / Completed / Cancelled` keep their exact semantics and tones; Rejected and Taken down stay distinct (S5A).
+
+**Motion.** Existing `lib/motion` tokens + `chartReveal` (restrained fade+scale entrance). All motion collapses under `prefers-reduced-motion` via the global CSS reset.
+
+**Responsive & accessibility.** Verified at 375 / 820 / 1440; no horizontal overflow; ~44px touch targets; semantic HTML, visible focus, labelled controls, chart text alternatives, skip link, dialog focus management — all preserved.
+
+**Performance.** Controlled `backdrop-filter` regions only (no stacked full-screen blur), CSS gradients/variables, small SVG, the existing Motion dependency — no new UI framework or chart library.
+
+---
+
 ## 1. Design Vision
 
 B-17 Portal should feel like a **premium hyperlocal marketplace and community platform** — the first place a B-17 resident checks when they need something nearby, and a place local professionals are proud to list themselves on. The target feeling is modern, trustworthy, warm/local, clean, image-driven, mobile-first, and app-like. It should never feel like a generic admin template, a corporate banking app, a flashy social network, or a cluttered classifieds site.

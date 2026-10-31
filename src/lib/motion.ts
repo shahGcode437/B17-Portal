@@ -38,6 +38,15 @@ export const cardHover = {
   transition: { duration: duration.hover, ease: easing.standard },
 }
 
+/** Restrained chart/panel entrance — fade + a touch of scale (VR1). Respects
+ * prefers-reduced-motion via the global CSS reset in index.css, which collapses
+ * transition/animation durations. */
+export const chartReveal = {
+  initial: { opacity: 0, scale: 0.98 },
+  animate: { opacity: 1, scale: 1 },
+  transition: { duration: duration.detail, ease: easing.enter },
+}
+
 export const staggerContainer = {
   initial: {},
   animate: {

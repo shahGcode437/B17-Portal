@@ -5,13 +5,16 @@ import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
 import { ReadError } from "@/components/feedback/ReadError"
 import { WorkspaceSection } from "@/components/workspace/WorkspaceSection"
+import { ChartPanel } from "@/components/charts/ChartPanel"
+import { DonutChart } from "@/components/charts/DonutChart"
+import { listingStatusColor } from "@/components/charts/chartColors"
 import { AdminStat } from "@/features/admin/AdminStat"
 import { ContentStatusBadge } from "@/features/admin/ContentStatusBadge"
 import { ListingStatusBadge } from "@/features/provider/ListingStatusBadge"
 import { useAdminCounts, usePublishedNewsTotal } from "@/hooks/useWorkspaceReads"
 import { useRequireAdminAuth } from "@/hooks/useRequireAdminAuth"
 import { routes } from "@/config/routes"
-import { fadeUp } from "@/lib/motion"
+import { chartReveal, fadeUp } from "@/lib/motion"
 import type { ListingStatus } from "@/types/listing"
 
 const LISTING_STATUSES: { status: ListingStatus; label: string }[] = [
@@ -35,6 +38,18 @@ function AdminDashboardPage() {
 
   if (!admin) return null
 
+  // Real moderation counts only — the donut never invents values; with none loaded it shows nothing.
+  const data = counts.status === "success" ? counts.data : null
+  const statusSegments = data
+    ? [
+        { label: "Pending", value: data.pending, color: listingStatusColor.pending },
+        { label: "Approved", value: data.approved, color: listingStatusColor.approved },
+        { label: "Rejected / taken down", value: data.rejected, color: listingStatusColor.rejected },
+        { label: "Archived", value: data.archived, color: listingStatusColor.archived },
+      ]
+    : []
+  const statusTotal = statusSegments.reduce((sum, s) => sum + s.value, 0)
+
   return (
     <Container className="py-8 sm:py-12">
       <motion.div {...fadeUp}>
@@ -50,17 +65,31 @@ function AdminDashboardPage() {
             {counts.status === "error" ? (
               <ReadError error={counts.error} onRetry={counts.retry} title="Couldn't load the listing counts" />
             ) : (
-              <Grid cols={4} gap={3} className="grid-cols-2 sm:grid-cols-4 lg:grid-cols-4">
-                {LISTING_STATUSES.map(({ status, label }) => (
-                  <AdminStat
-                    key={status}
-                    badge={<ListingStatusBadge status={status} />}
-                    linkLabel={label}
-                    value={counts.status === "success" ? counts.data[status] : "—"}
-                    to={routes.adminModeration}
-                  />
-                ))}
-              </Grid>
+              <div className="grid gap-4 lg:grid-cols-3">
+                {/* KPI tiles span two columns; the distribution donut takes the third (varied-span grid). */}
+                <Grid cols={4} gap={3} className="grid-cols-2 sm:grid-cols-4 lg:col-span-2 lg:grid-cols-2 xl:grid-cols-4">
+                  {LISTING_STATUSES.map(({ status, label }) => (
+                    <AdminStat
+                      key={status}
+                      badge={<ListingStatusBadge status={status} />}
+                      linkLabel={label}
+                      value={counts.status === "success" ? counts.data[status] : "—"}
+                      to={routes.adminModeration}
+                    />
+                  ))}
+                </Grid>
+                <motion.div {...chartReveal}>
+                  <ChartPanel
+                    title="By status"
+                    description="Across the whole moderation queue."
+                    isEmpty={statusTotal === 0}
+                    emptyMessage="No listings have been submitted yet."
+                    legend={statusSegments.map((s) => ({ label: s.label, value: s.value, color: s.color }))}
+                  >
+                    <DonutChart label="Listings by status" segments={statusSegments} size={140} centerValue={statusTotal} centerLabel="listings" />
+                  </ChartPanel>
+                </motion.div>
+              </div>
             )}
           </WorkspaceSection>
 

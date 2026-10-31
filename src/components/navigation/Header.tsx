@@ -14,7 +14,7 @@ function Header() {
   const { user, status, retryBootstrap } = useAuth()
 
   return (
-    <header className="sticky top-0 z-sticky border-b border-border bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/80">
+    <header className="glass-nav sticky top-0 z-sticky border-b border-border">
       <Container>
         <Stack direction="row" align="center" justify="between" gap={4} className="h-16">
           <Link to={routes.home} className="flex min-h-11 shrink-0 items-center gap-2" aria-label={`${site.name} home`}>

@@ -4,25 +4,28 @@ import { motion } from "motion/react"
 import { cn } from "cn"
 import { cardHover } from "@/lib/motion"
 
-const cardVariants = cva(
-  "flex flex-col gap-3 rounded-xl border bg-card p-3 text-left transition-colors",
-  {
-    variants: {
-      variant: {
-        default: "border-border shadow-subtle",
-        interactive:
-          "cursor-pointer border-border shadow-subtle hover:border-primary/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        elevated: "border-border shadow-medium",
-        workspace: "gap-3 border-border p-4 shadow-subtle",
-        featured:
-          "cursor-pointer border-brand-accent/40 shadow-subtle hover:border-brand-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-      },
+// VR1: every surface composes a glass utility from index.css (one source of truth, never
+// per-page glass CSS). Display surfaces are translucent Level-2 glass; content-heavy surfaces
+// (workspace / panel) use the more opaque `glass-panel` so dense text and forms stay readable.
+const cardVariants = cva("flex flex-col gap-3 rounded-xl p-3 text-left transition-[box-shadow,transform,border-color,background-color]", {
+  variants: {
+    variant: {
+      default: "glass-2",
+      interactive: "glass-2 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+      elevated: "glass-2 shadow-elevated",
+      workspace: "glass-panel gap-3 p-4",
+      featured:
+        "glass-2 cursor-pointer ring-1 ring-inset ring-brand-accent/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+      /** Explicit Level-2 glass surface (same as default; named for intent). */
+      glass: "glass-2",
+      /** Content-heavy readable panel (dashboards, information regions). */
+      panel: "glass-panel",
     },
-    defaultVariants: {
-      variant: "default",
-    },
-  }
-)
+  },
+  defaultVariants: {
+    variant: "default",
+  },
+})
 
 /** Variants whose surface is meant to be clicked — these get the shared hover/press lift. */
 const HOVER_LIFT_VARIANTS = new Set(["interactive", "featured"])

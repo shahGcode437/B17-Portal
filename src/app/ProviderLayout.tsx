@@ -17,9 +17,9 @@ import { routes } from "@/config/routes"
  */
 function ProviderLayout() {
   return (
-    <div className="flex min-h-svh flex-col bg-secondary/30">
+    <div className="atmos-canvas flex min-h-svh flex-col">
       <SkipLink />
-      <header className="border-b border-border bg-background">
+      <header className="glass-nav sticky top-0 z-sticky border-b border-border">
         <Container>
           <Stack direction="row" align="center" justify="between" gap={4} className="h-14">
             <Link to={routes.home} className="flex min-h-11 items-center gap-2 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="Back to B-17 Portal">

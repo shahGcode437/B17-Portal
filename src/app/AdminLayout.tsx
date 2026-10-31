@@ -29,9 +29,10 @@ function AdminLayout() {
   const admin = user?.roles.includes("admin") ? user : null
 
   return (
-    <div className="flex min-h-svh flex-col bg-secondary/30">
+    <div className="atmos-canvas flex min-h-svh flex-col">
       <SkipLink />
-      <header className="border-b border-border bg-foreground text-background">
+      {/* Admin keeps its dense dark identity bar (DESIGN_SYSTEM §13), now sitting on the shared canvas. */}
+      <header className="sticky top-0 z-sticky border-b border-border bg-foreground text-background">
         <Container>
           <Stack direction="row" align="center" justify="between" gap={4} className="h-14">
             <Link

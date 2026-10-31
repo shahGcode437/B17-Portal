@@ -9,7 +9,7 @@ import { UnverifiedBanner } from "@/features/auth/UnverifiedBanner"
 /** Shell for all public/resident-facing screens (Home, Services, Directory, …). */
 function ConsumerLayout() {
   return (
-    <div className="flex min-h-svh flex-col bg-background">
+    <div className="atmos-canvas flex min-h-svh flex-col">
       <SkipLink />
       <Header />
       <UnverifiedBanner />

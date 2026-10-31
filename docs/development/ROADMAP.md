@@ -315,6 +315,10 @@ Sequence (re-derived from the code's dependencies; each slice is independently v
 
 Any slice whose diff outgrows a reviewable size (≈ 25 files or an unrelated concern) is split at implementation time rather than merged large. Phase 13 (media + production deployment) is unchanged.
 
+## VR — Visual Redesign (Glassmorphism + Controlled Maximalism)
+
+The governing visual identity (DESIGN_SYSTEM.md §0). **VR1 (foundation) is in progress, not committed:** tokens, atmospheric canvas, glass hierarchy, shared shell, evolved primitives, dashboard panel + dependency-free SVG chart systems, motion. Light canvas default, no dark toggle, no chart library, no fabricated metrics, no backend change. Distinct from the shipped lightweight Visual V1–V6. Later VR phases apply the language to individual page bodies. The visual redesign runs before Phase 13.
+
 ## Phase 13 — Media Storage & Production Deployment
 S3-compatible media upload, hosting, backups, monitoring, SPA-fallback hosting config. Not started.
 
