@@ -1,4 +1,5 @@
 import { useForm } from "react-hook-form"
+import { Send, UserRound } from "lucide-react"
 import type { Provider } from "@/types/provider"
 import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
@@ -21,13 +22,13 @@ interface ServiceRequestFormProps {
 }
 
 const selectClassName = cn(
-  "h-11 w-full min-w-0 md:h-8 rounded-lg border border-input bg-transparent px-2.5 py-1 text-base transition-colors outline-none",
+  "h-11 w-full min-w-0 md:h-9 rounded-lg border border-input bg-card/60 px-2.5 py-1 text-base transition-colors outline-none",
   "focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring",
   "aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20",
   "md:text-sm dark:bg-input/30"
 )
 
-/** Short Service Request form (UI/UX Spec §12) — used inside RequestServiceDialog. */
+/** Short Service Request form (UI/UX Spec §12; VR4 visuals, same validation and submission). */
 function ServiceRequestForm({ provider, requesterName, onSubmit, onCancel, submitting, fieldErrors = {} }: ServiceRequestFormProps) {
   const dateBounds = requestDateBounds()
   const {
@@ -53,106 +54,119 @@ function ServiceRequestForm({ provider, requesterName, onSubmit, onCancel, submi
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} noValidate>
-      <Stack gap={4}>
-        <Typography variant="caption" className="text-muted-foreground">
-          Requesting as <span className="font-medium text-foreground">{requesterName}</span>
-        </Typography>
-
-        <Stack gap={2}>
-          <Label htmlFor="request-service">Service</Label>
-          <select
-            id="request-service"
-            className={selectClassName}
-            aria-invalid={!!errors.service}
-            aria-describedby={errors.service ? "request-service-error" : undefined}
-            {...register("service")}
-          >
-            {provider.tags.map((tag) => (
-              <option key={tag} value={tag} className="capitalize">
-                {tag}
-              </option>
-            ))}
-          </select>
-          {errors.service && (
-            <Typography id="request-service-error" variant="caption" className="text-destructive" role="alert">
-              {errors.service.message}
-            </Typography>
-          )}
+      <Stack gap={6}>
+        <Stack
+          direction="row"
+          align="center"
+          gap={2}
+          className="rounded-xl bg-muted/70 px-3 py-2.5 text-sm"
+        >
+          <UserRound className="size-4 shrink-0 text-primary" aria-hidden="true" />
+          <Typography as="span" variant="body-sm" className="text-muted-foreground">
+            Requesting as <span className="font-semibold text-foreground">{requesterName}</span>
+          </Typography>
         </Stack>
 
-        <Stack gap={2}>
-          <Label htmlFor="request-details">What do you need?</Label>
-          <Textarea
-            id="request-details"
-            placeholder="e.g. Install a 5kW solar system on a single-storey rooftop."
-            rows={3}
-            aria-invalid={!!errors.details}
-            aria-describedby={errors.details ? "request-details-error" : undefined}
-            {...register("details")}
-          />
-          {errors.details && (
-            <Typography id="request-details-error" variant="caption" className="text-destructive" role="alert">
-              {errors.details.message}
-            </Typography>
-          )}
-        </Stack>
-
-        <Stack gap={2}>
-          <Label htmlFor="request-area">Area / Location</Label>
-          <Input
-            id="request-area"
-            placeholder="e.g. B-17, Block C"
-            aria-invalid={!!errors.area}
-            aria-describedby={errors.area ? "request-area-error" : undefined}
-            {...register("area")}
-          />
-          {errors.area && (
-            <Typography id="request-area-error" variant="caption" className="text-destructive" role="alert">
-              {errors.area.message}
-            </Typography>
-          )}
-        </Stack>
-
-        <Stack gap={3} className="flex-col sm:flex-row">
-          <Stack gap={2} className="flex-1">
-            <Label htmlFor="request-date">Preferred Date</Label>
-            <Input
-              id="request-date"
-              type="date"
-              min={dateBounds.min}
-              max={dateBounds.max}
-              aria-invalid={!!errors.preferredDate}
-              aria-describedby={errors.preferredDate ? "request-date-error" : undefined}
-              {...register("preferredDate")}
-            />
-            {errors.preferredDate && (
-              <Typography id="request-date-error" variant="caption" className="text-destructive" role="alert">
-                {errors.preferredDate.message}
+        <fieldset className="flex flex-col gap-4" aria-label="What">
+          <Stack gap={2}>
+            <Label htmlFor="request-service">Service</Label>
+            <select
+              id="request-service"
+              className={selectClassName}
+              aria-invalid={!!errors.service}
+              aria-describedby={errors.service ? "request-service-error" : undefined}
+              {...register("service")}
+            >
+              {provider.tags.map((tag) => (
+                <option key={tag} value={tag} className="capitalize">
+                  {tag}
+                </option>
+              ))}
+            </select>
+            {errors.service && (
+              <Typography id="request-service-error" variant="caption" className="font-medium text-destructive" role="alert">
+                {errors.service.message}
               </Typography>
             )}
           </Stack>
 
-          <Stack gap={2} className="flex-1">
-            <Label htmlFor="request-time">Preferred Time (optional)</Label>
-            <Input id="request-time" type="time" {...register("preferredTime")} />
+          <Stack gap={2}>
+            <Label htmlFor="request-details">What do you need?</Label>
+            <Textarea
+              id="request-details"
+              placeholder="e.g. Install a 5kW solar system on a single-storey rooftop."
+              rows={3}
+              aria-invalid={!!errors.details}
+              aria-describedby={errors.details ? "request-details-error" : undefined}
+              {...register("details")}
+            />
+            {errors.details && (
+              <Typography id="request-details-error" variant="caption" className="font-medium text-destructive" role="alert">
+                {errors.details.message}
+              </Typography>
+            )}
           </Stack>
-        </Stack>
+        </fieldset>
+
+        <fieldset className="flex flex-col gap-4" aria-label="Where and when">
+          <Stack gap={2}>
+            <Label htmlFor="request-area">Area / Location</Label>
+            <Input
+              id="request-area"
+              placeholder="e.g. B-17, Block C"
+              aria-invalid={!!errors.area}
+              aria-describedby={errors.area ? "request-area-error" : undefined}
+              {...register("area")}
+            />
+            {errors.area && (
+              <Typography id="request-area-error" variant="caption" className="font-medium text-destructive" role="alert">
+                {errors.area.message}
+              </Typography>
+            )}
+          </Stack>
+
+          <Stack gap={3} className="flex-col sm:flex-row">
+            <Stack gap={2} className="flex-1">
+              <Label htmlFor="request-date">Preferred Date</Label>
+              <Input
+                id="request-date"
+                type="date"
+                min={dateBounds.min}
+                max={dateBounds.max}
+                aria-invalid={!!errors.preferredDate}
+                aria-describedby={errors.preferredDate ? "request-date-error" : undefined}
+                {...register("preferredDate")}
+              />
+              {errors.preferredDate && (
+                <Typography id="request-date-error" variant="caption" className="font-medium text-destructive" role="alert">
+                  {errors.preferredDate.message}
+                </Typography>
+              )}
+            </Stack>
+
+            <Stack gap={2} className="flex-1">
+              <Label htmlFor="request-time">Preferred Time (optional)</Label>
+              <Input id="request-time" type="time" {...register("preferredTime")} />
+            </Stack>
+          </Stack>
+        </fieldset>
 
         <Stack gap={2}>
           <Label htmlFor="request-notes">Additional Details (optional)</Label>
           <Textarea id="request-notes" placeholder="Anything else the provider should know?" rows={2} {...register("notes")} />
           {err("notes") && (
-            <Typography variant="caption" className="text-destructive" role="alert">
+            <Typography variant="caption" className="font-medium text-destructive" role="alert">
               {err("notes")}
             </Typography>
           )}
         </Stack>
 
         <Stack gap={2} className="flex-col-reverse sm:flex-row sm:justify-end">
-          <Button type="button" variant="outline" onClick={onCancel}>
+          <Button type="button" variant="outline" className="h-11" onClick={onCancel}>
             Cancel
           </Button>
-          <Button type="submit" disabled={submitting ?? isSubmitting}>
+          <Button type="submit" className="h-11 text-base font-semibold" disabled={submitting ?? isSubmitting}>
+            <Send aria-hidden="true" />
             {submitting ? "Sending…" : "Submit Request"}
           </Button>
         </Stack>

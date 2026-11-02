@@ -33,8 +33,11 @@ function WorkspaceTabs({ label, tabs }: WorkspaceTabsProps) {
   }, [pathname])
 
   return (
-    <nav aria-label={label} className="border-b border-border">
-      <ul ref={listRef} className="-mb-px flex gap-0.5 overflow-x-auto [scrollbar-width:none] sm:gap-1 [&::-webkit-scrollbar]:hidden">
+    <nav
+      aria-label={label}
+      className="glass-panel sticky top-0 z-sticky rounded-2xl p-1 shadow-subtle"
+    >
+      <ul ref={listRef} className="flex gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {tabs.map((tab) => (
           <li key={tab.path} className="shrink-0">
             <NavLink
@@ -42,8 +45,8 @@ function WorkspaceTabs({ label, tabs }: WorkspaceTabsProps) {
               end={tab.end}
               className={({ isActive }) =>
                 cn(
-                  "inline-flex min-h-11 items-center rounded-t-lg border-b-2 border-transparent px-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:px-3",
-                  isActive && "border-primary font-semibold text-foreground"
+                  "relative inline-flex min-h-10 items-center rounded-xl px-3 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:px-4",
+                  isActive && "bg-card font-semibold text-foreground shadow-subtle"
                 )
               }
             >

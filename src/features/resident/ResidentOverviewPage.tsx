@@ -57,21 +57,30 @@ function ResidentOverviewPage() {
 
   return (
     <Container className="py-8 sm:py-12">
-      <motion.div {...fadeUp} className="mx-auto max-w-2xl">
+      <div className="mx-auto max-w-3xl">
         <Stack gap={6}>
-          <Stack direction="row" align="center" gap={3}>
-            <span className="flex size-14 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
-              <UserRound className="size-6" aria-hidden="true" />
-            </span>
-            <Stack gap={0} className="min-w-0">
-              <Typography variant="h1" className="break-words text-2xl sm:text-3xl">
-                {user.displayName}
-              </Typography>
-              <Typography variant="body-sm" className="text-muted-foreground">
-                {user.email}
-              </Typography>
+          <motion.div {...fadeUp} className="glass-panel flex flex-col gap-5 rounded-2xl p-5 sm:p-6">
+            <Stack direction="row" align="center" gap={4} wrap>
+              <span className="flex size-14 shrink-0 items-center justify-center rounded-2xl bg-primary text-primary-foreground ring-1 ring-primary/30">
+                <UserRound className="size-7" aria-hidden="true" />
+              </span>
+              <Stack gap={1} className="min-w-0 flex-1">
+                <Typography as="span" variant="caption" className="font-medium uppercase tracking-wider text-primary">
+                  Account
+                </Typography>
+                <Typography variant="h1" className="break-words text-2xl sm:text-3xl">
+                  {user.displayName}
+                </Typography>
+                <Typography variant="body-sm" className="text-muted-foreground">
+                  {user.email}
+                </Typography>
+              </Stack>
+              <Button variant="outline" className="h-11 shrink-0" onClick={handleLogout}>
+                <LogOut />
+                Log Out
+              </Button>
             </Stack>
-          </Stack>
+          </motion.div>
 
           <VerificationNotice />
 
@@ -147,12 +156,8 @@ function ResidentOverviewPage() {
             )}
           </WorkspaceSection>
 
-          <Button variant="outline" className="h-11 w-fit" onClick={handleLogout}>
-            <LogOut />
-            Log Out
-          </Button>
         </Stack>
-      </motion.div>
+      </div>
 
       <RequestDetailDialog request={selected} onOpenChange={(open) => !open && setSelected(null)} />
     </Container>

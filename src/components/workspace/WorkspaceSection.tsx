@@ -7,21 +7,31 @@ import { Typography } from "@/components/foundation/Typography"
 
 interface WorkspaceSectionProps {
   title: string
+  /** A quiet one-line hint under the title. */
+  description?: string
+  /** A count chip beside the title (e.g. 5 active leads). Hidden from assistive tech since the title can carry the count too. */
+  count?: number
   /** Optional right-aligned link, e.g. "View all". */
   actionLabel?: string
   actionTo?: string
   children: ReactNode
 }
 
-/** A titled region (h2 + optional "View all") shared by the Resident and Professional pages. */
-function WorkspaceSection({ title, actionLabel, actionTo, children }: WorkspaceSectionProps) {
+/** A titled region (h2 + optional count chip + "View all") shared by the Resident, Professional and Admin pages. */
+function WorkspaceSection({ title, description, count, actionLabel, actionTo, children }: WorkspaceSectionProps) {
   const headingId = useId()
   return (
     <section aria-labelledby={headingId}>
       <Stack gap={3}>
-        <Stack direction="row" align="center" justify="between" gap={3}>
+        <Stack direction="row" align="center" justify="between" gap={3} wrap>
           <Typography as="h2" variant="label" id={headingId} className="font-heading text-lg font-semibold">
             {title}
+            {typeof count === "number" && (
+              <>
+                {" "}
+                <span className="font-normal tabular-nums text-muted-foreground">{`(${count})`}</span>
+              </>
+            )}
           </Typography>
           {actionLabel && actionTo && (
             <Link
@@ -33,6 +43,11 @@ function WorkspaceSection({ title, actionLabel, actionTo, children }: WorkspaceS
             </Link>
           )}
         </Stack>
+        {description && (
+          <Typography variant="body-sm" className="text-muted-foreground">
+            {description}
+          </Typography>
+        )}
         {children}
       </Stack>
     </section>

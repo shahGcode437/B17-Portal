@@ -6,7 +6,7 @@ type SelectableCardProps = {
   children: ReactNode
 } & ({ onSelect: () => void; to?: never } | { to: string; onSelect?: never })
 
-const targetClasses = "flex w-full flex-col gap-3 rounded-xl p-4 text-left outline-none"
+const targetClasses = "flex w-full flex-col gap-3 rounded-2xl p-4 text-left outline-none"
 
 /**
  * Workspace list row that opens a detail view (`onSelect`, a real `<button>`)
@@ -20,7 +20,7 @@ function SelectableCard({ children, onSelect, to }: SelectableCardProps) {
   return (
     <Card
       variant="workspace"
-      className="p-0 transition-colors hover:border-primary/30 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring"
+      className="rounded-2xl p-0 transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-medium has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring"
     >
       {to ? (
         <Link to={to} className={targetClasses}>

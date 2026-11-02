@@ -162,9 +162,9 @@ function ReviewPanel({ row, open, onOpenChange, onChanged }: ReviewPanelProps) {
             </DialogDescription>
           </DialogHeader>
 
-          <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2 rounded-lg bg-muted p-3 text-sm">
+          <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2 rounded-xl bg-muted/70 p-4 text-sm ring-1 ring-border/60">
             <dt className="text-muted-foreground">Listing</dt>
-            <dd className="break-words font-medium">{row.title}</dd>
+            <dd className="break-words font-semibold">{row.title}</dd>
             <dt className="text-muted-foreground">Type</dt>
             <dd className="break-words">{row.typeLabel}</dd>
             <dt className="text-muted-foreground">Category</dt>
@@ -178,7 +178,7 @@ function ReviewPanel({ row, open, onOpenChange, onChanged }: ReviewPanelProps) {
               <ListingStatusBadge status={listing?.status ?? row.status} takenDown={listing ? listing.takenDown : row.takenDown} />
             </dd>
             <dt className="text-muted-foreground">Revision</dt>
-            <dd className="font-medium">{listing?.revision ?? row.revision}</dd>
+            <dd className="font-medium tabular-nums">{listing?.revision ?? row.revision}</dd>
             {listing?.status === "rejected" && listing.rejectionReason && (
               <>
                 <dt className="text-muted-foreground">{listing.takenDown ? "Takedown reason" : "Rejection reason"}</dt>
@@ -207,20 +207,28 @@ function ReviewPanel({ row, open, onOpenChange, onChanged }: ReviewPanelProps) {
               {listing.food && <FoodListingSummary food={listing.food} listingId={listing.id} name={listing.title} />}
               <OwnerTagList listing={listing} />
               <OwnerLocationFacts location={listing.location} area={listing.area} />
-              <section aria-label="History" className="flex flex-col gap-2">
-                <Typography as="h3" variant="label" className="text-xs">
-                  History
+              <section aria-label="History" className="flex flex-col gap-3">
+                <Typography as="h3" variant="label" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Moderation history
                 </Typography>
-                <ol className="flex flex-col gap-1.5">
+                <ol className="relative flex flex-col gap-3 pl-5">
+                  <span aria-hidden="true" className="absolute left-[7px] top-2 bottom-2 w-px bg-border" />
                   {listing.history.map((entry, index) => (
-                    <li key={`${entry.action}-${index}`} className="text-sm">
-                      <span className="font-medium capitalize">{historyLabel(entry)}</span>
-                      <span className="text-muted-foreground">
-                        {" "}
-                        · revision {entry.revision} · {entry.actorName} ({entry.actorRole}) ·{" "}
+                    <li key={`${entry.action}-${index}`} className="relative flex flex-col gap-0.5 text-sm">
+                      <span
+                        aria-hidden="true"
+                        className="absolute -left-5 top-1.5 size-3 rounded-full bg-primary ring-2 ring-background"
+                      />
+                      <span className="font-semibold capitalize">{historyLabel(entry)}</span>
+                      <span className="text-xs text-muted-foreground">
+                        revision {entry.revision} · {entry.actorName} ({entry.actorRole}) ·{" "}
                         {stampFormatter.format(new Date(entry.at))}
                       </span>
-                      {entry.reason && <p className="break-words text-muted-foreground">“{entry.reason}”</p>}
+                      {entry.reason && (
+                        <p className="mt-1 break-words rounded-lg bg-muted/60 px-2.5 py-1.5 text-sm text-muted-foreground">
+                          “{entry.reason}”
+                        </p>
+                      )}
                     </li>
                   ))}
                 </ol>
@@ -229,7 +237,7 @@ function ReviewPanel({ row, open, onOpenChange, onChanged }: ReviewPanelProps) {
           )}
         </div>
 
-        <div className="sticky bottom-0 border-t border-border bg-popover p-4">
+        <div className="sticky bottom-0 border-t border-border bg-popover/90 p-4 backdrop-blur-sm">
           {showRejection ? (
             <Stack gap={2}>
               <Label htmlFor="review-reason">

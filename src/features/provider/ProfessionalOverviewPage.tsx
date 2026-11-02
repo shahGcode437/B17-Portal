@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom"
 import { motion } from "motion/react"
-import { Store, Inbox, Layers, Clock, CheckCircle2, XCircle, Archive, MessageSquareText, Plus } from "lucide-react"
+import { Store, Inbox, Layers, Clock, CheckCircle2, XCircle, Archive, MessageSquareText, Plus, LayoutDashboard } from "lucide-react"
 import { Container } from "@/components/foundation/Container"
 import { Grid } from "@/components/foundation/Grid"
 import { Stack } from "@/components/foundation/Stack"
@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { ReadError } from "@/components/feedback/ReadError"
 import { MetricTile } from "@/components/workspace/MetricTile"
+import { PageHeader } from "@/components/workspace/PageHeader"
 import { WorkspaceEmpty } from "@/components/workspace/WorkspaceEmpty"
 import { WorkspaceSection } from "@/components/workspace/WorkspaceSection"
 import { ChartPanel } from "@/components/charts/ChartPanel"
@@ -22,7 +23,7 @@ import { useLeadStatusCounts, useOwnerListings } from "@/hooks/useWorkspaceReads
 import { useRequireAuth } from "@/hooks/useRequireAuth"
 import { usePlanEntitlements } from "@/hooks/useCapability"
 import { routes } from "@/config/routes"
-import { chartReveal, fadeUp } from "@/lib/motion"
+import { chartReveal } from "@/lib/motion"
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" })
 
@@ -80,25 +81,25 @@ function ProfessionalOverviewPage() {
 
   return (
     <Container className="py-8 sm:py-12">
-      <motion.div {...fadeUp} className="mx-auto max-w-5xl">
+      <div className="mx-auto max-w-5xl">
         <Stack gap={6}>
-          <Stack direction="row" align="start" justify="between" gap={3} wrap>
-            <Stack gap={1}>
-              <Typography variant="h1">Overview</Typography>
-              <Typography variant="body-sm" className="text-muted-foreground">
-                Signed in as {user.displayName}.
-              </Typography>
-            </Stack>
-            <Stack direction="row" align="center" gap={2} wrap>
-              <PlanBadge />
-              <Button asChild size="sm">
-                <Link to={routes.createListing}>
-                  <Plus />
-                  New listing
-                </Link>
-              </Button>
-            </Stack>
-          </Stack>
+          <PageHeader
+            icon={LayoutDashboard}
+            eyebrow="Professional"
+            title="Overview"
+            description={`Signed in as ${user.displayName}.`}
+            actions={
+              <>
+                <PlanBadge />
+                <Button asChild size="lg" className="h-11">
+                  <Link to={routes.createListing}>
+                    <Plus />
+                    New listing
+                  </Link>
+                </Button>
+              </>
+            }
+          />
 
           {plan === "free" && (
             <Card
@@ -199,7 +200,7 @@ function ProfessionalOverviewPage() {
             )}
           </WorkspaceSection>
         </Stack>
-      </motion.div>
+      </div>
     </Container>
   )
 }

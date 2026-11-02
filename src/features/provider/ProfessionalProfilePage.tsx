@@ -1,6 +1,5 @@
 import { Link, useNavigate } from "react-router-dom"
-import { motion } from "motion/react"
-import { UserRound, LogOut } from "lucide-react"
+import { UserRound, LogOut, Store } from "lucide-react"
 import { Container } from "@/components/foundation/Container"
 import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
@@ -8,19 +7,20 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { ReadError } from "@/components/feedback/ReadError"
+import { PageHeader } from "@/components/workspace/PageHeader"
+import { WorkspaceSection } from "@/components/workspace/WorkspaceSection"
 import { useOwnerListings } from "@/hooks/useWorkspaceReads"
 import { useAuth } from "@/hooks/useAuth"
 import { useToast } from "@/hooks/useToast"
 import { VerificationNotice } from "@/features/auth/VerificationNotice"
 import { useRequireAuth } from "@/hooks/useRequireAuth"
 import { routes } from "@/config/routes"
-import { fadeUp } from "@/lib/motion"
 
 /**
- * Professional Profile (Phase 9D) - what the session and the account's own listings actually say:
- * a name, an e-mail and (Phase 12G) the REAL approved listings read from `GET /users/me/listings`.
- * No verification documents, bank info, subscription info, team permissions, or analytics - those
- * belong to later phases.
+ * Professional Profile (Phase 9D; VR4 visuals) — what the session and the account's own listings
+ * actually say: a name, an e-mail and the REAL approved listings. No bio, phone, WhatsApp, business
+ * hours or public contact preferences: ProfessionalProfile's contact fields are Phase 13B and nothing
+ * fake is shown as editable.
  */
 function ProfessionalProfilePage() {
   const user = useRequireAuth()
@@ -44,45 +44,47 @@ function ProfessionalProfilePage() {
 
   return (
     <Container className="py-8 sm:py-12">
-      <motion.div {...fadeUp} className="mx-auto max-w-2xl">
+      <div className="mx-auto max-w-3xl">
         <Stack gap={6}>
-          <Typography variant="h1">Profile</Typography>
+          <PageHeader
+            icon={UserRound}
+            eyebrow="Professional"
+            title="Profile"
+            description="Your account identity and the listings that are approved and public today."
+            actions={
+              <Button variant="outline" className="h-11" onClick={handleLogout}>
+                <LogOut />
+                Log Out
+              </Button>
+            }
+          />
 
           <VerificationNotice />
 
-          <Card variant="workspace" className="flex-row items-center gap-3">
-            <span className="flex size-14 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
-              <UserRound className="size-6" aria-hidden="true" />
+          <Card variant="workspace" className="flex-row items-center gap-4 rounded-2xl p-5">
+            <span className="flex size-14 shrink-0 items-center justify-center rounded-2xl bg-primary text-primary-foreground ring-1 ring-primary/30">
+              <UserRound className="size-7" aria-hidden="true" />
             </span>
-            <Stack gap={0} className="min-w-0">
+            <Stack gap={1} className="min-w-0">
               <Typography as="p" variant="label" className="break-words font-heading text-xl font-semibold">
                 {user.displayName}
               </Typography>
               <Typography variant="body-sm" className="text-muted-foreground">
                 {user.email}
               </Typography>
+              {kinds.length > 0 && (
+                <Stack direction="row" wrap gap={2} className="mt-2">
+                  {kinds.map((kind) => (
+                    <Badge key={kind} variant="secondary" className="rounded-full font-normal">
+                      {kind}
+                    </Badge>
+                  ))}
+                </Stack>
+              )}
             </Stack>
           </Card>
 
-          {kinds.length > 0 && (
-            <Stack gap={2}>
-              <Typography as="h2" variant="label" className="font-heading text-lg font-semibold">
-                Listing types
-              </Typography>
-              <Stack direction="row" wrap gap={2}>
-                {kinds.map((kind) => (
-                  <Badge key={kind} variant="outline" className="gap-1 font-normal">
-                    {kind}
-                  </Badge>
-                ))}
-              </Stack>
-            </Stack>
-          )}
-
-          <Stack gap={2}>
-            <Typography as="h2" variant="label" className="font-heading text-lg font-semibold">
-              Public listings
-            </Typography>
+          <WorkspaceSection title="Public listings" count={listings.items.length}>
             {listings.loading ? (
               <Typography variant="body-sm" role="status" className="text-muted-foreground">
                 Loading your listings…
@@ -90,30 +92,33 @@ function ProfessionalProfilePage() {
             ) : listings.error ? (
               <ReadError error={listings.error} onRetry={listings.retry} title="Couldn't load your listings" />
             ) : listings.items.length === 0 ? (
-              <Typography variant="body-sm" className="text-muted-foreground">
-                None of your listings are approved and public yet.
-              </Typography>
+              <Card variant="workspace" className="items-center gap-3 rounded-2xl border-dashed bg-muted/40 py-8 text-center shadow-none">
+                <span className="flex size-10 items-center justify-center rounded-2xl bg-background/70 text-muted-foreground ring-1 ring-border">
+                  <Store className="size-5" aria-hidden="true" />
+                </span>
+                <Typography variant="body-sm" className="text-muted-foreground">
+                  None of your listings are approved and public yet.
+                </Typography>
+              </Card>
             ) : (
               <Stack gap={2}>
                 {listings.items.map((listing) => (
                   <Link
                     key={listing.id}
                     to={listing.publicPath ?? routes.providerListings}
-                    className="flex min-h-11 items-center break-words rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-primary shadow-subtle transition-colors hover:border-primary/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="group flex min-h-11 items-center justify-between gap-3 break-words rounded-xl bg-card px-4 py-3 text-sm font-medium text-foreground shadow-subtle ring-1 ring-border transition-colors hover:border-primary/40 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
-                    {listing.title}
+                    <span className="min-w-0 break-words">{listing.title}</span>
+                    <span className="shrink-0 text-xs text-muted-foreground group-hover:text-primary">
+                      {listing.typeLabel}
+                    </span>
                   </Link>
                 ))}
               </Stack>
             )}
-          </Stack>
-
-          <Button variant="outline" className="h-11 w-fit" onClick={handleLogout}>
-            <LogOut />
-            Log Out
-          </Button>
+          </WorkspaceSection>
         </Stack>
-      </motion.div>
+      </div>
     </Container>
   )
 }

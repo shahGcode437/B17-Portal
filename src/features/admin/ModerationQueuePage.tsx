@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { motion } from "motion/react"
-import { Wrench, Building2, KeyRound, ClipboardCheck, GraduationCap, Utensils } from "lucide-react"
+import { Wrench, Building2, KeyRound, ClipboardCheck, GraduationCap, Utensils, Gavel } from "lucide-react"
 import { Container } from "@/components/foundation/Container"
 import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { ReadError } from "@/components/feedback/ReadError"
+import { PageHeader } from "@/components/workspace/PageHeader"
 import { WorkspaceEmpty } from "@/components/workspace/WorkspaceEmpty"
 import { ListingStatusBadge } from "@/features/provider/ListingStatusBadge"
 import { ReviewPanel } from "@/features/admin/ReviewPanel"
@@ -17,7 +18,7 @@ import { useAdminCounts, useAdminQueue } from "@/hooks/useWorkspaceReads"
 import { useRequireAdminAuth } from "@/hooks/useRequireAdminAuth"
 import type { ListingStatus } from "@/types/listing"
 import type { AdminQueueRow } from "@/types/ownerListing"
-import { fadeUp, staggerContainer, staggerItem } from "@/lib/motion"
+import { staggerContainer, staggerItem } from "@/lib/motion"
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", {
   month: "short",
@@ -73,31 +74,32 @@ function ModerationQueuePage() {
 
   return (
     <Container className="py-8 sm:py-12">
-      <motion.div {...fadeUp}>
+      <div>
         <Stack gap={6}>
-          <Stack gap={1}>
-            <Typography variant="h1">Listing Review</Typography>
-            <Typography variant="body-sm" className="text-muted-foreground">
-              Pending listings are listed longest-waiting first. Open one to approve, reject or (for a live listing) take it down.
-            </Typography>
-          </Stack>
-
-          <ToggleGroup
-            type="single"
-            variant="outline"
-            value={filter}
-            onValueChange={(value) => {
-              if (value) setFilter(value as ListingStatus | "all")
-            }}
-            aria-label="Filter listings by status"
-            className="flex-wrap"
-          >
-            {filterOptions.map((option) => (
-              <ToggleGroupItem key={option.value} value={option.value} className={segmentItemClass}>
-                {option.label} ({countOf(option.value)})
-              </ToggleGroupItem>
-            ))}
-          </ToggleGroup>
+          <PageHeader
+            icon={Gavel}
+            eyebrow="Admin"
+            title="Listing Review"
+            description="Pending listings are listed longest-waiting first. Open one to approve, reject or (for a live listing) take it down."
+            meta={
+              <ToggleGroup
+                type="single"
+                variant="outline"
+                value={filter}
+                onValueChange={(value) => {
+                  if (value) setFilter(value as ListingStatus | "all")
+                }}
+                aria-label="Filter listings by status"
+                className="flex-wrap"
+              >
+                {filterOptions.map((option) => (
+                  <ToggleGroupItem key={option.value} value={option.value} className={segmentItemClass}>
+                    {option.label} ({countOf(option.value)})
+                  </ToggleGroupItem>
+                ))}
+              </ToggleGroup>
+            }
+          />
 
           {queue.loading ? (
             <div role="status" aria-label="Loading the review queue" className="flex flex-col gap-2">
@@ -167,7 +169,7 @@ function ModerationQueuePage() {
             </Stack>
           )}
         </Stack>
-      </motion.div>
+      </div>
 
       <ReviewPanel
         row={reviewing}

@@ -23,7 +23,10 @@ interface AdminRowProps {
  */
 function AdminRow({ leading, children, status, actions }: AdminRowProps) {
   return (
-    <Card variant="workspace" className="gap-3 p-3 sm:flex-row sm:items-center sm:justify-between">
+    <Card
+      variant="workspace"
+      className="gap-3 rounded-2xl p-3 transition-colors hover:border-primary/30 sm:flex-row sm:items-center sm:justify-between"
+    >
       <div className="flex min-w-0 flex-1 items-start gap-3">
         {leading}
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">{children}</div>
@@ -52,8 +55,8 @@ function AdminThumb({ src, icon: Icon, label }: AdminThumbProps) {
     return <CardImage src={src} icon={Icon} label={label} tone="accent" className="aspect-square size-14 shrink-0" decorative />
   }
   return (
-    <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-foreground">
-      <Icon className="size-4" aria-hidden="true" />
+    <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary ring-1 ring-primary/15">
+      <Icon className="size-4.5" aria-hidden="true" />
     </span>
   )
 }

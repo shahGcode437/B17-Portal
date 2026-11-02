@@ -1,6 +1,7 @@
 import { useNavigate } from "react-router-dom"
 import { motion } from "motion/react"
 import { Heart } from "lucide-react"
+import { PageHeader } from "@/components/workspace/PageHeader"
 import { Container } from "@/components/foundation/Container"
 import { Grid } from "@/components/foundation/Grid"
 import { Stack } from "@/components/foundation/Stack"
@@ -25,7 +26,7 @@ import {
   propertyDetailsPath,
   routes,
 } from "@/config/routes"
-import { fadeUp, staggerContainer, staggerItem } from "@/lib/motion"
+import { staggerContainer, staggerItem } from "@/lib/motion"
 import type { SavedEntry } from "@/lib/api/privateAdapters"
 import type { SavedItemKind } from "@/types/resident"
 
@@ -66,21 +67,21 @@ function SavedPage() {
 
   return (
     <Container className="py-8 sm:py-12">
-      <motion.div {...fadeUp} className="mx-auto max-w-5xl">
+      <div className="mx-auto max-w-5xl">
         <Stack gap={6}>
-          <Stack gap={1}>
-            <Typography variant="h1" className="text-2xl sm:text-3xl">
-              Saved
-            </Typography>
-            <Typography variant="body-sm" className="text-muted-foreground">
-              {saved.loading || saved.error
+          <PageHeader
+            icon={Heart}
+            eyebrow="Account"
+            title="Saved"
+            description={
+              saved.loading || saved.error
                 ? "Things you save show up here."
                 : saved.total === 0
                   ? "Things you save show up here."
-                  : `${saved.total} saved ${saved.total === 1 ? "item" : "items"}.`}
-            </Typography>
-          </Stack>
-          <ResidentNav />
+                  : `${saved.total} saved ${saved.total === 1 ? "item" : "items"}.`
+            }
+            meta={<ResidentNav />}
+          />
 
           {saved.loading ? (
             <div role="status" aria-label="Loading saved items">
@@ -103,7 +104,7 @@ function SavedPage() {
           ) : (
             <Stack gap={8}>
               {groups.map(({ kind, entries }) => (
-                <WorkspaceSection key={kind} title={`${SAVED_KIND_META[kind].plural} (${entries.length})`}>
+                <WorkspaceSection key={kind} title={SAVED_KIND_META[kind].plural} count={entries.length}>
                   <motion.div initial="initial" animate="animate" variants={staggerContainer}>
                     <Grid cols={3} gap={4}>
                       {entries.map((entry) => (
@@ -130,7 +131,7 @@ function SavedPage() {
             </Stack>
           )}
         </Stack>
-      </motion.div>
+      </div>
     </Container>
   )
 }

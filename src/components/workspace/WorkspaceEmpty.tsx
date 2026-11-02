@@ -14,8 +14,10 @@ interface WorkspaceEmptyProps {
 /** Compact inline empty state for a section inside an overview (the full-page `EmptyState` is for whole-page emptiness). */
 function WorkspaceEmpty({ icon: Icon, message, action }: WorkspaceEmptyProps) {
   return (
-    <Card variant="workspace" className="items-center gap-2 border-dashed bg-muted/30 py-6 text-center shadow-none">
-      <Icon className="size-5 text-muted-foreground" aria-hidden="true" />
+    <Card variant="workspace" className="items-center gap-3 rounded-2xl border-dashed bg-muted/40 py-8 text-center shadow-none">
+      <span className="flex size-10 items-center justify-center rounded-2xl bg-background/70 text-muted-foreground ring-1 ring-border">
+        <Icon className="size-5" aria-hidden="true" />
+      </span>
       <Typography variant="body-sm" className="text-muted-foreground">
         {message}
       </Typography>

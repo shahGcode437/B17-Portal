@@ -2,6 +2,7 @@ import { useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { motion } from "motion/react"
 import { ClipboardList } from "lucide-react"
+import { PageHeader } from "@/components/workspace/PageHeader"
 import { Container } from "@/components/foundation/Container"
 import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
@@ -16,7 +17,7 @@ import { RequestDetailDialog } from "@/features/resident/RequestDetailDialog"
 import { useMyRequests } from "@/hooks/useResidentReads"
 import { useRequireAuth } from "@/hooks/useRequireAuth"
 import { routes } from "@/config/routes"
-import { fadeUp, staggerContainer, staggerItem } from "@/lib/motion"
+import { staggerContainer, staggerItem } from "@/lib/motion"
 import type { ServiceRequestRecord } from "@/types/resident"
 
 function RequestList({ requests, onSelect }: { requests: ServiceRequestRecord[]; onSelect: (request: ServiceRequestRecord) => void }) {
@@ -53,17 +54,15 @@ function MyRequestsPage() {
 
   return (
     <Container className="py-8 sm:py-12">
-      <motion.div {...fadeUp} className="mx-auto max-w-2xl">
+      <div className="mx-auto max-w-3xl">
         <Stack gap={6}>
-          <Stack gap={1}>
-            <Typography variant="h1" className="text-2xl sm:text-3xl">
-              My Requests
-            </Typography>
-            <Typography variant="body-sm" className="text-muted-foreground">
-              Service requests you've sent to providers, and where each one stands.
-            </Typography>
-          </Stack>
-          <ResidentNav />
+          <PageHeader
+            icon={ClipboardList}
+            eyebrow="Account"
+            title="My Requests"
+            description="Service requests you've sent to providers, and where each one stands."
+            meta={<ResidentNav />}
+          />
 
           {requests.loading ? (
             <div role="status" aria-label="Loading your requests" className="flex flex-col gap-3">
@@ -84,12 +83,12 @@ function MyRequestsPage() {
           ) : (
             <Stack gap={8}>
               {active.length > 0 && (
-                <WorkspaceSection title={requests.hasMore ? "Active" : `Active (${active.length})`}>
+                <WorkspaceSection title="Active" count={requests.hasMore ? undefined : active.length}>
                   <RequestList requests={active} onSelect={setSelected} />
                 </WorkspaceSection>
               )}
               {past.length > 0 && (
-                <WorkspaceSection title={requests.hasMore ? "Completed & cancelled" : `Completed & cancelled (${past.length})`}>
+                <WorkspaceSection title="Completed & cancelled" count={requests.hasMore ? undefined : past.length}>
                   <RequestList requests={past} onSelect={setSelected} />
                 </WorkspaceSection>
               )}
@@ -108,7 +107,7 @@ function MyRequestsPage() {
             </Stack>
           )}
         </Stack>
-      </motion.div>
+      </div>
 
       <RequestDetailDialog
         request={selected}

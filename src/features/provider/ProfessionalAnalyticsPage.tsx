@@ -1,13 +1,13 @@
 import type { ReactNode } from "react"
 import { Link } from "react-router-dom"
-import { motion } from "motion/react"
-import { Lock } from "lucide-react"
+import { BarChart3, Lock } from "lucide-react"
 import { Container } from "@/components/foundation/Container"
 import { Grid } from "@/components/foundation/Grid"
 import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
+import { PageHeader } from "@/components/workspace/PageHeader"
 import { WorkspaceSection } from "@/components/workspace/WorkspaceSection"
 import { ListingStatusBadge } from "@/features/provider/ListingStatusBadge"
 import { RequestStatusBadge } from "@/features/resident/RequestStatusBadge"
@@ -16,7 +16,6 @@ import { ReadError } from "@/components/feedback/ReadError"
 import { useLeadStatusCounts, useOwnerCounts } from "@/hooks/useWorkspaceReads"
 import { useRequireAuth } from "@/hooks/useRequireAuth"
 import { routes } from "@/config/routes"
-import { fadeUp } from "@/lib/motion"
 import type { ListingStatus } from "@/types/listing"
 import type { RequestStatus } from "@/types/resident"
 
@@ -71,14 +70,14 @@ function ProfessionalAnalyticsPage() {
 
   return (
     <Container className="py-8 sm:py-12">
-      <motion.div {...fadeUp} className="mx-auto max-w-2xl">
+      <div className="mx-auto max-w-3xl">
         <Stack gap={6}>
-          <Stack gap={1}>
-            <Typography variant="h1">Analytics</Typography>
-            <Typography variant="body-sm" className="text-muted-foreground">
-              A breakdown of your own listings and leads — counted by the server, not estimated.
-            </Typography>
-          </Stack>
+          <PageHeader
+            icon={BarChart3}
+            eyebrow="Professional"
+            title="Analytics"
+            description="A breakdown of your own listings and leads — counted by the server, not estimated."
+          />
 
           <RequireCapability capability="analytics.basic" fallback={<AnalyticsLocked />}>
             <Stack gap={6}>
@@ -116,7 +115,7 @@ function ProfessionalAnalyticsPage() {
             </Stack>
           </RequireCapability>
         </Stack>
-      </motion.div>
+      </div>
     </Container>
   )
 }

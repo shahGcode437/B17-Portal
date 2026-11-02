@@ -1,5 +1,4 @@
 import { useState } from "react"
-import { motion } from "motion/react"
 import { ArrowDown, ArrowUp, PlusCircle, Tags } from "lucide-react"
 import { Container } from "@/components/foundation/Container"
 import { Stack } from "@/components/foundation/Stack"
@@ -11,6 +10,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ReadError } from "@/components/feedback/ReadError"
+import { PageHeader } from "@/components/workspace/PageHeader"
 import { WorkspaceEmpty } from "@/components/workspace/WorkspaceEmpty"
 import { WorkspaceSection } from "@/components/workspace/WorkspaceSection"
 import { useAdminCategories } from "@/hooks/useWorkspaceReads"
@@ -19,7 +19,6 @@ import { useMutation } from "@/hooks/useMutation"
 import { useToast } from "@/hooks/useToast"
 import { createCategory, patchCategory, reorderCategories } from "@/lib/api/writes/admin"
 import { userMessageFor } from "@/lib/api/writeErrors"
-import { fadeUp } from "@/lib/motion"
 import type { AdminCategoryView } from "@/types/ownerListing"
 
 const MODULES: { module: AdminCategoryView["module"]; label: string }[] = [
@@ -121,14 +120,14 @@ function AdminCategoriesPage() {
 
   return (
     <Container className="py-8 sm:py-12">
-      <motion.div {...fadeUp}>
+      <div>
         <Stack gap={6}>
-          <Stack gap={1}>
-            <Typography variant="h1">Categories</Typography>
-            <Typography variant="body-sm" className="text-muted-foreground">
-              Add, rename, re-order and deactivate categories. Modules and slugs are set at creation and never change.
-            </Typography>
-          </Stack>
+          <PageHeader
+            icon={Tags}
+            eyebrow="Admin"
+            title="Categories"
+            description="Add, rename, re-order and deactivate categories. Modules and slugs are set at creation and never change."
+          />
 
           {read.status === "loading" && (
             <div role="status" aria-label="Loading categories" className="flex flex-col gap-2">
@@ -146,10 +145,10 @@ function AdminCategoriesPage() {
                 {MODULES.map(({ module, label }) => {
                   const rows = read.data.filter((category) => category.module === module).slice().sort((a, b) => a.displayOrder - b.displayOrder)
                   return (
-                    <WorkspaceSection key={module} title={`${label} (${rows.length})`}>
+                    <WorkspaceSection key={module} title={label} count={rows.length}>
                       <Stack gap={2}>
                         {rows.map((category, index) => (
-                          <Card key={category.id} variant="workspace" className="flex-row items-center justify-between gap-3 p-3">
+                          <Card key={category.id} variant="workspace" className="flex-row items-center justify-between gap-3 rounded-2xl p-3 transition-colors hover:border-primary/30">
                             <Stack direction="row" align="center" gap={1} className="shrink-0">
                               <Button
                                 type="button"
@@ -263,7 +262,7 @@ function AdminCategoriesPage() {
               </Stack>
             ))}
         </Stack>
-      </motion.div>
+      </div>
     </Container>
   )
 }

@@ -1,9 +1,10 @@
 import { motion } from "motion/react"
+import { Gauge } from "lucide-react"
 import { Container } from "@/components/foundation/Container"
 import { Grid } from "@/components/foundation/Grid"
 import { Stack } from "@/components/foundation/Stack"
-import { Typography } from "@/components/foundation/Typography"
 import { ReadError } from "@/components/feedback/ReadError"
+import { PageHeader } from "@/components/workspace/PageHeader"
 import { WorkspaceSection } from "@/components/workspace/WorkspaceSection"
 import { ChartPanel } from "@/components/charts/ChartPanel"
 import { DonutChart } from "@/components/charts/DonutChart"
@@ -14,7 +15,7 @@ import { ListingStatusBadge } from "@/features/provider/ListingStatusBadge"
 import { useAdminCounts, usePublishedNewsTotal } from "@/hooks/useWorkspaceReads"
 import { useRequireAdminAuth } from "@/hooks/useRequireAdminAuth"
 import { routes } from "@/config/routes"
-import { chartReveal, fadeUp } from "@/lib/motion"
+import { chartReveal } from "@/lib/motion"
 import type { ListingStatus } from "@/types/listing"
 
 const LISTING_STATUSES: { status: ListingStatus; label: string }[] = [
@@ -52,14 +53,14 @@ function AdminDashboardPage() {
 
   return (
     <Container className="py-8 sm:py-12">
-      <motion.div {...fadeUp}>
+      <div>
         <Stack gap={8}>
-          <Stack gap={1}>
-            <Typography variant="h1">Admin Dashboard</Typography>
-            <Typography variant="body-sm" className="text-muted-foreground">
-              Signed in as {admin.displayName}.
-            </Typography>
-          </Stack>
+          <PageHeader
+            icon={Gauge}
+            eyebrow="Admin"
+            title="Admin Dashboard"
+            description={`Signed in as ${admin.displayName}. Every number below is counted by the server.`}
+          />
 
           <WorkspaceSection title="Listings" actionLabel="Open listing review" actionTo={routes.adminModeration}>
             {counts.status === "error" ? (
@@ -107,7 +108,7 @@ function AdminDashboardPage() {
             </Grid>
           </WorkspaceSection>
         </Stack>
-      </motion.div>
+      </div>
     </Container>
   )
 }

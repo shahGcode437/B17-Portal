@@ -9,13 +9,14 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/feedback/EmptyState"
 import { ReadError } from "@/components/feedback/ReadError"
+import { PageHeader } from "@/components/workspace/PageHeader"
 import { WorkspaceSection } from "@/components/workspace/WorkspaceSection"
 import { LeadSummaryCard } from "@/features/provider/LeadSummaryCard"
 import { LeadDetailDialog } from "@/features/provider/LeadDetailDialog"
 import { useLeads } from "@/hooks/useResidentReads"
 import { useRequireAuth } from "@/hooks/useRequireAuth"
 import { routes } from "@/config/routes"
-import { fadeUp, staggerContainer, staggerItem } from "@/lib/motion"
+import { staggerContainer, staggerItem } from "@/lib/motion"
 import type { ServiceRequestRecord } from "@/types/resident"
 
 function LeadList({ leads, onSelect }: { leads: ServiceRequestRecord[]; onSelect: (request: ServiceRequestRecord) => void }) {
@@ -51,14 +52,14 @@ function ProfessionalLeadsPage() {
 
   return (
     <Container className="py-8 sm:py-12">
-      <motion.div {...fadeUp} className="mx-auto max-w-2xl">
+      <div className="mx-auto max-w-3xl">
         <Stack gap={6}>
-          <Stack gap={1}>
-            <Typography variant="h1">Leads</Typography>
-            <Typography variant="body-sm" className="text-muted-foreground">
-              Service requests residents have sent to your listings.
-            </Typography>
-          </Stack>
+          <PageHeader
+            icon={Inbox}
+            eyebrow="Professional"
+            title="Service Leads"
+            description="Service requests residents have sent to your listings. Open one to see the timeline and the next step."
+          />
 
           {leads.loading ? (
             <div role="status" aria-label="Loading your leads" className="flex flex-col gap-3">
@@ -79,12 +80,12 @@ function ProfessionalLeadsPage() {
           ) : (
             <Stack gap={8}>
               {open.length > 0 && (
-                <WorkspaceSection title={leads.hasMore ? "Open" : `Open (${open.length})`}>
+                <WorkspaceSection title="Open" count={leads.hasMore ? undefined : open.length}>
                   <LeadList leads={open} onSelect={setSelected} />
                 </WorkspaceSection>
               )}
               {closed.length > 0 && (
-                <WorkspaceSection title={leads.hasMore ? "Completed & cancelled" : `Completed & cancelled (${closed.length})`}>
+                <WorkspaceSection title="Completed & cancelled" count={leads.hasMore ? undefined : closed.length}>
                   <LeadList leads={closed} onSelect={setSelected} />
                 </WorkspaceSection>
               )}
@@ -103,7 +104,7 @@ function ProfessionalLeadsPage() {
             </Stack>
           )}
         </Stack>
-      </motion.div>
+      </div>
 
       <LeadDetailDialog
         request={selected}

@@ -15,39 +15,51 @@ const dateFormatter = new Intl.DateTimeFormat("en-US", {
 
 interface ListingSummaryCardProps {
   listing: OwnerListingView
-  /** Optional action buttons (View...) rendered below the summary. */
+  /** Optional action buttons (View, Edit, Archive) rendered below the summary. */
   actions?: ReactNode
 }
 
 /**
- * One row in "My Listings" for every listing kind, built from the owner's own view of the listing
- * (Phase 12G): image, title, type / category, the REAL moderation status, the submitted date and -
- * for a rejected listing - the reason the admin gave.
+ * One row in "My Listings" for every listing kind (VR4): operational layout with a strong title, a
+ * clear kind·category line, the real moderation status, submitted date + revision, and — for a rejected
+ * listing — the admin's reason in a dedicated callout that distinguishes Rejected (before approval)
+ * from Taken down (after approval). All data real, nothing invented.
  */
 function ListingSummaryCard({ listing, actions }: ListingSummaryCardProps) {
   const Icon = ownerListingIcon(listing)
 
   return (
-    <Card variant="workspace" className="sm:flex-row">
-      <CardImage src={listing.image} icon={Icon} label={listing.title} tone="accent" className="sm:w-32 sm:shrink-0" decorative />
-      <Stack gap={2} className="min-w-0 flex-1">
-        <Stack direction="row" align="start" justify="between" gap={3}>
-          <Stack gap={1} className="min-w-0">
-            <Typography variant="label" className="break-words text-base">
+    <Card variant="workspace" className="gap-4 rounded-2xl p-4 transition-colors hover:border-primary/30 sm:flex-row">
+      <CardImage
+        src={listing.image}
+        icon={Icon}
+        label={listing.title}
+        tone="accent"
+        className="aspect-video rounded-xl sm:w-40 sm:shrink-0"
+        decorative
+      />
+      <Stack gap={3} className="min-w-0 flex-1">
+        <Stack direction="row" align="start" justify="between" gap={3} wrap>
+          <Stack gap={1} className="min-w-0 flex-1">
+            <Typography variant="label" className="break-words font-heading text-base font-semibold leading-snug sm:text-lg">
               {listing.title}
             </Typography>
-            <Typography variant="body-sm" className="break-words text-muted-foreground">
-              {listing.typeLabel} · {listing.categoryLabel}
+            <Typography as="span" variant="body-sm" className="break-words text-muted-foreground">
+              {`${listing.typeLabel} · ${listing.categoryLabel}`}
             </Typography>
           </Stack>
           <ListingStatusBadge status={listing.status} takenDown={listing.takenDown} />
         </Stack>
-        <Typography variant="caption" className="text-muted-foreground">
-          Submitted {dateFormatter.format(new Date(listing.submittedAt))} · revision {listing.revision}
+        <Typography as="span" variant="caption" className="text-muted-foreground">
+          {`Submitted ${dateFormatter.format(new Date(listing.submittedAt))} · revision ${listing.revision}`}
         </Typography>
         {listing.status === "rejected" && listing.rejectionReason && (
-          <Typography variant="body-sm" className="rounded-lg bg-destructive/5 px-3 py-2 text-destructive">
-            <span className="font-medium">{listing.takenDown ? "Taken down:" : "Reason:"}</span> {listing.rejectionReason}
+          <Typography
+            variant="body-sm"
+            className="rounded-xl bg-destructive/10 px-3 py-2 text-destructive ring-1 ring-destructive/20"
+          >
+            <span className="font-semibold">{listing.takenDown ? "Taken down:" : "Reason:"}</span>{" "}
+            {listing.rejectionReason}
           </Typography>
         )}
         {actions}
