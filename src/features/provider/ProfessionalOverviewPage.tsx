@@ -1,15 +1,19 @@
 import { Link } from "react-router-dom"
 import { motion } from "motion/react"
-import { Store, Inbox, Layers, Clock, CheckCircle2, XCircle, Archive, MessageSquareText } from "lucide-react"
+import { Store, Inbox, Layers, Clock, CheckCircle2, XCircle, Archive, MessageSquareText, Plus } from "lucide-react"
 import { Container } from "@/components/foundation/Container"
 import { Grid } from "@/components/foundation/Grid"
 import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
+import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { ReadError } from "@/components/feedback/ReadError"
 import { MetricTile } from "@/components/workspace/MetricTile"
 import { WorkspaceEmpty } from "@/components/workspace/WorkspaceEmpty"
 import { WorkspaceSection } from "@/components/workspace/WorkspaceSection"
+import { ChartPanel } from "@/components/charts/ChartPanel"
+import { DonutChart } from "@/components/charts/DonutChart"
+import { listingStatusColor } from "@/components/charts/chartColors"
 import { RequestStatusBadge } from "@/features/resident/RequestStatusBadge"
 import { ListingStatusBadge } from "@/features/provider/ListingStatusBadge"
 import { PlanBadge } from "@/features/provider/PlanBadge"
@@ -18,7 +22,7 @@ import { useLeadStatusCounts, useOwnerListings } from "@/hooks/useWorkspaceReads
 import { useRequireAuth } from "@/hooks/useRequireAuth"
 import { usePlanEntitlements } from "@/hooks/useCapability"
 import { routes } from "@/config/routes"
-import { fadeUp } from "@/lib/motion"
+import { chartReveal, fadeUp } from "@/lib/motion"
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" })
 
@@ -63,9 +67,20 @@ function ProfessionalOverviewPage() {
       ? leadCounts.data.submitted + leadCounts.data.accepted + leadCounts.data["in-progress"]
       : undefined
 
+  // Real listing-status distribution (no fabricated series) — the same counts the KPI tiles show.
+  const statusSegments = c
+    ? [
+        { label: "Pending", value: c.pending, color: listingStatusColor.pending },
+        { label: "Approved", value: c.approved, color: listingStatusColor.approved },
+        { label: "Rejected / taken down", value: c.rejected, color: listingStatusColor.rejected },
+        { label: "Archived", value: c.archived, color: listingStatusColor.archived },
+      ]
+    : []
+  const statusTotal = statusSegments.reduce((sum, s) => sum + s.value, 0)
+
   return (
     <Container className="py-8 sm:py-12">
-      <motion.div {...fadeUp} className="mx-auto max-w-2xl">
+      <motion.div {...fadeUp} className="mx-auto max-w-5xl">
         <Stack gap={6}>
           <Stack direction="row" align="start" justify="between" gap={3} wrap>
             <Stack gap={1}>
@@ -74,7 +89,15 @@ function ProfessionalOverviewPage() {
                 Signed in as {user.displayName}.
               </Typography>
             </Stack>
-            <PlanBadge />
+            <Stack direction="row" align="center" gap={2} wrap>
+              <PlanBadge />
+              <Button asChild size="sm">
+                <Link to={routes.createListing}>
+                  <Plus />
+                  New listing
+                </Link>
+              </Button>
+            </Stack>
           </Stack>
 
           {plan === "free" && (
@@ -95,19 +118,34 @@ function ProfessionalOverviewPage() {
           )}
 
           <WorkspaceSection title="At a glance">
-            <Grid cols={3} gap={3} className="grid-cols-2 sm:grid-cols-3 lg:grid-cols-3">
-              <MetricTile label="Active leads" value={n(activeLeads)} icon={MessageSquareText} to={routes.providerLeads} />
-              <MetricTile
-                label="Total listings"
-                value={c ? c.pending + c.approved + c.rejected + c.archived : "—"}
-                icon={Layers}
-                to={routes.providerListings}
-              />
-              <MetricTile label="Pending review" value={n(c?.pending)} icon={Clock} to={routes.providerListings} />
-              <MetricTile label="Approved" value={n(c?.approved)} icon={CheckCircle2} to={routes.providerListings} />
-              <MetricTile label="Rejected / taken down" value={n(c?.rejected)} icon={XCircle} to={routes.providerListings} />
-              <MetricTile label="Archived" value={n(c?.archived)} icon={Archive} to={routes.providerListings} />
-            </Grid>
+            {/* Varied-span grid (VR2): KPI tiles take three of five columns, the status donut takes two. */}
+            <div className="grid gap-4 xl:grid-cols-5">
+              <Grid cols={3} gap={3} className="grid-cols-2 sm:grid-cols-3 xl:col-span-3">
+                <MetricTile label="Active leads" value={n(activeLeads)} icon={MessageSquareText} to={routes.providerLeads} />
+                <MetricTile
+                  label="Total listings"
+                  value={c ? c.pending + c.approved + c.rejected + c.archived : "—"}
+                  icon={Layers}
+                  to={routes.providerListings}
+                />
+                <MetricTile label="Pending review" value={n(c?.pending)} icon={Clock} to={routes.providerListings} />
+                <MetricTile label="Approved" value={n(c?.approved)} icon={CheckCircle2} to={routes.providerListings} />
+                <MetricTile label="Rejected / taken down" value={n(c?.rejected)} icon={XCircle} to={routes.providerListings} />
+                <MetricTile label="Archived" value={n(c?.archived)} icon={Archive} to={routes.providerListings} />
+              </Grid>
+              <motion.div {...chartReveal} className="xl:col-span-2">
+                <ChartPanel
+                  title="Listings by status"
+                  description="Your submitted listings."
+                  action={{ label: "Manage listings", to: routes.providerListings }}
+                  isEmpty={!c || statusTotal === 0}
+                  emptyMessage="Submit a listing to see its status here."
+                  legend={statusSegments.map((s) => ({ label: s.label, value: s.value, color: s.color }))}
+                >
+                  <DonutChart label="Your listings by status" segments={statusSegments} size={170} centerValue={statusTotal} centerLabel="listings" />
+                </ChartPanel>
+              </motion.div>
+            </div>
           </WorkspaceSection>
 
           <WorkspaceSection title="Recent listings" actionLabel="View all" actionTo={routes.providerListings}>

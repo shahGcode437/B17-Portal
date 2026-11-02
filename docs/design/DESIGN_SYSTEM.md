@@ -46,6 +46,24 @@ Companion documents: `docs/development/CURRENT_STATE.md` (implementation status)
 
 ---
 
+### VR2 — first flagship application of the system
+
+VR2 applies the governing identity to four flagship surfaces (not the whole product). Home, Search/Discovery, the Professional dashboard and the Admin dashboard are the proof surfaces. **The redesign is not finished;** later VR phases extend the language to the remaining pages.
+
+**Home hero.** Layered atmosphere (background photo + darker scrim + brand `glow-field`), editorial `display` headline, Level-2 glass locality pill, Level-3 **glass search well** that frames the search as the primary action, Level-2 glass suggestion chips. No new interactions, no new query behavior.
+
+**Category discovery.** `CategoryCard` now composes the shared Level-2 glass; emphasized tiles get a primary ring so core modules read as more prominent than secondary ones. Coming Soon items keep their honest teaser treatment and remain visibly inactive.
+
+**Search / Discovery.** No search state change (the hydration path is sensitive): the lift is from the shared glass surfaces (`SearchBar`, filter `Card`, `ResultList` cards, `EmptyState`, `ReadError`), the atmospheric canvas and the editorial typography — composed, not rewritten.
+
+**Professional dashboard.** Varied 5-column grid (`xl`) with three columns of real-data KPI tiles and two columns of a real-data **listings-by-status donut** in a glass `ChartPanel` + "Manage listings" action + full legend; a header "+ New listing" button; the honest Free-plan nudge is kept; empty-state copy says "Submit a listing to see its status here." when there is no data (never fabricated). Recent listings and leads keep their real badges, dates and sections.
+
+**Admin dashboard — donut width fix.** The VR1 strict acceptance found the donut shrank to ~73px at some desktop widths because KPIs and chart shared a 3-column row. VR2 rebalances with a 5-column `xl` grid: KPI tiles take 3 columns, the glass `ChartPanel` takes 2, the donut renders at **176px desktop / 176px at 820 / 137px at 375** — all readable, no clipping, varied-span layout preserved; a "Review queue" action in the panel header gives a direct moderation path. KPI hierarchy and status semantics (Rejected ≠ Taken down) are unchanged.
+
+**Charts.** Dependency-free inline SVG only (`DonutChart`, `Sparkline`, `MiniBarChart`, `ProgressRing`), real data only. The Admin and Pro donuts use the semantic listing-status colors (`chartColors.listingStatusColor`) so the chart reads the same as the badges.
+
+**Not in VR2.** No backend/API/migration/auth/CSRF/search-state/listing-state/moderation/Saved/location/Contact-Model change. No fake analytics (no growth, revenue, visitors, conversion, trends, performance). No Inquiry, no new Contact/WhatsApp/Call controls (Property stays truthful). The listing-card body (`ProviderCard`, `BusinessCard`, `TutorCard`, `PropertyCard`) was not rewritten; it inherits VR1 glass via the shared `Card` and will deepen in a later VR phase.
+
 ## 1. Design Vision
 
 B-17 Portal should feel like a **premium hyperlocal marketplace and community platform** — the first place a B-17 resident checks when they need something nearby, and a place local professionals are proud to list themselves on. The target feeling is modern, trustworthy, warm/local, clean, image-driven, mobile-first, and app-like. It should never feel like a generic admin template, a corporate banking app, a flashy social network, or a cluttered classifieds site.

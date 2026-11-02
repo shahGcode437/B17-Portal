@@ -25,9 +25,11 @@ function CategoryCard({ to, icon: Icon, label, description, emphasis, compact, c
       to={to}
       {...cardHover}
       className={cn(
-        "flex flex-col items-center gap-2 rounded-xl border bg-card text-center shadow-subtle transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        // VR2: category tiles are Level-2 glass; emphasis (core modules) get a primary ring + glow so they
+        // read as more prominent than secondary ones. Glass CSS stays in the shared utility, not per-tile.
+        "relative flex flex-col items-center gap-2 overflow-hidden rounded-xl text-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring glass-2",
         compact ? "p-3" : "p-5",
-        emphasis ? "border-primary/30 bg-primary/5" : "border-border hover:border-primary/30",
+        emphasis && "ring-1 ring-inset ring-primary/40",
         className
       )}
     >

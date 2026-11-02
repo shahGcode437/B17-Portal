@@ -35,27 +35,32 @@ function Hero() {
         loading="eager"
         className="absolute inset-0 h-full w-full object-cover object-[center_60%]"
       />
-      <div className="absolute inset-0 bg-background/35" />
-      <div className="absolute inset-0 bg-gradient-to-b from-background/10 via-background/25 to-background/55" />
-      <Container className="relative py-16 sm:py-24">
-        <motion.div {...fadeUp} className="mx-auto max-w-2xl text-center">
-          <Stack align="center" gap={2} className="mb-4">
+      {/* Layered atmosphere (VR2): darken the photo for text contrast, then a brand glow field above it. */}
+      <div className="absolute inset-0 bg-background/45" />
+      <div className="absolute inset-0 bg-gradient-to-b from-background/20 via-background/35 to-background/70" />
+      <div className="glow-field absolute inset-x-0 top-0 h-2/3" aria-hidden="true" />
+      <Container className="relative py-20 sm:py-28">
+        <motion.div {...fadeUp} className="mx-auto max-w-3xl text-center">
+          <Stack align="center" gap={2} className="mb-5">
             <Stack
               direction="row"
               align="center"
               gap={1}
-              className="rounded-full bg-card px-3 py-1 text-xs font-medium text-primary shadow-subtle"
+              className="glass-2 rounded-full px-3 py-1 text-xs font-medium text-primary"
             >
               <MapPin className="size-3.5" aria-hidden="true" />
               B-17, Islamabad
             </Stack>
           </Stack>
-          <Typography variant="display">{site.name}</Typography>
-          <Typography variant="body-lg" className="mt-3 text-muted-foreground">
+          <Typography variant="display" className="text-balance">
+            {site.name}
+          </Typography>
+          <Typography variant="body-lg" className="mx-auto mt-4 max-w-xl text-balance text-foreground/80">
             {site.tagline}
           </Typography>
 
-          <div className="mt-8">
+          {/* The search sits in an elevated glass well so it reads as the page's primary action. */}
+          <div className="glass-3 mx-auto mt-8 max-w-2xl rounded-2xl p-3 sm:p-4">
             <SearchBar
               value={query}
               onChange={setQuery}
@@ -63,23 +68,22 @@ function Hero() {
               placeholder={site.searchPrompt}
               size="hero"
             />
+            <Stack direction="row" wrap justify="center" gap={2} className="mt-3">
+              <Typography variant="caption" className="mr-1 self-center">
+                Try:
+              </Typography>
+              {suggestions.map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => runSearch(s)}
+                  className="glass-2 relative rounded-full px-3 py-1 text-xs text-muted-foreground transition-colors after:absolute after:inset-x-0 after:-inset-y-2.5 after:content-[''] hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  {s}
+                </button>
+              ))}
+            </Stack>
           </div>
-
-          <Stack direction="row" wrap justify="center" gap={2} className="mt-4">
-            <Typography variant="caption" className="mr-1 self-center">
-              Try:
-            </Typography>
-            {suggestions.map((s) => (
-              <button
-                key={s}
-                type="button"
-                onClick={() => runSearch(s)}
-                className="relative rounded-full border border-border bg-card px-3 py-1 text-xs after:absolute after:inset-x-0 after:-inset-y-2.5 after:content-['']  text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                {s}
-              </button>
-            ))}
-          </Stack>
         </motion.div>
       </Container>
     </section>
