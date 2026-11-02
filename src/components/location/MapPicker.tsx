@@ -106,7 +106,7 @@ function MapPicker({ mode, value, onChange, label, defaultCenter = B17_CENTER, e
       aria-label={`Pick ${label} location on the map`}
       data-testid="map-picker"
       data-map-status={ready}
-      className={cn("relative isolate overflow-hidden rounded-lg border border-border bg-muted", className)}
+      className={cn("relative isolate overflow-hidden rounded-xl bg-muted shadow-subtle ring-1 ring-border", className)}
     >
       <div ref={container} className="h-56 w-full sm:h-72" />
       {ready === "loading" && <Skeleton className="absolute inset-0 z-[500] rounded-none" aria-hidden="true" />}

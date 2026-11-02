@@ -1,5 +1,6 @@
 import { useState } from "react"
 import { useForm, useWatch } from "react-hook-form"
+import { AlignLeft, IdCard, Image as ImageIcon, Store, Tags } from "lucide-react"
 import type { ListingKind } from "@/types/listing"
 import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
@@ -7,6 +8,8 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
+import { FieldError } from "@/components/forms/FieldError"
+import { FormSection } from "@/components/forms/FormSection"
 import { zodResolver } from "@/lib/zodResolver"
 import {
   listingSchema,
@@ -60,9 +63,9 @@ const businessTypeChoices = [
 ] as const
 
 /**
- * Unified listing form (UI/UX Spec §18) — same fields for both onboarding types, category input differs.
- * For a Business (FD4) a "Business type" choice switches between the General category field and the
- * Food & Dining block; the listing is a Business either way.
+ * Unified listing form (UI/UX Spec §18; VR5 sectioned grammar) — same fields for both onboarding types, category
+ * input differs. For a Business (FD4) a "Business type" choice switches between the General category field and
+ * the Food & Dining block; the listing is a Business either way.
  */
 function ListingForm({
   kind,
@@ -162,13 +165,17 @@ function ListingForm({
     <form onSubmit={handleSubmit(submit, showFoodErrors)} noValidate>
       <Stack gap={4}>
         {isBusiness && (
-          <fieldset className="flex min-w-0 flex-col gap-2">
-            <legend className="mb-2 text-sm font-medium">Business type</legend>
+          <FormSection
+            as="fieldset"
+            icon={Store}
+            title="Business type"
+            description="This decides whether the listing uses the Food & Dining fields."
+          >
             <div className="grid gap-2 sm:grid-cols-2">
               {businessTypeChoices.map((choice) => (
                 <label
                   key={choice.value}
-                  className="flex min-h-11 cursor-pointer items-start gap-3 rounded-xl border border-input p-3 transition-colors has-[:checked]:border-primary has-[:checked]:bg-accent has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring"
+                  className="flex min-h-11 cursor-pointer items-start gap-3 rounded-xl border border-input bg-card/70 p-3 transition-colors has-[:checked]:border-primary has-[:checked]:bg-accent has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring"
                 >
                   <input
                     type="radio"
@@ -177,7 +184,7 @@ function ListingForm({
                     {...register("vertical")}
                   />
                   <span className="min-w-0">
-                    <span className="block text-sm font-medium">{choice.title}</span>
+                    <span className="block text-sm font-semibold">{choice.title}</span>
                     <span className="block text-xs text-muted-foreground">{choice.description}</span>
                   </span>
                 </label>
@@ -187,101 +194,89 @@ function ListingForm({
               <Typography
                 variant="body-sm"
                 role="status"
-                className="rounded-lg bg-destructive/5 px-3 py-2 text-destructive"
+                className="rounded-lg bg-destructive/10 px-3 py-2 font-medium text-destructive ring-1 ring-destructive/20"
               >
                 Switching to General Business will remove Food-specific details when saved.
               </Typography>
             )}
-          </fieldset>
+          </FormSection>
         )}
 
-        <Stack gap={2}>
-          <Label htmlFor="listing-name">{nameLabel}</Label>
-          <Input
-            id="listing-name"
-            placeholder={
-              kind === "provider"
-                ? "e.g. B-17 Solar Solutions"
-                : isFood
-                  ? "e.g. Karahi Junction"
-                  : "e.g. Capital Stationery Mart"
-            }
-            aria-invalid={!!errors.name}
-            aria-describedby={errors.name ? "listing-name-error" : undefined}
-            {...register("name")}
-          />
-          {errors.name && (
-            <Typography id="listing-name-error" variant="caption" className="text-destructive" role="alert">
-              {errors.name.message}
-            </Typography>
-          )}
-        </Stack>
-
-        {!isFood && (
+        <FormSection
+          icon={IdCard}
+          title="Listing identity"
+          description={isFood ? "What this place is called. The Food & Dining categories are chosen below." : "What this listing is called and the category it belongs to."}
+        >
           <Stack gap={2}>
-            <Label htmlFor="listing-category">{categoryLabel}</Label>
-            {/* `key`: the options arrive after mount; remounting re-applies the form's value (an edit prefill) to the select. */}
-            <select
-              key={categories.status}
-              id="listing-category"
-              className={selectClassName}
-              defaultValue=""
-              aria-invalid={!!errors.category}
-              aria-describedby={errors.category ? "listing-category-error" : undefined}
-              {...register("category")}
-            >
-              <option value="" disabled>
-                {categories.status === "loading" ? "Loading categories…" : categories.status === "error" ? "Categories unavailable" : "Choose a category"}
-              </option>
-              {categoryOptions.map((category) => (
-                <option key={category.slug} value={category.slug}>
-                  {category.name}
-                </option>
-              ))}
-            </select>
-            {categories.status === "error" && (
-              <Typography variant="caption" role="alert" className="text-destructive">
-                The categories could not be loaded. Reload the page to try again.
-              </Typography>
-            )}
-            {errors.category && (
-              <Typography id="listing-category-error" variant="caption" className="text-destructive" role="alert">
-                {errors.category.message}
-              </Typography>
-            )}
+            <Label htmlFor="listing-name">{nameLabel}</Label>
+            <Input
+              id="listing-name"
+              placeholder={
+                kind === "provider"
+                  ? "e.g. B-17 Solar Solutions"
+                  : isFood
+                    ? "e.g. Karahi Junction"
+                    : "e.g. Capital Stationery Mart"
+              }
+              aria-invalid={!!errors.name}
+              aria-describedby={errors.name ? "listing-name-error" : undefined}
+              {...register("name")}
+            />
+            <FieldError id="listing-name-error" message={errors.name?.message} />
           </Stack>
-        )}
 
-        <Stack gap={2}>
-          <Label htmlFor="listing-description">Description</Label>
-          <Textarea
-            id="listing-description"
-            placeholder="What do you offer? Keep it short and clear."
-            rows={3}
-            aria-invalid={!!errors.description}
-            aria-describedby={errors.description ? "listing-description-error" : undefined}
-            {...register("description")}
-          />
-          {errors.description && (
-            <Typography id="listing-description-error" variant="caption" className="text-destructive" role="alert">
-              {errors.description.message}
-            </Typography>
+          {!isFood && (
+            <Stack gap={2}>
+              <Label htmlFor="listing-category">{categoryLabel}</Label>
+              {/* `key`: the options arrive after mount; remounting re-applies the form's value (an edit prefill) to the select. */}
+              <select
+                key={categories.status}
+                id="listing-category"
+                className={selectClassName}
+                defaultValue=""
+                aria-invalid={!!errors.category}
+                aria-describedby={errors.category ? "listing-category-error" : undefined}
+                {...register("category")}
+              >
+                <option value="" disabled>
+                  {categories.status === "loading" ? "Loading categories…" : categories.status === "error" ? "Categories unavailable" : "Choose a category"}
+                </option>
+                {categoryOptions.map((category) => (
+                  <option key={category.slug} value={category.slug}>
+                    {category.name}
+                  </option>
+                ))}
+              </select>
+              {categories.status === "error" && (
+                <Typography variant="body-sm" role="alert" className="font-medium text-destructive">
+                  The categories could not be loaded. Reload the page to try again.
+                </Typography>
+              )}
+              <FieldError id="listing-category-error" message={errors.category?.message} />
+            </Stack>
           )}
-        </Stack>
 
-        <AreaField id="listing-area" inputProps={register("area")} error={errors.area?.message} legacyArea={legacyArea} />
+          <AreaField id="listing-area" inputProps={register("area")} error={errors.area?.message} legacyArea={legacyArea} />
+        </FormSection>
 
-        <TagsField
-          id="listing-tags"
-          label={tagsCopy.label}
-          placeholder={tagsCopy.placeholder}
-          purpose={tagsCopy.purpose}
-          value={tagsValue}
-          error={errors.tagsInput?.message}
-          inputProps={register("tagsInput")}
-        />
-
-        <ListingImageInput id="listing-image" value={image} onChange={setImage} />
+        <FormSection
+          icon={AlignLeft}
+          title="Description"
+          description="A short, clear summary of what you offer. Shown on your public page."
+        >
+          <Stack gap={2}>
+            <Label htmlFor="listing-description">Description</Label>
+            <Textarea
+              id="listing-description"
+              placeholder="What do you offer? Keep it short and clear."
+              rows={3}
+              aria-invalid={!!errors.description}
+              aria-describedby={errors.description ? "listing-description-error" : undefined}
+              {...register("description")}
+            />
+            <FieldError id="listing-description-error" message={errors.description?.message} />
+          </Stack>
+        </FormSection>
 
         {isFood && (
           <div data-food-fields>
@@ -289,11 +284,35 @@ function ListingForm({
           </div>
         )}
 
+        <FormSection
+          icon={Tags}
+          title={isTutor ? "Topics & keywords" : isFood ? "Dishes & keywords" : "Services & keywords"}
+          description="These help residents find your listing when they search."
+        >
+          <TagsField
+            id="listing-tags"
+            label={tagsCopy.label}
+            placeholder={tagsCopy.placeholder}
+            purpose={tagsCopy.purpose}
+            value={tagsValue}
+            error={errors.tagsInput?.message}
+            inputProps={register("tagsInput")}
+          />
+        </FormSection>
+
+        <FormSection
+          icon={ImageIcon}
+          title="Cover image"
+          description="A photo on the public page. Image upload is a later release."
+        >
+          <ListingImageInput id="listing-image" value={image} onChange={setImage} />
+        </FormSection>
+
         <Stack gap={2} className="flex-col-reverse sm:flex-row sm:justify-end">
-          <Button type="button" variant="outline" className="h-11 md:h-8" onClick={onBack}>
+          <Button type="button" variant="outline" className="h-11 sm:h-10" onClick={onBack}>
             Back
           </Button>
-          <Button type="submit" className="h-11 md:h-8" disabled={isSubmitting || submitting} aria-busy={submitting}>
+          <Button type="submit" className="h-11 text-base font-semibold sm:h-10" disabled={isSubmitting || submitting} aria-busy={submitting}>
             {submitLabel}
           </Button>
         </Stack>

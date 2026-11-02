@@ -121,6 +121,33 @@ VR4 applies the identity to the operational, signed-in product (Professional Wor
 
 **Not in VR4.** No backend / API / migration / database file. No auth semantics change (CSRF, redirects, loading-vs-anonymous distinction unchanged). No listing state-machine change (statuses — Pending Review, Approved, Rejected, Taken down, Archived — are untouched; Rejected and Taken down remain distinct). No `ServiceRequest` lifecycle change (`submitted → accepted → in-progress → completed` plus cancellation; the API still accepts `in_app` / `whatsapp` / `phone` as a stored preference, we still only offer `in_app` in the UI). No Saved semantics change, no moderation semantics change, no quota semantics change, no Search semantics change, no location-privacy change. **No Inquiry.** No `ProfessionalProfile` contact fields (phone / WhatsApp / bio / business hours all remain Phase 13B). No fake Contact Business / Order Inquiry / Contact Tutor / Contact Lister / Call / WhatsApp controls. No fake notification promise. No fake Upgrade or billing CTA.
 
+### VR5 — final polish, dense forms, accessibility sweep
+
+VR5 is the closing phase of the visual redesign. It applies the governing identity to the dense form family — the listing create / edit flow for all five kinds, the `LocationFieldset` with its privacy choice, the honest `ListingImageInput`, the `TagsField`, the `MapPicker` frame — and does one coherent cross-product consistency pass. **With VR5 pushed the visual redesign is substantively complete.**
+
+**New shared primitives.**
+* `FormSection` — the sectioned form grammar: an icon tile + a strong title + a quiet description + grouped controls on an opaque `glass-panel` surface. Renders as a `<section>` with a visually-hidden `<h2>` by default so the heading sits in the a11y tree without competing visually, or as a `<fieldset>` with a visually-hidden `<legend>` when the children are a native radio / checkbox group (so `screen.getByRole("group", { name })` keeps working). Replaces the ad-hoc fieldsets scattered through the form family.
+* `FormAlert` — tonal (info / warning / error) icon-tile banner for page-level alerts (plan-limit refusals, server validation summaries, rejection notices). Title + em-dash + description render as one text node under a single `role="alert"` paragraph, so existing tests that use `findByText` + `toHaveTextContent` keep working.
+* `FieldError` — one-line inline field error with the destructive icon beside bold red text, strict `role="alert"`, no color-only meaning.
+
+**Listing form family (five kinds — one grammar).** `ListingForm` (provider / general business / food business / tutor) and `PropertyListingForm` are now composed of `FormSection` panels in a consistent order: *Business type* (business only) → *Listing identity* → *Description* → the kind-specific block (Food & Dining when applicable; the Property *Specs* section) → *Services / topics / dishes & keywords* (`TagsField`) → *Cover image*. Each section carries its own icon tile and a short helper line, so the form reads as a sequence rather than a stack.
+
+**Section-specific polish.**
+* `LocationFieldset` moves inside a `FormSection` with a `MapPinIcon`. The visibility choice gets an info-toned "The public sees: ..." preview line that spells out the privacy consequence per mode (exact: exact address + pin + Get Directions; approximate: illustrative area, exact point and address are kept hidden; area_only: area name only, no map). Private data stays private whichever mode is picked. All visibility semantics are unchanged.
+* `MapPicker` frame is 2xl radius with a `shadow-subtle` + ring. Mount lifecycle, remount-on-value-change behaviour, test-api hook (`data-map-status`) and the "map couldn't be loaded" fallback are unchanged.
+* `TagsField` adds a live chip preview below the input: a visual confirmation of what the comma-separated text parses to, driven by the same `parseTags` the payload uses. Max-count feedback, aria wiring, 20 x 40 bounds and the plain-English error are unchanged.
+* `ListingImageInput` keeps the honest "Image upload isn't available yet" message in a tonal info ribbon beside a disabled Choose button. When nothing is on file, the placeholder is now a 2xl framed gradient tile with the icon — the shared VR3 placeholder language. Removing a stored image is still the only interaction; no browser-local uploader is ever created.
+
+**Create flow.** `ListingFormPage` opens on a `PageHeader` (Professional) above four glass kind cards: each card is a full-width button with a kind-icon tile + strong title + description + an arrow affordance; selecting one steps into the form with the kind's own icon in the next PageHeader's eyebrow. The h1 copy and route stay the same ("List a Service, Business, Tutor or Property") so existing tests find the heading.
+
+**Edit flow.** `EditListingPage` uses a `PageHeader` with the kind icon + "Professional / Listing Title" eyebrow + the h1 "Edit Listing". The status badge + revision number live in the header actions slot. The rejection reason stays an inline tonal line reading `Rejected: {reason}` or `Taken down: {reason}` so the Rejected vs Taken-down distinction (S5A/B-03) survives.
+
+**Create vs Edit vs Resubmit** submit labels ("Submit for Review" / "Save Changes" / "Resubmit for Review") and the resulting success toasts ("Listing submitted for review" / "Changes submitted for review" / "Listing resubmitted for review" / "Listing updated") are unchanged.
+
+**Dense error states.** Server refusals surface through `FormAlert` with the same tonal grammar used for Login / Reset / Verify. Validation messages use `FieldError` with icon + bold tone — red is never the only cue.
+
+**Not in VR5.** No backend / API / migration / database file. No auth semantics change. No listing lifecycle, moderation, Saved, `ServiceRequest`, quota, location-privacy or Search change. **No Inquiry.** **No ProfessionalProfile contact fields.** **No media-upload implementation** (the Image input stays honest about Phase 13A). No fake Contact / WhatsApp / Call / Upgrade controls. No new UI, chart, map, animation or form framework.
+
 ## 1. Design Vision
 
 B-17 Portal should feel like a **premium hyperlocal marketplace and community platform** — the first place a B-17 resident checks when they need something nearby, and a place local professionals are proud to list themselves on. The target feeling is modern, trustworthy, warm/local, clean, image-driven, mobile-first, and app-like. It should never feel like a generic admin template, a corporate banking app, a flashy social network, or a cluttered classifieds site.

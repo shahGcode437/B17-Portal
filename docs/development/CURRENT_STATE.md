@@ -1009,3 +1009,28 @@ VR4 applies the governing identity to the signed-in operational product: the Pro
 **Not changed:** backend / API / migrations / database / Alembic / auth flow / CSRF / search / listing lifecycle / moderation lifecycle / `ServiceRequest` lifecycle / Saved / location privacy / Contact Model v1 implementation state. No fake Contact / WhatsApp / Call / Upgrade / Billing. No fabricated analytics, ratings, response times or notifications.
 
 **Gates:** TypeScript clean; lint 6 warnings (baseline, same files as VR1–VR3); Vitest **72 files / 1118 tests passed**; build clean; mock Playwright **169 / 169 passed, 0 failed, 0 skipped, 0 retries** (`--workers=2`, matching CI's resource profile). An earlier full-suite attempt hit the historically flaky `search.spec.ts` combobox tests (4 failures that passed 11 / 11 in isolation), the same known cold-boot race flagged in `docs/development/dev-environment-gotchas.md` and VR3's acceptance; the clean retry stands. Live-stack visual check: Request Service dialog opened against the real backend as a fresh verified resident; the form flow, the four-tile confirmation and the Resident Request Detail timeline all render as designed with zero horizontal overflow at 375 / 820 / 1440. Baseline `8ed6107`; VR4 uncommitted.
+
+## VR5 (Visual Redesign) — Final polish, dense forms & accessibility sweep (in progress, NOT committed)
+
+VR5 is the closing phase of the visual redesign. It applies the identity to the dense form family — the listing create / edit flow for all five kinds, the `LocationFieldset` with its privacy choice, the honest `ListingImageInput`, the `TagsField`, the `MapPicker` frame — and does one coherent cross-product consistency pass.
+
+**New shared primitives.**
+- `FormSection` — sectioned form grammar on an opaque `glass-panel`; renders as `<section>` with sr-only `<h2>` or `<fieldset>` with sr-only `<legend>` so existing accessible-name queries keep working.
+- `FormAlert` — tonal (info / warning / error) page-level alert. Title + em-dash + description in a single `role="alert"` paragraph for test compatibility.
+- `FieldError` — inline field error with destructive icon + bold red text, strict `role="alert"`.
+
+**Listing forms.** One section grammar across all five kinds: *Business type* (business only) → *Listing identity* → *Description* → kind-specific block (Food & Dining or Property *Specs*) → *Keywords / tags* → *Cover image*. Submit labels and success toasts are unchanged.
+
+**Location + Map.** `LocationFieldset` lives in a `FormSection` and gains an info-toned "The public sees: ..." line per visibility mode that spells out the privacy consequence. All visibility semantics are unchanged (exact / approximate / area-only; `area_only` strips only the point and keeps block / address / landmark as private data). `MapPicker` frame polished (2xl radius + ring); mount lifecycle and `data-map-status` fallback are unchanged.
+
+**Tags + Image.** `TagsField` shows a live chip preview below the input; bounds (20 x 40), aria wiring and the plain-English error are unchanged. `ListingImageInput` keeps the honest "Image upload isn't available yet" message in a tonal info ribbon beside a disabled Choose button; the placeholder is a 2xl framed gradient tile. The disabled button is `aria-describedby={notice}` so screen readers tie the disabled state to the explanation.
+
+**Edit flow.** `EditListingPage` uses `PageHeader` with the kind icon + "Professional / {Listing Title}" eyebrow + the h1 "Edit Listing". Status badge + revision in the actions slot. The rejection reason stays an inline tonal line reading `Rejected: {reason}` or `Taken down: {reason}` so Rejected vs Taken down stays visually distinct (S5A/B-03).
+
+**Preserved.** `ServiceRequest` lifecycle; listing state-machine + Rejected / Taken down distinction; quota (3 active for Free, server-owned); Saved; moderation; Search; location privacy; auth / CSRF; **Contact Model v1 (no Inquiry, no ProfessionalProfile contact fields)**; the honest "Image upload isn't available yet" copy and its disabled Choose button.
+
+**Not changed:** backend / API / migrations / database / Alembic / auth flow / CSRF / search / listing lifecycle / moderation lifecycle / `ServiceRequest` lifecycle / Saved / location privacy / Contact Model v1 implementation state / media upload. No fake Contact / WhatsApp / Call / Upgrade / Billing. No fabricated analytics, ratings, response times or notifications. No new UI, chart, map, animation or form framework.
+
+**Gates:** TypeScript clean; lint 6 warnings (baseline); Vitest **72 files / 1118 tests passed**; build clean; mock Playwright **169 / 169 passed, 0 failed, 0 skipped, 0 retries** (`--workers=2`, on the rebuilt dist). Live-stack visual check at 1440 against the real backend: the Create kind picker renders with 4 glass kind cards + arrow affordances; selecting Property composes the LocationFieldset glass + Property identity FormSection; the signed-in Edit prompt ("Professional profile needed") still appears first for a fresh resident; no horizontal overflow. Baseline `e807a17`; VR5 uncommitted.
+
+**Visual redesign status after VR5.** Every major implemented surface now carries the Glassmorphism + Controlled Maximalism identity: public shell + Home + Search + Discovery (VR1 / VR2), five listing-card families + five listing detail pages + authentication (VR3), Professional / Admin / Resident workspaces + Request Service dialog + overlays (VR4), listing forms + location + map + media-unavailable + tags (VR5). The one surface that keeps its honest pre-redesign shape is the News administration (`NewsAdminSoon`), which the News admin backend has not been built for; it is intentional.

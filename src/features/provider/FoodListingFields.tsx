@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react"
-import { Plus, Trash2 } from "lucide-react"
+import { Plus, Trash2, Utensils } from "lucide-react"
 import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
 import { Badge } from "@/components/ui/badge"
@@ -140,15 +140,20 @@ function FoodListingFields({ value, onChange, errors }: FoodListingFieldsProps) 
     .join(" ")
 
   return (
-    <Stack gap={6} className="rounded-xl border border-border p-4">
-      <Stack gap={1}>
-        <Typography as="h2" variant="h3" className="text-lg sm:text-xl">
-          Food &amp; Dining details
-        </Typography>
-        <Typography variant="body-sm" className="text-muted-foreground">
-          Helps residents find you by what you serve. Your Business Name, description, area and cover image are above.
-        </Typography>
-      </Stack>
+    <Stack gap={6} className="glass-panel min-w-0 rounded-2xl p-4 sm:p-5">
+      <div className="flex items-start gap-3">
+        <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/12 text-primary ring-1 ring-primary/20">
+          <Utensils className="size-5" aria-hidden="true" />
+        </span>
+        <div className="flex flex-1 flex-col gap-1">
+          <Typography as="h2" variant="label" className="font-heading text-base font-semibold">
+            Food &amp; Dining details
+          </Typography>
+          <Typography variant="body-sm" className="text-muted-foreground">
+            Helps residents find you by what you serve. Your Business Name, description, area and cover image are above.
+          </Typography>
+        </div>
+      </div>
 
       <fieldset aria-describedby={categoryDescribedBy} className="flex min-w-0 flex-col gap-2">
         <legend className="mb-2 text-sm font-medium">Food categories</legend>

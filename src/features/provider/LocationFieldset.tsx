@@ -1,9 +1,12 @@
 import { useState } from "react"
+import { Eye, MapPin as MapPinIcon } from "lucide-react"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
+import { FieldError } from "@/components/forms/FieldError"
+import { FormSection } from "@/components/forms/FormSection"
 import { MapPicker } from "@/components/location/MapPicker"
 import { selectClassName } from "@/features/provider/formStyles"
 import { isValidCoordinate } from "@/lib/api/adapters"
@@ -28,6 +31,12 @@ const VISIBILITY_LABELS: Record<"exact" | "approximate" | "area_only", string> =
   exact: "Exact location (shown with address and a pin)",
   approximate: "Approximate (an area around the pin is shown; no address)",
   area_only: "Area only (no map, no pin — just the area name)",
+}
+
+const VISIBILITY_PUBLIC_PREVIEW: Record<"exact" | "approximate" | "area_only", string> = {
+  exact: "Visitors see the exact address, a pin on the map and Get Directions.",
+  approximate: "Visitors see an illustrative area on the map. Your exact point and address are kept hidden.",
+  area_only: "Visitors see only the area name. No map, no pin, no address.",
 }
 
 /**
@@ -83,9 +92,11 @@ function LocationFieldset({ value, onChange, itemLabel, allowedVisibilities, err
   const point = value.latitude !== undefined && value.longitude !== undefined ? { latitude: value.latitude, longitude: value.longitude } : null
 
   return (
-    <fieldset className="flex min-w-0 flex-col gap-3" aria-label="Location">
-      <legend className="text-sm font-medium">Where is this listing?</legend>
-
+    <FormSection
+      icon={MapPinIcon}
+      title="Where is this listing?"
+      description="You control how precisely the public sees it. The map and address are hidden whenever the visibility doesn't allow them."
+    >
       <Stack gap={2}>
         <Label htmlFor="location-visibility">Visibility</Label>
         <select
@@ -101,11 +112,16 @@ function LocationFieldset({ value, onChange, itemLabel, allowedVisibilities, err
             </option>
           ))}
         </select>
-        {errors["location.visibility"] && (
-          <Typography variant="caption" className="text-destructive" role="alert">
-            {errors["location.visibility"]}
-          </Typography>
-        )}
+        <FieldError id="location-visibility-error" message={errors["location.visibility"]} />
+        <Typography
+          variant="body-sm"
+          className="flex items-start gap-2 rounded-lg bg-info/10 px-3 py-2 text-info-text ring-1 ring-info/25"
+        >
+          <Eye className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+          <span className="min-w-0 text-foreground">
+            <span className="font-semibold">The public sees:</span> {VISIBILITY_PUBLIC_PREVIEW[value.visibility]}
+          </span>
+        </Typography>
       </Stack>
 
       <Stack gap={2}>
@@ -121,9 +137,7 @@ function LocationFieldset({ value, onChange, itemLabel, allowedVisibilities, err
           aria-describedby={blockError ? "location-block-error" : "location-block-hint"}
         />
         {blockError ? (
-          <Typography id="location-block-error" variant="caption" className="text-destructive" role="alert">
-            {blockError}
-          </Typography>
+          <FieldError id="location-block-error" message={blockError} />
         ) : (
           <Typography id="location-block-hint" variant="caption" className="text-muted-foreground">
             Your block or sector within B-17. The area itself is always B-17.
@@ -146,11 +160,7 @@ function LocationFieldset({ value, onChange, itemLabel, allowedVisibilities, err
               aria-invalid={!!addressError}
               aria-describedby={addressError ? "location-address-error" : undefined}
             />
-            {addressError && (
-              <Typography id="location-address-error" variant="caption" className="text-destructive" role="alert">
-                {addressError}
-              </Typography>
-            )}
+            <FieldError id="location-address-error" message={addressError} />
           </Stack>
           <Stack gap={2}>
             <Label htmlFor="location-landmark">Landmark (optional)</Label>
@@ -164,11 +174,7 @@ function LocationFieldset({ value, onChange, itemLabel, allowedVisibilities, err
               aria-invalid={!!landmarkError}
               aria-describedby={landmarkError ? "location-landmark-error" : undefined}
             />
-            {landmarkError && (
-              <Typography id="location-landmark-error" variant="caption" className="text-destructive" role="alert">
-                {landmarkError}
-              </Typography>
-            )}
+            <FieldError id="location-landmark-error" message={landmarkError} />
           </Stack>
         </>
       )}
@@ -224,18 +230,17 @@ function LocationFieldset({ value, onChange, itemLabel, allowedVisibilities, err
               />
             </Stack>
           </Stack>
-          {(errors["location.latitude"] || errors["location.longitude"] || errors["location.coordinates"]) && (
-            <Typography variant="caption" className="text-destructive" role="alert">
-              {errors["location.latitude"] || errors["location.longitude"] || errors["location.coordinates"]}
-            </Typography>
-          )}
+          <FieldError
+            id="location-point-error"
+            message={errors["location.latitude"] || errors["location.longitude"] || errors["location.coordinates"]}
+          />
         </>
       ) : (
         <Typography variant="body-sm" className="text-muted-foreground">
           Location shared at area level. No map or pin is shown to the public.
         </Typography>
       )}
-    </fieldset>
+    </FormSection>
   )
 }
 

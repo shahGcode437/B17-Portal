@@ -7,6 +7,8 @@ import { Typography } from "@/components/foundation/Typography"
 import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/feedback/EmptyState"
 import { ReadError } from "@/components/feedback/ReadError"
+import { PageHeader } from "@/components/workspace/PageHeader"
+import { FormAlert } from "@/components/forms/FormAlert"
 import { ListingForm } from "@/features/provider/ListingForm"
 import { PropertyListingForm } from "@/features/provider/PropertyListingForm"
 import { LocationFieldset } from "@/features/provider/LocationFieldset"
@@ -150,39 +152,44 @@ function EditShell({ listing, onReload }: { listing: OwnerListingView; onReload:
 
   return (
     <Container className="py-8 sm:py-12">
-      <Stack gap={6} className="mx-auto max-w-2xl">
-        <Stack gap={1}>
-          <Typography variant="h1">Edit Listing</Typography>
-          <Stack direction="row" align="center" gap={2} wrap>
-            <ListingStatusBadge status={listing.status} takenDown={listing.takenDown} />
-            <Typography variant="body-sm" className="text-muted-foreground">
-              revision {listing.revision}
-            </Typography>
-          </Stack>
-          <Typography variant="body-sm" className="text-muted-foreground">
-            {listing.status === "approved"
-              ? "This listing is live. A change to its content sends it back to review; narrowing who can see its location does not."
-              : listing.status === "rejected"
-                ? listing.takenDown
-                  ? "A moderator took this listing down, so it is no longer public. Fix what they raised, then resubmit it for review."
-                  : "Edit what the review asked for, then resubmit."
-                : "This listing is waiting for review. Saving changes keeps it in the queue."}
-          </Typography>
+      <div className="mx-auto max-w-3xl">
+        <Stack gap={6}>
+          <PageHeader
+            icon={PenLine}
+            eyebrow={`Professional · ${listing.title}`}
+            title="Edit Listing"
+            description={
+              listing.status === "approved"
+                ? "This listing is live. A change to its content sends it back to review; narrowing who can see its location does not."
+                : listing.status === "rejected"
+                  ? listing.takenDown
+                    ? "A moderator took this listing down, so it is no longer public. Fix what they raised, then resubmit it for review."
+                    : "Edit what the review asked for, then resubmit."
+                  : "This listing is waiting for review. Saving changes keeps it in the queue."
+            }
+            actions={
+              <Stack direction="row" align="center" gap={2} wrap>
+                <ListingStatusBadge status={listing.status} takenDown={listing.takenDown} />
+                <Typography as="span" variant="caption" className="text-muted-foreground">
+                  revision {listing.revision}
+                </Typography>
+              </Stack>
+            }
+          />
           {listing.status === "rejected" && listing.rejectionReason && (
-            <Typography variant="body-sm" className="rounded-lg bg-destructive/5 px-3 py-2 text-destructive">
-              {listing.takenDown ? "Taken down" : "Rejected"}: {listing.rejectionReason}
+            <Typography
+              variant="body-sm"
+              className="rounded-xl bg-destructive/10 px-4 py-3 font-medium text-destructive ring-1 ring-destructive/20"
+            >
+              {`${listing.takenDown ? "Taken down" : "Rejected"}: ${listing.rejectionReason}`}
             </Typography>
           )}
-        </Stack>
 
-        {errorCopy && (
-          <Typography variant="body-sm" role="alert" className="rounded-lg bg-destructive/5 px-3 py-2 text-destructive">
-            {errorCopy.title}
-            {errorCopy.description ? ` — ${errorCopy.description}` : ""}
-          </Typography>
-        )}
+          {errorCopy && (
+            <FormAlert tone="error" title={errorCopy.title} description={errorCopy.description} />
+          )}
 
-        {kind === "tutor" && <TutorGradeField value={grade} onChange={setGrade} error={gradeError} disabled={patchMutation.pending} />}
+          {kind === "tutor" && <TutorGradeField value={grade} onChange={setGrade} error={gradeError} disabled={patchMutation.pending} />}
 
         <LocationFieldset
           value={location}
@@ -193,21 +200,22 @@ function EditShell({ listing, onReload }: { listing: OwnerListingView; onReload:
           disabled={patchMutation.pending}
         />
 
-        {kind === "property" ? (
-          <PropertyListingForm defaultValues={defaults as PropertyFormValues} onBack={() => navigate(routes.providerListings)} onSubmit={submit} submitLabel={submitLabel} submitting={patchMutation.pending} />
-        ) : (
-          <ListingForm
-            kind={kind === "tutor" ? "provider" : kind === "provider" ? "provider" : "business"}
-            categoryModule={kind === "tutor" ? "education" : undefined}
-            categoryLabelText={kind === "tutor" ? "Subject" : undefined}
-            defaultValues={defaults as Partial<ListingFormValues>}
-            onBack={() => navigate(routes.providerListings)}
-            onSubmit={submit}
-            submitLabel={submitLabel}
-            submitting={patchMutation.pending}
-          />
-        )}
-      </Stack>
+          {kind === "property" ? (
+            <PropertyListingForm defaultValues={defaults as PropertyFormValues} onBack={() => navigate(routes.providerListings)} onSubmit={submit} submitLabel={submitLabel} submitting={patchMutation.pending} />
+          ) : (
+            <ListingForm
+              kind={kind === "tutor" ? "provider" : kind === "provider" ? "provider" : "business"}
+              categoryModule={kind === "tutor" ? "education" : undefined}
+              categoryLabelText={kind === "tutor" ? "Subject" : undefined}
+              defaultValues={defaults as Partial<ListingFormValues>}
+              onBack={() => navigate(routes.providerListings)}
+              onSubmit={submit}
+              submitLabel={submitLabel}
+              submitting={patchMutation.pending}
+            />
+          )}
+        </Stack>
+      </div>
     </Container>
   )
 }

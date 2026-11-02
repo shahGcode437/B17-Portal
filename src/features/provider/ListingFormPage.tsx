@@ -1,10 +1,12 @@
 import { useState } from "react"
 import { useNavigate } from "react-router-dom"
+import { ArrowRight, Building2, GraduationCap, KeyRound, PlusCircle, Wrench } from "lucide-react"
+import type { LucideIcon } from "lucide-react"
 import { Container } from "@/components/foundation/Container"
 import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
-import { Button } from "@/components/ui/button"
-import { Card } from "@/components/ui/card"
+import { PageHeader } from "@/components/workspace/PageHeader"
+import { FormAlert } from "@/components/forms/FormAlert"
 import { ListingForm } from "@/features/provider/ListingForm"
 import { PropertyListingForm } from "@/features/provider/PropertyListingForm"
 import { LocationFieldset } from "@/features/provider/LocationFieldset"
@@ -31,11 +33,18 @@ import type { ListingFormValues, PropertyFormValues } from "@/features/provider/
 
 type Kind = "provider" | "business" | "tutor" | "property"
 
-const KIND_CHOICES: { value: Kind; title: string; description: string }[] = [
-  { value: "provider", title: "Service / Professional", description: "Trades, construction, electrical, cleaning and other services you provide." },
-  { value: "business", title: "Business / Shop", description: "A retail business, including restaurants, cafes and bakeries (Food & Dining)." },
-  { value: "tutor", title: "Tutor", description: "Individual tutoring in a subject or for a grade." },
-  { value: "property", title: "Property", description: "A house, flat or plot for sale or rent." },
+interface KindChoice {
+  value: Kind
+  title: string
+  description: string
+  icon: LucideIcon
+}
+
+const KIND_CHOICES: KindChoice[] = [
+  { value: "provider", title: "Service / Professional", description: "Trades, construction, electrical, cleaning and other services you provide.", icon: Wrench },
+  { value: "business", title: "Business / Shop", description: "A retail business, including restaurants, cafes and bakeries (Food & Dining).", icon: Building2 },
+  { value: "tutor", title: "Tutor", description: "Individual tutoring in a subject or for a grade.", icon: GraduationCap },
+  { value: "property", title: "Property", description: "A house, flat or plot for sale or rent.", icon: KeyRound },
 ]
 
 const DEFAULT_LOCATION: Record<Kind, LocationWrite> = {
@@ -54,15 +63,12 @@ const ALLOWED_VISIBILITY: Record<Kind, ReadonlyArray<"exact" | "approximate" | "
 }
 
 /**
- * Create a listing (Phase 12H). The owner picks a kind, fills the shared form (`ListingForm` for
- * provider / business / tutor, `PropertyListingForm` for property) plus a `LocationFieldset`, and
- * submits to `POST /listings`. The server is the authority: a success navigates to the real owner
- * listings page (with the new row visible, backed by `GET /users/me/listings`); a `422` maps field
- * errors back onto the location block; a plan-limit or verification problem is announced plainly.
- *
- * Step A: a Free owner who is already at the active-listing limit sees a warning above the kind picker and the
- * form instead of finding out on submit. It is advice from the counts the browser has - it blocks nothing, and
- * the `plan_limit_reached` refusal is still mapped when the count was stale or never loaded.
+ * Create a listing (Phase 12H; VR5 visuals). The owner picks a kind, fills the shared form (`ListingForm` for
+ * provider / business / tutor, `PropertyListingForm` for property) plus a `LocationFieldset`, and submits to
+ * `POST /listings`. The server is the authority: success navigates to the real owner listings page with the new
+ * row highlighted; a `422` maps field errors back onto the location block; a plan-limit or verification problem
+ * is announced plainly through `FormAlert`. The over-the-limit warning stays as advice from the counts the
+ * browser has — it blocks nothing, and `plan_limit_reached` is still mapped if the count was stale.
  */
 function ListingFormPage() {
   const user = useRequireAuth()
@@ -74,7 +80,6 @@ function ListingFormPage() {
   const [gradeError, setGradeError] = useState<string | null>(null)
   const [locationErrors, setLocationErrors] = useState<Record<string, string>>({})
   const createMutation = useMutation(createListing)
-  // A warning only: the count can be stale or missing, and the server still answers `plan_limit_reached`.
   const quota = useListingQuota()
   const limitNotice = quota.state === "full" ? <ListingLimitNotice where="create" used={quota.used} max={quota.max} /> : null
 
@@ -83,39 +88,49 @@ function ListingFormPage() {
   if (!kind) {
     return (
       <Container className="py-8 sm:py-12">
-        <Stack gap={6} className="mx-auto max-w-2xl">
-          <Stack gap={1}>
-            <Typography variant="h1">List a Service, Business, Tutor or Property</Typography>
-            <Typography variant="body-sm" className="text-muted-foreground">
-              What are you listing? You can change this on the next step.
-            </Typography>
+        <div className="mx-auto max-w-3xl">
+          <Stack gap={6}>
+            <PageHeader
+              icon={PlusCircle}
+              eyebrow="Professional"
+              title="List a Service, Business, Tutor or Property"
+              description="What are you listing? You can change this on the next step."
+            />
+            {limitNotice}
+            <Stack gap={3}>
+              {KIND_CHOICES.map((choice) => {
+                const Icon = choice.icon
+                return (
+                  <button
+                    key={choice.value}
+                    type="button"
+                    onClick={() => {
+                      setKind(choice.value)
+                      setLocation(DEFAULT_LOCATION[choice.value])
+                    }}
+                    className="group glass-panel flex items-center gap-4 rounded-2xl p-4 text-left transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:p-5"
+                  >
+                    <span className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-primary/12 text-primary ring-1 ring-primary/20">
+                      <Icon className="size-6" aria-hidden="true" />
+                    </span>
+                    <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                      <Typography as="span" variant="label" className="font-heading text-base font-semibold">
+                        {choice.title}
+                      </Typography>
+                      <Typography as="span" variant="body-sm" className="text-muted-foreground">
+                        {choice.description}
+                      </Typography>
+                    </span>
+                    <ArrowRight
+                      className="size-5 shrink-0 text-muted-foreground transition-colors group-hover:text-primary"
+                      aria-hidden="true"
+                    />
+                  </button>
+                )
+              })}
+            </Stack>
           </Stack>
-          {limitNotice}
-          <Stack gap={3}>
-            {KIND_CHOICES.map((choice) => (
-              <Card key={choice.value} variant="workspace" className="p-0">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="h-auto w-full justify-start whitespace-normal p-4 text-left"
-                  onClick={() => {
-                    setKind(choice.value)
-                    setLocation(DEFAULT_LOCATION[choice.value])
-                  }}
-                >
-                  <Stack gap={1}>
-                    <Typography as="span" variant="label">
-                      {choice.title}
-                    </Typography>
-                    <Typography as="span" variant="body-sm" className="text-muted-foreground">
-                      {choice.description}
-                    </Typography>
-                  </Stack>
-                </Button>
-              </Card>
-            ))}
-          </Stack>
-        </Stack>
+        </div>
       </Container>
     )
   }
@@ -165,47 +180,48 @@ function ListingFormPage() {
     submitting: createMutation.pending,
   }
 
+  const kindChoice = KIND_CHOICES.find((c) => c.value === kind)!
+
   return (
     <Container className="py-8 sm:py-12">
-      <Stack gap={6} className="mx-auto max-w-2xl">
-        <Stack gap={1}>
-          <Typography variant="h1">List a Service, Business, Tutor or Property</Typography>
-          <Typography variant="body-sm" className="text-muted-foreground">
-            {KIND_CHOICES.find((c) => c.value === kind)?.title}. Everything you submit is reviewed before it is public.
-          </Typography>
-        </Stack>
-
-        {limitNotice}
-
-        {errorCopy && (
-          <Typography variant="body-sm" role="alert" className="rounded-lg bg-destructive/5 px-3 py-2 text-destructive">
-            {errorCopy.title}
-            {errorCopy.description ? ` — ${errorCopy.description}` : ""}
-          </Typography>
-        )}
-
-        {kind === "tutor" && <TutorGradeField value={grade} onChange={setGrade} error={gradeError} disabled={createMutation.pending} />}
-
-        <LocationFieldset
-          value={location}
-          onChange={setLocation}
-          itemLabel="this listing"
-          allowedVisibilities={ALLOWED_VISIBILITY[kind]}
-          errors={locationErrors}
-          disabled={createMutation.pending}
-        />
-
-        {kind === "property" ? (
-          <PropertyListingForm {...formProps} />
-        ) : (
-          <ListingForm
-            kind={kind === "tutor" ? "provider" : kind}
-            categoryModule={kind === "tutor" ? "education" : undefined}
-            categoryLabelText={kind === "tutor" ? "Subject" : undefined}
-            {...formProps}
+      <div className="mx-auto max-w-3xl">
+        <Stack gap={6}>
+          <PageHeader
+            icon={kindChoice.icon}
+            eyebrow={`Professional · ${kindChoice.title}`}
+            title="List a Service, Business, Tutor or Property"
+            description="Everything you submit is reviewed before it is public."
           />
-        )}
-      </Stack>
+
+          {limitNotice}
+
+          {errorCopy && (
+            <FormAlert tone="error" title={errorCopy.title} description={errorCopy.description} />
+          )}
+
+          {kind === "tutor" && <TutorGradeField value={grade} onChange={setGrade} error={gradeError} disabled={createMutation.pending} />}
+
+          <LocationFieldset
+            value={location}
+            onChange={setLocation}
+            itemLabel="this listing"
+            allowedVisibilities={ALLOWED_VISIBILITY[kind]}
+            errors={locationErrors}
+            disabled={createMutation.pending}
+          />
+
+          {kind === "property" ? (
+            <PropertyListingForm {...formProps} />
+          ) : (
+            <ListingForm
+              kind={kind === "tutor" ? "provider" : kind}
+              categoryModule={kind === "tutor" ? "education" : undefined}
+              categoryLabelText={kind === "tutor" ? "Subject" : undefined}
+              {...formProps}
+            />
+          )}
+        </Stack>
+      </div>
     </Container>
   )
 }
