@@ -3,7 +3,7 @@ import { useState } from "react"
 import { useForm } from "react-hook-form"
 import { Link } from "react-router-dom"
 import { z } from "zod"
-import { LogIn, UserPlus } from "lucide-react"
+import { CircleAlert, Loader2, LogIn, TriangleAlert, UserPlus } from "lucide-react"
 import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
 import { Button } from "@/components/ui/button"
@@ -16,6 +16,7 @@ import { fieldErrors, isApiError } from "@/lib/api/errors"
 import { zodResolver } from "@/lib/zodResolver"
 import { PasswordInput } from "@/features/auth/PasswordInput"
 import { authErrorMessage } from "@/features/auth/authMessages"
+import { VERIFICATION_BANNER_REASON } from "@/features/auth/verificationCopy"
 
 /** Client-side validation is UX only; the backend's 422 stays authoritative. */
 const loginSchema = z.object({
@@ -44,7 +45,8 @@ type RegisterValues = z.infer<typeof registerSchema>
 function FieldError({ id, message }: { id: string; message?: string }) {
   if (!message) return null
   return (
-    <Typography id={id} variant="caption" className="text-destructive" role="alert">
+    <Typography id={id} variant="body-sm" className="flex items-start gap-1.5 font-medium text-destructive" role="alert">
+      <CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
       {message}
     </Typography>
   )
@@ -55,7 +57,11 @@ function FormAlert({ message }: { message: string | null }) {
   return (
     <div role="alert" aria-live="assertive">
       {message && (
-        <Typography variant="body-sm" className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-destructive">
+        <Typography
+          variant="body-sm"
+          className="flex items-start gap-2.5 rounded-xl bg-destructive/10 px-4 py-3 font-medium text-destructive ring-1 ring-destructive/25"
+        >
+          <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
           {message}
         </Typography>
       )}
@@ -130,12 +136,15 @@ function LoginForm() {
           />
           <FieldError id="auth-password-error" message={errors.password?.message} />
         </Stack>
-        <Button type="submit" size="lg" disabled={isSubmitting}>
-          <LogIn />
+        <Button type="submit" size="lg" disabled={isSubmitting} className="h-11 text-base font-semibold">
+          {isSubmitting ? <Loader2 className="animate-spin" /> : <LogIn />}
           {isSubmitting ? "Logging in…" : "Log In"}
         </Button>
         <Typography variant="body-sm" className="text-center">
-          <Link to={routes.forgotPassword} className="text-primary underline-offset-4 hover:underline">
+          <Link
+            to={routes.forgotPassword}
+            className="inline-flex min-h-11 items-center rounded px-2 font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
             Forgot your password?
           </Link>
         </Typography>
@@ -211,15 +220,18 @@ function RegisterForm() {
             aria-describedby={errors.password ? "auth-password-error auth-password-hint" : "auth-password-hint"}
             {...register("password")}
           />
-          <Typography id="auth-password-hint" variant="caption">
+          <Typography id="auth-password-hint" variant="body-sm" className="text-muted-foreground">
             10–128 characters. A long passphrase works well.
           </Typography>
           <FieldError id="auth-password-error" message={errors.password?.message} />
         </Stack>
-        <Button type="submit" size="lg" disabled={isSubmitting}>
-          <UserPlus />
+        <Button type="submit" size="lg" disabled={isSubmitting} className="h-11 text-base font-semibold">
+          {isSubmitting ? <Loader2 className="animate-spin" /> : <UserPlus />}
           {isSubmitting ? "Creating account…" : "Create Account"}
         </Button>
+        <Typography variant="body-sm" className="text-center text-muted-foreground">
+          New accounts need to verify their email address. {VERIFICATION_BANNER_REASON}
+        </Typography>
       </Stack>
     </form>
   )

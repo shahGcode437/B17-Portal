@@ -38,11 +38,13 @@ function VerificationNotice() {
   return (
     <section
       aria-label="Email verification"
-      className="rounded-lg border border-border bg-muted px-4 py-3"
+      className="glass-panel rounded-2xl p-4 ring-1 ring-warning/35 sm:p-5"
     >
       <div className="flex items-start gap-3">
-        <MailWarning className="mt-0.5 size-5 shrink-0 text-primary" aria-hidden="true" />
-        <div className="flex flex-col gap-2">
+        <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-warning/15 text-warning-text">
+          <MailWarning className="size-5" aria-hidden="true" />
+        </span>
+        <div className="flex min-w-0 flex-col gap-2">
           <Typography variant="body-sm" className="font-medium">
             Verify your email address
           </Typography>

@@ -5,27 +5,35 @@ import { Container } from "@/components/foundation/Container"
 import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
 import { fadeUp } from "@/lib/motion"
+import { cn } from "@/lib/utils"
 
 interface DetailLayoutProps {
   onBack: () => void
-  /** Cover region (DetailHero). */
+  /** Cover region (DetailHero variant="banner"). */
   hero: ReactNode
-  /** Identity + primary action (DetailSummary). Sits right under the hero on mobile; becomes a sticky side panel from `lg`. */
+  /** Identity panel (DetailSummary). Overlaps the bottom of the hero. */
   summary: ReactNode
+  /**
+   * The page's one persistent, real action (DetailActionRegion `action`): Provider's Request Service. Pinned above the
+   * phone tab bar while the page scrolls, and to the top of the right column from `lg`. Omit it when the page has no
+   * real action: the summary then stays pinned instead.
+   */
+  action?: ReactNode
   /** Supporting information (DetailSection...). */
   children: ReactNode
-  /** Honest demo disclaimer shown after the sections. */
+  /** Honest disclaimer shown after the sections. */
   notice?: string
 }
 
 /**
- * Shared composition for consumer detail pages (Visual V3):
- * cover → identity/actions → supporting sections. DOM order matches the mobile
- * reading order; from `lg` the summary moves into a sticky right column
- * (pure CSS grid — no layout effects). Presentation only — each page decides
- * what goes in each slot.
+ * Shared composition for listing detail pages (Visual V3, deepened in VR3):
+ * hero banner -> identity panel (overlapping it) -> supporting sections -> the persistent action.
+ * DOM order is the mobile reading order and the order the pinned action belongs in (last, so a bottom-sticky bar
+ * can pin to the viewport and settle at the end of the content instead of covering the footer). From `lg` the
+ * hero spans the page and the identity panel and action sit in a 22rem right column, placed purely by CSS grid.
+ * Presentation only: each page decides what goes in each slot.
  */
-function DetailLayout({ onBack, hero, summary, children, notice }: DetailLayoutProps) {
+function DetailLayout({ onBack, hero, summary, action, children, notice }: DetailLayoutProps) {
   return (
     <Container className="py-6 sm:py-10">
       <motion.div {...fadeUp}>
@@ -39,10 +47,17 @@ function DetailLayout({ onBack, hero, summary, children, notice }: DetailLayoutP
             Back
           </button>
 
-          <div className="grid grid-cols-[minmax(0,1fr)] gap-x-8 gap-y-6 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start">
-            <div className="lg:col-start-1 lg:row-start-1">{hero}</div>
-            <div className="lg:sticky lg:top-24 lg:col-start-2 lg:row-span-2 lg:row-start-1">{summary}</div>
-            <Stack gap={8} className="lg:col-start-1 lg:row-start-2">
+          <div className="grid grid-cols-[minmax(0,1fr)] gap-x-8 gap-y-6 lg:grid-cols-[minmax(0,1fr)_22rem] lg:grid-rows-[auto_auto_1fr] lg:items-start">
+            <div className="lg:col-span-2 lg:row-start-1">{hero}</div>
+            <div
+              className={cn(
+                "relative z-10 -mt-14 px-3 sm:px-6 lg:col-start-2 lg:row-start-2 lg:-mt-36 lg:px-0",
+                !action && "lg:row-span-2 lg:sticky lg:top-24"
+              )}
+            >
+              {summary}
+            </div>
+            <Stack gap={6} className="lg:col-start-1 lg:row-span-2 lg:row-start-2">
               {children}
               {notice && (
                 <Typography variant="caption" className="rounded-xl bg-muted/50 p-4 text-muted-foreground">
@@ -50,6 +65,9 @@ function DetailLayout({ onBack, hero, summary, children, notice }: DetailLayoutP
                 </Typography>
               )}
             </Stack>
+            {action && (
+              <div className="sticky bottom-[4.75rem] z-20 lg:bottom-auto lg:top-24 lg:col-start-2 lg:row-start-3">{action}</div>
+            )}
           </div>
         </Stack>
       </motion.div>

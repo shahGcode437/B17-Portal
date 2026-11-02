@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { useLocation, useNavigate, useParams } from "react-router-dom"
-import { MapPin, Wrench } from "lucide-react"
+import { ClipboardList, Wrench } from "lucide-react"
 import { Typography } from "@/components/foundation/Typography"
 import { Button } from "@/components/ui/button"
 import { SaveButton } from "@/components/inputs/SaveButton"
@@ -8,8 +8,9 @@ import { DetailLayout } from "@/components/detail/DetailLayout"
 import { DetailHero } from "@/components/detail/DetailHero"
 import { DetailSummary } from "@/components/detail/DetailSummary"
 import { DetailSection } from "@/components/detail/DetailSection"
-import { DetailFacts } from "@/components/detail/DetailFacts"
+import { DetailActionRegion } from "@/components/detail/DetailActionRegion"
 import { DetailTagList } from "@/components/detail/DetailTagList"
+import { DetailTypeChip } from "@/components/detail/DetailTypeChip"
 import { FeaturedBadge } from "@/components/detail/FeaturedBadge"
 import { ListingDetailGate } from "@/components/detail/ListingDetailGate"
 import { LocationSection } from "@/components/location/LocationSection"
@@ -31,7 +32,8 @@ import type { Provider } from "@/types/provider"
  * "Request Service" is real since Phase 12H: the dialog `POST`s to `/requests` with the backend
  * deriving the provider from this listing's owner. An anonymous visitor is sent to Log In first and comes back
  * to this dialog (`openRequestFor`); someone whose session is still being checked, or whose server cannot be
- * reached, is NOT sent to Log In (`useSignInGate`, Phase 12S).
+ * reached, is NOT sent to Log In (`useSignInGate`, Phase 12S). VR3 only changes how the page is composed: the
+ * action lives in the layout's persistent action region (one button, pinned on phones and in the right column).
  */
 function ProviderProfilePage() {
   const { id } = useParams<{ id: string }>()
@@ -76,20 +78,26 @@ function ProviderProfile({ provider }: { provider: Provider }) {
       onBack={goBack}
       hero={
         <DetailHero
+          variant="banner"
           src={provider.image}
           icon={Wrench}
           label={provider.name}
-          badges={provider.featured && <FeaturedBadge />}
+          badges={
+            <>
+              <DetailTypeChip icon={Wrench} label="Service provider" />
+              {provider.featured && <FeaturedBadge />}
+            </>
+          }
           action={<SaveButton kind="provider" id={provider.id} name={provider.name} />}
         />
       }
-      summary={
-        <DetailSummary
-          title={provider.name}
-          subtitle={provider.categoryLabel}
-          facts={<DetailFacts facts={[{ icon: MapPin, label: "Coverage area", value: provider.area, wide: true }]} />}
-          actions={
-            <Button size="lg" className="w-full" onClick={handleRequestClick}>
+      summary={<DetailSummary title={provider.name} subtitle={provider.categoryLabel} area={provider.area} />}
+      action={
+        <DetailActionRegion
+          caption="Your request is created and tracked inside B-17 Portal."
+          action={
+            <Button size="lg" onClick={handleRequestClick}>
+              <ClipboardList aria-hidden="true" />
               Request Service
             </Button>
           }
@@ -103,12 +111,12 @@ function ProviderProfile({ provider }: { provider: Provider }) {
           </Typography>
         </DetailSection>
       )}
-      <LocationSection name={provider.name} area={provider.area} location={provider.location} title="Coverage area" />
       {provider.tags.length > 0 && (
         <DetailSection title="Services offered">
           <DetailTagList tags={provider.tags} />
         </DetailSection>
       )}
+      <LocationSection name={provider.name} area={provider.area} location={provider.location} title="Coverage area" />
       <RequestServiceDialog
         provider={provider}
         requesterName={auth.user?.displayName ?? ""}

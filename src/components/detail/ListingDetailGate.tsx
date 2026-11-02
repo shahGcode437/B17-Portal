@@ -11,16 +11,16 @@ import { isResourceNotFound } from "@/lib/api/errors"
 
 type Kind = "provider" | "business" | "tutor" | "property"
 
-/** A placeholder in the shape of a detail page (cover, identity panel, a few sections) so nothing jumps. */
+/** A placeholder in the shape of a detail page (banner cover, overlapping identity panel, a few sections) so nothing jumps. */
 function DetailSkeleton() {
   return (
     <Container className="py-6 sm:py-10">
       <div role="status" aria-label="Loading" className="mx-auto max-w-3xl lg:max-w-6xl">
         <span className="sr-only">Loading…</span>
         <div aria-hidden="true" className="grid grid-cols-[minmax(0,1fr)] gap-x-8 gap-y-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
-          <Skeleton className="aspect-video w-full rounded-xl" />
-          <Skeleton className="h-56 w-full rounded-xl lg:row-span-2" />
-          <Stack gap={3}>
+          <Skeleton className="aspect-[4/3] w-full rounded-3xl sm:aspect-video lg:col-span-2 lg:aspect-[5/2]" />
+          <Skeleton className="relative -mt-14 h-56 w-full rounded-2xl lg:col-start-2 lg:row-span-2 lg:-mt-36" />
+          <Stack gap={3} className="lg:col-start-1 lg:row-span-2 lg:row-start-2">
             <Skeleton className="h-6 w-1/3" />
             <Skeleton className="h-4 w-full" />
             <Skeleton className="h-4 w-5/6" />

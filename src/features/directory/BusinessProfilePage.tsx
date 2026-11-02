@@ -1,14 +1,15 @@
 import { useNavigate, useParams } from "react-router-dom"
-import { MapPin, Building2, Clock, Utensils, UtensilsCrossed } from "lucide-react"
+import { Building2, Clock, Utensils, UtensilsCrossed } from "lucide-react"
 import { Typography } from "@/components/foundation/Typography"
-import { Badge } from "@/components/ui/badge"
 import { SaveButton } from "@/components/inputs/SaveButton"
 import { DetailLayout } from "@/components/detail/DetailLayout"
 import { DetailHero } from "@/components/detail/DetailHero"
 import { DetailSummary } from "@/components/detail/DetailSummary"
 import { DetailSection } from "@/components/detail/DetailSection"
-import { DetailFacts } from "@/components/detail/DetailFacts"
+import { DetailActionRegion } from "@/components/detail/DetailActionRegion"
+import { DetailFactTiles } from "@/components/detail/DetailFactTiles"
 import { DetailTagList } from "@/components/detail/DetailTagList"
+import { DetailTypeChip } from "@/components/detail/DetailTypeChip"
 import { FeaturedBadge } from "@/components/detail/FeaturedBadge"
 import { ListingDetailGate } from "@/components/detail/ListingDetailGate"
 import { LocationSection } from "@/components/location/LocationSection"
@@ -50,18 +51,19 @@ function BusinessProfilePage() {
 }
 
 function BusinessProfile({ business }: { business: Business }) {
-  const goBack = useGoBack(business.vertical === "food" ? routes.food : routes.directory)
+  const isFood = business.vertical === "food"
+  const goBack = useGoBack(isFood ? routes.food : routes.directory)
   useSeo(businessSeo(business))
 
   // Food & Dining: everything below is conditional on the Business's own vertical - a general
   // Business renders as before. `business.category` already is the primary category's name, so only
   // the *other* categories are listed ("Also serves"), with the names the server supplied.
-  const food = business.vertical === "food" ? business.food : undefined
+  const food = isFood ? business.food : undefined
   const alsoServes = food?.categories
     .slice(1)
     .map((slug) => food.categoryLabels?.[slug] ?? foodCategoryLabel(slug))
     .join(", ")
-  const facts: DetailFact[] = [{ icon: MapPin, label: "Area", value: business.area, wide: true }]
+  const facts: DetailFact[] = []
   if (food?.hoursNote) facts.push({ icon: Clock, label: "Hours", value: food.hoursNote, wide: true })
   if (alsoServes) facts.push({ icon: UtensilsCrossed, label: "Also serves", value: alsoServes, wide: true })
 
@@ -70,32 +72,27 @@ function BusinessProfile({ business }: { business: Business }) {
       onBack={goBack}
       hero={
         <DetailHero
+          variant="banner"
           src={business.image}
-          icon={Building2}
+          icon={isFood ? Utensils : Building2}
           label={business.name}
           tone="accent"
-          badges={business.featured && <FeaturedBadge />}
+          badges={
+            <>
+              <DetailTypeChip icon={isFood ? Utensils : Building2} label={isFood ? FOOD_VERTICAL_LABEL : "Business"} />
+              {business.featured && <FeaturedBadge />}
+            </>
+          }
           action={<SaveButton kind="business" id={business.id} name={business.name} />}
         />
       }
       summary={
         <DetailSummary
-          badges={
-            business.vertical === "food" && (
-              <Badge variant="outline" className="gap-1 font-normal">
-                <Utensils className="size-3" aria-hidden="true" />
-                {FOOD_VERTICAL_LABEL}
-              </Badge>
-            )
-          }
           title={business.name}
           subtitle={business.category}
-          facts={<DetailFacts facts={facts} />}
-          actions={
-            <Typography variant="body-sm" className="text-muted-foreground">
-              Contacting this business through B-17 Portal isn&apos;t available yet.
-            </Typography>
-          }
+          area={business.area}
+          facts={<DetailFactTiles facts={facts} />}
+          actions={<DetailActionRegion unavailableMessage="Contacting this business through B-17 Portal isn&apos;t available yet." />}
         />
       }
     >
@@ -106,8 +103,8 @@ function BusinessProfile({ business }: { business: Business }) {
           </Typography>
         </DetailSection>
       )}
-      <LocationSection name={business.name} area={business.area} location={business.location} />
       {food && <FoodDetailSections businessName={business.name} food={food} />}
+      <LocationSection name={business.name} area={business.area} location={business.location} />
       {business.tags.length > 0 && (
         <DetailSection title="Details">
           <DetailTagList tags={business.tags} />

@@ -1,13 +1,15 @@
 import { useNavigate, useParams } from "react-router-dom"
-import { MapPin, GraduationCap, BookOpen } from "lucide-react"
+import { GraduationCap, School } from "lucide-react"
 import { Typography } from "@/components/foundation/Typography"
 import { SaveButton } from "@/components/inputs/SaveButton"
 import { DetailLayout } from "@/components/detail/DetailLayout"
 import { DetailHero } from "@/components/detail/DetailHero"
 import { DetailSummary } from "@/components/detail/DetailSummary"
 import { DetailSection } from "@/components/detail/DetailSection"
-import { DetailFacts } from "@/components/detail/DetailFacts"
+import { DetailActionRegion } from "@/components/detail/DetailActionRegion"
+import { DetailFactTiles } from "@/components/detail/DetailFactTiles"
 import { DetailTagList } from "@/components/detail/DetailTagList"
+import { DetailTypeChip } from "@/components/detail/DetailTypeChip"
 import { ListingDetailGate } from "@/components/detail/ListingDetailGate"
 import { LocationSection } from "@/components/location/LocationSection"
 import { useListing } from "@/hooks/useListings"
@@ -52,29 +54,21 @@ function TutorProfile({ tutor }: { tutor: Tutor }) {
       onBack={goBack}
       hero={
         <DetailHero
+          variant="banner"
           src={tutor.image}
           icon={GraduationCap}
           label={tutor.name}
+          badges={<DetailTypeChip icon={GraduationCap} label="Tutor" />}
           action={<SaveButton kind="tutor" id={tutor.id} name={tutor.name} />}
         />
       }
       summary={
         <DetailSummary
           title={tutor.name}
-          facts={
-            <DetailFacts
-              facts={[
-                { icon: BookOpen, label: "Subject", value: tutor.subject },
-                { icon: GraduationCap, label: "Grade", value: tutor.grade },
-                { icon: MapPin, label: "Area", value: tutor.area, wide: true },
-              ]}
-            />
-          }
-          actions={
-            <Typography variant="body-sm" className="text-muted-foreground">
-              Contacting this tutor through B-17 Portal isn&apos;t available yet.
-            </Typography>
-          }
+          subtitle={tutor.subject}
+          area={tutor.area}
+          facts={<DetailFactTiles facts={[{ icon: School, label: "Grade", value: tutor.grade }]} />}
+          actions={<DetailActionRegion unavailableMessage="Contacting this tutor through B-17 Portal isn&apos;t available yet." />}
         />
       }
     >
@@ -85,12 +79,12 @@ function TutorProfile({ tutor }: { tutor: Tutor }) {
           </Typography>
         </DetailSection>
       )}
-      <LocationSection name={tutor.name} area={tutor.area} location={tutor.location} />
       {tutor.tags.length > 0 && (
         <DetailSection title="Subjects & focus">
           <DetailTagList tags={tutor.tags} />
         </DetailSection>
       )}
+      <LocationSection name={tutor.name} area={tutor.area} location={tutor.location} />
     </DetailLayout>
   )
 }

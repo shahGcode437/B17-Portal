@@ -1,4 +1,4 @@
-import { Loader2, MailWarning, ShieldAlert, Store, WifiOff } from "lucide-react"
+import { MailWarning, ShieldAlert, Store, WifiOff } from "lucide-react"
 import { Navigate, Outlet, useLocation, useNavigate } from "react-router-dom"
 import { Container } from "@/components/foundation/Container"
 import { Stack } from "@/components/foundation/Stack"
@@ -7,6 +7,7 @@ import { EmptyState } from "@/components/feedback/EmptyState"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/hooks/useAuth"
 import { useMutation } from "@/hooks/useMutation"
+import { AuthLoading } from "@/features/auth/AuthShell"
 import { VerificationNotice } from "@/features/auth/VerificationNotice"
 import { createProfessionalProfile } from "@/lib/api/writes/professional"
 import { userMessageFor } from "@/lib/api/writeErrors"
@@ -44,16 +45,7 @@ function AuthGate({ requires = "authenticated" }: AuthGateProps) {
     await refreshMe({ fresh: true })
   })
 
-  if (status === "loading") {
-    return (
-      <div role="status" className="flex min-h-[50svh] flex-col items-center justify-center gap-3 px-4 py-16 text-center">
-        <Loader2 className="size-6 animate-spin text-primary" aria-hidden="true" />
-        <Typography variant="body-sm" className="text-muted-foreground">
-          Checking your session
-        </Typography>
-      </div>
-    )
-  }
+  if (status === "loading") return <AuthLoading />
 
   if (status === "unavailable") {
     return (
@@ -95,8 +87,8 @@ function AuthGate({ requires = "authenticated" }: AuthGateProps) {
   if (requires === "professional" && !user.emailVerified) {
     return (
       <Container>
-        <Stack align="center" gap={4} className="mx-auto max-w-md py-16 text-center">
-          <span className="flex size-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
+        <Stack align="center" gap={4} className="glass-3 mx-auto my-12 max-w-md rounded-3xl p-6 text-center sm:my-16 sm:p-8">
+          <span className="flex size-12 items-center justify-center rounded-2xl bg-warning/15 text-warning-text">
             <MailWarning className="size-6" aria-hidden="true" />
           </span>
           <Typography as="h1" variant="h3">

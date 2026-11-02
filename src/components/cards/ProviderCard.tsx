@@ -1,14 +1,9 @@
-import { MapPin, Wrench, Star } from "lucide-react"
+import { Wrench } from "lucide-react"
 import { useNavigate } from "react-router-dom"
 import type { Provider } from "@/types/provider"
-import { Stack } from "@/components/foundation/Stack"
-import { Typography } from "@/components/foundation/Typography"
-import { CardImage } from "@/components/media/CardImage"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card } from "@/components/ui/card"
-import { CardPreviewTrigger } from "@/components/cards/CardPreviewTrigger"
-import { SaveButton } from "@/components/inputs/SaveButton"
+import { ListingCardShell } from "@/components/cards/ListingCardShell"
+import { tagFacts } from "@/components/cards/cardFacts"
 import { providerProfilePath } from "@/config/routes"
 
 interface ProviderCardProps {
@@ -16,49 +11,29 @@ interface ProviderCardProps {
   onSelect?: () => void
 }
 
-/** Provider card (Master Spec §11): name, category, area, trust info, CTA. */
+/** Provider card: name, category, services, coverage area and the one real action (Request). */
 function ProviderCard({ provider, onSelect }: ProviderCardProps) {
   const navigate = useNavigate()
 
   return (
-    <Card
-      variant={provider.featured ? "featured" : "interactive"}
-      className="relative isolate"
-      // Motion adds tabindex=0 to elements with a press gesture; the card container must not be a tab stop (the preview button is).
-      tabIndex={-1}
-    >
-      <CardPreviewTrigger name={provider.name} onSelect={onSelect} />
-      <div className="relative">
-        <CardImage src={provider.image} icon={Wrench} label={provider.name} decorative />
-        {provider.featured && (
-          <Badge className="absolute left-2 top-2 gap-1 bg-brand-accent text-brand-accent-foreground">
-            <Star className="size-3" aria-hidden="true" />
-            Featured
-          </Badge>
-        )}
-        <SaveButton kind="provider" id={provider.id} name={provider.name} className="absolute right-2 top-2 z-20" />
-      </div>
-      <Stack gap={2} className="px-1">
-        <Stack direction="row" justify="between" align="start" gap={2}>
-          <Typography variant="label" className="line-clamp-2 text-base">
-            {provider.name}
-          </Typography>
-        </Stack>
-        <Typography variant="body-sm" className="text-primary">
-          {provider.categoryLabel}
-        </Typography>
-        <Typography variant="body-sm" className="text-muted-foreground line-clamp-2">
-          {provider.description}
-        </Typography>
-        <Stack direction="row" align="center" gap={1} className="text-muted-foreground">
-          <MapPin className="size-3.5 shrink-0" aria-hidden="true" />
-          <Typography variant="caption">{provider.area}</Typography>
-        </Stack>
-      </Stack>
-      <Stack direction="row" gap={2} className="relative z-20 px-1 pb-1">
+    <ListingCardShell
+      kind="provider"
+      id={provider.id}
+      name={provider.name}
+      typeLabel="Service provider"
+      typeIcon={Wrench}
+      image={provider.image}
+      featured={provider.featured}
+      title={provider.name}
+      subtitle={provider.categoryLabel}
+      description={provider.description}
+      facts={tagFacts(provider.tags)}
+      area={provider.area}
+      onSelect={onSelect}
+      footer={
         <Button
-          size="sm"
-          className="flex-1"
+          size="lg"
+          className="h-10 w-full text-sm"
           onClick={(e) => {
             e.stopPropagation()
             navigate(providerProfilePath(provider.id))
@@ -66,8 +41,8 @@ function ProviderCard({ provider, onSelect }: ProviderCardProps) {
         >
           Request
         </Button>
-      </Stack>
-    </Card>
+      }
+    />
   )
 }
 

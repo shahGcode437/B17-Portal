@@ -22,7 +22,7 @@ function CardPreviewTrigger({ name, onSelect }: CardPreviewTriggerProps) {
       type="button"
       aria-label={`Preview ${name}`}
       onClick={onSelect}
-      className="absolute inset-0 z-10 cursor-pointer rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="absolute inset-0 z-10 cursor-pointer rounded-[inherit] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     />
   )
 }

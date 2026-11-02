@@ -1,57 +1,47 @@
-import { MapPin, Building2, Star } from "lucide-react"
+import { Building2, Clock, Utensils } from "lucide-react"
 import type { Business } from "@/types/business"
-import { Stack } from "@/components/foundation/Stack"
-import { Typography } from "@/components/foundation/Typography"
-import { CardImage } from "@/components/media/CardImage"
-import { Badge } from "@/components/ui/badge"
-import { Card } from "@/components/ui/card"
-import { CardPreviewTrigger } from "@/components/cards/CardPreviewTrigger"
-import { SaveButton } from "@/components/inputs/SaveButton"
+import { ListingCardShell } from "@/components/cards/ListingCardShell"
+import { tagFacts, type CardFact } from "@/components/cards/cardFacts"
+import { FOOD_VERTICAL_LABEL, foodServiceLabel } from "@/config/food"
 
 interface BusinessCardProps {
   business: Business
   onSelect?: () => void
 }
 
-/** Business directory card (Master Spec §11): name, category, location, featured state. */
+/** A Food & Dining business: its real opening-hours note and service options (never a delivery estimate or an order action). */
+function foodFacts(food: NonNullable<Business["food"]>): CardFact[] {
+  const facts: CardFact[] = []
+  if (food.hoursNote) facts.push({ text: food.hoursNote, icon: Clock })
+  for (const option of food.serviceOptions) facts.push({ text: foodServiceLabel(option) })
+  return facts
+}
+
+/**
+ * Business directory card. A Food & Dining business is the same record with `vertical === "food"` (never a
+ * separate kind), so it is the same card with food-specific facts. There is no contact action: no contact
+ * path exists for businesses yet, so nothing here pretends to be one.
+ */
 function BusinessCard({ business, onSelect }: BusinessCardProps) {
+  const food = business.vertical === "food" ? business.food : undefined
 
   return (
-    <Card
-      variant={business.featured ? "featured" : "interactive"}
-      className="relative isolate"
-      // Motion adds tabindex=0 to elements with a press gesture; the card container must not be a tab stop (the preview button is).
-      tabIndex={-1}
-    >
-      <CardPreviewTrigger name={business.name} onSelect={onSelect} />
-      <div className="relative">
-        <CardImage src={business.image} icon={Building2} label={business.name} tone="accent" decorative />
-        {business.featured && (
-          <Badge className="absolute left-2 top-2 gap-1 bg-brand-accent text-brand-accent-foreground">
-            <Star className="size-3" aria-hidden="true" />
-            Featured
-          </Badge>
-        )}
-        <SaveButton kind="business" id={business.id} name={business.name} className="absolute right-2 top-2 z-20" />
-      </div>
-      <Stack gap={2} className="px-1">
-        <Stack direction="row" justify="between" align="start" gap={2}>
-          <Typography variant="label" className="line-clamp-2 text-base">
-            {business.name}
-          </Typography>
-        </Stack>
-        <Typography variant="body-sm" className="text-primary">
-          {business.category}
-        </Typography>
-        <Typography variant="body-sm" className="text-muted-foreground line-clamp-2">
-          {business.description}
-        </Typography>
-        <Stack direction="row" align="center" gap={1} className="text-muted-foreground">
-          <MapPin className="size-3.5 shrink-0" aria-hidden="true" />
-          <Typography variant="caption">{business.area}</Typography>
-        </Stack>
-      </Stack>
-    </Card>
+    <ListingCardShell
+      kind="business"
+      id={business.id}
+      name={business.name}
+      typeLabel={business.vertical === "food" ? FOOD_VERTICAL_LABEL : "Business"}
+      typeIcon={business.vertical === "food" ? Utensils : Building2}
+      tone="accent"
+      image={business.image}
+      featured={business.featured}
+      title={business.name}
+      subtitle={business.category}
+      description={business.description}
+      facts={food ? foodFacts(food) : tagFacts(business.tags)}
+      area={business.area}
+      onSelect={onSelect}
+    />
   )
 }
 

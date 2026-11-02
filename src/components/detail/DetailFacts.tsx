@@ -15,14 +15,14 @@ interface DetailFactsProps {
 }
 
 /**
- * Compact label/value grid of key facts. Callers pass only facts that really
- * exist for the item, so nothing is shown as "N/A"; an empty list renders nothing.
+ * Compact label/value grid of facts (used inside a section panel, e.g. the location facts). Callers pass only
+ * facts that really exist for the item, so nothing is shown as "N/A"; an empty list renders nothing.
  */
 function DetailFacts({ facts }: DetailFactsProps) {
   if (facts.length === 0) return null
 
   return (
-    <dl className="grid grid-cols-2 gap-x-4 gap-y-4 border-t border-border pt-4">
+    <dl className="grid grid-cols-2 gap-x-4 gap-y-4">
       {facts.map(({ icon: Icon, label, value, wide }) => (
         <div key={label} className={cn("min-w-0", wide && "col-span-2")}>
           <Typography as="dt" variant="caption" className="flex items-center gap-1.5">

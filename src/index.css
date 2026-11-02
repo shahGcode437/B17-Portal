@@ -488,3 +488,13 @@
   backdrop-filter: blur(12px) saturate(1.2);
   -webkit-backdrop-filter: blur(12px) saturate(1.2);
 }
+
+/* VR3: a faint street-grid texture (B-17 is laid out on a sector grid). Decorative only: put it on an
+   absolutely-positioned, aria-hidden layer. It follows the surface's text color via currentColor. */
+@utility grid-lines {
+  background-image:
+    linear-gradient(to right, color-mix(in srgb, currentColor 9%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in srgb, currentColor 9%, transparent) 1px, transparent 1px);
+  background-size: 28px 28px;
+  pointer-events: none;
+}

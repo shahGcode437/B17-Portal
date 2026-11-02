@@ -1,5 +1,4 @@
 import { Utensils } from "lucide-react"
-import { Badge } from "@/components/ui/badge"
 import { Typography } from "@/components/foundation/Typography"
 import { CardImage } from "@/components/media/CardImage"
 import { DetailSection } from "@/components/detail/DetailSection"
@@ -32,11 +31,12 @@ function FoodDetailSections({ businessName, food }: FoodDetailSectionsProps) {
             {serviceOptions.map((option) => {
               const Icon = serviceIcons[option]
               return (
-                <li key={option}>
-                  <Badge variant="outline" className="h-auto min-h-7 gap-1.5 whitespace-normal px-2.5 py-1 text-sm font-normal">
-                    <Icon className="size-3.5" aria-hidden="true" />
-                    {foodServiceLabel(option)}
-                  </Badge>
+                <li
+                  key={option}
+                  className="inline-flex min-h-9 items-center gap-2 rounded-full bg-secondary px-3.5 py-1.5 text-sm font-medium text-secondary-foreground"
+                >
+                  <Icon className="size-4 text-primary" aria-hidden="true" />
+                  {foodServiceLabel(option)}
                 </li>
               )
             })}
@@ -54,11 +54,11 @@ function FoodDetailSections({ businessName, food }: FoodDetailSectionsProps) {
           <Typography variant="body-sm" className="text-muted-foreground">
             A few items this business offers. Prices shown are for reference and may change.
           </Typography>
-          <ul className="divide-y divide-border rounded-xl border border-border bg-card">
+          <ul className="divide-y divide-border">
             {menuHighlights.map((item) => (
-              <li key={item.id} className="flex items-start justify-between gap-3 px-4 py-3">
+              <li key={item.id} className="flex items-start justify-between gap-4 py-3 first:pt-0 last:pb-0">
                 <div className="min-w-0">
-                  <Typography as="p" variant="label" className="break-words">
+                  <Typography as="p" variant="label" className="break-words text-base">
                     {item.name}
                   </Typography>
                   {item.section && (
@@ -73,7 +73,7 @@ function FoodDetailSections({ businessName, food }: FoodDetailSectionsProps) {
                   )}
                 </div>
                 {item.price && (
-                  <Typography as="p" variant="label" className="max-w-[45%] shrink-0 break-words text-right">
+                  <Typography as="p" variant="label" className="max-w-[45%] shrink-0 break-words text-right text-base font-semibold text-primary">
                     {item.price}
                   </Typography>
                 )}

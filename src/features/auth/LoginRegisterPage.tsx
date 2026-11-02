@@ -1,8 +1,5 @@
 import { useEffect, useState } from "react"
 import { Link, Navigate, useLocation } from "react-router-dom"
-import { motion } from "motion/react"
-import { Loader2 } from "lucide-react"
-import { Container } from "@/components/foundation/Container"
 import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
 import { Button } from "@/components/ui/button"
@@ -10,10 +7,14 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { useAuth } from "@/hooks/useAuth"
 import { routes, providerProfilePath } from "@/config/routes"
 import { safeLocalPath } from "@/lib/safePath"
-import { fadeUp } from "@/lib/motion"
 import { LoginForm, RegisterForm } from "@/features/auth/AuthForms"
+import { AuthLoading, AuthNotice, AuthShell } from "@/features/auth/AuthShell"
 import { GoogleSignInButton } from "@/features/auth/GoogleSignInButton"
 import { oauthErrorMessage } from "@/features/auth/authMessages"
+
+/** The Log In / Create Account switch is a segmented control: the active segment is a raised card on a tinted track. */
+const MODE_TAB =
+  "h-10 flex-1 rounded-lg text-sm font-medium text-muted-foreground transition-colors data-[state=on]:bg-card data-[state=on]:text-foreground data-[state=on]:shadow-subtle"
 
 interface LoginLocationState {
   from?: string
@@ -52,16 +53,7 @@ function LoginRegisterPage() {
     stripOAuthError()
   }, [])
 
-  if (status === "loading") {
-    return (
-      <div role="status" className="flex min-h-[50svh] flex-col items-center justify-center gap-3 px-4 py-16">
-        <Loader2 className="size-6 animate-spin text-primary" aria-hidden="true" />
-        <Typography variant="body-sm" className="text-muted-foreground">
-          Checking your session
-        </Typography>
-      </div>
-    )
-  }
+  if (status === "loading") return <AuthLoading />
 
   if (status === "authenticated") {
     if (state.providerId) {
@@ -77,89 +69,90 @@ function LoginRegisterPage() {
   }
 
   return (
-    <Container className="py-12 sm:py-20">
-      <motion.div {...fadeUp} className="mx-auto max-w-sm">
-        <Stack gap={6}>
-          <Stack gap={2} className="text-center">
-            <Typography variant="h1">{mode === "login" ? "Log In" : "Create Account"}</Typography>
-            <Typography variant="body-sm" className="text-muted-foreground">
-              {mode === "login"
-                ? "Welcome back — log in to save listings and request services."
-                : "Create an account to save listings and request services."}
-            </Typography>
-          </Stack>
-
-          {notice && (
-            <div role="status" className="rounded-lg border border-border bg-muted px-3 py-2">
-              <Typography variant="body-sm">
-                {notice === "disabled"
-                  ? "This account isn't available. If you think this is a mistake, please contact us."
-                  : "Your session has ended. Please log in again."}
-              </Typography>
-              <Button type="button" variant="link" size="sm" onClick={dismissNotice}>
-                Dismiss
-              </Button>
-            </div>
-          )}
-
-          {oauthMessage && (
-            <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2">
-              <Typography variant="body-sm" className="text-destructive">
-                {oauthMessage}
-              </Typography>
-            </div>
-          )}
-
-          {status === "unavailable" && (
-            <div role="alert" className="rounded-lg border border-border bg-muted px-3 py-2">
-              <Typography variant="body-sm">
-                {bootstrapError?.isNetwork ? "We couldn't reach the server." : "The server isn't responding properly."} You
-                can still try to log in.
-              </Typography>
-              <Button type="button" variant="link" size="sm" onClick={retryBootstrap}>
-                Check again
-              </Button>
-            </div>
-          )}
-
-          <ToggleGroup
-            type="single"
-            variant="outline"
-            value={mode}
-            onValueChange={(value) => {
-              if (value) setMode(value as "login" | "register")
-            }}
-            aria-label="Choose login or register"
-            className="w-full"
-          >
-            <ToggleGroupItem value="login" className="flex-1">
-              Log In
-            </ToggleGroupItem>
-            <ToggleGroupItem value="register" className="flex-1">
-              Create Account
-            </ToggleGroupItem>
-          </ToggleGroup>
-
-          <GoogleSignInButton returnTo={from} />
-
-          <div className="flex items-center gap-3" aria-hidden="true">
-            <span className="h-px flex-1 bg-border" />
-            <Typography as="span" variant="caption">
-              or use your email
-            </Typography>
-            <span className="h-px flex-1 bg-border" />
-          </div>
-
-          {mode === "login" ? <LoginForm /> : <RegisterForm />}
-
-          <Typography variant="caption" className="text-center text-muted-foreground">
-            <Link to={routes.home} className="underline underline-offset-4">
-              Back to home
-            </Link>
+    <AuthShell>
+      <Stack gap={6}>
+        <Stack gap={2}>
+          <Typography variant="h1">{mode === "login" ? "Log In" : "Create Account"}</Typography>
+          <Typography variant="body" className="text-muted-foreground">
+            {mode === "login"
+              ? "Welcome back — log in to save listings and request services."
+              : "Create an account to save listings and request services."}
           </Typography>
         </Stack>
-      </motion.div>
-    </Container>
+
+        {notice && (
+          <AuthNotice role="status">
+            <Typography variant="body-sm">
+              {notice === "disabled"
+                ? "This account isn't available. If you think this is a mistake, please contact us."
+                : "Your session has ended. Please log in again."}
+            </Typography>
+            <Button type="button" variant="link" size="sm" onClick={dismissNotice} className="-ml-2.5 h-auto">
+              Dismiss
+            </Button>
+          </AuthNotice>
+        )}
+
+        {oauthMessage && (
+          <AuthNotice role="alert" tone="error">
+            <Typography variant="body-sm" className="text-destructive">
+              {oauthMessage}
+            </Typography>
+          </AuthNotice>
+        )}
+
+        {status === "unavailable" && (
+          <AuthNotice role="alert">
+            <Typography variant="body-sm">
+              {bootstrapError?.isNetwork ? "We couldn't reach the server." : "The server isn't responding properly."} You
+              can still try to log in.
+            </Typography>
+            <Button type="button" variant="link" size="sm" onClick={retryBootstrap} className="-ml-2.5 h-auto">
+              Check again
+            </Button>
+          </AuthNotice>
+        )}
+
+        <ToggleGroup
+          type="single"
+          value={mode}
+          onValueChange={(value) => {
+            if (value) setMode(value as "login" | "register")
+          }}
+          aria-label="Choose login or register"
+          className="grid w-full grid-cols-2 gap-1 rounded-xl bg-muted/70 p-1"
+          spacing={1}
+        >
+          <ToggleGroupItem value="login" className={MODE_TAB}>
+            Log In
+          </ToggleGroupItem>
+          <ToggleGroupItem value="register" className={MODE_TAB}>
+            Create Account
+          </ToggleGroupItem>
+        </ToggleGroup>
+
+        <GoogleSignInButton returnTo={from} />
+
+        <div className="flex items-center gap-3" aria-hidden="true">
+          <span className="h-px flex-1 bg-border" />
+          <Typography as="span" variant="body-sm" className="text-muted-foreground">
+            or use your email
+          </Typography>
+          <span className="h-px flex-1 bg-border" />
+        </div>
+
+        {mode === "login" ? <LoginForm /> : <RegisterForm />}
+
+        <Typography variant="body-sm" className="text-center">
+          <Link
+            to={routes.home}
+            className="inline-flex min-h-11 items-center rounded px-2 text-muted-foreground underline underline-offset-4 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            Back to home
+          </Link>
+        </Typography>
+      </Stack>
+    </AuthShell>
   )
 }
 

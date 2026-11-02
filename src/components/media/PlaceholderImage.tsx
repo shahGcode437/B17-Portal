@@ -12,9 +12,9 @@ interface PlaceholderImageProps extends React.ComponentProps<"div"> {
 }
 
 /**
- * Local, dependency-free placeholder for demo imagery (no client assets
- * exist yet). Swap for a real <img src="/images/..."> once client assets
- * arrive — every card already treats `image` as optional for this reason.
+ * Local, dependency-free placeholder for imagery. No media upload exists yet (Phase 13A), so most listings
+ * have no photo: this is the common state, and it is an honest one: a tinted field with the listing type's
+ * icon, and on detail pages the explicit caption "No photo available". It never pretends to be a photo.
  */
 function PlaceholderImage({
   icon: Icon,
@@ -29,21 +29,27 @@ function PlaceholderImage({
     <div
       {...(decorative ? { "aria-hidden": true } : { role: "img", "aria-label": `No photo available for ${label}` })}
       className={cn(
-        "flex aspect-video w-full items-center justify-center rounded-lg",
-        tone === "primary" ? "bg-accent text-accent-foreground" : "bg-secondary text-muted-foreground",
+        "relative flex aspect-video w-full items-center justify-center overflow-hidden rounded-lg",
+        tone === "primary"
+          ? "bg-gradient-to-br from-accent via-accent/80 to-secondary text-accent-foreground"
+          : "bg-gradient-to-br from-secondary via-secondary/80 to-accent/70 text-muted-foreground",
         className
       )}
       {...props}
     >
+      <span aria-hidden="true" className="grid-lines absolute inset-0 opacity-50" />
+      <span aria-hidden="true" className="glow-field absolute inset-0" />
       {size === "hero" ? (
-        <div className="flex flex-col items-center gap-3 px-6 text-center">
-          <span className="flex size-16 items-center justify-center rounded-2xl bg-background/70 shadow-subtle">
-            <Icon className="size-8" aria-hidden="true" />
+        <div className="relative flex flex-col items-center gap-3 px-6 text-center">
+          <span className="glass-3 flex size-20 items-center justify-center rounded-3xl">
+            <Icon className="size-9" aria-hidden="true" />
           </span>
           <span className="text-sm font-medium text-muted-foreground">No photo available</span>
         </div>
       ) : (
-        <Icon className="size-8 opacity-70" aria-hidden="true" />
+        <span className="glass-2 relative flex size-12 max-h-[75%] max-w-[75%] items-center justify-center rounded-2xl">
+          <Icon className="size-6" aria-hidden="true" />
+        </span>
       )}
     </div>
   )

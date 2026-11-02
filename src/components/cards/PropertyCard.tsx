@@ -1,62 +1,44 @@
-import { MapPin, BedDouble, KeyRound } from "lucide-react"
+import { BedDouble, Home, KeyRound, Sofa } from "lucide-react"
 import type { Property } from "@/types/property"
-import { Stack } from "@/components/foundation/Stack"
-import { Typography } from "@/components/foundation/Typography"
-import { CardImage } from "@/components/media/CardImage"
 import { Badge } from "@/components/ui/badge"
-import { Card } from "@/components/ui/card"
-import { CardPreviewTrigger } from "@/components/cards/CardPreviewTrigger"
-import { SaveButton } from "@/components/inputs/SaveButton"
+import { ListingCardShell } from "@/components/cards/ListingCardShell"
+import type { CardFact } from "@/components/cards/cardFacts"
 
 interface PropertyCardProps {
   property: Property
   onSelect?: () => void
 }
 
-/** Property card (Master Spec §11): image, sale/rent, price, type, location, key facts. */
-function PropertyCard({ property, onSelect }: PropertyCardProps) {
+/** The facts a buyer or renter scans for, only where the listing has them: type, bedrooms, furnishing. */
+function propertyFacts(property: Property): CardFact[] {
+  const facts: CardFact[] = [{ text: property.propertyType, icon: Home }]
+  if (property.bedrooms) facts.push({ text: `${property.bedrooms} bed`, icon: BedDouble })
+  if (property.furnished) facts.push({ text: property.furnished, icon: Sofa })
+  return facts
+}
 
+/** Property card: sale or rent, price first, then the title, scannable facts and area. No contact action exists yet. */
+function PropertyCard({ property, onSelect }: PropertyCardProps) {
   return (
-    <Card
-      variant="interactive"
-      className="relative isolate"
-      // Motion adds tabindex=0 to elements with a press gesture; the card container must not be a tab stop (the preview button is).
-      tabIndex={-1}
-    >
-      <CardPreviewTrigger name={property.title} onSelect={onSelect} />
-      <div className="relative">
-        <CardImage src={property.image} icon={KeyRound} label={property.title} tone="accent" decorative />
-        <Badge
-          className="absolute left-2 top-2"
-          variant={property.listingType === "sale" ? "default" : "secondary"}
-        >
+    <ListingCardShell
+      kind="property"
+      id={property.id}
+      name={property.title}
+      typeLabel="Property"
+      typeIcon={KeyRound}
+      tone="accent"
+      image={property.image}
+      imageBadge={
+        <Badge variant={property.listingType === "sale" ? "default" : "secondary"}>
           {property.listingType === "sale" ? "For Sale" : "For Rent"}
         </Badge>
-        <SaveButton kind="property" id={property.id} name={property.title} className="absolute right-2 top-2 z-20" />
-      </div>
-      <Stack gap={2} className="px-1">
-        <Stack direction="row" justify="between" align="start" gap={2}>
-          <Typography variant="label" className="line-clamp-2 text-base">
-            {property.title}
-          </Typography>
-        </Stack>
-        <Typography variant="body-sm" className="font-medium text-primary">
-          {property.price}
-        </Typography>
-        <Stack direction="row" wrap gap={3} className="text-muted-foreground">
-          <Stack direction="row" align="center" gap={1}>
-            <MapPin className="size-3.5 shrink-0" aria-hidden="true" />
-            <Typography variant="caption">{property.area}</Typography>
-          </Stack>
-          {property.bedrooms && (
-            <Stack direction="row" align="center" gap={1}>
-              <BedDouble className="size-3.5 shrink-0" aria-hidden="true" />
-              <Typography variant="caption">{property.bedrooms} bed</Typography>
-            </Stack>
-          )}
-        </Stack>
-      </Stack>
-    </Card>
+      }
+      highlight={property.price}
+      title={property.title}
+      facts={propertyFacts(property)}
+      area={property.area}
+      onSelect={onSelect}
+    />
   )
 }
 

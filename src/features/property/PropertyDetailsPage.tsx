@@ -1,14 +1,16 @@
 import { useNavigate, useParams } from "react-router-dom"
-import { MapPin, BedDouble, KeyRound, Home, Sofa } from "lucide-react"
+import { BedDouble, Home, KeyRound, Sofa } from "lucide-react"
 import { Typography } from "@/components/foundation/Typography"
-import { Badge } from "@/components/ui/badge"
 import { SaveButton } from "@/components/inputs/SaveButton"
 import { DetailLayout } from "@/components/detail/DetailLayout"
 import { DetailHero } from "@/components/detail/DetailHero"
 import { DetailSummary } from "@/components/detail/DetailSummary"
 import { DetailSection } from "@/components/detail/DetailSection"
-import { DetailFacts, type DetailFact } from "@/components/detail/DetailFacts"
+import { DetailActionRegion } from "@/components/detail/DetailActionRegion"
+import { DetailFactTiles } from "@/components/detail/DetailFactTiles"
+import { type DetailFact } from "@/components/detail/DetailFacts"
 import { DetailTagList } from "@/components/detail/DetailTagList"
+import { DetailTypeChip } from "@/components/detail/DetailTypeChip"
 import { ListingDetailGate } from "@/components/detail/ListingDetailGate"
 import { LocationSection } from "@/components/location/LocationSection"
 import { useListing } from "@/hooks/useListings"
@@ -52,23 +54,18 @@ function PropertyDetails({ property }: { property: Property }) {
   const facts: DetailFact[] = [{ icon: Home, label: "Type", value: property.propertyType }]
   if (property.bedrooms) facts.push({ icon: BedDouble, label: "Bedrooms", value: String(property.bedrooms) })
   if (property.furnished) facts.push({ icon: Sofa, label: "Furnishing", value: property.furnished })
-  facts.push({ icon: MapPin, label: "Area", value: property.area, wide: true })
 
   return (
     <DetailLayout
       onBack={goBack}
       hero={
         <DetailHero
+          variant="banner"
           src={property.image}
           icon={KeyRound}
           label={property.title}
           tone="accent"
-          aspectClassName="aspect-[4/3] sm:aspect-[16/10]"
-          badges={
-            <Badge variant={property.listingType === "sale" ? "default" : "secondary"}>
-              {property.listingType === "sale" ? "For Sale" : "For Rent"}
-            </Badge>
-          }
+          badges={<DetailTypeChip icon={KeyRound} label={property.listingType === "sale" ? "For Sale" : "For Rent"} />}
           action={<SaveButton kind="property" id={property.id} name={property.title} />}
         />
       }
@@ -76,12 +73,9 @@ function PropertyDetails({ property }: { property: Property }) {
         <DetailSummary
           title={property.title}
           highlight={property.price}
-          facts={<DetailFacts facts={facts} />}
-          actions={
-            <Typography variant="body-sm" className="text-muted-foreground">
-              Contacting the lister through B-17 Portal isn&apos;t available yet.
-            </Typography>
-          }
+          area={property.area}
+          facts={<DetailFactTiles facts={facts} />}
+          actions={<DetailActionRegion unavailableMessage="Contacting the lister through B-17 Portal isn&apos;t available yet." />}
         />
       }
     >

@@ -1,9 +1,7 @@
 import { useEffect, useState } from "react"
 import { useForm } from "react-hook-form"
 import { Link } from "react-router-dom"
-import { motion } from "motion/react"
 import { z } from "zod"
-import { Container } from "@/components/foundation/Container"
 import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
 import { Button } from "@/components/ui/button"
@@ -15,8 +13,8 @@ import { resetPassword } from "@/lib/api/auth"
 import { fieldErrors, isApiError } from "@/lib/api/errors"
 import { clearFragmentToken, takeFragmentToken } from "@/lib/fragmentToken"
 import { zodResolver } from "@/lib/zodResolver"
-import { fadeUp } from "@/lib/motion"
 import { FieldError, FormAlert } from "@/features/auth/AuthForms"
+import { AuthNotice, AuthShell } from "@/features/auth/AuthShell"
 import { PasswordInput } from "@/features/auth/PasswordInput"
 import { authErrorMessage } from "@/features/auth/authMessages"
 
@@ -69,73 +67,67 @@ function ResetPasswordPage() {
   }
 
   return (
-    <Container className="py-12 sm:py-20">
-      <motion.div {...fadeUp} className="mx-auto max-w-sm">
-        <Stack gap={6}>
-          <Typography variant="h1" className="text-center">
-            Reset password
-          </Typography>
+    <AuthShell>
+      <Stack gap={6}>
+        <Typography variant="h1">Reset password</Typography>
 
-          {done ? (
+        {done ? (
+          <Stack gap={4}>
+            <AuthNotice role="status">
+              <Typography variant="body-sm">Your password has been changed. Log in with your new password.</Typography>
+            </AuthNotice>
+            <Button asChild size="lg" className="h-11 text-base font-semibold">
+              <Link to={routes.login}>Go to log in</Link>
+            </Button>
+          </Stack>
+        ) : !token ? (
+          <Stack gap={4}>
+            <AuthNotice role="alert" tone="error">
+              <Typography variant="body-sm" className="text-destructive">
+                This reset link is incomplete or has already been used. Request a new one.
+              </Typography>
+            </AuthNotice>
+            <Button asChild size="lg" variant="outline" className="h-11 text-base font-semibold">
+              <Link to={routes.forgotPassword}>Request a new link</Link>
+            </Button>
+          </Stack>
+        ) : (
+          <form onSubmit={handleSubmit(onSubmit)} noValidate>
             <Stack gap={4}>
-              <div role="status" className="rounded-lg border border-border bg-muted px-4 py-3">
-                <Typography variant="body-sm">
-                  Your password has been changed. Log in with your new password.
+              <FormAlert message={formError} />
+              <Stack gap={2}>
+                <Label htmlFor="reset-password">New password</Label>
+                <PasswordInput
+                  id="reset-password"
+                  autoComplete="new-password"
+                  aria-invalid={!!errors.newPassword}
+                  aria-describedby={errors.newPassword ? "reset-password-error reset-password-hint" : "reset-password-hint"}
+                  {...register("newPassword")}
+                />
+                <Typography id="reset-password-hint" variant="body-sm" className="text-muted-foreground">
+                  10–128 characters.
                 </Typography>
-              </div>
-              <Button asChild size="lg">
-                <Link to={routes.login}>Go to log in</Link>
-              </Button>
-            </Stack>
-          ) : !token ? (
-            <Stack gap={4}>
-              <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3">
-                <Typography variant="body-sm" className="text-destructive">
-                  This reset link is incomplete or has already been used. Request a new one.
-                </Typography>
-              </div>
-              <Button asChild size="lg" variant="outline">
-                <Link to={routes.forgotPassword}>Request a new link</Link>
-              </Button>
-            </Stack>
-          ) : (
-            <form onSubmit={handleSubmit(onSubmit)} noValidate>
-              <Stack gap={4}>
-                <FormAlert message={formError} />
-                <Stack gap={2}>
-                  <Label htmlFor="reset-password">New password</Label>
-                  <PasswordInput
-                    id="reset-password"
-                    autoComplete="new-password"
-                    aria-invalid={!!errors.newPassword}
-                    aria-describedby={errors.newPassword ? "reset-password-error reset-password-hint" : "reset-password-hint"}
-                    {...register("newPassword")}
-                  />
-                  <Typography id="reset-password-hint" variant="caption">
-                    10–128 characters.
-                  </Typography>
-                  <FieldError id="reset-password-error" message={errors.newPassword?.message} />
-                </Stack>
-                <Stack gap={2}>
-                  <Label htmlFor="reset-confirm">Confirm new password</Label>
-                  <PasswordInput
-                    id="reset-confirm"
-                    autoComplete="new-password"
-                    aria-invalid={!!errors.confirm}
-                    aria-describedby={errors.confirm ? "reset-confirm-error" : undefined}
-                    {...register("confirm")}
-                  />
-                  <FieldError id="reset-confirm-error" message={errors.confirm?.message} />
-                </Stack>
-                <Button type="submit" size="lg" disabled={isSubmitting}>
-                  {isSubmitting ? "Saving…" : "Set new password"}
-                </Button>
+                <FieldError id="reset-password-error" message={errors.newPassword?.message} />
               </Stack>
-            </form>
-          )}
-        </Stack>
-      </motion.div>
-    </Container>
+              <Stack gap={2}>
+                <Label htmlFor="reset-confirm">Confirm new password</Label>
+                <PasswordInput
+                  id="reset-confirm"
+                  autoComplete="new-password"
+                  aria-invalid={!!errors.confirm}
+                  aria-describedby={errors.confirm ? "reset-confirm-error" : undefined}
+                  {...register("confirm")}
+                />
+                <FieldError id="reset-confirm-error" message={errors.confirm?.message} />
+              </Stack>
+              <Button type="submit" size="lg" disabled={isSubmitting} className="h-11 text-base font-semibold">
+                {isSubmitting ? "Saving…" : "Set new password"}
+              </Button>
+            </Stack>
+          </form>
+        )}
+      </Stack>
+    </AuthShell>
   )
 }
 
