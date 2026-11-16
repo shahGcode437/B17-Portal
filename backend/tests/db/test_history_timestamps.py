@@ -30,7 +30,7 @@ from tests.db.admin_helpers import (
     reject,
 )
 from tests.db.auth_helpers import AuthEnv
-from tests.db.write_helpers import history, patch, provider_body
+from tests.db.write_helpers import business_body, history, patch
 
 REASON = "Please add before-and-after photos of your work."
 
@@ -52,7 +52,7 @@ def test_a_history_row_is_stamped_after_the_transaction_started(auth_env: AuthEn
     time.sleep(0.05)
 
     owner = owner_signed_in(auth_env)
-    listing_id = pending(owner, provider_body(name="Clock Co"))
+    listing_id = pending(owner, business_body(name="Clock Co"))
 
     (row,) = history(session, listing_id)
     assert row.action is HistoryAction.SUBMITTED
@@ -63,7 +63,7 @@ def test_a_history_row_is_stamped_after_the_transaction_started(auth_env: AuthEn
 def test_events_in_one_transaction_get_strictly_increasing_timestamps(auth_env: AuthEnv) -> None:
     session = auth_env.session
     owner = owner_signed_in(auth_env)
-    listing_id = pending(owner, provider_body(name="Rapid Co"))
+    listing_id = pending(owner, business_body(name="Rapid Co"))
     admin = admin_signed_in(auth_env)
 
     assert approve(admin, listing_id, 1).status_code == 200
@@ -94,7 +94,7 @@ def test_events_in_one_transaction_get_strictly_increasing_timestamps(auth_env: 
 
 def test_time_order_agrees_with_the_story_the_admin_detail_tells(auth_env: AuthEnv) -> None:
     owner = owner_signed_in(auth_env)
-    listing_id = pending(owner, provider_body(name="Story Co"))
+    listing_id = pending(owner, business_body(name="Story Co"))
     admin = admin_signed_in(auth_env)
     assert reject(admin, listing_id, 1, REASON).status_code == 200
     assert (
@@ -121,7 +121,7 @@ def test_time_order_agrees_with_the_story_the_admin_detail_tells(auth_env: AuthE
 
 def test_a_refused_decision_leaves_no_history_row_and_no_timestamp(auth_env: AuthEnv) -> None:
     owner = owner_signed_in(auth_env)
-    listing_id = pending(owner, provider_body(name="Refused Co"))
+    listing_id = pending(owner, business_body(name="Refused Co"))
     admin = admin_signed_in(auth_env)
     before = stamps(auth_env.session, listing_id)
 
@@ -142,7 +142,7 @@ def test_the_schema_default_is_unchanged_so_a_raw_insert_still_works(auth_env: A
     assert default == "now()"
 
     owner = owner_signed_in(auth_env)
-    listing_id = pending(owner, provider_body(name="Raw Co"))
+    listing_id = pending(owner, business_body(name="Raw Co"))
     actor = session.execute(
         text("SELECT owner_id FROM listings WHERE id = :i"), {"i": listing_id}
     ).scalar_one()

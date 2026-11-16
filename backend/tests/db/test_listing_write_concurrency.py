@@ -33,7 +33,6 @@ from tests.write_payloads import (
     PROFILE,
     business_body,
     exact,
-    provider_body,
 )
 
 TABLES = (
@@ -72,6 +71,10 @@ def committed_world(engine: Engine) -> Iterator[AuthEnv]:
 
 
 def browser(env: AuthEnv, email: str, **account: Any) -> AuthApi:
+    """A fresh browser signed in as a non-admin account by default. Tests that create a Service /
+    Professional (``provider``) listing must pass ``admin=True`` explicitly — provider listings are
+    portal-managed. Keeping the default least-privileged means an accidental admin bypass cannot
+    mask a future authorization regression."""
     make_account(env.session, email, **account)
     api = env.client()
     assert api.login(email).status_code == 200
@@ -131,7 +134,9 @@ def history_actions(engine: Engine, listing_id: str) -> list[str]:
 
 
 def make_listing(owner: AuthApi, **body: Any) -> str:
-    response = owner.request("POST", LISTINGS, json=provider_body(**body))
+    # The concurrency tests exercise quota behaviour, so the kind must count against the quota —
+    # ``provider`` is portal-managed and never consumes the owner's slot, so we use ``business``.
+    response = owner.request("POST", LISTINGS, json=business_body(**body))
     assert response.status_code == 201, response.text
     return str(response.json()["data"]["id"])
 
@@ -238,7 +243,8 @@ def test_archive_and_edit_with_the_same_revision_leave_a_consistent_listing(
                 "invalid_state_transition",
                 "listing_conflict",
             )
-            assert row["status"] == "archived" and row["title"] == "Bright Spark Electricians"
+            # ``make_listing`` creates a business — ``business_body`` default name.
+            assert row["status"] == "archived" and row["title"] == "Capital Stationers"
             assert history_actions(db_engine, listing_id) == ["submitted:1", "archived:2"]
         else:
             assert (edit_result.status_code, archive_result.status_code) == (200, 409)
@@ -318,7 +324,7 @@ def test_concurrent_creates_cannot_exceed_the_free_quota(db_engine: Engine) -> N
         results = race(
             5,
             lambda i: clients[i].request(
-                "POST", LISTINGS, json=provider_body(name=f"Racer Number {i}")
+                "POST", LISTINGS, json=business_body(name=f"Racer Number {i}")
             ),
         )
 

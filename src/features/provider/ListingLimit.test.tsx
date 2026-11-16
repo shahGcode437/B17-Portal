@@ -7,7 +7,7 @@ import { resetCategoryCache } from "@/hooks/useCategories"
 import { fail, installFetchMock, meBody, okPage, type MockCall, type MockReply } from "@/test/apiMock"
 import { fakeBackend } from "@/test/fixtures/fakeBackend"
 import { OWNER_LISTINGS } from "@/test/fixtures/apiFixtures"
-import { testUser } from "@/test/authFixtures"
+import { adminUser } from "@/test/authFixtures"
 import { renderPage } from "@/test/renderPage"
 
 /**
@@ -15,12 +15,27 @@ import { renderPage } from "@/test/renderPage"
  * action (there is no billing). The count is the browser's best knowledge: it only warns, the server still decides
  * (`plan_limit_reached`), and a count that is missing or stale removes nothing.
  */
-const FREE = () => testUser({ professional: { planCode: "free" } })
-const PREMIUM = () => testUser({ professional: { planCode: "premium" } })
+// The create-page tests below exercise the Service / Professional kind as the generic listing (the
+// shortest form, no required location, no grade), so the tester is signed in as an admin — the only
+// role that may create a ``provider`` listing. The plan constraint (Free / Premium) is what the test
+// is actually about; the admin role is incidental.
+const FREE = () => adminUser({ professional: { planCode: "free" } })
+const PREMIUM = () => adminUser({ professional: { planCode: "premium" } })
 
 /** `GET /users/me/listings` with these per-status counts (the rows are the standard fixtures; the counts are what the quota reads). */
-const ownerListings = (counts: { pending: number; approved: number; rejected: number; archived: number }): MockReply =>
-  okPage(OWNER_LISTINGS, { counts })
+const ownerListings = (counts: {
+  pending: number
+  approved: number
+  rejected: number
+  archived: number
+  activeQuota?: number
+}): MockReply =>
+  // `activeQuota` is the quota UI's authoritative "used" number (pending + approved, excluding
+  // provider). When a test doesn't override it, default to pending + approved for parity with how
+  // the server fills it when the owner has no provider listings.
+  okPage(OWNER_LISTINGS, {
+    counts: { ...counts, activeQuota: counts.activeQuota ?? counts.pending + counts.approved },
+  })
 const FULL = ownerListings({ pending: 2, approved: 1, rejected: 1, archived: 1 }) // 3 active
 const ROOM = ownerListings({ pending: 1, approved: 1, rejected: 1, archived: 1 }) // 2 active
 

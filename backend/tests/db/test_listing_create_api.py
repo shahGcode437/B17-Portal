@@ -3,6 +3,11 @@ ownership, quota, rate limit, atomicity and public invisibility until approval.
 
 Real PostgreSQL, the real app, real login. The stored rows are inspected directly, not only the
 API's description of them.
+
+The default principal signs in with ``admin=True`` throughout this file because ``provider_body`` is
+the canonical generic fixture used in most tests, and Service / Professional listings are portal-
+managed (``docs/backend/AUTH_RBAC.md §22.6``) — only an admin may author them. Tests that specifically
+probe non-admin behaviour pass ``admin=False`` locally.
 """
 
 from datetime import timedelta
@@ -88,7 +93,7 @@ def nothing_was_written(session: Session) -> bool:
 
 @pytest.mark.parametrize("name", list(KIND_BODIES))
 def test_a_valid_listing_is_created_pending_at_revision_one(auth_env: AuthEnv, name: str) -> None:
-    api = signed_in(auth_env)
+    api = signed_in(auth_env, admin=True)
     body = KIND_BODIES[name]()
 
     response = create(api, body)
@@ -123,7 +128,7 @@ def test_a_valid_listing_is_created_pending_at_revision_one(auth_env: AuthEnv, n
 
 
 def test_a_provider_listing_has_no_subtype_row_and_one_services_category(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env)
+    api = signed_in(auth_env, admin=True)
 
     listing_id = created_id(api, provider_body(tags=[" Wiring", "WIRING", "repairs", ""]))
 
@@ -140,7 +145,7 @@ def test_a_provider_listing_has_no_subtype_row_and_one_services_category(auth_en
 
 
 def test_a_general_business_has_a_business_profile_and_no_food(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env)
+    api = signed_in(auth_env, admin=True)
 
     listing_id = created_id(api, business_body())
 
@@ -154,7 +159,7 @@ def test_a_general_business_has_a_business_profile_and_no_food(auth_env: AuthEnv
 
 
 def test_a_food_business_is_a_business_vertical_not_a_kind(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env)
+    api = signed_in(auth_env, admin=True)
 
     response = create(api, food_body())
 
@@ -181,7 +186,7 @@ def test_a_food_business_is_a_business_vertical_not_a_kind(auth_env: AuthEnv) ->
 
 
 def test_service_options_are_stored_as_a_canonical_set(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env)
+    api = signed_in(auth_env, admin=True)
     body = food_body()
     body["food"]["serviceOptions"] = ["delivery", "dine-in", "delivery"]
 
@@ -194,7 +199,7 @@ def test_service_options_are_stored_as_a_canonical_set(auth_env: AuthEnv) -> Non
 
 
 def test_a_tutor_listing_keeps_its_grade_and_subject(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env)
+    api = signed_in(auth_env, admin=True)
 
     listing_id = created_id(api, tutor_body())
 
@@ -207,7 +212,7 @@ def test_a_tutor_listing_keeps_its_grade_and_subject(auth_env: AuthEnv) -> None:
 
 
 def test_a_property_listing_keeps_its_subtype_fields_and_a_real_point(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env)
+    api = signed_in(auth_env, admin=True)
 
     listing_id = created_id(api, property_body())
 
@@ -225,7 +230,7 @@ def test_a_property_listing_keeps_its_subtype_fields_and_a_real_point(auth_env: 
 
 
 def test_area_is_canonicalised_and_text_is_trimmed_on_the_way_in(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env)
+    api = signed_in(auth_env, admin=True)
 
     listing_id = created_id(
         api,
@@ -241,7 +246,7 @@ def test_area_is_canonicalised_and_text_is_trimmed_on_the_way_in(auth_env: AuthE
 
 
 def test_an_unknown_locality_is_rejected_with_its_own_code(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env)
+    api = signed_in(auth_env, admin=True)
 
     for area in ("F-8", "B-17, Block C", "Islamabad"):
         response = create(api, provider_body(area=area))
@@ -254,7 +259,7 @@ def test_configured_localities_are_honoured(auth_env: AuthEnv, db_session: Sessi
     from tests.db.auth_helpers import build_env
 
     env = build_env(db_session, localities=["B-17", "G-13"])
-    api = signed_in(env, "wide@example.org")
+    api = signed_in(env, "wide@example.org", admin=True)
 
     ok = create(api, provider_body(area="g-13"))
     bad = create(api, provider_body(area="F-8"))
@@ -282,7 +287,7 @@ def test_configured_localities_are_honoured(auth_env: AuthEnv, db_session: Sessi
 def test_a_category_must_exist_in_the_listing_s_own_module(
     auth_env: AuthEnv, make: Any, field: str, slug: str
 ) -> None:
-    api = signed_in(auth_env)
+    api = signed_in(auth_env, admin=True)
 
     response = create(api, make(**{field: slug}))
 
@@ -292,7 +297,7 @@ def test_a_category_must_exist_in_the_listing_s_own_module(
 
 
 def test_an_inactive_category_cannot_be_chosen(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env)
+    api = signed_in(auth_env, admin=True)
     auth_env.session.execute(
         text("UPDATE categories SET is_active = false WHERE slug = 'plumbing'")
     )
@@ -304,7 +309,7 @@ def test_an_inactive_category_cannot_be_chosen(auth_env: AuthEnv) -> None:
 
 
 def test_food_category_rules(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env)
+    api = signed_in(auth_env, admin=True)
 
     def food_with(categories: list[str]) -> Any:
         body = food_body()
@@ -324,7 +329,7 @@ def test_food_category_rules(auth_env: AuthEnv) -> None:
 
 
 def test_the_first_food_category_is_the_primary_one(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env)
+    api = signed_in(auth_env, admin=True)
     body = food_body()
     body["food"]["categories"] = ["desi-food", "bakeries"]
 
@@ -341,7 +346,7 @@ def test_the_first_food_category_is_the_primary_one(auth_env: AuthEnv) -> None:
 
 
 def test_food_requirements(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env)
+    api = signed_in(auth_env, admin=True)
     no_services = food_body()
     no_services["food"]["serviceOptions"] = []
     no_food = food_body()
@@ -361,7 +366,7 @@ def test_food_requirements(auth_env: AuthEnv) -> None:
 
 
 def test_up_to_eight_menu_items_are_accepted(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env)
+    api = signed_in(auth_env, admin=True)
     body = food_body()
     body["food"]["menuHighlights"] = [{"name": f"Item {i}"} for i in range(8)]
 
@@ -371,7 +376,7 @@ def test_up_to_eight_menu_items_are_accepted(auth_env: AuthEnv) -> None:
 
 
 def test_a_general_business_can_not_receive_food_only_fields(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env)
+    api = signed_in(auth_env, admin=True)
     food_block = {"categories": ["bakeries"], "serviceOptions": ["takeaway"]}
 
     response = create(api, business_body(food=food_block))
@@ -384,7 +389,7 @@ def test_a_general_business_can_not_receive_food_only_fields(auth_env: AuthEnv) 
 
 
 def test_other_kinds_cannot_carry_business_or_property_fields(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env)
+    api = signed_in(auth_env, admin=True)
 
     for body in (
         provider_body(food={"categories": ["bakeries"], "serviceOptions": ["takeaway"]}),
@@ -397,7 +402,7 @@ def test_other_kinds_cannot_carry_business_or_property_fields(auth_env: AuthEnv)
 
 
 def test_a_menu_item_price_is_a_display_string_never_parsed(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env)
+    api = signed_in(auth_env, admin=True)
     body = food_body()
     body["food"]["menuHighlights"] = [{"name": "Cake", "price": "Rs. 1,800 (approx.)"}]
 
@@ -410,7 +415,7 @@ def test_a_menu_item_price_is_a_display_string_never_parsed(auth_env: AuthEnv) -
 
 
 def test_property_requirements(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env)
+    api = signed_in(auth_env, admin=True)
 
     area_only_property = create(api, property_body(location=area_only()))
     no_point = create(api, property_body(location=approximate(latitude=None, longitude=None)))
@@ -429,7 +434,7 @@ def test_property_requirements(auth_env: AuthEnv) -> None:
 
 
 def test_an_approximate_property_needs_no_address(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env)
+    api = signed_in(auth_env, admin=True)
 
     response = create(api, property_body(location=approximate(address=None, landmark=None)))
 
@@ -478,7 +483,7 @@ def test_an_approximate_property_needs_no_address(auth_env: AuthEnv) -> None:
 def test_location_requiredness_by_kind(
     auth_env: AuthEnv, name: str, location: dict[str, Any] | None, expected: list[tuple[str, str]]
 ) -> None:
-    api = signed_in(auth_env)
+    api = signed_in(auth_env, admin=True)
     body = KIND_BODIES[name]()
     body.pop("location", None)
     if location is not None:
@@ -494,7 +499,7 @@ def test_location_requiredness_by_kind(
 
 
 def test_provider_and_tutor_default_to_area_only_with_no_stored_point(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env)
+    api = signed_in(auth_env, admin=True)
 
     for body in (provider_body(), tutor_body()):
         data = create(api, body).json()["data"]
@@ -512,7 +517,7 @@ def test_provider_and_tutor_default_to_area_only_with_no_stored_point(auth_env: 
 def test_the_public_point_is_generated_by_the_database_not_sent_by_the_client(
     auth_env: AuthEnv, mode: str, public: dict[str, Any]
 ) -> None:
-    api = signed_in(auth_env)
+    api = signed_in(auth_env, admin=True)
 
     data = create(api, business_body(location=exact(visibility=mode))).json()["data"]
 
@@ -529,7 +534,7 @@ def test_the_public_point_is_generated_by_the_database_not_sent_by_the_client(
 def test_approximate_keeps_the_exact_point_internally_but_publishes_the_rounded_one(
     auth_env: AuthEnv,
 ) -> None:
-    api = signed_in(auth_env)
+    api = signed_in(auth_env, admin=True)
 
     data = create(api, business_body(location=approximate())).json()["data"]
 
@@ -542,7 +547,7 @@ def test_approximate_keeps_the_exact_point_internally_but_publishes_the_rounded_
 
 
 def test_area_only_stores_no_point(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env)
+    api = signed_in(auth_env, admin=True)
 
     listing_id = created_id(api, business_body(location=area_only(address="Private shop address")))
 
@@ -554,7 +559,7 @@ def test_area_only_stores_no_point(auth_env: AuthEnv) -> None:
 
 
 def test_coordinates_are_rounded_to_six_places_and_range_checked(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env)
+    api = signed_in(auth_env, admin=True)
 
     rounded = created_id(api, business_body(location=exact(latitude=33.12345649, longitude=72.1)))
     assert str(stored_columns(auth_env.session, rounded)["latitude"]) == "33.123456"
@@ -569,7 +574,7 @@ def test_coordinates_are_rounded_to_six_places_and_range_checked(auth_env: AuthE
 
 @pytest.mark.parametrize("value", ["33.1", True, "NaN"])
 def test_coordinates_must_be_json_numbers(auth_env: AuthEnv, value: Any) -> None:
-    api = signed_in(auth_env)
+    api = signed_in(auth_env, admin=True)
 
     response = create(api, business_body(location=exact(latitude=value)))
 
@@ -579,7 +584,7 @@ def test_coordinates_must_be_json_numbers(auth_env: AuthEnv, value: Any) -> None
 
 @pytest.mark.parametrize("block", ["<b>x</b>", "C;DROP", "-C"])
 def test_a_malicious_block_label_is_rejected(auth_env: AuthEnv, block: str) -> None:
-    api = signed_in(auth_env)
+    api = signed_in(auth_env, admin=True)
 
     response = create(api, business_body(location=exact(block=block)))
 
@@ -588,7 +593,7 @@ def test_a_malicious_block_label_is_rejected(auth_env: AuthEnv, block: str) -> N
 
 def test_whole_block_and_pin_geometry_is_not_a_geofence(auth_env: AuthEnv) -> None:
     """No B-17 bounding box exists (LOCATION_MAP §5): any valid coordinate is accepted."""
-    api = signed_in(auth_env)
+    api = signed_in(auth_env, admin=True)
 
     far_away = create(api, business_body(location=exact(latitude=-33.8688, longitude=151.2093)))
 
@@ -608,7 +613,7 @@ def test_whole_block_and_pin_geometry_is_not_a_geofence(auth_env: AuthEnv) -> No
     ],
 )
 def test_only_public_media_references_are_accepted(auth_env: AuthEnv, image: str) -> None:
-    api = signed_in(auth_env)
+    api = signed_in(auth_env, admin=True)
 
     response = create(api, provider_body(image=image))
 
@@ -616,7 +621,7 @@ def test_only_public_media_references_are_accepted(auth_env: AuthEnv, image: str
 
 
 def test_a_public_https_url_or_site_path_is_accepted(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env)
+    api = signed_in(auth_env, admin=True)
 
     https = create(api, provider_body(image="https://cdn.example.org/a.jpg"))
     path = create(api, provider_body(image="/assets/a.jpg"))
@@ -629,15 +634,16 @@ def test_a_public_https_url_or_site_path_is_accepted(auth_env: AuthEnv) -> None:
 
 
 def test_the_owner_is_the_signed_in_user_never_the_body(auth_env: AuthEnv) -> None:
+    # The ownership rule is not kind-specific — any kind the signer can author proves the point.
     mallory = signed_in(auth_env, "mallory@example.org", display_name="Mallory")
     victim = signed_in(auth_env, "victim@example.org", display_name="Victim")
     victim_id = victim.me().json()["data"]["id"]
 
-    response = create(mallory, provider_body(ownerId=victim_id))
+    response = create(mallory, business_body(ownerId=victim_id))
 
     assert (response.status_code, codes(response)) == (422, [("ownerId", "not_allowed")])
     assert nothing_was_written(auth_env.session)
-    own = create(mallory, provider_body()).json()["data"]["id"]
+    own = create(mallory, business_body()).json()["data"]["id"]
     assert str(stored(auth_env.session, own).owner_id) == mallory.me().json()["data"]["id"]
 
 
@@ -669,7 +675,7 @@ def test_the_owner_is_the_signed_in_user_never_the_body(auth_env: AuthEnv) -> No
 def test_server_owned_fields_are_rejected_whatever_their_value(
     auth_env: AuthEnv, field: str, value: Any
 ) -> None:
-    api = signed_in(auth_env)
+    api = signed_in(auth_env, admin=True)
     body = provider_body()
     body[field] = value
 
@@ -681,7 +687,7 @@ def test_server_owned_fields_are_rejected_whatever_their_value(
 
 
 def test_public_coordinates_cannot_be_written_inside_location(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env)
+    api = signed_in(auth_env, admin=True)
 
     response = create(
         api,
@@ -729,7 +735,7 @@ def test_anonymous_cannot_create(auth_env: AuthEnv) -> None:
 
 
 def test_an_unknown_or_missing_kind_is_a_validation_error(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env)
+    api = signed_in(auth_env, admin=True)
 
     for body in ({"kind": "pharmacy"}, {}, provider_body(kind="Business")):
         response = create(api, body)
@@ -740,7 +746,7 @@ def test_an_unknown_or_missing_kind_is_a_validation_error(auth_env: AuthEnv) -> 
 
 
 def test_validation_errors_use_camel_case_paths_and_report_everything(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env)
+    api = signed_in(auth_env, admin=True)
     body = food_body(name="A", description="short")
     body["food"]["categories"] = []
     body["food"]["serviceOptions"] = []
@@ -755,7 +761,7 @@ def test_validation_errors_use_camel_case_paths_and_report_everything(auth_env: 
 
 
 def test_a_bad_json_body_is_a_400_not_a_500(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env)
+    api = signed_in(auth_env, admin=True)
 
     response = api.request(
         "POST", LISTINGS, content=b"{not json", headers={"Content-Type": "application/json"}
@@ -768,11 +774,14 @@ def test_a_bad_json_body_is_a_400_not_a_500(auth_env: AuthEnv) -> None:
 
 
 def test_the_free_plan_allows_three_active_listings(auth_env: AuthEnv) -> None:
+    # Quota applies to quota-countable kinds; ``provider`` is portal-managed and exempt (see the
+    # new ``test_provider_listings_do_not_consume_the_quota`` test below), so these tests exercise
+    # the Free plan limit with ``business_body``.
     api = signed_in(auth_env)
 
     for _ in range(3):
-        assert create(api, provider_body()).status_code == 201
-    fourth = create(api, provider_body())
+        assert create(api, business_body(name=f"Shop {_}")).status_code == 201
+    fourth = create(api, business_body(name="Shop Four"))
 
     assert (fourth.status_code, error_code(fourth)) == (403, "plan_limit_reached")
     assert count(auth_env.session, Listing) == 3
@@ -780,40 +789,41 @@ def test_the_free_plan_allows_three_active_listings(auth_env: AuthEnv) -> None:
 
 def test_archived_and_rejected_listings_free_their_quota_slot(auth_env: AuthEnv) -> None:
     api = signed_in(auth_env)
-    ids = [created_id(api, provider_body()) for _ in range(3)]
-    assert create(api, provider_body()).status_code == 403
+    ids = [created_id(api, business_body(name=f"Shop {n}")) for n in range(3)]
+    assert create(api, business_body(name="Shop Four")).status_code == 403
 
     set_status(auth_env.session, ids[0], ListingStatus.REJECTED)
-    assert create(api, provider_body()).status_code == 201
+    assert create(api, business_body(name="Shop Five")).status_code == 201
 
-    assert create(api, provider_body()).status_code == 403  # pending + approved = 3 again
+    # pending + approved = 3 again
+    assert create(api, business_body(name="Shop Six")).status_code == 403
     set_status(auth_env.session, ids[1], ListingStatus.ARCHIVED)
-    assert create(api, provider_body()).status_code == 201
+    assert create(api, business_body(name="Shop Seven")).status_code == 201
 
 
 def test_approved_listings_count_against_the_quota(auth_env: AuthEnv) -> None:
     api = signed_in(auth_env)
-    ids = [created_id(api, provider_body()) for _ in range(3)]
+    ids = [created_id(api, business_body(name=f"Shop {n}")) for n in range(3)]
     for listing_id in ids:
         set_status(auth_env.session, listing_id, ListingStatus.APPROVED)
 
-    assert create(api, provider_body()).status_code == 403
+    assert create(api, business_body(name="Shop Four")).status_code == 403
 
 
 def test_quota_is_per_owner(auth_env: AuthEnv) -> None:
     first = signed_in(auth_env, "a@example.org", display_name="A A")
     second = signed_in(auth_env, "b@example.org", display_name="B B")
-    for _ in range(3):
-        create(first, provider_body())
+    for n in range(3):
+        create(first, business_body(name=f"First {n}"))
 
-    assert create(first, provider_body()).status_code == 403
-    assert create(second, provider_body()).status_code == 201
+    assert create(first, business_body(name="First Four")).status_code == 403
+    assert create(second, business_body(name="Second One")).status_code == 201
 
 
 def test_premium_has_no_listing_limit(auth_env: AuthEnv) -> None:
     api = signed_in(auth_env, professional=PlanCode.PREMIUM)
 
-    statuses = [create(api, provider_body()).status_code for _ in range(5)]
+    statuses = [create(api, business_body(name=f"Shop {n}")).status_code for n in range(5)]
 
     assert statuses == [201] * 5
 
@@ -824,15 +834,17 @@ def test_listing_creation_is_rate_limited_per_user(auth_env: AuthEnv) -> None:
         auth_env, "other@example.org", professional=PlanCode.PREMIUM, display_name="Ot Her"
     )
 
-    statuses = [create(api, provider_body()).status_code for _ in range(10)]
-    blocked = create(api, provider_body())
+    statuses = [create(api, business_body(name=f"Shop {n}")).status_code for n in range(10)]
+    blocked = create(api, business_body(name="Shop Blocked"))
 
     assert statuses == [201] * 10
     assert (blocked.status_code, error_code(blocked)) == (429, "rate_limited")
     assert int(blocked.headers["Retry-After"]) >= 1
-    assert create(other, provider_body()).status_code == 201  # another user is unaffected
+    # another user is unaffected
+    assert create(other, business_body(name="Other Shop")).status_code == 201
     auth_env.clock.advance(hours=1, seconds=1)
-    assert create(api, provider_body()).status_code == 201  # the window passed
+    # the window passed
+    assert create(api, business_body(name="Shop After Window")).status_code == 201
     assert count(auth_env.session, Listing) == 12
 
 
@@ -840,8 +852,8 @@ def test_a_rejected_request_does_not_burn_the_rate_limit(auth_env: AuthEnv) -> N
     api = signed_in(auth_env, professional=PlanCode.PREMIUM)
 
     for _ in range(12):
-        assert create(api, provider_body(name="A")).status_code == 422
-    assert create(api, provider_body()).status_code == 201
+        assert create(api, business_body(name="A")).status_code == 422
+    assert create(api, business_body()).status_code == 201
 
 
 # -- atomicity, search, public invisibility ----------------------------------------------------------
@@ -856,7 +868,7 @@ def test_a_failure_part_way_leaves_nothing_behind(
         raise RuntimeError("the index is down")
 
     monkeypatch.setattr(SearchIndexer, "refresh", explode)
-    api = signed_in(auth_env)
+    api = signed_in(auth_env, admin=True)
 
     response = create(api, food_body())
 
@@ -865,7 +877,7 @@ def test_a_failure_part_way_leaves_nothing_behind(
 
 
 def test_the_search_document_is_built_in_the_same_transaction(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env)
+    api = signed_in(auth_env, admin=True)
 
     listing_id = created_id(api, food_body())
 
@@ -884,7 +896,7 @@ def test_the_search_document_is_built_in_the_same_transaction(auth_env: AuthEnv)
 def test_private_location_text_enters_the_search_document_only_for_exact(
     auth_env: AuthEnv, mode: str, address_searchable: bool
 ) -> None:
-    api = signed_in(auth_env)
+    api = signed_in(auth_env, admin=True)
     location = (
         area_only(address="Secret Lane Shop 9", landmark="Behind the secret mosque")
         if mode == "area_only"
@@ -903,7 +915,7 @@ def test_private_location_text_enters_the_search_document_only_for_exact(
 
 
 def test_a_new_listing_is_visible_to_its_owner_only(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env)
+    api = signed_in(auth_env, admin=True)
     anonymous = auth_env.client()
     listing_id = created_id(api, business_body(name="Hidden Until Approved Stationers"))
 
@@ -917,7 +929,7 @@ def test_a_new_listing_is_visible_to_its_owner_only(auth_env: AuthEnv) -> None:
 
 
 def test_timestamps_follow_the_app_clock(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env)
+    api = signed_in(auth_env, admin=True)
     auth_env.clock.advance(days=2)
 
     listing_id = created_id(api, provider_body())

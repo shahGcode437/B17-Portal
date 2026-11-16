@@ -101,9 +101,15 @@ function page(items: unknown[], q: URLSearchParams, extra: Record<string, unknow
   return okPage(items.slice(offset, offset + limit), { total: items.length, limit, offset, ...extra })
 }
 
-function countsOf(listings: { status: string }[]) {
-  const counts = { pending: 0, approved: 0, rejected: 0, archived: 0 }
-  for (const l of listings) counts[l.status as keyof typeof counts] += 1
+function countsOf(listings: { status: string; kind?: string }[]) {
+  const counts = { pending: 0, approved: 0, rejected: 0, archived: 0, activeQuota: 0 }
+  for (const l of listings) {
+    counts[l.status as keyof typeof counts] += 1
+    // Mirror the backend: provider listings never count against the owner's quota slots.
+    if ((l.status === "pending" || l.status === "approved") && l.kind !== "provider") {
+      counts.activeQuota += 1
+    }
+  }
   return counts
 }
 

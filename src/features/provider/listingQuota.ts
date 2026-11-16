@@ -10,7 +10,10 @@ import type { StatusCountsDto } from "@/lib/api/dto/private"
  * stale (another tab archived a listing) or missing (the counts have not loaded or could not be read), so:
  *  - `unknown` claims nothing - nothing is hidden or disabled, the server decides;
  *  - `full` only warns - it never blocks, and the server's refusal is still handled.
- * Only pending and approved listings are active (rejected and archived do not count - `API_CONTRACT` section 10.9).
+ * Only pending and approved listings are active (rejected and archived do not count - `API_CONTRACT` section 10.9),
+ * and Service / Professional (`provider`) listings are portal-managed and never consume the quota
+ * (`AUTH_RBAC §22.6`) — the server surfaces `activeQuota` already filtered, so this helper never
+ * has to subtract anything itself.
  */
 export type ListingQuota =
   | { state: "unknown" }
@@ -22,7 +25,10 @@ export type ListingQuota =
 export function listingQuota(maxListings: number | null, counts: StatusCountsDto | undefined): ListingQuota {
   if (maxListings === null) return { state: "unlimited" }
   if (!counts) return { state: "unknown" }
-  const used = counts.pending + counts.approved
+  // ``activeQuota`` is the server-authoritative, kind-filtered used count. A pre-field response
+  // (older server, or a malformed payload) parses this field as 0, which is safe: the server still
+  // decides, and the warning simply disappears rather than mis-counting providers as quota slots.
+  const used = counts.activeQuota
   return { state: used >= maxListings ? "full" : "open", used, max: maxListings }
 }
 

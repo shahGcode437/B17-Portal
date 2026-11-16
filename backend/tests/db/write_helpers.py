@@ -64,7 +64,14 @@ def signed_in(
     admin: bool = False,
     display_name: str = "Sana Baker",
 ) -> AuthApi:
-    """A browser signed in (real login) as a fresh account with the given capabilities."""
+    """A browser signed in (real login) as a fresh account with the given capabilities.
+
+    Default is a plain professional (least-privileged owner). Tests that create, edit or archive a
+    Service / Professional (``provider``) listing opt in with ``admin=True`` — provider listings
+    are portal-managed (``docs/backend/AUTH_RBAC.md §22.6``), so only an admin may author them.
+    Keeping the default non-admin means a future authorization regression would show up as a test
+    failure rather than being masked by an incidentally-admin principal.
+    """
     make_account(
         env.session,
         email,

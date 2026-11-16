@@ -378,6 +378,12 @@ class StatusCounts(ApiModel):
     approved: int
     rejected: int
     archived: int
+    #: Quota-countable active listings for THIS owner (pending + approved, EXCLUDING ``provider``).
+    #: Service / Professional listings are portal-managed and never consume the owner's plan slots
+    #: (``docs/backend/AUTH_RBAC.md §22.6``), so this is what a quota UI must display as "used".
+    #: The per-status totals above remain factual (they count every kind). The admin moderation
+    #: surface is not per-owner so it leaves this at ``0`` — only the owner reads surface sets it.
+    active_quota: int = 0
 
 
 class OwnerListingsMeta(PageMeta):

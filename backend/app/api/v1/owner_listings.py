@@ -28,7 +28,7 @@ router = APIRouter(
             "model": ErrorResponse,
             "description": (
                 "email_not_verified | professional_profile_required | plan_limit_reached"
-                " | csrf_failed"
+                " | csrf_failed | forbidden (provider_admin_only)"
             ),
         },
         422: {"model": ErrorResponse, "description": "validation_error"},
@@ -52,8 +52,11 @@ def create_listing(
 ) -> OwnerListingEnvelope:
     """A discriminated union on ``kind`` (provider, business — General or Food —, tutor,
     property). The owner is the signed-in user; the listing starts ``pending`` at ``revision 1``.
-    ``Location`` points at the owner detail (the public page stays 404 until approval)."""
-    listing = service.create(principal.user_id, payload)
+    ``Location`` points at the owner detail (the public page stays 404 until approval).
+
+    ``provider`` listings are portal-managed: only an admin may create / edit / archive them, else
+    ``403 forbidden`` with detail code ``provider_admin_only``."""
+    listing = service.create(principal.user_id, payload, is_admin=principal.is_admin)
     response.headers["Location"] = f"/api/v1/users/me/listings/{listing.id}"
     return OwnerListingEnvelope(data=OwnerListingService(session).present(listing))
 
@@ -77,7 +80,7 @@ def edit_listing(
     """Send the ``revision`` you read. Omitted = unchanged, ``null`` clears only declared-clearable
     fields, arrays and ``location`` replace whole. A no-op changes nothing; a pure visibility
     narrowing keeps the status; any other effective change returns the listing to ``pending``."""
-    listing = service.edit(principal.user_id, listing_id, payload)
+    listing = service.edit(principal.user_id, listing_id, payload, is_admin=principal.is_admin)
     return OwnerListingEnvelope(data=OwnerListingService(session).present(listing))
 
 
@@ -99,5 +102,7 @@ def archive_listing(
 ) -> OwnerListingEnvelope:
     """Terminal in V1 (no unarchive). The row is kept; it leaves public discovery and frees the
     plan's quota slot."""
-    listing = service.archive(principal.user_id, listing_id, payload.revision)
+    listing = service.archive(
+        principal.user_id, listing_id, payload.revision, is_admin=principal.is_admin
+    )
     return OwnerListingEnvelope(data=OwnerListingService(session).present(listing))

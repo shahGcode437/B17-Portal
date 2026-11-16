@@ -151,7 +151,7 @@ describe("the dashboard", () => {
     installFetchMock(
       fakeBackend({
         me: meBody({ roles: ["professional"] }),
-        overrides: { "/users/me/listings": okPage([TAKEN_DOWN], { counts: { pending: 0, approved: 0, rejected: 1, archived: 0 } }) },
+        overrides: { "/users/me/listings": okPage([TAKEN_DOWN], { counts: { pending: 0, approved: 0, rejected: 1, archived: 0, activeQuota: 0 } }) },
       })
     )
     renderPage(<ProfessionalOverviewPage />, { url: "/provider", user: testUser() })

@@ -183,7 +183,7 @@ describe("Professional: listings", () => {
       installFetchMock(
         fakeBackend({
           me: me(),
-          overrides: { "/users/me/listings": okPage([], { counts: { pending: 0, approved: 0, rejected: 0, archived: 0 } }) },
+          overrides: { "/users/me/listings": okPage([], { counts: { pending: 0, approved: 0, rejected: 0, archived: 0, activeQuota: 0 } }) },
         })
       )
 

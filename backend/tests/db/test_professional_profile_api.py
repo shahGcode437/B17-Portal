@@ -21,7 +21,7 @@ def profile_rows(env: AuthEnv) -> list[ProfessionalProfile]:
 def test_a_verified_user_creates_the_profile_then_the_same_call_confirms_it(
     auth_env: AuthEnv,
 ) -> None:
-    api = signed_in(auth_env, professional=None)
+    api = signed_in(auth_env, professional=None, admin=False)
 
     first = api.request("PUT", PROFILE, json={})
     second = api.request("PUT", PROFILE, json={})
@@ -56,7 +56,7 @@ def test_auth_me_reflects_the_profile_after_the_call(auth_env: AuthEnv) -> None:
 
 
 def test_creating_the_profile_grants_no_role_and_no_admin_power(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env, professional=None)
+    api = signed_in(auth_env, professional=None, admin=False)
 
     api.request("PUT", PROFILE, json={})
 

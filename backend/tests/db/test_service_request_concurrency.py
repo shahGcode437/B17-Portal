@@ -24,18 +24,23 @@ from tests.db.auth_helpers import AuthApi, AuthEnv
 from tests.db.request_helpers import REQUESTS, SAVED, request_body
 from tests.db.test_admin_concurrency import clients, set_status
 from tests.db.test_listing_write_concurrency import (
+    LISTINGS,
     browser,
     committed_world,
-    make_listing,
     race,
     statuses,
 )
+from tests.write_payloads import provider_body
 
 REASON = "Reported as closed for good."
 
 
 def provider_listing(engine: Engine, owner: AuthApi, name: str = "Race Wiring Services") -> str:
-    listing_id = make_listing(owner, name=name)
+    # Service requests target ``kind=provider`` only (``service_requests.py``), so the setup
+    # listing must be a provider — authored by the admin ``owner`` these tests sign in as.
+    response = owner.request("POST", LISTINGS, json=provider_body(name=name))
+    assert response.status_code == 201, response.text
+    listing_id = str(response.json()["data"]["id"])
     set_status(engine, listing_id, "approved")
     return listing_id
 
@@ -115,7 +120,7 @@ def assert_unbroken_chain(
 
 def test_many_simultaneous_saves_leave_exactly_one_row(db_engine: Engine) -> None:
     with committed_world(db_engine) as env:
-        owner = browser(env, "owner@example.org", professional=PlanCode.PREMIUM)
+        owner = browser(env, "owner@example.org", professional=PlanCode.PREMIUM, admin=True)
         listing_id = provider_listing(db_engine, owner)
         browser(env, "resident@example.org", professional=None)
         tabs = clients(env, "resident@example.org", 8)
@@ -128,7 +133,7 @@ def test_many_simultaneous_saves_leave_exactly_one_row(db_engine: Engine) -> Non
 
 def test_simultaneous_saves_by_different_users_each_get_their_own_row(db_engine: Engine) -> None:
     with committed_world(db_engine) as env:
-        owner = browser(env, "owner@example.org", professional=PlanCode.PREMIUM)
+        owner = browser(env, "owner@example.org", professional=PlanCode.PREMIUM, admin=True)
         listing_id = provider_listing(db_engine, owner)
         people = [
             browser(env, f"person{n}@example.org", professional=None, display_name=f"Person {n}")
@@ -143,7 +148,7 @@ def test_simultaneous_saves_by_different_users_each_get_their_own_row(db_engine:
 
 def test_saving_racing_unsaving_always_ends_in_a_valid_state(db_engine: Engine) -> None:
     with committed_world(db_engine) as env:
-        owner = browser(env, "owner@example.org", professional=PlanCode.PREMIUM)
+        owner = browser(env, "owner@example.org", professional=PlanCode.PREMIUM, admin=True)
         listing_id = provider_listing(db_engine, owner)
         browser(env, "resident@example.org", professional=None)
         tabs = clients(env, "resident@example.org", 8)
@@ -165,7 +170,7 @@ def test_saving_racing_unsaving_always_ends_in_a_valid_state(db_engine: Engine) 
 
 def test_many_simultaneous_unsaves_are_all_fine(db_engine: Engine) -> None:
     with committed_world(db_engine) as env:
-        owner = browser(env, "owner@example.org", professional=PlanCode.PREMIUM)
+        owner = browser(env, "owner@example.org", professional=PlanCode.PREMIUM, admin=True)
         listing_id = provider_listing(db_engine, owner)
         resident = browser(env, "resident@example.org", professional=None)
         resident.request("PUT", f"{SAVED}/{listing_id}")
@@ -179,7 +184,7 @@ def test_many_simultaneous_unsaves_are_all_fine(db_engine: Engine) -> None:
 
 def test_saving_racing_a_takedown_never_errors(db_engine: Engine) -> None:
     with committed_world(db_engine) as env:
-        owner = browser(env, "owner@example.org", professional=PlanCode.PREMIUM)
+        owner = browser(env, "owner@example.org", professional=PlanCode.PREMIUM, admin=True)
         listing_id = provider_listing(db_engine, owner)
         admin = browser(env, "admin@example.org", professional=None, admin=True)
         browser(env, "resident@example.org", professional=None)
@@ -207,7 +212,7 @@ def test_parallel_requests_to_one_provider_respect_the_once_a_day_limit(
     db_engine: Engine,
 ) -> None:
     with committed_world(db_engine) as env:
-        owner = browser(env, "owner@example.org", professional=PlanCode.PREMIUM)
+        owner = browser(env, "owner@example.org", professional=PlanCode.PREMIUM, admin=True)
         listing_id = provider_listing(db_engine, owner)
         browser(env, "resident@example.org", professional=None)
         tabs = clients(env, "resident@example.org", 6)
@@ -222,7 +227,7 @@ def test_parallel_requests_to_one_provider_respect_the_once_a_day_limit(
 
 def test_parallel_requests_by_one_user_respect_the_five_an_hour_limit(db_engine: Engine) -> None:
     with committed_world(db_engine) as env:
-        owner = browser(env, "owner@example.org", professional=PlanCode.PREMIUM)
+        owner = browser(env, "owner@example.org", professional=PlanCode.PREMIUM, admin=True)
         listings = [provider_listing(db_engine, owner, name=f"Race Provider {n}") for n in range(8)]
         browser(env, "resident@example.org", professional=None)
         tabs = clients(env, "resident@example.org", 8)
@@ -237,7 +242,7 @@ def test_parallel_requests_by_one_user_respect_the_five_an_hour_limit(db_engine:
 
 def test_different_requesters_do_not_block_or_limit_each_other(db_engine: Engine) -> None:
     with committed_world(db_engine) as env:
-        owner = browser(env, "owner@example.org", professional=PlanCode.PREMIUM)
+        owner = browser(env, "owner@example.org", professional=PlanCode.PREMIUM, admin=True)
         listing_id = provider_listing(db_engine, owner)
         people = [
             browser(env, f"person{n}@example.org", professional=None, display_name=f"Person {n}")
@@ -254,9 +259,12 @@ def test_different_requesters_do_not_block_or_limit_each_other(db_engine: Engine
 
 def test_creating_racing_a_takedown_is_consistent_and_never_deadlocks(db_engine: Engine) -> None:
     with committed_world(db_engine) as env:
-        owner = browser(env, "owner@example.org", professional=PlanCode.PREMIUM)
+        owner = browser(env, "owner@example.org", professional=PlanCode.PREMIUM, admin=True)
         admin = browser(env, "admin@example.org", professional=None, admin=True)
-        listing_id = make_listing(owner, name="Race Takedown Co")
+        # Service requests target ``kind=provider`` only, so create a provider listing directly.
+        response = owner.request("POST", LISTINGS, json=provider_body(name="Race Takedown Co"))
+        assert response.status_code == 201, response.text
+        listing_id = str(response.json()["data"]["id"])
         set_status(db_engine, listing_id, "pending")
         assert approve(admin, listing_id, 1).status_code == 200
         browser(env, "resident@example.org", professional=None)
@@ -285,7 +293,7 @@ def test_creating_racing_a_takedown_is_consistent_and_never_deadlocks(db_engine:
 
 
 def lifecycle_world(env: AuthEnv, engine: Engine, extra_tabs: int = 1) -> dict[str, Any]:
-    owner = browser(env, "owner@example.org", professional=PlanCode.PREMIUM)
+    owner = browser(env, "owner@example.org", professional=PlanCode.PREMIUM, admin=True)
     listing_id = provider_listing(engine, owner)
     requester = browser(env, "resident@example.org", professional=None)
     request_id = make_request(requester, listing_id)

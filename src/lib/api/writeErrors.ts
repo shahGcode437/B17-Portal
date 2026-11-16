@@ -317,6 +317,14 @@ export function userMessageFor(error: unknown, op: WriteOperation): Copy {
     case "not_found":
       return notFoundCopy(op)
     case "forbidden":
+      // The provider (Service / Professional) kind is portal-managed: a non-admin who tries to
+      // create, edit or archive one gets this specific message so they know what to switch to.
+      if (error.details.some((detail) => detail.code === "provider_admin_only")) {
+        return {
+          title: "Service listings are managed by portal staff",
+          description: "Please list a Business, Food, Tutor or Property listing instead.",
+        }
+      }
       return { title: "You cannot do that", description: "Your account does not have permission for this action." }
     case "validation_error":
       return validationCopy(error, op)

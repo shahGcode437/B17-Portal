@@ -7,5 +7,11 @@ export function parseCounts(value: unknown): StatusCountsDto {
     const n = source[key]
     return typeof n === "number" && Number.isFinite(n) && n >= 0 ? n : 0
   }
-  return { pending: read("pending"), approved: read("approved"), rejected: read("rejected"), archived: read("archived") }
+  return {
+    pending: read("pending"),
+    approved: read("approved"),
+    rejected: read("rejected"),
+    archived: read("archived"),
+    activeQuota: read("activeQuota"),
+  }
 }

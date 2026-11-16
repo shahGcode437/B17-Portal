@@ -60,7 +60,10 @@ class World:
 
     def __init__(self, env: AuthEnv) -> None:
         self.env = env
-        self.owner = owner_signed_in(env)
+        # Admin-authority tests don't care about the kind of the target listing. ``provider_body``
+        # is the shortest fixture, but authoring it needs admin — so this fixture owner opts in;
+        # the actor/matrix tests that probe non-admin behaviour sign in separately below.
+        self.owner = owner_signed_in(env, admin=True)
         self.listing_id = pending(self.owner, provider_body())
         setup = admin_signed_in(env, "setup-admin@example.org")
         self.category = created_category(setup, "food", "Security Probe A")["id"]
@@ -91,24 +94,36 @@ class World:
 NON_ADMIN_ACTORS: dict[str, tuple[Callable[[AuthEnv], AuthApi], int, str]] = {
     "anonymous": (lambda env: env.client(), 401, "unauthenticated"),
     "unverified resident": (
-        lambda env: signed_in(env, "unv@example.org", verified=False, professional=None),
+        lambda env: signed_in(
+            env, "unv@example.org", verified=False, professional=None, admin=False
+        ),
         403,
         "email_not_verified",
     ),
     "verified resident": (
-        lambda env: signed_in(env, "res@example.org", professional=None),
+        lambda env: signed_in(env, "res@example.org", professional=None, admin=False),
         403,
         "forbidden",
     ),
-    "free professional": (lambda env: signed_in(env, "free@example.org"), 403, "forbidden"),
+    "free professional": (
+        lambda env: signed_in(env, "free@example.org", admin=False),
+        403,
+        "forbidden",
+    ),
     "premium professional": (
-        lambda env: signed_in(env, "prem@example.org", professional=PlanCode.PREMIUM),
+        lambda env: signed_in(env, "prem@example.org", professional=PlanCode.PREMIUM, admin=False),
         403,
         "forbidden",
     ),
-    "the listing's own owner": (lambda env: signed_in(env, "owner2@example.org"), 403, "forbidden"),
+    "the listing's own owner": (
+        lambda env: signed_in(env, "owner2@example.org", admin=False),
+        403,
+        "forbidden",
+    ),
     "an admin-looking e-mail": (
-        lambda env: signed_in(env, "admin@b17.pk", professional=PlanCode.PREMIUM),
+        lambda env: signed_in(
+            env, "admin@b17.pk", professional=PlanCode.PREMIUM, admin=False
+        ),
         403,
         "forbidden",
     ),
@@ -151,7 +166,7 @@ def test_only_an_admin_reaches_any_admin_route(auth_env: AuthEnv, actor: str, ca
 
 def test_a_non_admin_learns_nothing_from_a_bad_body_or_an_unknown_id(auth_env: AuthEnv) -> None:
     World(auth_env)
-    pro = signed_in(auth_env, "pro@example.org")
+    pro = signed_in(auth_env, "pro@example.org", admin=False)
     ghost = str(uuid.uuid4())
 
     probes = [
@@ -168,7 +183,7 @@ def test_a_non_admin_learns_nothing_from_a_bad_body_or_an_unknown_id(auth_env: A
 
 def test_admin_authority_is_the_role_row_and_nothing_the_request_says(auth_env: AuthEnv) -> None:
     world = World(auth_env)
-    pro = signed_in(auth_env, "pro@example.org")
+    pro = signed_in(auth_env, "pro@example.org", admin=False)
 
     for kwargs in (
         {"params": {"admin": "true", "role": "admin"}},

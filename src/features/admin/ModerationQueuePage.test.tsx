@@ -35,7 +35,8 @@ const ROWS: AdminListingSummaryDto[] = [
   row({ id: "00000000-0000-4000-8000-0000000000b3", title: "Queue Pending" }),
   row({ id: "00000000-0000-4000-8000-0000000000b4", title: "Queue Live", status: "approved" }),
 ]
-const COUNTS = { pending: 1, approved: 1, rejected: 2, archived: 0 }
+// Admin moderation queue is not per-owner, so ``activeQuota`` stays 0 (unused by this surface).
+const COUNTS = { pending: 1, approved: 1, rejected: 2, archived: 0, activeQuota: 0 }
 
 function openQueue(rows: AdminListingSummaryDto[] = ROWS) {
   installFetchMock(

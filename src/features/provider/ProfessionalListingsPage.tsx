@@ -61,14 +61,15 @@ function ProfessionalListingsPage() {
 
   if (!user) return null
 
-  // Only pending and approved listings count toward the plan's active-listing quota; the server's
-  // own per-status counts (over ALL of the account's listings) are used, not the rows loaded so far.
+  // The quota UI reads the server's own ``activeQuota`` number (pending + approved, excluding
+  // Service / Professional listings — portal-managed and never consuming slots, ``AUTH_RBAC §22.6``).
+  // The per-status breakdown underneath still uses the full counts (every kind).
   const counts = listings.extra
-  const activeListingCount = counts ? counts.pending + counts.approved : 0
   const maxListings = entitlements.maxListings
   // At the limit the primary action is toned down and explained, never disabled: the count can be stale
   // and the server owns the limit (it still answers `plan_limit_reached`).
   const quota = listingQuota(maxListings, counts)
+  const activeListingCount = quota.state === "open" || quota.state === "full" ? quota.used : 0
   const atLimit = quota.state === "full"
 
   return (

@@ -39,7 +39,7 @@ STATUSES = [ListingStatus.PENDING, ListingStatus.APPROVED, ListingStatus.REJECTE
 def test_the_owner_archives_a_listing_in_any_live_status(
     auth_env: AuthEnv, status: ListingStatus
 ) -> None:
-    api = signed_in(auth_env)
+    api = signed_in(auth_env, admin=True)
     listing_id = created_id(api, food_body())
     set_status(auth_env.session, listing_id, status)
     submitted_at = snapshot(auth_env, listing_id)["submitted_at"]
@@ -64,7 +64,7 @@ def test_the_owner_archives_a_listing_in_any_live_status(
 
 
 def test_archiving_never_deletes_the_row_or_its_children(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env)
+    api = signed_in(auth_env, admin=True)
     listing_id = created_id(api, food_body())
 
     archive(api, listing_id, 1)
@@ -78,7 +78,7 @@ def test_archiving_never_deletes_the_row_or_its_children(auth_env: AuthEnv) -> N
 
 
 def test_an_archived_listing_leaves_public_discovery(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env)
+    api = signed_in(auth_env, admin=True)
     anonymous = auth_env.client()
     listing_id = created_id(api, business_body(name="Soon Archived Stationers"))
     set_status(auth_env.session, listing_id, ListingStatus.APPROVED)
@@ -93,7 +93,7 @@ def test_an_archived_listing_leaves_public_discovery(auth_env: AuthEnv) -> None:
 
 
 def test_a_stale_revision_conflicts_and_changes_nothing(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env)
+    api = signed_in(auth_env, admin=True)
     listing_id = created_id(api, provider_body())
     patch(api, listing_id, 1, name="Edited Meanwhile")
     before = snapshot(auth_env, listing_id)
@@ -107,7 +107,7 @@ def test_a_stale_revision_conflicts_and_changes_nothing(auth_env: AuthEnv) -> No
 
 
 def test_an_archived_listing_cannot_be_archived_again_or_edited(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env)
+    api = signed_in(auth_env, admin=True)
     listing_id = created_id(api, provider_body())
     archive(api, listing_id, 1)
     before = snapshot(auth_env, listing_id)
@@ -122,7 +122,7 @@ def test_an_archived_listing_cannot_be_archived_again_or_edited(auth_env: AuthEn
 
 
 def test_there_is_no_unarchive_and_status_is_not_writable(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env)
+    api = signed_in(auth_env, admin=True)
     listing_id = created_id(api, provider_body())
     archive(api, listing_id, 1)
 
@@ -134,8 +134,8 @@ def test_there_is_no_unarchive_and_status_is_not_writable(auth_env: AuthEnv) -> 
 
 
 def test_a_non_owner_cannot_archive_and_learns_nothing(auth_env: AuthEnv) -> None:
-    owner = signed_in(auth_env, "owner@example.org", display_name="Own Er")
-    other = signed_in(auth_env, "other@example.org", display_name="Oth Er")
+    owner = signed_in(auth_env, "owner@example.org", display_name="Own Er", admin=True)
+    other = signed_in(auth_env, "other@example.org", display_name="Oth Er", admin=True)
     listing_id = created_id(owner, provider_body())
     before = snapshot(auth_env, listing_id)
 
@@ -152,17 +152,19 @@ def test_a_non_owner_cannot_archive_and_learns_nothing(auth_env: AuthEnv) -> Non
 
 
 def test_archiving_frees_the_quota_slot(auth_env: AuthEnv) -> None:
+    # Business is quota-countable (provider is portal-managed and exempt); archiving a business
+    # listing must free its plan slot so another business can take it.
     api = signed_in(auth_env)
-    ids = [created_id(api, provider_body()) for _ in range(3)]
-    assert create(api, provider_body()).status_code == 403
+    ids = [created_id(api, business_body(name=f"Shop {n}")) for n in range(3)]
+    assert create(api, business_body(name="Shop Four")).status_code == 403
 
     assert archive(api, ids[0], 1).status_code == 200
 
-    assert create(api, provider_body()).status_code == 201
+    assert create(api, business_body(name="Shop Five")).status_code == 201
 
 
 def test_a_legacy_listing_can_always_be_retired(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env)
+    api = signed_in(auth_env, admin=True)
     listing_id = legacy_listing(auth_env, api, kind="property")  # no point: invalid for edits
 
     response = archive(api, listing_id, 1)
@@ -171,7 +173,7 @@ def test_a_legacy_listing_can_always_be_retired(auth_env: AuthEnv) -> None:
 
 
 def test_the_archive_guards(auth_env: AuthEnv) -> None:
-    owner = signed_in(auth_env, "owner@example.org", display_name="Own Er")
+    owner = signed_in(auth_env, "owner@example.org", display_name="Own Er", admin=True)
     listing_id = created_id(owner, provider_body())
     anonymous = auth_env.client()
     resident = signed_in(auth_env, "res@example.org", professional=None, display_name="Res Ident")
@@ -196,7 +198,7 @@ def test_the_archive_guards(auth_env: AuthEnv) -> None:
 def test_the_archive_body_is_exactly_the_revision(
     auth_env: AuthEnv, body: dict[str, Any], expected: list[tuple[str, str]]
 ) -> None:
-    api = signed_in(auth_env)
+    api = signed_in(auth_env, admin=True)
     listing_id = created_id(api, provider_body())
 
     response = api.request("POST", f"{LISTINGS}/{listing_id}/archive", json=body)
@@ -207,7 +209,7 @@ def test_the_archive_body_is_exactly_the_revision(
 
 
 def test_archive_needs_origin_and_csrf(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env)
+    api = signed_in(auth_env, admin=True)
     listing_id = created_id(api, provider_body())
     url = f"{LISTINGS}/{listing_id}/archive"
 
@@ -226,7 +228,7 @@ def test_archive_needs_origin_and_csrf(auth_env: AuthEnv) -> None:
 def test_archive_timestamps_use_the_app_clock_for_nothing_but_the_history_row(
     auth_env: AuthEnv,
 ) -> None:
-    api = signed_in(auth_env)
+    api = signed_in(auth_env, admin=True)
     listing_id = created_id(api, provider_body())
     auth_env.clock.advance(days=3)
 

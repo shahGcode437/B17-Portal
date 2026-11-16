@@ -54,7 +54,11 @@ def requester_signed_in(
 def provider_signed_in(
     env: AuthEnv, email: str = "provider@example.org", *, plan: PlanCode = PlanCode.PREMIUM
 ) -> AuthApi:
-    return signed_in(env, email, professional=plan, display_name="Pro Vider")
+    """An admin-authorized professional. Service requests target ``kind=provider`` listings only
+    (``service_requests.py`` — a non-provider target is a 422), and only admins may author
+    ``provider`` listings, so the service-request test family's listing owner needs the admin role
+    to seed the required fixture. The admin status is incidental to what each request test probes."""
+    return signed_in(env, email, professional=plan, display_name="Pro Vider", admin=True)
 
 
 def approved(env: AuthEnv, owner: AuthApi, body: dict[str, Any] | None = None) -> str:

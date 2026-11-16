@@ -33,7 +33,7 @@ from tests.db.test_listing_write_concurrency import (
     race,
     statuses,
 )
-from tests.write_payloads import LISTINGS, business_body, exact, food_body, provider_body
+from tests.write_payloads import LISTINGS, business_body, exact, food_body
 
 REASON = "Please add your opening hours and a clearer description."
 
@@ -652,7 +652,8 @@ def holding(engine: Engine, function: str) -> Iterator[None]:
 
 
 def owner_create(owner: AuthApi) -> Any:
-    return owner.request("POST", LISTINGS, json=provider_body())
+    # The concurrency test is about taxonomy/listing-write interaction, not about kind.
+    return owner.request("POST", LISTINGS, json=business_body())
 
 
 def test_a_listing_write_waits_for_an_admin_taxonomy_write_in_progress(db_engine: Engine) -> None:

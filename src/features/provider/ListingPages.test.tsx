@@ -7,7 +7,7 @@ import { resetCategoryCache } from "@/hooks/useCategories"
 import { fail, installFetchMock, meBody, type MockCall, type MockReply } from "@/test/apiMock"
 import { fakeBackend } from "@/test/fixtures/fakeBackend"
 import { IDS, OWNER_LISTINGS } from "@/test/fixtures/apiFixtures"
-import { testUser } from "@/test/authFixtures"
+import { adminUser, testUser } from "@/test/authFixtures"
 import { renderPage } from "@/test/renderPage"
 
 /**
@@ -38,7 +38,11 @@ function backend(onWrite: (call: MockCall) => MockReply | undefined) {
 const created = (data: unknown): MockReply => ({ status: 201, body: { data } })
 const isCreate = (call: MockCall) => call.method === "POST" && call.path === "/listings"
 
-const createPage = () => renderPage(<ListingFormPage />, { url: "/provider/listings/new", user: testUser() })
+// The create tests below use the Service / Professional kind as the generic listing, so they sign
+// the tester in as an admin — the only role that may create a ``provider`` listing (the public
+// Services section is portal-managed). The dedicated non-admin filter test uses `testUser()`.
+const createPage = () => renderPage(<ListingFormPage />, { url: "/provider/listings/new", user: adminUser() })
+const createPageAsOrdinary = () => renderPage(<ListingFormPage />, { url: "/provider/listings/new", user: testUser() })
 const editPage = (id: string) => renderPage(<EditListingPage />, { url: `/provider/listings/${id}/edit`, path: "/provider/listings/:id/edit", user: testUser() })
 
 async function fillProvider(user: ReturnType<typeof userEvent.setup>, tags = "solar, panels") {
@@ -141,6 +145,49 @@ describe("create a listing", () => {
     expect(await screen.findByText("Please keep the grade under 60 characters.")).toBeInTheDocument()
     expect(screen.getByLabelText("Grade / level you teach")).toHaveAttribute("aria-invalid", "true")
     expect(calls.some(isCreate)).toBe(false)
+  })
+
+  describe("Service / Professional kind is portal-managed", () => {
+    it("an ordinary professional does not see the Service / Professional option, but Business, Tutor and Property stay", () => {
+      backend(() => undefined)
+      createPageAsOrdinary()
+      // The provider option is absent in both the chooser list and the page title.
+      expect(screen.queryByRole("button", { name: /Service \/ Professional/ })).toBeNull()
+      expect(screen.getByRole("heading", { name: "List a Business, Tutor or Property" })).toBeInTheDocument()
+      // The other three kinds remain available.
+      expect(screen.getByRole("button", { name: /Business \/ Shop/ })).toBeInTheDocument()
+      expect(screen.getByRole("button", { name: /^Tutor/ })).toBeInTheDocument()
+      expect(screen.getByRole("button", { name: /^Property/ })).toBeInTheDocument()
+    })
+
+    it("an admin still sees Service / Professional alongside the other kinds", () => {
+      backend(() => undefined)
+      createPage()
+      expect(screen.getByRole("button", { name: /Service \/ Professional/ })).toBeInTheDocument()
+      expect(screen.getByRole("button", { name: /Business \/ Shop/ })).toBeInTheDocument()
+      expect(screen.getByRole("button", { name: /^Tutor/ })).toBeInTheDocument()
+      expect(screen.getByRole("button", { name: /^Property/ })).toBeInTheDocument()
+      expect(screen.getByRole("heading", { name: "List a Service, Business, Tutor or Property" })).toBeInTheDocument()
+    })
+
+    it("if the server refuses a provider create with provider_admin_only, the page says to pick a different kind", async () => {
+      // Belt-and-braces: even if a direct call somehow reaches the server, the mapped copy guides the user,
+      // and no generic "You cannot do that" text appears.
+      backend((call) =>
+        isCreate(call)
+          ? fail(403, "forbidden", [
+              { field: "kind", code: "provider_admin_only", message: "Service / Professional listings are managed by portal staff." },
+            ])
+          : undefined,
+      )
+      const user = userEvent.setup()
+      createPage()
+      await fillProvider(user)
+      await user.click(screen.getByRole("button", { name: "Submit for Review" }))
+      const banner = await screen.findByText(/Service listings are managed by portal staff/)
+      expect(banner).toHaveAttribute("role", "alert")
+      expect(banner).toHaveTextContent(/list a Business, Food, Tutor or Property/i)
+    })
   })
 })
 

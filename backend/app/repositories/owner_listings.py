@@ -165,10 +165,16 @@ class OwnerListingRepository:
         return {key: value.reason for key, value in self.latest_rejections(listing_ids).items()}
 
     def count_active(self, owner_id: uuid.UUID, *, excluding: uuid.UUID | None = None) -> int:
-        """Listings that count against the plan quota: ``pending`` + ``approved``."""
+        """Listings that count against the plan quota: ``pending`` + ``approved``.
+
+        Service / Professional (``kind=provider``) listings are portal-managed and never consume
+        the owner's ordinary professional quota (docs/backend/AUTH_RBAC.md §22.6 — the public
+        Services section is managed by B-17 Portal, not by ordinary owners).
+        """
         conditions = [
             Listing.owner_id == owner_id,
             Listing.status.in_((ListingStatus.PENDING, ListingStatus.APPROVED)),
+            Listing.kind != ListingKind.PROVIDER,
         ]
         if excluding is not None:
             conditions.append(Listing.id != excluding)

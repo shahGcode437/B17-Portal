@@ -59,7 +59,7 @@ def unchanged_after(env: AuthEnv, listing_id: str, before: dict[str, Any]) -> bo
 
 
 def test_approving_a_pending_listing_makes_it_public(auth_env: AuthEnv) -> None:
-    owner = owner_signed_in(auth_env)
+    owner = owner_signed_in(auth_env, admin=True)
     listing_id = pending(owner, food_body(name="Approvable Bakery"))
     admin = admin_signed_in(auth_env)
     assert public_status(auth_env, listing_id) == 404 and not found_in_search(
@@ -90,7 +90,7 @@ def test_approving_a_pending_listing_makes_it_public(auth_env: AuthEnv) -> None:
 def test_approval_writes_the_admin_as_the_actor_in_the_stored_history(auth_env: AuthEnv) -> None:
     from tests.db.write_helpers import history
 
-    owner = owner_signed_in(auth_env)
+    owner = owner_signed_in(auth_env, admin=True)
     listing_id = pending(owner, provider_body())
     admin = admin_signed_in(auth_env)
     admin_id = admin.me().json()["data"]["id"]
@@ -112,7 +112,7 @@ def test_approval_writes_the_admin_as_the_actor_in_the_stored_history(auth_env: 
     "status", [ListingStatus.APPROVED, ListingStatus.REJECTED, ListingStatus.ARCHIVED]
 )
 def test_only_a_pending_listing_can_be_approved(auth_env: AuthEnv, status: ListingStatus) -> None:
-    owner = owner_signed_in(auth_env)
+    owner = owner_signed_in(auth_env, admin=True)
     listing_id = pending(owner, provider_body())
     set_status(auth_env.session, listing_id, status)
     admin = admin_signed_in(auth_env)
@@ -125,7 +125,7 @@ def test_only_a_pending_listing_can_be_approved(auth_env: AuthEnv, status: Listi
 
 
 def test_a_double_approval_by_two_admins_is_refused_the_second_time(auth_env: AuthEnv) -> None:
-    owner = owner_signed_in(auth_env)
+    owner = owner_signed_in(auth_env, admin=True)
     listing_id = pending(owner, provider_body())
     first = admin_signed_in(auth_env, "admin1@example.org")
     second = admin_signed_in(auth_env, "admin2@example.org")
@@ -138,7 +138,7 @@ def test_a_double_approval_by_two_admins_is_refused_the_second_time(auth_env: Au
 
 
 def test_a_stale_revision_cannot_approve_newer_content(auth_env: AuthEnv) -> None:
-    owner = owner_signed_in(auth_env)
+    owner = owner_signed_in(auth_env, admin=True)
     listing_id = pending(owner, provider_body())
     admin = admin_signed_in(auth_env)
     reviewed = detail(admin, listing_id)["revision"]
@@ -160,7 +160,7 @@ def test_a_stale_revision_cannot_approve_newer_content(auth_env: AuthEnv) -> Non
 def test_a_privacy_narrowing_bumps_the_revision_so_an_old_approval_is_refused(
     auth_env: AuthEnv,
 ) -> None:
-    owner = owner_signed_in(auth_env)
+    owner = owner_signed_in(auth_env, admin=True)
     listing_id = pending(owner, business_body(location=exact()))
     admin = admin_signed_in(auth_env)
     reviewed = detail(admin, listing_id)["revision"]
@@ -173,7 +173,7 @@ def test_a_privacy_narrowing_bumps_the_revision_so_an_old_approval_is_refused(
 
 
 def test_a_future_revision_is_a_conflict_too(auth_env: AuthEnv) -> None:
-    listing_id = pending(owner_signed_in(auth_env), provider_body())
+    listing_id = pending(owner_signed_in(auth_env, admin=True), provider_body())
 
     response = approve(admin_signed_in(auth_env), listing_id, 9)
 
@@ -181,7 +181,7 @@ def test_a_future_revision_is_a_conflict_too(auth_env: AuthEnv) -> None:
 
 
 def test_an_invalid_status_is_reported_before_a_stale_revision(auth_env: AuthEnv) -> None:
-    owner = owner_signed_in(auth_env)
+    owner = owner_signed_in(auth_env, admin=True)
     listing_id = pending(owner, provider_body())
     set_status(auth_env.session, listing_id, ListingStatus.ARCHIVED)
 
@@ -214,7 +214,7 @@ def test_moderating_something_that_does_not_exist_is_404(
 def test_the_approve_body_is_exactly_the_reviewed_revision(
     auth_env: AuthEnv, body: dict[str, Any], expected: list[tuple[str, str]]
 ) -> None:
-    listing_id = pending(owner_signed_in(auth_env), provider_body())
+    listing_id = pending(owner_signed_in(auth_env, admin=True), provider_body())
     admin = admin_signed_in(auth_env)
 
     response = admin.request("POST", f"{ADMIN_LISTINGS}/{listing_id}/approve", json=body)
@@ -224,7 +224,7 @@ def test_the_approve_body_is_exactly_the_reviewed_revision(
 
 
 def test_approval_does_not_touch_the_content_or_the_search_document(auth_env: AuthEnv) -> None:
-    owner = owner_signed_in(auth_env)
+    owner = owner_signed_in(auth_env, admin=True)
     listing_id = pending(owner, food_body())
     admin = admin_signed_in(auth_env)
     before = stored_columns(auth_env.session, listing_id)
@@ -265,7 +265,7 @@ def test_an_admin_may_moderate_their_own_listing(auth_env: AuthEnv) -> None:
 def test_rejecting_a_pending_listing_keeps_it_private_and_tells_the_owner_why(
     auth_env: AuthEnv,
 ) -> None:
-    owner = owner_signed_in(auth_env)
+    owner = owner_signed_in(auth_env, admin=True)
     listing_id = pending(owner, provider_body(name="Rejectable Electricians"))
     admin = admin_signed_in(auth_env)
     age_history(auth_env.session, listing_id)
@@ -293,7 +293,7 @@ def test_rejecting_a_pending_listing_keeps_it_private_and_tells_the_owner_why(
 
 
 def test_the_reason_is_normalised_before_it_is_stored_and_shown(auth_env: AuthEnv) -> None:
-    owner = owner_signed_in(auth_env)
+    owner = owner_signed_in(auth_env, admin=True)
     listing_id = pending(owner, provider_body())
     admin = admin_signed_in(auth_env)
 
@@ -315,7 +315,7 @@ def test_the_reason_is_normalised_before_it_is_stored_and_shown(auth_env: AuthEn
 def test_a_missing_short_or_oversized_reason_is_refused_and_nothing_is_written(
     auth_env: AuthEnv, reason: str, code: str
 ) -> None:
-    owner = owner_signed_in(auth_env)
+    owner = owner_signed_in(auth_env, admin=True)
     listing_id = pending(owner, provider_body())
     admin = admin_signed_in(auth_env)
     before = snapshot(auth_env, listing_id)
@@ -328,7 +328,7 @@ def test_a_missing_short_or_oversized_reason_is_refused_and_nothing_is_written(
 
 
 def test_a_reason_is_required_and_must_be_printable(auth_env: AuthEnv) -> None:
-    listing_id = pending(owner_signed_in(auth_env), provider_body())
+    listing_id = pending(owner_signed_in(auth_env, admin=True), provider_body())
     admin = admin_signed_in(auth_env)
     url = f"{ADMIN_LISTINGS}/{listing_id}/reject"
 
@@ -344,7 +344,7 @@ def test_a_reason_is_required_and_must_be_printable(auth_env: AuthEnv) -> None:
 
 
 def test_exactly_ten_characters_is_a_valid_reason(auth_env: AuthEnv) -> None:
-    listing_id = pending(owner_signed_in(auth_env), provider_body())
+    listing_id = pending(owner_signed_in(auth_env, admin=True), provider_body())
 
     response = reject(admin_signed_in(auth_env), listing_id, 1, "x" * 10)
 
@@ -355,7 +355,7 @@ def test_exactly_ten_characters_is_a_valid_reason(auth_env: AuthEnv) -> None:
 def test_a_rejected_or_archived_listing_cannot_be_rejected(
     auth_env: AuthEnv, status: ListingStatus
 ) -> None:
-    owner = owner_signed_in(auth_env)
+    owner = owner_signed_in(auth_env, admin=True)
     listing_id = pending(owner, provider_body())
     set_status(auth_env.session, listing_id, status)
     before = snapshot(auth_env, listing_id)
@@ -367,7 +367,7 @@ def test_a_rejected_or_archived_listing_cannot_be_rejected(
 
 
 def test_a_stale_revision_cannot_reject_newer_content(auth_env: AuthEnv) -> None:
-    owner = owner_signed_in(auth_env)
+    owner = owner_signed_in(auth_env, admin=True)
     listing_id = pending(owner, provider_body())
     admin = admin_signed_in(auth_env)
     patch(owner, listing_id, 1, name="Rewritten After Review")
@@ -383,7 +383,7 @@ def test_a_stale_revision_cannot_reject_newer_content(auth_env: AuthEnv) -> None
 def test_the_reject_body_refuses_everything_but_revision_and_reason(
     auth_env: AuthEnv, extra: str
 ) -> None:
-    listing_id = pending(owner_signed_in(auth_env), provider_body())
+    listing_id = pending(owner_signed_in(auth_env, admin=True), provider_body())
     admin = admin_signed_in(auth_env)
 
     response = admin.request(
@@ -395,7 +395,7 @@ def test_the_reject_body_refuses_everything_but_revision_and_reason(
 
 
 def test_the_full_cycle_reject_fix_resubmit_approve(auth_env: AuthEnv) -> None:
-    owner = owner_signed_in(auth_env)
+    owner = owner_signed_in(auth_env, admin=True)
     listing_id = pending(owner, food_body(name="Cycle Bakery"))
     admin = admin_signed_in(auth_env)
     age_history(auth_env.session, listing_id, 30)
@@ -436,7 +436,7 @@ def approved_listing(env: AuthEnv, owner: Any, admin: Any, body: dict[str, Any])
 
 
 def test_an_approved_listing_can_be_taken_down_and_disappears_at_once(auth_env: AuthEnv) -> None:
-    owner = owner_signed_in(auth_env)
+    owner = owner_signed_in(auth_env, admin=True)
     admin = admin_signed_in(auth_env)
     listing_id = approved_listing(auth_env, owner, admin, food_body(name="Takedown Bakery"))
     anonymous = auth_env.client()
@@ -463,7 +463,7 @@ def test_a_takedown_is_marked_for_the_owner_and_the_admin_and_a_plain_rejection_
     auth_env: AuthEnv,
 ) -> None:
     """S5A / B-03: the status is ``rejected`` either way, but the owner is told WHICH it was."""
-    owner = owner_signed_in(auth_env)
+    owner = owner_signed_in(auth_env, admin=True)
     admin = admin_signed_in(auth_env)
     taken_down = approved_listing(auth_env, owner, admin, provider_body(name="Marked Takedown"))
     refused = pending(owner, provider_body(name="Marked Rejection"))
@@ -487,7 +487,7 @@ def test_a_takedown_is_marked_for_the_owner_and_the_admin_and_a_plain_rejection_
 
 
 def test_the_takedown_marker_follows_the_latest_rejection_only(auth_env: AuthEnv) -> None:
-    owner = owner_signed_in(auth_env)
+    owner = owner_signed_in(auth_env, admin=True)
     admin = admin_signed_in(auth_env)
     listing_id = approved_listing(auth_env, owner, admin, provider_body(name="Marker Lifecycle"))
     taken = reject(admin, listing_id, 1, "Reported as closed; please confirm you still trade.")
@@ -516,7 +516,7 @@ def test_the_takedown_marker_follows_the_latest_rejection_only(auth_env: AuthEnv
 
 
 def test_a_takedown_needs_a_reason_and_the_current_revision(auth_env: AuthEnv) -> None:
-    owner = owner_signed_in(auth_env)
+    owner = owner_signed_in(auth_env, admin=True)
     admin = admin_signed_in(auth_env)
     listing_id = approved_listing(auth_env, owner, admin, provider_body())
     before = snapshot(auth_env, listing_id)
@@ -533,7 +533,7 @@ def test_a_takedown_needs_a_reason_and_the_current_revision(auth_env: AuthEnv) -
 def test_a_taken_down_listing_stays_down_until_the_owner_edits_and_it_is_approved_again(
     auth_env: AuthEnv,
 ) -> None:
-    owner = owner_signed_in(auth_env)
+    owner = owner_signed_in(auth_env, admin=True)
     admin = admin_signed_in(auth_env)
     listing_id = approved_listing(
         auth_env, owner, admin, provider_body(name="Comeback Electricians")
@@ -552,7 +552,7 @@ def test_a_taken_down_listing_stays_down_until_the_owner_edits_and_it_is_approve
 
 
 def test_an_archived_listing_cannot_be_taken_down_or_approved(auth_env: AuthEnv) -> None:
-    owner = owner_signed_in(auth_env)
+    owner = owner_signed_in(auth_env, admin=True)
     admin = admin_signed_in(auth_env)
     listing_id = approved_listing(auth_env, owner, admin, provider_body())
     assert archive(owner, listing_id, 1).status_code == 200
@@ -564,7 +564,7 @@ def test_an_archived_listing_cannot_be_taken_down_or_approved(auth_env: AuthEnv)
 def test_an_edit_after_the_review_makes_a_takedown_with_the_old_revision_a_conflict(
     auth_env: AuthEnv,
 ) -> None:
-    owner = owner_signed_in(auth_env)
+    owner = owner_signed_in(auth_env, admin=True)
     admin = admin_signed_in(auth_env)
     listing_id = approved_listing(auth_env, owner, admin, provider_body())
     reviewed = detail(admin, listing_id)["revision"]
@@ -582,7 +582,7 @@ def test_an_edit_after_the_review_makes_a_takedown_with_the_old_revision_a_confl
 
 
 def test_public_visibility_follows_the_moderation_status_exactly(auth_env: AuthEnv) -> None:
-    owner = owner_signed_in(auth_env)
+    owner = owner_signed_in(auth_env, admin=True)
     admin = admin_signed_in(auth_env)
     seen: list[tuple[str, int]] = []
 
@@ -606,7 +606,7 @@ def test_public_visibility_follows_the_moderation_status_exactly(auth_env: AuthE
 
 
 def test_a_refused_decision_changes_nothing_anyone_can_see(auth_env: AuthEnv) -> None:
-    owner = owner_signed_in(auth_env)
+    owner = owner_signed_in(auth_env, admin=True)
     admin = admin_signed_in(auth_env)
     listing_id = pending(owner, provider_body(name="Untouched Probe"))
     patch(owner, listing_id, 1, tags=["moved", "on"])
@@ -621,7 +621,7 @@ def test_a_refused_decision_changes_nothing_anyone_can_see(auth_env: AuthEnv) ->
 
 
 def test_the_owner_still_sees_every_status_with_its_revision_and_reason(auth_env: AuthEnv) -> None:
-    owner = owner_signed_in(auth_env)
+    owner = owner_signed_in(auth_env, admin=True)
     admin = admin_signed_in(auth_env)
     a = pending(owner, provider_body(name="Owner View A"))
     b = pending(owner, provider_body(name="Owner View B"))
@@ -633,7 +633,9 @@ def test_the_owner_still_sees_every_status_with_its_revision_and_reason(auth_env
 
     listing = owner.get("/users/me/listings").json()
 
-    assert listing["meta"]["counts"] == {"pending": 1, "approved": 1, "rejected": 1, "archived": 1}
+    assert listing["meta"]["counts"] == {
+        "pending": 1, "approved": 1, "rejected": 1, "archived": 1, "activeQuota": 0,
+    }  # fmt: skip
     by_id = {item["id"]: item for item in listing["data"]}
     assert (by_id[a]["status"], by_id[b]["status"], by_id[c]["status"]) == (
         "approved",
@@ -647,7 +649,7 @@ def test_the_owner_still_sees_every_status_with_its_revision_and_reason(auth_env
 def test_taking_a_listing_down_removes_its_text_from_every_public_surface(
     auth_env: AuthEnv,
 ) -> None:
-    owner = owner_signed_in(auth_env)
+    owner = owner_signed_in(auth_env, admin=True)
     admin = admin_signed_in(auth_env)
     listing_id = approved_listing(
         auth_env,

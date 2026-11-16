@@ -22,6 +22,15 @@ export interface StatusCountsDto {
   approved: number
   rejected: number
   archived: number
+  /**
+   * Quota-countable active listings for this owner (pending + approved, EXCLUDING `provider`).
+   * The UI reads this for "used of max" so admins who own Service / Professional listings are not
+   * shown as over-quota — those listings are portal-managed and never consume the owner's slots
+   * (`docs/backend/AUTH_RBAC.md §22.6`). `pending` / `approved` above remain factual totals used
+   * by the per-status analytics surface. On the admin moderation queue (which is not per-owner)
+   * this is always `0`.
+   */
+  activeQuota: number
 }
 
 /** The owner's / admin's view of where a listing is — INCLUDING the stored, private point. */

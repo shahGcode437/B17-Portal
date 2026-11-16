@@ -68,6 +68,10 @@ class OwnerListingService:
                 approved=counts[ListingStatus.APPROVED],
                 rejected=counts[ListingStatus.REJECTED],
                 archived=counts[ListingStatus.ARCHIVED],
+                # The authoritative "used" number for the quota UI. The repository's
+                # ``count_active`` is the same count ``_check_quota`` applies on the write path,
+                # so the frontend display is now guaranteed to match whatever a create would hit.
+                active_quota=self._listings.count_active(owner_id),
             ),
         )
         return self.present_all(rows), meta

@@ -85,6 +85,11 @@ function ListingFormPage() {
 
   if (!user) return null
 
+  // Service / Professional listings are portal-managed: only an admin sees the option (the backend
+  // enforces the same rule — this filter is only the UX layer, never the security boundary).
+  const isAdmin = user.roles.includes("admin")
+  const availableChoices = KIND_CHOICES.filter((choice) => choice.value !== "provider" || isAdmin)
+
   if (!kind) {
     return (
       <Container className="py-8 sm:py-12">
@@ -93,12 +98,12 @@ function ListingFormPage() {
             <PageHeader
               icon={PlusCircle}
               eyebrow="Professional"
-              title="List a Service, Business, Tutor or Property"
+              title={isAdmin ? "List a Service, Business, Tutor or Property" : "List a Business, Tutor or Property"}
               description="What are you listing? You can change this on the next step."
             />
             {limitNotice}
             <Stack gap={3}>
-              {KIND_CHOICES.map((choice) => {
+              {availableChoices.map((choice) => {
                 const Icon = choice.icon
                 return (
                   <button

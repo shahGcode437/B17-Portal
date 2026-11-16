@@ -129,20 +129,64 @@ describe("private reads", () => {
   })
 
   it("owner and admin lists expose the per-status counts of the WHOLE set", async () => {
-    installFetchMock(() => okPage([], { total: 0, counts: { pending: 3, approved: 2, rejected: 1, archived: 0 } }))
-    expect((await fetchOwnerListings()).counts).toEqual({ pending: 3, approved: 2, rejected: 1, archived: 0 })
-    expect((await fetchAdminQueue()).counts).toEqual({ pending: 3, approved: 2, rejected: 1, archived: 0 })
+    installFetchMock(() =>
+      okPage([], {
+        total: 0,
+        counts: { pending: 3, approved: 2, rejected: 1, archived: 0, activeQuota: 5 },
+      }),
+    )
+    expect((await fetchOwnerListings()).counts).toEqual({
+      pending: 3,
+      approved: 2,
+      rejected: 1,
+      archived: 0,
+      activeQuota: 5,
+    })
+    expect((await fetchAdminQueue()).counts).toEqual({
+      pending: 3,
+      approved: 2,
+      rejected: 1,
+      archived: 0,
+      activeQuota: 5,
+    })
   })
 
   it("parses counts defensively: a bad bucket is 0, never a guess", () => {
-    expect(parseCounts({ pending: 2, approved: -1, rejected: "x", archived: Number.NaN })).toEqual({
+    expect(
+      parseCounts({ pending: 2, approved: -1, rejected: "x", archived: Number.NaN, activeQuota: "bad" }),
+    ).toEqual({
       pending: 2,
       approved: 0,
       rejected: 0,
       archived: 0,
+      activeQuota: 0,
     })
-    expect(parseCounts(undefined)).toEqual({ pending: 0, approved: 0, rejected: 0, archived: 0 })
-    expect(parseCounts([])).toEqual({ pending: 0, approved: 0, rejected: 0, archived: 0 })
+    expect(parseCounts(undefined)).toEqual({
+      pending: 0,
+      approved: 0,
+      rejected: 0,
+      archived: 0,
+      activeQuota: 0,
+    })
+    expect(parseCounts([])).toEqual({
+      pending: 0,
+      approved: 0,
+      rejected: 0,
+      archived: 0,
+      activeQuota: 0,
+    })
+  })
+
+  it("quota-countable (activeQuota) is independent of the per-status buckets: a pre-field server payload parses as 0", () => {
+    // A server that doesn't yet expose activeQuota: the UI should fall back to a safe 0 so the
+    // warning simply vanishes, rather than mis-counting providers as quota slots.
+    expect(parseCounts({ pending: 5, approved: 0, rejected: 0, archived: 0 })).toEqual({
+      pending: 5,
+      approved: 0,
+      rejected: 0,
+      archived: 0,
+      activeQuota: 0,
+    })
   })
 
   it("detail reads hit the owner, request and admin routes", async () => {

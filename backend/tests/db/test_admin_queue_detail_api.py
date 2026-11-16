@@ -56,23 +56,32 @@ def keys(item: dict[str, Any]) -> set[str]:
 
 @pytest.mark.parametrize("target", ["queue", "detail"])
 def test_only_an_admin_may_read_the_moderation_surface(auth_env: AuthEnv, target: str) -> None:
-    owner = owner_signed_in(auth_env)
-    listing_id = pending(owner, provider_body())
+    # The admin-authority tests need a NON-admin professional owner; ``owner_signed_in`` is an admin
+    # by default so provider fixtures work elsewhere, so this test uses ``signed_in`` directly.
+    owner = signed_in(auth_env, "owner@example.org", display_name="Sana Baker", admin=False)
+    # A business listing carries the same moderation surface and can be created by a plain pro.
+    listing_id = pending(owner, business_body())
     path = ADMIN_LISTINGS if target == "queue" else f"{ADMIN_LISTINGS}/{listing_id}"
     actors = {
         "anonymous": (auth_env.client(), 401, "unauthenticated"),
         "unverified": (
-            signed_in(auth_env, "unv@example.org", verified=False, professional=None),
+            signed_in(
+                auth_env, "unv@example.org", verified=False, professional=None, admin=False
+            ),
             403,
             "email_not_verified",
         ),
         "verified resident": (
-            signed_in(auth_env, "res@example.org", professional=None),
+            signed_in(auth_env, "res@example.org", professional=None, admin=False),
             403,
             "forbidden",
         ),
         "professional (the owner)": (owner, 403, "forbidden"),
-        "another professional": (signed_in(auth_env, "pro2@example.org"), 403, "forbidden"),
+        "another professional": (
+            signed_in(auth_env, "pro2@example.org", admin=False),
+            403,
+            "forbidden",
+        ),
     }
 
     for label, (api, status, code) in actors.items():
@@ -84,7 +93,7 @@ def test_only_an_admin_may_read_the_moderation_surface(auth_env: AuthEnv, target
 
 def test_a_professional_who_is_also_an_admin_is_judged_by_the_role_only(auth_env: AuthEnv) -> None:
     both = signed_in(auth_env, "both@example.org", admin=True)  # admin role AND a profile
-    only_profile = signed_in(auth_env, "pro@example.org")
+    only_profile = signed_in(auth_env, "pro@example.org", admin=False)
 
     assert both.get(ADMIN_LISTINGS).status_code == 200
     assert only_profile.get(ADMIN_LISTINGS).status_code == 403
@@ -111,7 +120,7 @@ def test_admin_authority_is_read_live_from_the_roles_table(auth_env: AuthEnv) ->
 def test_admin_cannot_be_claimed_through_the_request(
     auth_env: AuthEnv, attempt: dict[str, Any]
 ) -> None:
-    pro = signed_in(auth_env, "pro@example.org")
+    pro = signed_in(auth_env, "pro@example.org", admin=False)
 
     response = pro.get(ADMIN_LISTINGS, **attempt)
 
@@ -136,13 +145,15 @@ def test_an_empty_system_has_an_empty_queue_with_zero_counts(auth_env: AuthEnv) 
         "data": [],
         "meta": {
             "total": 0, "limit": 12, "offset": 0,
-            "counts": {"pending": 0, "approved": 0, "rejected": 0, "archived": 0},
+            # ``activeQuota`` is a per-owner quota number; on the admin queue (not per-owner) it
+            # stays at the schema default of 0.
+            "counts": {"pending": 0, "approved": 0, "rejected": 0, "archived": 0, "activeQuota": 0},
         },
     }  # fmt: skip
 
 
 def test_a_queue_row_is_a_light_summary_without_private_data(auth_env: AuthEnv) -> None:
-    owner = owner_signed_in(auth_env)
+    owner = owner_signed_in(auth_env, admin=True)
     listing_id = pending(owner, food_body())
     admin = admin_signed_in(auth_env)
 
@@ -177,7 +188,7 @@ def test_a_queue_row_is_a_light_summary_without_private_data(auth_env: AuthEnv) 
 
 
 def test_the_queue_shows_every_status_and_counts_ignore_the_filters(auth_env: AuthEnv) -> None:
-    owner = owner_signed_in(auth_env)
+    owner = owner_signed_in(auth_env, admin=True)
     ids = [pending(owner, provider_body(name=f"Provider {n}")) for n in "ABCD"]
     set_status(auth_env.session, ids[1], ListingStatus.APPROVED)
     set_status(auth_env.session, ids[2], ListingStatus.REJECTED)
@@ -193,6 +204,7 @@ def test_the_queue_shows_every_status_and_counts_ignore_the_filters(auth_env: Au
         "approved": 1,
         "rejected": 1,
         "archived": 1,
+        "activeQuota": 0,  # admin queue is not per-owner
     }
     assert {r["status"] for r in everything["data"]} == {
         "pending",
@@ -206,7 +218,7 @@ def test_the_queue_shows_every_status_and_counts_ignore_the_filters(auth_env: Au
 
 
 def test_the_queue_filters_by_kind_and_combines_with_status(auth_env: AuthEnv) -> None:
-    owner = owner_signed_in(auth_env)
+    owner = owner_signed_in(auth_env, admin=True)
     provider = pending(owner, provider_body())
     business = pending(owner, business_body())
     food = pending(owner, food_body())
@@ -228,7 +240,7 @@ def test_the_queue_filters_by_kind_and_combines_with_status(auth_env: AuthEnv) -
 def test_a_pending_queue_is_first_in_first_out_and_other_views_are_newest_first(
     auth_env: AuthEnv,
 ) -> None:
-    owner = owner_signed_in(auth_env)
+    owner = owner_signed_in(auth_env, admin=True)
     ids = [pending(owner, provider_body(name=f"Provider {n}")) for n in "ABC"]
     for age, listing_id in enumerate(ids):  # A submitted first ... C last
         auth_env.session.execute(
@@ -247,7 +259,7 @@ def test_a_pending_queue_is_first_in_first_out_and_other_views_are_newest_first(
 
 
 def test_pagination_is_stable_and_complete(auth_env: AuthEnv) -> None:
-    owner = owner_signed_in(auth_env)
+    owner = owner_signed_in(auth_env, admin=True)
     ids = {pending(owner, provider_body(name=f"Provider {n}")) for n in range(7)}
     admin = admin_signed_in(auth_env)
 
@@ -276,13 +288,13 @@ def test_bad_query_values_are_validation_errors(auth_env: AuthEnv, params: dict[
 
 
 def test_a_blank_filter_means_no_filter(auth_env: AuthEnv) -> None:
-    pending(owner_signed_in(auth_env), provider_body())
+    pending(owner_signed_in(auth_env, admin=True), provider_body())
 
     assert queue(admin_signed_in(auth_env), status="", kind="").json()["meta"]["total"] == 1
 
 
 def test_the_queue_does_not_issue_a_query_per_listing(auth_env: AuthEnv) -> None:
-    owner = owner_signed_in(auth_env)
+    owner = owner_signed_in(auth_env, admin=True)
     bodies = [provider_body(), business_body(), food_body(), tutor_body(), property_body()]
     for index in range(10):  # (listing create is rate limited to 10 an hour)
         pending(owner, bodies[index % 5])
@@ -319,7 +331,7 @@ def test_the_queue_row_itself_says_taken_down_for_a_takedown_and_not_for_a_rejec
 ) -> None:
     """S5A: the status is ``rejected`` either way; the row carries the same derived marker as the
     review shape, so the queue and the review dialog cannot disagree."""
-    owner = owner_signed_in(auth_env)
+    owner = owner_signed_in(auth_env, admin=True)
     admin = admin_signed_in(auth_env)
     taken_down = pending(owner, provider_body(name="Row Takedown"))
     refused = pending(owner, provider_body(name="Row Rejection"))
@@ -346,14 +358,14 @@ def test_the_queue_row_itself_says_taken_down_for_a_takedown_and_not_for_a_rejec
     assert set(filtered) == {taken_down, refused}
     assert filtered[taken_down]["takenDown"] is True and "takenDown" not in filtered[refused]
     assert queue(admin).json()["meta"]["counts"] == {
-        "pending": 1, "approved": 1, "rejected": 2, "archived": 0
+        "pending": 1, "approved": 1, "rejected": 2, "archived": 0, "activeQuota": 0,
     }  # fmt: skip
     # No row carries the reason or the history: the queue stays light.
     assert "rejectionReason" not in rows[taken_down] and "history" not in rows[taken_down]
 
 
 def test_the_queue_marker_follows_the_latest_rejection_only(auth_env: AuthEnv) -> None:
-    owner = owner_signed_in(auth_env)
+    owner = owner_signed_in(auth_env, admin=True)
     admin = admin_signed_in(auth_env)
     listing_id = pending(owner, provider_body(name="Row Lifecycle"))
     assert approve(admin, listing_id, 1).status_code == 200
@@ -390,7 +402,7 @@ def test_the_queue_marker_follows_the_latest_rejection_only(auth_env: AuthEnv) -
 def test_telling_takedowns_apart_costs_one_statement_whatever_the_page_size(
     auth_env: AuthEnv,
 ) -> None:
-    owner = owner_signed_in(auth_env)
+    owner = owner_signed_in(auth_env, admin=True)
     admin = admin_signed_in(auth_env)
     ids = [pending(owner, provider_body(name=f"Row Statement {index}")) for index in range(8)]
     for listing_id in ids[:4]:
@@ -435,7 +447,7 @@ def test_telling_takedowns_apart_costs_one_statement_whatever_the_page_size(
 def test_the_detail_is_the_full_review_shape_of_every_kind(
     auth_env: AuthEnv, make: Any, extra: dict[str, Any]
 ) -> None:
-    listing_id = pending(owner_signed_in(auth_env), make())
+    listing_id = pending(owner_signed_in(auth_env, admin=True), make())
 
     data = detail(admin_signed_in(auth_env), listing_id)
 
@@ -460,7 +472,7 @@ def test_the_detail_is_the_full_review_shape_of_every_kind(
 
 
 def test_the_detail_of_a_food_business_carries_the_whole_food_profile(auth_env: AuthEnv) -> None:
-    listing_id = pending(owner_signed_in(auth_env), food_body())
+    listing_id = pending(owner_signed_in(auth_env, admin=True), food_body())
 
     data = detail(admin_signed_in(auth_env), listing_id)
 
@@ -483,7 +495,7 @@ def test_the_detail_of_a_food_business_carries_the_whole_food_profile(auth_env: 
 def test_the_moderator_sees_the_private_location_and_what_the_public_will_see(
     auth_env: AuthEnv, location: dict[str, Any], public: dict[str, Any]
 ) -> None:
-    listing_id = pending(owner_signed_in(auth_env), business_body(location=location))
+    listing_id = pending(owner_signed_in(auth_env, admin=True), business_body(location=location))
 
     data = detail(admin_signed_in(auth_env), listing_id)
 
@@ -507,7 +519,7 @@ def test_the_moderator_sees_the_private_location_and_what_the_public_will_see(
 def test_private_location_never_reaches_the_public_api_because_an_admin_looked(
     auth_env: AuthEnv,
 ) -> None:
-    owner = owner_signed_in(auth_env)
+    owner = owner_signed_in(auth_env, admin=True)
     listing_id = pending(owner, business_body(location=approximate(address="Hidden Lane 7")))
     admin = admin_signed_in(auth_env)
     assert "Hidden Lane 7" in admin.get(f"{ADMIN_LISTINGS}/{listing_id}").text
@@ -525,7 +537,7 @@ def test_private_location_never_reaches_the_public_api_because_an_admin_looked(
 def test_the_detail_carries_the_submitter_the_history_and_the_current_reason(
     auth_env: AuthEnv,
 ) -> None:
-    owner = owner_signed_in(auth_env)
+    owner = owner_signed_in(auth_env, admin=True)
     listing_id = pending(owner, provider_body())
     admin = admin_signed_in(auth_env)
     fresh = detail(admin, listing_id)
@@ -549,7 +561,7 @@ def test_the_detail_carries_the_submitter_the_history_and_the_current_reason(
 
 
 def test_the_detail_exists_in_every_status_including_archived(auth_env: AuthEnv) -> None:
-    owner = owner_signed_in(auth_env)
+    owner = owner_signed_in(auth_env, admin=True)
     admin = admin_signed_in(auth_env)
     for status in ListingStatus:
         listing_id = pending(owner, provider_body())
@@ -558,7 +570,7 @@ def test_the_detail_exists_in_every_status_including_archived(auth_env: AuthEnv)
 
 
 def test_an_unclaimed_listing_has_no_submitter(auth_env: AuthEnv) -> None:
-    listing_id = pending(owner_signed_in(auth_env), provider_body())
+    listing_id = pending(owner_signed_in(auth_env, admin=True), provider_body())
     auth_env.session.execute(text("UPDATE listings SET owner_id = NULL"))
     auth_env.session.commit()
 
@@ -576,7 +588,7 @@ def test_unknown_and_malformed_ids_are_404_for_an_admin(auth_env: AuthEnv) -> No
 
 
 def test_nothing_secret_is_in_the_moderation_responses(auth_env: AuthEnv) -> None:
-    owner = owner_signed_in(auth_env)
+    owner = owner_signed_in(auth_env, admin=True)
     listing_id = pending(owner, food_body())
     admin = admin_signed_in(auth_env)
 
@@ -603,7 +615,7 @@ def test_nothing_secret_is_in_the_moderation_responses(auth_env: AuthEnv) -> Non
 
 
 def test_reading_the_surface_changes_nothing(auth_env: AuthEnv) -> None:
-    owner = owner_signed_in(auth_env)
+    owner = owner_signed_in(auth_env, admin=True)
     listing_id = pending(owner, food_body())
     admin = admin_signed_in(auth_env)
     before = auth_env.session.execute(

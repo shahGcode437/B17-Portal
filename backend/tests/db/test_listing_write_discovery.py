@@ -34,7 +34,7 @@ def public_hits(env: AuthEnv, **params: Any) -> list[dict[str, Any]]:
     "status", [ListingStatus.PENDING, ListingStatus.REJECTED, ListingStatus.ARCHIVED]
 )
 def test_only_approved_listings_are_public(auth_env: AuthEnv, status: ListingStatus) -> None:
-    api = signed_in(auth_env, professional=PlanCode.PREMIUM)
+    api = signed_in(auth_env, professional=PlanCode.PREMIUM, admin=True)
     anonymous = auth_env.client()
     listing_id = created_id(api, food_body(name="Status Probe Bakery"))
     set_status(auth_env.session, listing_id, status)
@@ -48,7 +48,7 @@ def test_only_approved_listings_are_public(auth_env: AuthEnv, status: ListingSta
 def test_a_listing_created_through_the_api_is_served_by_the_read_apis_once_approved(
     auth_env: AuthEnv,
 ) -> None:
-    api = signed_in(auth_env, professional=PlanCode.PREMIUM)
+    api = signed_in(auth_env, professional=PlanCode.PREMIUM, admin=True)
     anonymous = auth_env.client()
     ids = {
         "provider": created_id(api, provider_body(name="Zeta Provider")),
@@ -97,7 +97,7 @@ def test_a_listing_created_through_the_api_is_served_by_the_read_apis_once_appro
 
 
 def test_the_existing_search_filters_find_api_created_listings(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env, professional=PlanCode.PREMIUM)
+    api = signed_in(auth_env, professional=PlanCode.PREMIUM, admin=True)
     food_id = created_id(api, food_body(name="Filter Bakery"))
     property_id = created_id(api, property_body(title="Filter House"))
     for listing_id in (food_id, property_id):
@@ -128,7 +128,7 @@ def test_the_existing_search_filters_find_api_created_listings(auth_env: AuthEnv
 def test_location_text_found_by_search_follows_the_visibility_chosen_at_creation(
     auth_env: AuthEnv,
 ) -> None:
-    api = signed_in(auth_env, professional=PlanCode.PREMIUM)
+    api = signed_in(auth_env, professional=PlanCode.PREMIUM, admin=True)
     exact_id = created_id(
         api,
         business_body(
@@ -147,7 +147,7 @@ def test_location_text_found_by_search_follows_the_visibility_chosen_at_creation
 
 
 def test_the_whole_write_lifecycle_keeps_the_search_index_clean(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env, professional=PlanCode.PREMIUM)
+    api = signed_in(auth_env, professional=PlanCode.PREMIUM, admin=True)
     listing_id = created_id(api, food_body())
     set_status(auth_env.session, listing_id, ListingStatus.APPROVED)
     assert patch(api, listing_id, 1, location=approximate()).status_code == 200  # narrowing

@@ -24,9 +24,17 @@ def admin_signed_in(env: AuthEnv, email: str = "admin@example.org") -> AuthApi:
 
 
 def owner_signed_in(
-    env: AuthEnv, email: str = "owner@example.org", *, plan: PlanCode | None = PlanCode.PREMIUM
+    env: AuthEnv,
+    email: str = "owner@example.org",
+    *,
+    plan: PlanCode | None = PlanCode.PREMIUM,
+    admin: bool = False,
 ) -> AuthApi:
-    return signed_in(env, email, professional=plan, display_name="Sana Baker")
+    """A professional owner. Default is a plain non-admin professional — keep it that way for tests
+    whose point is the authorization boundary. Admin-focused tests that need the fixture owner to
+    be able to seed a ``provider_body`` listing pass ``admin=True`` here (the kind under test is
+    incidental to what those tests assert about the admin action)."""
+    return signed_in(env, email, professional=plan, display_name="Sana Baker", admin=admin)
 
 
 def approve(api: AuthApi, listing_id: str, revision: int, **kwargs: Any) -> Response:

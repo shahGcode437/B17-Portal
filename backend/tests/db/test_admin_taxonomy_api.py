@@ -763,7 +763,9 @@ def test_the_public_category_api_shows_only_active_categories_in_display_order(
 
 
 def test_listing_writes_still_work_after_every_kind_of_taxonomy_change(auth_env: AuthEnv) -> None:
-    owner = owner_signed_in(auth_env)
+    # The owner creates a ``provider`` listing here (the Fresh Trade category is in the services
+    # module), so this fixture owner opts into admin — provider authorship is admin-only.
+    owner = owner_signed_in(auth_env, admin=True)
     admin = admin_signed_in(auth_env)
     created = created_category(admin, "services", "Fresh Trade")
     patch_category(admin, created["id"], name="Fresh Trades")
