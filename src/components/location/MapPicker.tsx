@@ -4,6 +4,7 @@ import { Typography } from "@/components/foundation/Typography"
 import { cn } from "@/lib/utils"
 import {
   APPROXIMATE_CIRCLE_RADIUS_METERS,
+  B17_DEFAULT_CENTER,
   MAP_TILE_ATTRIBUTION,
   MAP_TILE_URL,
   MAP_ZOOM_APPROXIMATE,
@@ -36,13 +37,10 @@ interface MapPickerProps {
   className?: string
 }
 
-/** Rough centre of B-17 (used only for the initial pan when there is no point yet). */
-const B17_CENTER = { latitude: 33.7, longitude: 73.05 }
-
 const loadPickerEngine = () =>
   import("@/components/location/leafletPickerEngine").then((module) => module.leafletPickerEngine)
 
-function MapPicker({ mode, value, onChange, label, defaultCenter = B17_CENTER, engine, className }: MapPickerProps) {
+function MapPicker({ mode, value, onChange, label, defaultCenter = B17_DEFAULT_CENTER, engine, className }: MapPickerProps) {
   // The map is re-mounted whenever `options` changes, and a re-mount throws away the owner's pan and zoom. The
   // parent form re-renders on every keystroke (Block, Address, Landmark) with a NEW `onChange` function, so the
   // handler must not be one of the things `options` depends on: the engine always calls the latest one through this ref.

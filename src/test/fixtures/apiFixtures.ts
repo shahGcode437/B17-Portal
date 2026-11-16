@@ -57,7 +57,7 @@ export const IDS = {
 }
 
 /** The one place the fixtures state their private (exact) points, so tests can prove they never leak. */
-export const PRIVATE_POINT = { latitude: 33.7099999, longitude: 73.0999999 }
+export const PRIVATE_POINT = { latitude: 33.6949999, longitude: 72.8759999 }
 export const PRIVATE_ADDRESS = "House 7, Private Lane 3"
 
 const ref = (slug: string, name: string, isPrimary = true) => ({ slug, name, isPrimary })
@@ -153,7 +153,7 @@ export const BUSINESSES: BusinessDto[] = [
       block: "D",
       address: "Shop 9, Salon Row",
       landmark: "Next to the bank",
-      coordinates: { latitude: 33.70789, longitude: 73.052109, precision: "exact" },
+      coordinates: { latitude: 33.69289, longitude: 72.828109, precision: "exact" },
     },
     tags: ["salon", "haircut"],
     categories: [ref("hairdressing", "Hairdressing")],
@@ -184,7 +184,7 @@ export const BUSINESSES: BusinessDto[] = [
       block: "C",
       address: "Shop 4, Demo Plaza",
       landmark: "Next to the demo park",
-      coordinates: { latitude: 33.701234, longitude: 73.051234, precision: "exact" },
+      coordinates: { latitude: 33.686234, longitude: 72.827234, precision: "exact" },
     },
     tags: ["bakery", "cakes"],
     categories: [ref("bakeries", "Bakeries"), ref("sweets-desserts", "Sweets / Desserts", false)],
@@ -209,7 +209,7 @@ export const BUSINESSES: BusinessDto[] = [
     location: {
       visibility: "approximate",
       block: "C",
-      coordinates: { latitude: 33.71, longitude: 73.06, precision: "approximate" },
+      coordinates: { latitude: 33.69, longitude: 72.83, precision: "approximate" },
     },
     tags: ["coffee", "cafe"],
     categories: [ref("cafes", "Cafes")],
@@ -242,7 +242,7 @@ export const TUTORS: TutorDto[] = [
     location: {
       visibility: "approximate",
       block: "C",
-      coordinates: { latitude: 33.7, longitude: 73.06, precision: "approximate" },
+      coordinates: { latitude: 33.69, longitude: 72.83, precision: "approximate" },
     },
     tags: ["physics", "tutor"],
     categories: [ref("physics", "Physics")],
@@ -278,7 +278,7 @@ export const PROPERTIES: PropertyDto[] = [
       block: "C",
       address: "Plot 12, Street 4",
       landmark: "Near the park",
-      coordinates: { latitude: 33.703456, longitude: 73.054321, precision: "exact" },
+      coordinates: { latitude: 33.688456, longitude: 72.830321, precision: "exact" },
     },
     tags: ["house", "sale"],
     categories: [ref("house", "House")],
@@ -429,7 +429,7 @@ export const OWNER_LISTINGS: OwnerListingDto[] = [
     rejectionReason: "Please add the plot size and a clearer description.",
     // An approximate listing's point is private; an address, when one is on file, is private too (never public).
     location: { visibility: "approximate", block: "C", ...PRIVATE_POINT },
-    publicLocation: { visibility: "approximate", block: "C", coordinates: { latitude: 33.71, longitude: 73.1, precision: "approximate" } },
+    publicLocation: { visibility: "approximate", block: "C", coordinates: { latitude: 33.69, longitude: 72.88, precision: "approximate" } },
     categories: [ref("plot", "Plot")],
   },
   {

@@ -54,6 +54,21 @@ function LocationFieldset({ value, onChange, itemLabel, allowedVisibilities, err
   const [latText, setLatText] = useState(value.latitude !== undefined ? String(value.latitude) : "")
   const [lngText, setLngText] = useState(value.longitude !== undefined ? String(value.longitude) : "")
 
+  // Keep the numeric-input text in sync with the AUTHORITATIVE point whenever it changes outside typing:
+  // an edit prefill after mount, a MapPicker drop, a visibility change that strips the point, or a
+  // server-side correction after a 422. Done through the React-docs pattern for "state derived from a
+  // prop" (adjust during render, no effect): we remember the value we last synced from and, when the
+  // incoming value differs, flip the text in the same render. Typing updates only the text while the
+  // value is unchanged, so the comparison stays equal and the edit survives.
+  const [syncedLat, setSyncedLat] = useState(value.latitude)
+  const [syncedLng, setSyncedLng] = useState(value.longitude)
+  if (syncedLat !== value.latitude || syncedLng !== value.longitude) {
+    setSyncedLat(value.latitude)
+    setSyncedLng(value.longitude)
+    setLatText(value.latitude !== undefined ? String(value.latitude) : "")
+    setLngText(value.longitude !== undefined ? String(value.longitude) : "")
+  }
+
   // Changing the visibility discards ONLY what the new mode technically cannot hold: `area_only`
   // stores no point. Block, address and landmark are KEPT - for `approximate` / `area_only` they stay
   // private (never public, never in the search document). Clearing them would make a privacy narrowing
@@ -63,6 +78,8 @@ function LocationFieldset({ value, onChange, itemLabel, allowedVisibilities, err
     if (visibility === "area_only") {
       const { latitude: _latitude, longitude: _longitude, ...withoutPoint } = value
       onChange({ ...withoutPoint, visibility })
+      // The sync effect will also clear the text on the next render; set it here too so the input
+      // flips visibly in the same render the <fieldset> hides the picker.
       setLatText("")
       setLngText("")
       return
@@ -71,15 +88,47 @@ function LocationFieldset({ value, onChange, itemLabel, allowedVisibilities, err
   }
 
   const commitPoint = (latitude: number, longitude: number) => {
+    // The sync effect will set the text when `value.latitude` / `value.longitude` update; set it here
+    // too so the box reflects the rounded value immediately (before React commits the next render).
     setLatText(String(latitude))
     setLngText(String(longitude))
     onChange({ ...value, latitude, longitude })
   }
 
+  /**
+   * Blur handler for the Latitude / Longitude inputs. The old implementation called `Number(latText)` /
+   * `Number(lngText)` directly, and `Number("")` is 0, so a blurred-empty coordinate field became the
+   * valid-looking pair 0,0 — which MapPicker then recentred on, turning the next click into a tiny
+   * near-zero coordinate like 0.000114 / 0.000092. Three rules together close that trap:
+   *   - both fields blank → explicitly REMOVE the point from the authoritative value (no 0,0);
+   *   - exactly one field blank → also REMOVE the point so the payload can never silently retain a
+   *     stale pair while the UI shows an incomplete coordinate draft (a single number is never a
+   *     coordinate; the UI must not say one thing and the payload another);
+   *   - both fields filled → parse strictly (reject `""`, whitespace, `NaN`) and commit only when the
+   *     pair is a real WGS-84 coordinate.
+   * This is purely about the NUMERIC fallback; the MapPicker's own picks still flow through
+   * `commitPoint` and remain the usual way to set the point.
+   */
   const commitTypedPoint = () => {
-    const lat = Number(latText)
-    const lng = Number(lngText)
-    if (isValidCoordinate(lat, lng)) commitPoint(Number(lat.toFixed(6)), Number(lng.toFixed(6)))
+    const latTrim = latText.trim()
+    const lngTrim = lngText.trim()
+
+    if (latTrim === "" || lngTrim === "") {
+      // Either side blank: drop the stored point so the authoritative value never silently keeps a
+      // stale pair while one of the inputs shows nothing. The downstream location-text validator will
+      // then require the owner to either enter a real pair or switch to area_only before submit.
+      if (value.latitude !== undefined || value.longitude !== undefined) {
+        const { latitude: _latitude, longitude: _longitude, ...withoutPoint } = value
+        onChange(withoutPoint)
+      }
+      return
+    }
+
+    const lat = Number(latTrim)
+    const lng = Number(lngTrim)
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return
+    if (!isValidCoordinate(lat, lng)) return
+    commitPoint(Number(lat.toFixed(6)), Number(lng.toFixed(6)))
   }
 
   // The server's own message wins (it arrives after a submit); until then the same rule is checked as the owner types.
@@ -208,7 +257,7 @@ function LocationFieldset({ value, onChange, itemLabel, allowedVisibilities, err
               <Input
                 id="location-latitude"
                 inputMode="decimal"
-                placeholder="33.7012"
+                placeholder="33.6864"
                 value={latText}
                 disabled={disabled}
                 onChange={(e) => setLatText(e.target.value)}
@@ -221,7 +270,7 @@ function LocationFieldset({ value, onChange, itemLabel, allowedVisibilities, err
               <Input
                 id="location-longitude"
                 inputMode="decimal"
-                placeholder="73.0512"
+                placeholder="72.8313"
                 value={lngText}
                 disabled={disabled}
                 onChange={(e) => setLngText(e.target.value)}

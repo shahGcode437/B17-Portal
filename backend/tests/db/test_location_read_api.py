@@ -52,7 +52,7 @@ PRIVATE_TEXT = (
     "Hidden Food Address",
 )
 #: The stored (exact) points of the APPROXIMATE fixtures, in every plausible spelling.
-PRIVATE_POINTS = ("33.706789", "73.058765", "33.704567", "73.055678")
+PRIVATE_POINTS = ("33.691789", "72.834765", "33.689567", "72.831678")
 PUBLIC_FIELDS_OF_A_LOCATION = {"visibility", "block", "address", "landmark", "coordinates"}
 
 
@@ -98,7 +98,7 @@ def test_exact_detail_exposes_the_point_address_and_landmark(read_client: TestCl
         "block": "C",
         "address": "Shop 4, Demo Plaza",
         "landmark": "Next to the demo park",
-        "coordinates": {"latitude": 33.701234, "longitude": 73.051234, "precision": "exact"},
+        "coordinates": {"latitude": 33.686234, "longitude": 72.827234, "precision": "exact"},
     }
 
 
@@ -108,7 +108,7 @@ def test_exact_card_has_the_point_but_not_the_address(read_client: TestClient) -
     assert item["location"] == {
         "visibility": "exact",
         "block": "C",
-        "coordinates": {"latitude": 33.701234, "longitude": 73.051234, "precision": "exact"},
+        "coordinates": {"latitude": 33.686234, "longitude": 72.827234, "precision": "exact"},
     }
     assert "address" not in item["location"] and "landmark" not in item["location"]
 
@@ -133,7 +133,7 @@ def test_approximate_detail_has_only_the_two_decimal_point(read_client: TestClie
     assert item["location"] == {
         "visibility": "approximate",
         "block": "C",
-        "coordinates": {"latitude": 33.71, "longitude": 73.06, "precision": "approximate"},
+        "coordinates": {"latitude": 33.69, "longitude": 72.83, "precision": "approximate"},
     }
     assert "address" not in item["location"] and "landmark" not in item["location"]
 
@@ -144,7 +144,7 @@ def test_approximate_card_has_only_the_two_decimal_point(read_client: TestClient
     assert item["location"] == {
         "visibility": "approximate",
         "block": "C",
-        "coordinates": {"latitude": 33.7, "longitude": 73.06, "precision": "approximate"},
+        "coordinates": {"latitude": 33.69, "longitude": 72.83, "precision": "approximate"},
     }
 
 
@@ -238,7 +238,7 @@ def test_a_located_but_hidden_listing_is_still_a_plain_404(
     response = read_client.get(f"{LISTING}/{listing_id}")
 
     assert response.status_code == 404
-    assert "Hidden" not in response.text and "33.7" not in response.text
+    assert "Hidden" not in response.text and "33.6" not in response.text
 
 
 # -- the stored search document -------------------------------------------------------------------------
@@ -268,7 +268,7 @@ def test_no_document_contains_a_coordinate(fixtures_session: Session) -> None:
     documents = fixtures_session.scalars(text("SELECT search_document FROM listings")).all()
 
     for doc in documents:
-        for point in (*PRIVATE_POINTS, "33.701234", "73.051234", "33.71", "73.06"):
+        for point in (*PRIVATE_POINTS, "33.686234", "72.827234", "33.69", "72.83"):
             assert point not in doc
 
 
@@ -387,8 +387,8 @@ def test_the_fixture_loader_reapplies_demo_locations_idempotently_and_keeps_lega
         "C",
         "Shop 4, Demo Plaza",
         "exact",
-        Decimal("33.701234"),
-        Decimal("73.051234"),
+        Decimal("33.686234"),
+        Decimal("72.827234"),
     )
     legacy = fixtures_session.execute(
         text("SELECT area, location_visibility FROM listings WHERE id = :id"), {"id": PHARMACY_ID}
@@ -416,7 +416,7 @@ def test_exact_coordinates_are_json_numbers_in_the_raw_detail_bytes(
     response = read_client.get(f"{LISTING}/{BAKERS_ID}")
 
     pairs = raw_coordinates(response.content)
-    assert pairs == [(b"33.701234", b"73.051234")]
+    assert pairs == [(b"33.686234", b"72.827234")]
     assert all(is_json_number(lat) and is_json_number(lng) for lat, lng in pairs)
     coordinates = response.json()["data"]["location"]["coordinates"]
     assert type(coordinates["latitude"]) is float and type(coordinates["longitude"]) is float
@@ -428,7 +428,7 @@ def test_approximate_coordinates_are_json_numbers_in_the_raw_detail_bytes(
 ) -> None:
     response = read_client.get(f"{LISTING}/{CAFE_ID}")
 
-    assert raw_coordinates(response.content) == [(b"33.71", b"73.06")]
+    assert raw_coordinates(response.content) == [(b"33.69", b"72.83")]
     coordinates = response.json()["data"]["location"]["coordinates"]
     assert type(coordinates["latitude"]) is float and type(coordinates["longitude"]) is float
     assert coordinates["precision"] == "approximate"

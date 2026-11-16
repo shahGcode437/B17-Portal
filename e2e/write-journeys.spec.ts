@@ -236,8 +236,8 @@ test.describe("Listing create: all five variants hit the API with the right payl
 
     // Default visibility is "exact"; use the numeric picker fallback to set the point deterministically
     // (clicking on a Leaflet canvas is not reliable in a headless browser).
-    await page.getByLabel("Latitude").fill("33.701234")
-    await page.getByLabel("Longitude").fill("73.051234")
+    await page.getByLabel("Latitude").fill("33.686234")
+    await page.getByLabel("Longitude").fill("72.827234")
     await page.getByLabel("Street address").fill("Plot 1, Street 5")
 
     await page.getByLabel("Title").fill("3-Bed Flat for Rent")
@@ -255,8 +255,8 @@ test.describe("Listing create: all five variants hit the API with the right payl
     const location = body.location as Record<string, unknown>
     expect(location.visibility).toBe("exact")
     expect(body.propertyType).toBe("flat") // the slug, not the label
-    expect(location.latitude).toBeCloseTo(33.701234)
-    expect(location.longitude).toBeCloseTo(73.051234)
+    expect(location.latitude).toBeCloseTo(33.686234)
+    expect(location.longitude).toBeCloseTo(72.827234)
     // area_only is not among the Property picker's options at all.
     expect(page.getByRole("option", { name: /Area only/ })).toHaveCount(0)
   })

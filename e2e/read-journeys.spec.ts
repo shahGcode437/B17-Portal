@@ -120,7 +120,7 @@ test.describe('map privacy journey', () => {
     await expect(map(page).locator('.leaflet-control-attribution')).toContainText('OpenStreetMap')
     await expect(page.getByText('Shop 4, Demo Plaza')).toBeVisible()
     const directions = page.getByRole('link', { name: /get directions/i })
-    await expect(directions).toHaveAttribute('href', 'https://www.google.com/maps/dir/?api=1&destination=33.701234%2C73.051234')
+    await expect(directions).toHaveAttribute('href', 'https://www.google.com/maps/dir/?api=1&destination=33.686234%2C72.827234')
     await expect(directions).toHaveAttribute('rel', 'noopener noreferrer')
     expect(authMock.tileRequests.length).toBeGreaterThan(0)
     expect(authMock.tileRequests.every((url) => url.startsWith('https://tile.openstreetmap.org/'))).toBe(true)

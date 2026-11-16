@@ -135,9 +135,19 @@ class DemoLocation:
 
 
 #: SYNTHETIC demo coordinates, for development / test / staging fixtures only. They are a
-#: deterministic scatter (a few hundred metres apart) around an arbitrary PLACEHOLDER centre near
-#: 33.70 N, 73.05 E — NOT B-17's real centre and NOT the location of any real business or person,
-#: whatever the fictional names suggest. Tests never depend on real geography.
+#: deterministic scatter (a few hundred metres apart) around the real Multi Gardens B-17 sector
+#: (``B17_DEFAULT_CENTER`` in ``src/config/map.ts``, ~33.685 N / 72.826 E — the same centre the
+#: frontend picker opens on). They remain SYNTHETIC: a placeholder scatter, not the location of any
+#: real business or person, whatever the fictional names suggest. Tests never depend on the exact
+#: values beyond the fixtures / assertions below.
+#:
+#: Previously the scatter sat around (33.70 N, 73.05 E) — about 20 km east of real B-17, in the
+#: Islamabad / E-11 area. The frontend picker still defaulted to that same wrong centre, so a new
+#: owner's click landed around E-11 while being labelled B-17. The frontend picker centre and these
+#: fixture coordinates were moved together so the dev database and the development map agree on
+#: where B-17 actually is. The approximate rounding in ``round(numeric, 2)`` now puts CAFE_ID and
+#: TUTOR_ID in the same (33.69, 72.83) grid cell — the pooling the privacy design (``LOCATION_MAP``
+#: §7.5) is meant to demonstrate.
 _N = Decimal
 
 
@@ -150,28 +160,28 @@ DEMO_LOCATIONS: dict[uuid.UUID, DemoLocation] = {
         LocationVisibility.EXACT,
         "Shop 4, Demo Plaza",
         "Next to the demo park",
-        (_N("33.701234"), _N("73.051234")),
+        (_N("33.686234"), _N("72.827234")),
     ),
     BIRYANI_ID: DemoLocation(
         "C",
         LocationVisibility.EXACT,
         "Unit 2, Demo Food Court",
         "Opposite the demo mosque",
-        (_N("33.702345"), _N("73.053456")),
+        (_N("33.687345"), _N("72.829456")),
     ),
     HOUSE_ID: DemoLocation(
         "C",
         LocationVisibility.EXACT,
         "House 12, Demo Street 3",
         None,
-        (_N("33.703456"), _N("73.054321")),
+        (_N("33.688456"), _N("72.830321")),
     ),
     SALON_ID: DemoLocation(
         "D",
         LocationVisibility.EXACT,
         "Shop 9, Demo Market",
         None,
-        (_N("33.707890"), _N("73.052109")),
+        (_N("33.692890"), _N("72.828109")),
     ),
     # approximate: a cafe and a home-based tutor (private address must never go public)
     CAFE_ID: DemoLocation(
@@ -179,14 +189,14 @@ DEMO_LOCATIONS: dict[uuid.UUID, DemoLocation] = {
         LocationVisibility.APPROXIMATE,
         "Private Cafe Address 5",
         "Private cafe landmark",
-        (_N("33.706789"), _N("73.058765")),
+        (_N("33.691789"), _N("72.834765")),
     ),
     TUTOR_ID: DemoLocation(
         "C",
         LocationVisibility.APPROXIMATE,
         "Private Home Address 7",
         "Private home landmark",
-        (_N("33.704567"), _N("73.055678")),
+        (_N("33.689567"), _N("72.831678")),
     ),
     # area_only: no point at all; the private address is stored for admins only
     MATH_TUTOR_ID: DemoLocation(
@@ -201,14 +211,14 @@ DEMO_LOCATIONS: dict[uuid.UUID, DemoLocation] = {
         LocationVisibility.EXACT,
         "Hidden Shop Address 1",
         None,
-        (_N("33.708901"), _N("73.051098")),
+        (_N("33.693901"), _N("72.827098")),
     ),
     PENDING_FOOD_ID: DemoLocation(
         "C",
         LocationVisibility.EXACT,
         "Hidden Food Address 3",
         None,
-        (_N("33.709012"), _N("73.057654")),
+        (_N("33.694012"), _N("72.833654")),
     ),
 }
 

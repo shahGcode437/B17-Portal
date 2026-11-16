@@ -43,9 +43,9 @@ describe("Business detail (general)", () => {
     const map = await screen.findByTestId("location-map")
     expect(map).toHaveAttribute("data-map-mode", "exact")
     await waitFor(() => expect(drawn()).toHaveLength(1))
-    expect(drawn()[0].marker?.position).toEqual({ latitude: 33.70789, longitude: 73.052109 })
+    expect(drawn()[0].marker?.position).toEqual({ latitude: 33.69289, longitude: 72.828109 })
     const directions = screen.getByRole("link", { name: /get directions/i })
-    expect(directions).toHaveAttribute("href", "https://www.google.com/maps/dir/?api=1&destination=33.70789%2C73.052109")
+    expect(directions).toHaveAttribute("href", "https://www.google.com/maps/dir/?api=1&destination=33.69289%2C72.828109")
     // The map pin opens the SAME destination (one helper), built from the public point only.
     expect(drawn()[0].marker?.href).toBe(directions.getAttribute("href"))
     // A General business has no Food sections.
@@ -128,7 +128,7 @@ describe("Business detail (Food & Dining)", () => {
     expect(await screen.findByTestId("location-map")).toHaveAttribute("data-map-mode", "approximate")
     await waitFor(() => expect(drawn()).toHaveLength(1))
     expect(drawn()[0].marker).toBeUndefined()
-    expect(drawn()[0].circle?.center).toEqual({ latitude: 33.71, longitude: 73.06 })
+    expect(drawn()[0].circle?.center).toEqual({ latitude: 33.69, longitude: 72.83 })
     expect(screen.queryByRole("link", { name: /directions/i })).not.toBeInTheDocument()
     expect(screen.queryByText("Address")).not.toBeInTheDocument()
   })
@@ -235,7 +235,7 @@ describe("Property detail", () => {
     expect(await screen.findByTestId("location-map")).toHaveAttribute("data-map-mode", "exact")
     expect(screen.getByRole("link", { name: /get directions/i })).toHaveAttribute(
       "href",
-      "https://www.google.com/maps/dir/?api=1&destination=33.703456%2C73.054321"
+      "https://www.google.com/maps/dir/?api=1&destination=33.688456%2C72.830321"
     )
   })
 

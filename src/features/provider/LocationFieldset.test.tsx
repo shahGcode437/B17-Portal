@@ -150,4 +150,155 @@ describe("LocationFieldset (the writable location block)", () => {
     await user.type(screen.getByLabelText("Block (optional)"), "C")
     expect(fetchSpy).not.toHaveBeenCalled()
   })
+
+  /**
+   * Regression: blur-on-blank used to call `Number("")` (= 0) and commit (0, 0), after which the
+   * MapPicker recentred on Null Island and the next click produced near-zero coordinates such as
+   * 0.000114 / 0.000092 (observed in manual QA on Business, Property, Tutor and Food listings).
+   */
+  describe("coordinate blur never invents 0,0", () => {
+    it("blank latitude AND blank longitude: blur removes any stored point, never commits 0,0", async () => {
+      const user = userEvent.setup()
+      render(<Harness initial={{ visibility: "exact" }} />)
+      // Focus one field, blur the other: both are blank, so nothing has been typed.
+      await user.click(screen.getByLabelText("Latitude"))
+      await user.tab()
+      expect(latest.latitude).toBeUndefined()
+      expect(latest.longitude).toBeUndefined()
+      expect(latest).toEqual({ visibility: "exact" })
+    })
+
+    it("blank latitude only: blur does NOT commit (0, 73.0512), and drops the stored point so the payload cannot silently keep a stale pair", async () => {
+      const user = userEvent.setup()
+      render(<Harness initial={{ visibility: "exact", latitude: 33.7012, longitude: 73.0512 }} />)
+      await user.clear(screen.getByLabelText("Latitude"))
+      await user.tab()
+      expect(latest.latitude).toBeUndefined()
+      expect(latest.longitude).toBeUndefined()
+    })
+
+    it("blank longitude only: blur does NOT commit (33.7012, 0), and drops the stored point so the payload cannot silently keep a stale pair", async () => {
+      const user = userEvent.setup()
+      render(<Harness initial={{ visibility: "exact", latitude: 33.7012, longitude: 73.0512 }} />)
+      await user.clear(screen.getByLabelText("Longitude"))
+      await user.tab()
+      expect(latest.latitude).toBeUndefined()
+      expect(latest.longitude).toBeUndefined()
+    })
+
+    it("clearing ONLY latitude on an existing point drops the stored pair and the paired input empties too (no stale half-point visible)", async () => {
+      const user = userEvent.setup()
+      render(<Harness initial={{ visibility: "exact", latitude: 33.7012, longitude: 73.0512 }} />)
+      await user.clear(screen.getByLabelText("Latitude"))
+      await user.tab()
+      expect(latest.latitude).toBeUndefined()
+      expect(latest.longitude).toBeUndefined()
+      // The sync effect follows the authoritative value: both fields are now empty, so the UI and the
+      // payload say the same thing (no point).
+      expect(screen.getByLabelText("Latitude")).toHaveValue("")
+      expect(screen.getByLabelText("Longitude")).toHaveValue("")
+    })
+
+    it("clearing ONLY longitude on an existing point drops the stored pair and the paired input empties too", async () => {
+      const user = userEvent.setup()
+      render(<Harness initial={{ visibility: "exact", latitude: 33.7012, longitude: 73.0512 }} />)
+      await user.clear(screen.getByLabelText("Longitude"))
+      await user.tab()
+      expect(latest.latitude).toBeUndefined()
+      expect(latest.longitude).toBeUndefined()
+      expect(screen.getByLabelText("Latitude")).toHaveValue("")
+      expect(screen.getByLabelText("Longitude")).toHaveValue("")
+    })
+
+    it("clearing BOTH fields on a listing that had a point drops lat/lng; a subsequent MapPicker click lands at the real coordinates (not near zero)", async () => {
+      const user = userEvent.setup()
+      render(<Harness initial={{ visibility: "exact", latitude: 33.7012, longitude: 73.0512 }} />)
+      await waitFor(() => expect(mounts.length).toBeGreaterThan(0))
+      await user.clear(screen.getByLabelText("Latitude"))
+      await user.clear(screen.getByLabelText("Longitude"))
+      await user.tab()
+      expect(latest.latitude).toBeUndefined()
+      expect(latest.longitude).toBeUndefined()
+      // A new map click now reports its own coordinates, not (0,0)-relative ones.
+      await waitFor(() => expect(mounts.length).toBeGreaterThan(0))
+      lastOptions().onPick?.({ latitude: 33.72, longitude: 73.07 })
+      await waitFor(() => expect(latest.latitude).toBe(33.72))
+      expect(latest.longitude).toBe(73.07)
+    })
+
+    it("blur with pure whitespace behaves the same as blank (no 0,0, no stale coordinate)", async () => {
+      const user = userEvent.setup()
+      render(<Harness initial={{ visibility: "exact" }} />)
+      await user.type(screen.getByLabelText("Latitude"), "   ")
+      await user.type(screen.getByLabelText("Longitude"), "\t")
+      await user.tab()
+      expect(latest.latitude).toBeUndefined()
+      expect(latest.longitude).toBeUndefined()
+    })
+
+    it("a whole valid pair types in, blurs, and round-trips to exactly the same six-decimal values", async () => {
+      const user = userEvent.setup()
+      render(<Harness initial={{ visibility: "exact" }} />)
+      await user.type(screen.getByLabelText("Latitude"), "33.7012")
+      await user.type(screen.getByLabelText("Longitude"), "73.0512")
+      await user.tab()
+      expect(latest.latitude).toBe(33.7012)
+      expect(latest.longitude).toBe(73.0512)
+      expect(screen.getByLabelText("Latitude")).toHaveValue("33.7012")
+      expect(screen.getByLabelText("Longitude")).toHaveValue("73.0512")
+    })
+  })
+
+  describe("latText / lngText follow the authoritative value when it changes externally", () => {
+    function HarnessWithExternal({ initial, next }: { initial: LocationWrite; next: LocationWrite }) {
+      const [value, setValue] = useState(initial)
+      useEffect(() => {
+        latest = value
+      })
+      return (
+        <>
+          <LocationFieldset value={value} onChange={setValue} itemLabel="Demo" allowedVisibilities={ALL} />
+          <button type="button" onClick={() => setValue(next)}>external-prefill</button>
+        </>
+      )
+    }
+
+    it("a parent-driven prefill (edit-form hydration after mount) updates both numeric boxes", async () => {
+      const user = userEvent.setup()
+      render(
+        <HarnessWithExternal
+          initial={{ visibility: "exact" }}
+          next={{ visibility: "exact", latitude: 33.7012, longitude: 73.0512 }}
+        />
+      )
+      expect(screen.getByLabelText("Latitude")).toHaveValue("")
+      await user.click(screen.getByRole("button", { name: "external-prefill" }))
+      expect(screen.getByLabelText("Latitude")).toHaveValue("33.7012")
+      expect(screen.getByLabelText("Longitude")).toHaveValue("73.0512")
+    })
+
+    it("a parent clearing the point (e.g. after a 422 server correction) empties both boxes", async () => {
+      const user = userEvent.setup()
+      render(
+        <HarnessWithExternal
+          initial={{ visibility: "exact", latitude: 33.7012, longitude: 73.0512 }}
+          next={{ visibility: "exact" }}
+        />
+      )
+      expect(screen.getByLabelText("Latitude")).toHaveValue("33.7012")
+      await user.click(screen.getByRole("button", { name: "external-prefill" }))
+      expect(screen.getByLabelText("Latitude")).toHaveValue("")
+      expect(screen.getByLabelText("Longitude")).toHaveValue("")
+    })
+
+    it("a MapPicker pick lands in both the numeric boxes and the authoritative value unchanged", async () => {
+      render(<Harness initial={{ visibility: "exact" }} />)
+      await waitFor(() => expect(mounts.length).toBeGreaterThan(0))
+      lastOptions().onPick?.({ latitude: 33.7012, longitude: 73.0512 })
+      await waitFor(() => expect(latest.latitude).toBe(33.7012))
+      expect(latest.longitude).toBe(73.0512)
+      expect(screen.getByLabelText("Latitude")).toHaveValue("33.7012")
+      expect(screen.getByLabelText("Longitude")).toHaveValue("73.0512")
+    })
+  })
 })
