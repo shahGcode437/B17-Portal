@@ -282,9 +282,22 @@ export class AuthMock {
         }
         if (method === 'GET' && path === '/users/me/listings' && account) {
           const rows = writeState().listings
+          // Mirror the backend owner-reads surface: ``activeQuota`` is pending + approved
+          // EXCLUDING ``provider`` (portal-managed, never consumes an owner's slot). The per-status
+          // buckets above remain factual (every kind is counted in them).
+          const counts = rows.reduce(
+            (c, l) => {
+              c[l.status as keyof typeof c] = (c[l.status as keyof typeof c] ?? 0) + 1
+              if ((l.status === 'pending' || l.status === 'approved') && l.kind !== 'provider') {
+                c.activeQuota += 1
+              }
+              return c
+            },
+            { pending: 0, approved: 0, rejected: 0, archived: 0, activeQuota: 0 },
+          )
           return reply(200, {
             data: rows,
-            meta: { total: rows.length, limit: 50, offset: 0, counts: rows.reduce((c, l) => ({ ...c, [l.status]: (c[l.status as keyof typeof c] ?? 0) + 1 }), { pending: 0, approved: 0, rejected: 0, archived: 0 }) },
+            meta: { total: rows.length, limit: 50, offset: 0, counts },
           })
         }
         // Admin category reads use the mutable state so a POST / PATCH / reorder is immediately visible.
@@ -314,9 +327,17 @@ export class AuthMock {
             updatedAt: l.updatedAt,
           }))
           // `counts` is always over the WHOLE queue, not the filtered subset (API_CONTRACT §10.2).
+          // The admin queue is not per-owner, so ``activeQuota`` stays at 0.
+          const adminCounts = all.reduce(
+            (c, l) => {
+              c[l.status as keyof typeof c] = (c[l.status as keyof typeof c] ?? 0) + 1
+              return c
+            },
+            { pending: 0, approved: 0, rejected: 0, archived: 0, activeQuota: 0 },
+          )
           return reply(200, {
             data: summaries,
-            meta: { total: rows.length, limit: 50, offset: 0, counts: all.reduce((c, l) => ({ ...c, [l.status]: (c[l.status as keyof typeof c] ?? 0) + 1 }), { pending: 0, approved: 0, rejected: 0, archived: 0 }) },
+            meta: { total: rows.length, limit: 50, offset: 0, counts: adminCounts },
           })
         }
         if (method === 'GET') {

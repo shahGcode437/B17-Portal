@@ -193,6 +193,9 @@ test.describe('Bug C: a signed-in person is never sent to Log In by a slow or un
   })
 
   test('resident: the Professional area asks for a professional profile, not a login; professional: it opens, also after a reload', async ({ page }) => {
+    // A resident creates a professional profile and lands on the three-kind create chooser. The
+    // Service / Professional kind is admin-only and hidden from a plain professional (Task 2,
+    // AUTH_RBAC §22.6) — hence "List a Business, Tutor or Property" here.
     await openApp(page, '/login', 'Log In')
     await signIn(page, 'Rana Resident', 'resident')
     await expectPage(page)
@@ -204,17 +207,19 @@ test.describe('Bug C: a signed-in person is never sent to Log In by a slow or un
     await expectPage(page, 'Overview')
 
     await page.goto('/provider/listings/new')
-    await expectPage(page, 'List a Service, Business, Tutor or Property')
+    await expectPage(page, 'List a Business, Tutor or Property')
     await page.reload()
-    await expectPage(page, 'List a Service, Business, Tutor or Property')
+    await expectPage(page, 'List a Business, Tutor or Property')
   })
 
   test('a slow /auth/me on a hard reload of the create form shows the session check, then the form', async ({ page }) => {
+    // Same as above: a plain professional signs in and sees the three-kind chooser (Service /
+    // Professional is admin-only; AUTH_RBAC §22.6).
     await signInFromLoginPage(page, 'Pat Pro')
     mockFor(page).meDelayMs = 1200
     await page.goto('/provider/listings/new', { waitUntil: 'commit' })
     await expect(page.getByRole('status').filter({ hasText: /checking your session/i })).toBeVisible()
-    await expectPage(page, 'List a Service, Business, Tutor or Property')
+    await expectPage(page, 'List a Business, Tutor or Property')
   })
 })
 

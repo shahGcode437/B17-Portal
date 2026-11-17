@@ -121,9 +121,7 @@ NON_ADMIN_ACTORS: dict[str, tuple[Callable[[AuthEnv], AuthApi], int, str]] = {
         "forbidden",
     ),
     "an admin-looking e-mail": (
-        lambda env: signed_in(
-            env, "admin@b17.pk", professional=PlanCode.PREMIUM, admin=False
-        ),
+        lambda env: signed_in(env, "admin@b17.pk", professional=PlanCode.PREMIUM, admin=False),
         403,
         "forbidden",
     ),

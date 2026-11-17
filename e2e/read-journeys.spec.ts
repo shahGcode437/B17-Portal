@@ -243,10 +243,24 @@ test.describe('authenticated read journey', () => {
   })
 
   test('create a listing opens a real form with a kind picker and the location fieldset (Phase 12H)', async ({ page }) => {
+    // Service / Professional is portal-managed (Task 2, AUTH_RBAC §22.6): a plain professional
+    // sees the three non-provider kinds and the three-kind heading.
     await page.goto('/provider/listings/new')
     await signIn(page, 'Sana Baker', 'professional')
+    await expectPage(page, 'List a Business, Tutor or Property')
+    for (const name of ['Business / Shop', 'Tutor', 'Property']) {
+      await expect(page.getByRole('button', { name: new RegExp(name) })).toBeVisible()
+    }
+    await expect(page.getByRole('button', { name: /Service \/ Professional/ })).toHaveCount(0)
+  })
+
+  test('admin sees the Service / Professional kind in the create chooser', async ({ page }) => {
+    // The complement of the test above: portal staff (admin, with a professional profile so the
+    // /provider/* workspace guard is satisfied) see all four kinds, including the portal-managed
+    // Service / Professional option.
+    await page.goto('/provider/listings/new')
+    await signIn(page, 'Portal Admin', 'adminProfessional')
     await expectPage(page, 'List a Service, Business, Tutor or Property')
-    // Four kinds offered.
     for (const name of ['Service / Professional', 'Business / Shop', 'Tutor', 'Property']) {
       await expect(page.getByRole('button', { name: new RegExp(name) })).toBeVisible()
     }

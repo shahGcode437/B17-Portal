@@ -286,10 +286,18 @@ function applyPatch(l: OwnerListingDto, body: Record<string, unknown>): void {
 
 // -- the real API's field rules live in `listingRules.ts` (listing bodies and request bodies) -----------------------
 
-/** The Free plan allows 3 ACTIVE (pending + approved) listings; Premium is unlimited (API_CONTRACT §10.9). */
-function planIsFull(planCode: "free" | "premium" | undefined): boolean {
+/**
+ * The Free plan allows 3 ACTIVE (pending + approved) listings; Premium is unlimited
+ * (API_CONTRACT §10.9). Service / Professional (``provider``) listings are portal-managed and
+ * never consume the owner's quota (Task 2, AUTH_RBAC §22.6): a provider create is always allowed,
+ * and existing provider rows are not counted against other kinds' quota.
+ */
+function planIsFull(planCode: "free" | "premium" | undefined, kind: string | undefined): boolean {
   if (planCode === "premium") return false
-  return state.listings.filter((l) => l.status === "pending" || l.status === "approved").length >= 3
+  if (kind === "provider") return false
+  return state.listings.filter(
+    (l) => (l.status === "pending" || l.status === "approved") && l.kind !== "provider",
+  ).length >= 3
 }
 
 /**
@@ -440,7 +448,7 @@ export function routeWrite(
     // 10 creates per user per hour (a refused request does not use a slot), then the Free plan's 3 active listings.
     const owner = me.email ?? me.displayName ?? "anonymous"
     if ((state.listingCreates[owner] ?? 0) >= 10) return fail(429, "rate_limited")
-    if (planIsFull(me.planCode)) return fail(403, "plan_limit_reached")
+    if (planIsFull(me.planCode, kind)) return fail(403, "plan_limit_reached")
     state.listingCreates[owner] = (state.listingCreates[owner] ?? 0) + 1
 
     const id = uuid()
@@ -534,7 +542,7 @@ export function routeWrite(
       return ok(listing)
     }
     // Resubmitting a REJECTED listing takes an active slot again, so the Free plan's quota applies (API_CONTRACT §10.9).
-    if (listing.status === "rejected" && planIsFull(me.planCode)) {
+    if (listing.status === "rejected" && planIsFull(me.planCode, listing.kind)) {
       state.listings[state.listings.indexOf(listing)] = snapshot // a refused write changes nothing
       return fail(403, "plan_limit_reached")
     }

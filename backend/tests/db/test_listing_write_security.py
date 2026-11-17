@@ -10,7 +10,7 @@ from typing import Any
 import pytest
 from sqlalchemy import text
 
-from app.models.enums import PlanCode
+from app.models.enums import ListingStatus, PlanCode
 from tests.db.auth_helpers import AuthApi, AuthEnv
 from tests.db.test_listing_edit_api import snapshot
 from tests.db.write_helpers import (
@@ -32,7 +32,6 @@ from tests.db.write_helpers import (
     signed_in,
     tutor_body,
 )
-from app.models.enums import ListingStatus
 
 Actor = Callable[[AuthEnv], AuthApi]
 
@@ -44,9 +43,7 @@ def anonymous(env: AuthEnv) -> AuthApi:
 
 
 def unverified(env: AuthEnv) -> AuthApi:
-    return signed_in(
-        env, "unverified@example.org", verified=False, professional=None, admin=False
-    )
+    return signed_in(env, "unverified@example.org", verified=False, professional=None, admin=False)
 
 
 def unverified_professional(env: AuthEnv) -> AuthApi:
@@ -189,9 +186,7 @@ def test_valid_origin_and_csrf_succeed_for_every_unsafe_write(auth_env: AuthEnv)
     assert api.request("PUT", PROFILE, json={}).status_code == 201
     target = created_id(api, business_body())
 
-    assert (
-        api.request("POST", LISTINGS, json=business_body(name="Second Shop")).status_code == 201
-    )
+    assert api.request("POST", LISTINGS, json=business_body(name="Second Shop")).status_code == 201
     assert patch(api, target, 1, name="Renamed Shop").status_code == 200
     assert archive(api, target, 2).status_code == 200
 
@@ -256,7 +251,9 @@ def test_a_professional_has_no_admin_power_over_anyone_s_listing(
     auth_env: AuthEnv, plan: PlanCode
 ) -> None:
     alice = signed_in(auth_env, "alice@example.org", display_name="Al Ice", admin=False)
-    pro = signed_in(auth_env, "pro@example.org", professional=plan, display_name="Pr O", admin=False)
+    pro = signed_in(
+        auth_env, "pro@example.org", professional=plan, display_name="Pr O", admin=False
+    )
     target = created_id(alice, business_body())
 
     for path in ("approve", "reject", "feature"):
@@ -398,11 +395,11 @@ def test_an_admin_can_create_more_provider_listings_than_the_free_quota_allows(
 ) -> None:
     """Portal manages ~10 services; the Free-plan ceiling of 3 must not block an admin from doing
     their job. Create many providers in a row on a Free plan and prove they all land as pending."""
-    admin = signed_in(auth_env, "service-manager@example.org", admin=True, professional=PlanCode.FREE)
+    admin = signed_in(
+        auth_env, "service-manager@example.org", admin=True, professional=PlanCode.FREE
+    )
 
-    responses = [
-        create(admin, provider_body(name=f"Managed Service {n}")) for n in range(6)
-    ]
+    responses = [create(admin, provider_body(name=f"Managed Service {n}")) for n in range(6)]
 
     assert [r.status_code for r in responses] == [201] * 6
     assert admin.get(MINE).json()["meta"]["total"] == 6
@@ -412,7 +409,9 @@ def test_provider_listings_do_not_consume_the_owner_s_ordinary_quota(auth_env: A
     """Admin has 3 provider listings active (pending + approved). The quota for Business /
     Tutor / Property is still 3 for the Free plan — those 3 providers must not have taken the
     slots away."""
-    admin = signed_in(auth_env, "service-manager@example.org", admin=True, professional=PlanCode.FREE)
+    admin = signed_in(
+        auth_env, "service-manager@example.org", admin=True, professional=PlanCode.FREE
+    )
     provider_ids = [created_id(admin, provider_body(name=f"Service {n}")) for n in range(3)]
     set_status(auth_env.session, provider_ids[0], ListingStatus.APPROVED)
 
@@ -434,7 +433,9 @@ def test_an_ordinary_business_listing_still_consumes_and_enforces_the_quota(
     """Belt-and-braces for the inverse: Free professional with 3 business listings cannot create
     a fourth one. The admin status of the signer is irrelevant to this rule — the exemption is
     kind-specific (provider only)."""
-    admin = signed_in(auth_env, "service-manager@example.org", admin=True, professional=PlanCode.FREE)
+    admin = signed_in(
+        auth_env, "service-manager@example.org", admin=True, professional=PlanCode.FREE
+    )
     for n in range(3):
         assert create(admin, business_body(name=f"Business {n}")).status_code == 201, n
 
@@ -467,7 +468,9 @@ def test_an_admin_resubmitting_a_rejected_provider_is_not_blocked_by_the_quota(
     """A rejected listing is re-checked against the quota when resubmitted (API_CONTRACT §10.9);
     for providers that re-check is a no-op, so an admin can edit a rejected provider freely even
     if their other active listings are at the plan cap."""
-    admin = signed_in(auth_env, "service-manager@example.org", admin=True, professional=PlanCode.FREE)
+    admin = signed_in(
+        auth_env, "service-manager@example.org", admin=True, professional=PlanCode.FREE
+    )
     # Fill the non-provider quota.
     for n in range(3):
         assert create(admin, business_body(name=f"Business {n}")).status_code == 201, n

@@ -118,11 +118,20 @@ test.describe("Admin: the queue row says Taken down for a takedown and Rejected 
 })
 
 test.describe("Listing create: all five variants hit the API with the right payload", () => {
+  // Service / Professional is portal-managed (admin-only) since Task 2, so the provider variant
+  // signs in as admin and sees the four-kind chooser heading; every other kind is still a plain
+  // professional and sees the three-kind heading.
   async function enterCreateFlow(page: import("@playwright/test").Page, name: string, kindLabel: RegExp) {
+    const isProvider = kindLabel.test("Service / Professional")
+    // ``adminProfessional`` has the admin role AND a professional profile — needed because the
+    // ``/provider/*`` workspace is guarded on ``user.professional``, and Service / Professional
+    // authoring is admin-only (Task 2, AUTH_RBAC §22.6).
+    const accountKind = isProvider ? "adminProfessional" : "professional"
+    const heading = isProvider ? "List a Service, Business, Tutor or Property" : "List a Business, Tutor or Property"
     await page.goto("/provider/listings/new")
     await expectPage(page, "Log In")
-    await signIn(page, name)
-    await expectPage(page, "List a Service, Business, Tutor or Property")
+    await signIn(page, name, accountKind)
+    await expectPage(page, heading)
     await page.getByRole("button", { name: kindLabel }).click()
   }
 
@@ -293,10 +302,12 @@ test.describe("Presentation regression (end-to-end round trip)", () => {
     const name = "Sunrise Solar Pro"
     const created = captureCreatedId(page)
 
-    // 1. A professional creates a Provider listing through the real form.
+    // 1. An admin (portal staff) with a professional profile creates a Provider listing through
+    // the real form. Service / Professional is portal-managed (Task 2, AUTH_RBAC §22.6); the
+    // profile is still required because /provider/* guards on it.
     await page.goto("/provider/listings/new")
     await expectPage(page, "Log In")
-    await signIn(page, "Sana Owner")
+    await signIn(page, "Sana Owner", "adminProfessional")
     await expectPage(page, "List a Service, Business, Tutor or Property")
     await page.getByRole("button", { name: /Service \/ Professional/ }).click()
     await page.getByLabel("Name", { exact: true }).fill(name)
@@ -528,22 +539,25 @@ test.describe("Professional capability: the server decides", () => {
   })
 
   test("creating the professional profile (PUT) unlocks the same flow, which then succeeds", async ({ page }) => {
+    // A resident signs up for a professional profile and creates a business listing — Service /
+    // Professional is admin-only (Task 2), but every other kind opens up with the profile.
     await page.goto("/provider/listings/new")
     await expectPage(page, "Log In")
     await signIn(page, "Rana Resident", "resident")
     await expectPage(page, "Professional profile needed")
     await page.getByRole("button", { name: "Create a professional profile" }).click()
-    await expectPage(page, "List a Service, Business, Tutor or Property")
-    await page.getByRole("button", { name: /Service \/ Professional/ }).click()
-    await page.getByLabel("Name", { exact: true }).fill("Rana Plumbing")
-    await page.getByLabel("Service Category").selectOption({ label: "Plumbing" })
-    await page.getByLabel("Description", { exact: true }).fill("Plumbing repairs and fittings for B-17 homes.")
+    await expectPage(page, "List a Business, Tutor or Property")
+    await page.getByRole("button", { name: /Business \/ Shop/ }).click()
+    await page.getByLabel("Business Name").fill("Rana Shop")
+    await page.getByLabel("Category", { exact: true }).selectOption({ label: "Stationery" })
+    await page.getByLabel("Description", { exact: true }).fill("Books and stationery for B-17 homes.")
     // Area is a fixed choice (B-17), not free text.
     await expect(page.getByLabel("Area", { exact: true })).toHaveValue("B-17")
-    await page.getByLabel(/Services offered/).fill("plumbing, repairs")
+    await page.getByLabel(/Tags \(optional\)/).fill("books, copies")
+    await page.getByLabel("Visibility").selectOption("area_only")
     await page.getByRole("button", { name: "Submit for Review" }).click()
     await expectPage(page, "Listings")
-    await expect(ownerCard(page, "Rana Plumbing")).toContainText("Pending Review")
+    await expect(ownerCard(page, "Rana Shop")).toContainText("Pending Review")
   })
 
   test("an unverified e-mail is told to verify FIRST (before any profile prompt), and the API still refuses the profile", async ({ page, authMock }) => {
@@ -782,9 +796,11 @@ test.describe("Admin categories: writes round trip", () => {
 
 test.describe("Network failure: no fake success on any write", () => {
   test("listing create failure keeps the form state; no toast says it was saved", async ({ page }) => {
+    // Admin (with a professional profile) is signed in because this test exercises a Service /
+    // Professional create — the only kind restricted to portal staff (Task 2, AUTH_RBAC §22.6).
     await page.goto("/provider/listings/new")
     await expectPage(page, "Log In")
-    await signIn(page, "Sana Offline")
+    await signIn(page, "Sana Offline", "adminProfessional")
     await expectPage(page, "List a Service, Business, Tutor or Property")
     await page.getByRole("button", { name: /Service \/ Professional/ }).click()
     await page.getByLabel("Name", { exact: true }).fill("Would-Be Service")

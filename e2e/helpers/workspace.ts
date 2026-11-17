@@ -1,5 +1,6 @@
 import { expect, type Page } from '@playwright/test'
 import { expectPage, navigateInApp, openApp, pushInApp, signIn } from './app'
+import { mockFor } from './test'
 
 /**
  * Role flows shared by the Professional / Admin specs. Authentication is real (against the mock
@@ -23,12 +24,22 @@ export async function enterProfessionalWorkspace(page: Page, name: string) {
 /**
  * Admin Login → Admin Dashboard, signing in with an account that has the backend `admin` role. The
  * Admin area has no public link, so this navigates in-app. If another account is signed in, it is
- * logged out first (one identity system: there is no separate admin session).
+ * logged out first — there is one identity system, and the admin-login page auto-redirects an
+ * already-admin user straight to the Admin Dashboard (so when some tests sign their owner in as
+ * ``adminProfessional`` to author Service / Professional listings, the "Log out to switch account"
+ * button would never appear). Full-page navigation after a server logout drops the React auth
+ * state so the login form renders.
  */
 export async function enterAdmin(page: Page) {
-  await navigateInApp(page, '/admin/login', 'Admin Login')
+  // Drop any existing mock session (admin-login auto-redirects an already-admin user straight to
+  // the Admin Dashboard, so if the current test signed its owner in as adminProfessional the
+  // login form would never render otherwise). The mock holds session state in-memory on the Node
+  // side, so clearing browser cookies alone would not be enough. The full-page openApp
+  // afterwards drops the React auth state so the fresh /auth/me returns anonymous.
+  mockFor(page).session = null
+  await openApp(page, '/admin/login', 'Admin Login')
   const switchAccount = page.getByRole('button', { name: 'Log out to switch account' })
-  if (await switchAccount.isVisible()) await switchAccount.click()
+  if (await switchAccount.isVisible().catch(() => false)) await switchAccount.click()
   await expect(page.getByLabel('Email')).toBeVisible()
   await signIn(page, 'Demo Admin', 'admin')
   await expectPage(page, 'Admin Dashboard')

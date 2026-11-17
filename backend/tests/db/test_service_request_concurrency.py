@@ -24,13 +24,12 @@ from tests.db.auth_helpers import AuthApi, AuthEnv
 from tests.db.request_helpers import REQUESTS, SAVED, request_body
 from tests.db.test_admin_concurrency import clients, set_status
 from tests.db.test_listing_write_concurrency import (
-    LISTINGS,
     browser,
     committed_world,
     race,
     statuses,
 )
-from tests.write_payloads import provider_body
+from tests.write_payloads import LISTINGS, provider_body
 
 REASON = "Reported as closed for good."
 

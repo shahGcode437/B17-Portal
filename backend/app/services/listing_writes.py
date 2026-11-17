@@ -118,8 +118,8 @@ def invalid_transition() -> AppError:
 def provider_admin_only() -> AppError:
     """Service / Professional ("provider") listings are portal-managed: only an admin may create,
     edit or archive them. The envelope stays the standard ``403 forbidden`` with a specific detail
-    code (``provider_admin_only``) so the frontend can swap in the right copy without a new top-level
-    error code (docs/backend/API_CONTRACT.md §3)."""
+    code (``provider_admin_only``) so the frontend can swap in the right copy without a new
+    top-level error code (docs/backend/API_CONTRACT.md §3)."""
     return AppError(
         ErrorCode.FORBIDDEN,
         status_code=403,

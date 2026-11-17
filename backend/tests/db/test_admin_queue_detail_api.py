@@ -65,9 +65,7 @@ def test_only_an_admin_may_read_the_moderation_surface(auth_env: AuthEnv, target
     actors = {
         "anonymous": (auth_env.client(), 401, "unauthenticated"),
         "unverified": (
-            signed_in(
-                auth_env, "unv@example.org", verified=False, professional=None, admin=False
-            ),
+            signed_in(auth_env, "unv@example.org", verified=False, professional=None, admin=False),
             403,
             "email_not_verified",
         ),

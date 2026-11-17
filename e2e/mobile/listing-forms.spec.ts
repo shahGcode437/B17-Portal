@@ -10,10 +10,15 @@ import type { Page } from '@playwright/test'
  */
 test.use({ viewport: { width: 375, height: 812 } })
 
+// The mobile form tests exercise the Service / Professional kind as the generic fixture — a
+// provider's shorter form (no required location, no grade) keeps the mobile viewport assertions
+// focused. Service / Professional is portal-managed (Task 2, AUTH_RBAC §22.6), so the sign-in is
+// as ``adminProfessional`` (admin role + professional profile): the profile satisfies the
+// /provider/* workspace guard, the admin role unlocks the provider chooser button.
 async function openCreateForm(page: Page, name: string) {
   await page.goto('/provider/listings/new')
   await expectPage(page, 'Log In')
-  await signIn(page, name)
+  await signIn(page, name, 'adminProfessional')
   await expectPage(page, 'List a Service, Business, Tutor or Property')
   await page.getByRole('button', { name: /Service \/ Professional/ }).click()
 }

@@ -43,7 +43,13 @@ export async function pushInApp(page: Page, path: string) {
   }, path)
 }
 
-export type AccountKind = 'resident' | 'professional' | 'admin'
+/**
+ * ``admin`` holds only the ``admin`` role (used by the admin-workspace tests and the pure role-
+ * authority guards). ``adminProfessional`` holds BOTH the ``admin`` role AND a professional
+ * profile — needed to author Service / Professional listings (Task 2, AUTH_RBAC §22.6), since the
+ * ``/provider/*`` workspace also guards on ``user.professional``.
+ */
+export type AccountKind = 'resident' | 'professional' | 'admin' | 'adminProfessional'
 
 /** The deterministic e-mail the mock backend knows an account by. */
 export function emailFor(name: string) {
@@ -52,18 +58,26 @@ export function emailFor(name: string) {
 
 /**
  * Signs in through the REAL Log In form (the screen guards redirect to) against the mock backend.
- * The account is registered with the mock first, with the capabilities of `kind`: a `professional`
- * has the backend's professional summary, an `admin` the `admin` role, a `resident` neither.
+ * The account is registered with the mock first, with the capabilities of `kind`:
+ *   - `resident`: no role, no professional profile.
+ *   - `professional`: the backend's professional summary, no roles.
+ *   - `admin`: the `admin` role, NO professional profile (used by the admin-workspace and
+ *     role-authority tests; these admins are blocked from the Professional workspace exactly
+ *     because they have no profile).
+ *   - `adminProfessional`: BOTH `admin` role AND a professional profile — portal staff who
+ *     also author Service / Professional listings (Task 2).
  */
 export async function signIn(page: Page, name: string, kind: AccountKind = 'professional') {
   const email = emailFor(name)
   const mock = mockFor(page)
   if (!mock.accounts.has(email)) {
+    const isAdmin = kind === 'admin' || kind === 'adminProfessional'
+    const hasProfile = kind === 'professional' || kind === 'adminProfessional'
     mock.addAccount({
       email,
       displayName: name,
-      roles: kind === 'admin' ? ['admin'] : [],
-      ...(kind === 'professional' && { professional: { planCode: 'free' as const } }),
+      roles: isAdmin ? ['admin'] : [],
+      ...(hasProfile && { professional: { planCode: 'free' as const } }),
     })
   }
   await page.getByLabel('Email').fill(email)

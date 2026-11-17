@@ -1,6 +1,8 @@
 import { expect, test } from './helpers/test'
-import { expectPage, signIn } from './helpers/app'
+import { expectPage, signIn, type AccountKind } from './helpers/app'
 import type { Page } from '@playwright/test'
+import { writeState } from '../src/test/fixtures/writeRouter'
+import { OWNER_LISTINGS } from '../src/test/fixtures/apiFixtures'
 
 /**
  * Phase 12S, S4: the listing form tells the truth (merged into main from the parallel S4 worktree, adapted). The Area
@@ -9,11 +11,23 @@ import type { Page } from '@playwright/test'
  * is saved (it used to send `food: null`, which the real API refuses). Runs against the writable mock backend, whose
  * rules mirror the real API's (`src/test/fixtures/listingRules.ts`): a form that sent a value the API refuses fails here.
  */
+/**
+ * Opens the create form as the right account for a given kind. Service / Professional is portal-
+ * managed (admin-only) since Task 2, so provider-kind tests sign in as an admin and see the
+ * four-kind chooser heading; every other kind is still a plain professional and sees the
+ * three-kind heading ("List a Business, Tutor or Property").
+ */
 async function openCreateForm(page: Page, name: string, kind: RegExp) {
+  const isProvider = kind.test('Service / Professional')
+  // ``adminProfessional`` has the admin role AND a professional profile — needed because the
+  // ``/provider/*`` workspace is guarded on ``user.professional``, and Service / Professional
+  // authoring is admin-only (Task 2, AUTH_RBAC §22.6).
+  const accountKind: AccountKind = isProvider ? 'adminProfessional' : 'professional'
+  const heading = isProvider ? 'List a Service, Business, Tutor or Property' : 'List a Business, Tutor or Property'
   await page.goto('/provider/listings/new')
   await expectPage(page, 'Log In')
-  await signIn(page, name)
-  await expectPage(page, 'List a Service, Business, Tutor or Property')
+  await signIn(page, name, accountKind)
+  await expectPage(page, heading)
   await page.getByRole('button', { name: kind }).click()
 }
 
@@ -110,33 +124,51 @@ test('the owner dashboard shows the category NAME of a business, never a slug', 
   await expect(card).not.toContainText(/stationery(?!\w)/) // a lower-case slug would match; the name is capitalised
 })
 
+async function fillBusiness(page: Page, name: string, tags = 'books, copies') {
+  // Business form labels differ from provider's: "Business Name" vs "Name", "Category" vs
+  // "Service Category", "Tags" vs "Services offered". A Business can be area_only, which keeps
+  // the fixture submittable without a map point.
+  await page.getByLabel('Business Name').fill(name)
+  await page.getByLabel('Category', { exact: true }).selectOption({ label: 'Stationery' })
+  await page.getByLabel('Description', { exact: true }).fill('A friendly neighbourhood shop in B-17.')
+  await page.getByLabel(/Tags \(optional\)/).fill(tags)
+  await page.getByLabel('Visibility').selectOption('area_only')
+}
+
 test('the Free plan limit is explained in plain words, and the form keeps what was typed', async ({ page }) => {
-  // The fixtures start the owner with two active listings (one pending, one approved): the third is allowed.
-  await openCreateForm(page, 'Quota Owner', /Service \/ Professional/)
-  await fillProvider(page, 'Third Listing Works')
+  // Preseed state with one additional pending Business so the owner's quota-countable active count
+  // (``activeQuota``) starts at 2 — the fixtures hold 1 pending business + 1 approved provider, and
+  // providers are portal-managed and never consume the owner's quota (AUTH_RBAC §22.6). Creating a
+  // third non-provider trips the Free plan's 3-of-3 limit.
+  const seed = { ...OWNER_LISTINGS[0], id: '11111111-1111-4111-8111-000000000900', name: 'Second Shop', revision: 1 }
+  writeState().listings.push(seed)
+
+  await openCreateForm(page, 'Quota Owner', /Business \/ Shop/)
+  await fillBusiness(page, 'Third Listing Works')
   await page.getByRole('button', { name: 'Submit for Review' }).click()
   await expectPage(page, 'Listings')
 
-  // Three active listings on the Free plan: the dashboard says so next to "New listing", with no upgrade action.
+  // Three quota-countable active listings on the Free plan: the dashboard says so next to "New listing".
   const limitNotice = page.getByRole('status').filter({ hasText: 'Active listing limit reached' })
   await expect(limitNotice).toContainText('You have 3 of 3 active listings')
   await expect(limitNotice).not.toContainText(/upgrade|premium/i)
   await expect(page.getByRole('link', { name: /upgrade|subscribe|buy/i })).toHaveCount(0)
 
   await page.getByRole('link', { name: 'New listing' }).click()
-  await expectPage(page, 'List a Service, Business, Tutor or Property')
-  // ... and so does the create page, BEFORE a kind is chosen or a field is filled (it blocks nothing; the server decides).
+  // A professional (non-admin) sees the three-kind chooser; the Service / Professional kind is
+  // portal-managed and does not appear here.
+  await expectPage(page, 'List a Business, Tutor or Property')
   await expect(limitNotice).toBeVisible()
   await expect(limitNotice.getByRole('link', { name: 'Manage my listings' })).toHaveAttribute('href', '/provider/listings')
-  await page.getByRole('button', { name: /Service \/ Professional/ }).click()
+  await page.getByRole('button', { name: /Business \/ Shop/ }).click()
   await expect(limitNotice).toBeVisible()
-  await fillProvider(page, 'Fourth Listing Works')
+  await fillBusiness(page, 'Fourth Listing Works')
   await page.getByRole('button', { name: 'Submit for Review' }).click()
   const alert = page.getByRole('alert').filter({ hasText: 'Active listing limit reached' })
   await expect(alert).toBeVisible()
   await expect(alert).toContainText("You've reached the active listing limit for your current plan. Archive an active listing before creating another.")
   await expect(alert).not.toContainText(/upgrade|premium/i)
-  await expect(page.getByLabel('Name', { exact: true })).toHaveValue('Fourth Listing Works')
+  await expect(page.getByLabel('Business Name')).toHaveValue('Fourth Listing Works')
   await expect(page.getByRole('button', { name: 'Submit for Review' })).toBeEnabled()
 })
 
