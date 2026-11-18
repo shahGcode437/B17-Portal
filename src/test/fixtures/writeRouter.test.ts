@@ -25,6 +25,19 @@ const providerBody = (over: Record<string, unknown> = {}) => ({
   location,
   ...over,
 })
+// Business is quota-countable (Service / Professional is portal-managed and never consumes an
+// owner's slot — Task 2 / AUTH_RBAC §22.6), so the plan-quota tests below use it.
+const businessBody = (over: Record<string, unknown> = {}) => ({
+  kind: "business",
+  vertical: "general",
+  name: "Capital Stationers",
+  category: "stationery",
+  description: "Books, printing and school supplies for B-17 homes.",
+  area: "B-17",
+  tags: ["books", "copies"],
+  location,
+  ...over,
+})
 
 type ErrorBody = { error: { code: string; details: { field: string; code: string }[] } }
 type Reply = ReturnType<typeof routeWrite>
@@ -136,9 +149,29 @@ describe("mock parity: the listing field rules the real API enforces", () => {
 })
 
 describe("mock parity: plan quota and rate limits", () => {
-  it("the Free plan allows 3 active listings: the fixtures hold 2, so one more fits and the next is plan_limit_reached", () => {
-    expect(statusOf(create(providerBody()))).toBe(201)
-    const fourth = create(providerBody({ name: "Imran Electrical Two" }))
+  it("the Free plan allows 3 active quota-countable listings: the fixtures hold 1, so two more fit and the next is plan_limit_reached", () => {
+    // Fixture state: 1 pending business + 1 approved provider + 1 rejected property + 1 archived
+    // tutor. Service / Professional is portal-managed and never consumes an owner's quota
+    // (Task 2, AUTH_RBAC §22.6), so the quota-countable active listings start at 1 — add two
+    // non-provider listings, and the fourth non-provider is refused as plan_limit_reached.
+    expect(statusOf(create(businessBody({ name: "Pending Stationers Two" })))).toBe(201)
+    expect(statusOf(create(businessBody({ name: "Pending Stationers Three" })))).toBe(201)
+    const fourth = create(businessBody({ name: "Pending Stationers Four" }))
+    expect(statusOf(fourth)).toBe(403)
+    expect(errorOf(fourth).code).toBe("plan_limit_reached")
+  })
+
+  it("provider listings never consume the owner's quota (Task 2): many providers in a row stay 201 on Free", () => {
+    // Regression for the quota exemption: the Free plan's 3-slot limit is kind-specific — it
+    // counts Business / Food / Tutor / Property, never Provider. Many provider creates should go
+    // through on a Free plan even when the fixtures already hold a pending non-provider.
+    for (let i = 0; i < 5; i += 1) {
+      expect(statusOf(create(providerBody({ name: `Portal Service ${i}` })))).toBe(201)
+    }
+    // ... and a non-provider create afterwards still has its 2 remaining slots.
+    expect(statusOf(create(businessBody({ name: "Pending Stationers Two" })))).toBe(201)
+    expect(statusOf(create(businessBody({ name: "Pending Stationers Three" })))).toBe(201)
+    const fourth = create(businessBody({ name: "Pending Stationers Four" }))
     expect(statusOf(fourth)).toBe(403)
     expect(errorOf(fourth).code).toBe("plan_limit_reached")
   })
@@ -148,15 +181,24 @@ describe("mock parity: plan quota and rate limits", () => {
   })
 
   it("archiving frees a Free slot", () => {
-    const first = dataOf<{ id: string; revision: number }>(create(providerBody()))
-    expect(statusOf(create(providerBody({ name: "Over the limit" })))).toBe(403)
+    // Fixtures hold 1 pending business; two more businesses reach the Free plan's 3-slot limit,
+    // the fourth is refused, and archiving the first business frees the slot again. (Provider is
+    // portal-managed and never consumes a slot, so archiving one wouldn't prove anything.)
+    const first = dataOf<{ id: string; revision: number }>(create(businessBody({ name: "Second Shop" })))
+    expect(statusOf(create(businessBody({ name: "Third Shop" })))).toBe(201)
+    expect(statusOf(create(businessBody({ name: "Over the limit" })))).toBe(403)
     expect(statusOf(routeWrite("POST", `/listings/${first.id}/archive`, { revision: first.revision }, owner))).toBe(200)
-    expect(statusOf(create(providerBody({ name: "After archiving" })))).toBe(201)
+    expect(statusOf(create(businessBody({ name: "After archiving" })))).toBe(201)
   })
 
   it("resubmitting a REJECTED listing needs a free slot, and a refused resubmission changes nothing", () => {
+    // The rejected fixture is a property (quota-countable). Reach the Free plan's 3-slot limit
+    // with two extra businesses (fixtures hold 1 pending business already), then PATCH the
+    // rejected property — the resubmission re-enters the quota and is refused with
+    // plan_limit_reached; the row is untouched.
     const rejectedId = writeState().listings.find((l) => l.status === "rejected")!.id
-    expect(statusOf(create(providerBody()))).toBe(201) // now 3 active
+    expect(statusOf(create(businessBody({ name: "Pending Stationers Two" })))).toBe(201)
+    expect(statusOf(create(businessBody({ name: "Pending Stationers Three" })))).toBe(201)
     const before = JSON.stringify(writeState().listings.find((l) => l.id === rejectedId))
     const reply = routeWrite("PATCH", `/listings/${rejectedId}`, { revision: 1, description: "A new description that is long enough to be a real change." }, owner)
     expect(statusOf(reply)).toBe(403)
