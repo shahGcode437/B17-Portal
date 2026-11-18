@@ -31,7 +31,7 @@ describe("who sees it", () => {
     renderBanner(unverified())
     const banner = screen.getByRole("complementary", { name: "Your email is not verified" })
     expect(banner).toHaveTextContent("Verify your email.")
-    expect(banner).toHaveTextContent(/list a business, service, tutor or property, or send a request/i)
+    expect(banner).toHaveTextContent(/list a business, tutor or property, or send a service request/i)
     expect(banner).toHaveTextContent(/browsing works either way/i)
     expect(screen.getByRole("link", { name: "Open your Profile" })).toHaveAttribute("href", "/profile")
   })

@@ -103,7 +103,7 @@ test('registration signs in an UNVERIFIED account: a notice, a neutral resend, a
   const banner = page.getByRole('complementary', { name: 'Your email is not verified' })
   await expect(banner).toBeVisible()
   await expect(banner).toContainText('Verify your email.')
-  await expect(banner).toContainText(/list a business, service, tutor or property, or send a request/i)
+  await expect(banner).toContainText(/list a business, tutor or property, or send a service request/i)
   await expect(page.locator('body')).not.toContainText(/we sent|on its way|check your inbox|check your email|no e-mail is sent|dev_verify/i)
   await banner.getByRole('link', { name: 'Open your Profile' }).click()
   await expectPage(page, 'Nadia New')

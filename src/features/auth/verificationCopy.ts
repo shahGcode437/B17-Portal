@@ -6,10 +6,10 @@
  * Production wording never claims an e-mail was sent: production e-mail delivery does not exist yet (Phase 13), so
  * the copy says what verification is for and where to do it, not that a message is on its way.
  */
-export const VERIFICATION_UNLOCKS = "create a professional profile, list a business, service, tutor or property, or send a service request"
+export const VERIFICATION_UNLOCKS = "create a professional profile, list a business, tutor or property, or send a service request"
 
 /** The sentence the Profile notice and the gates use for why verification matters; browsing never needs it. */
 export const VERIFICATION_REASON = `Verifying your email lets you ${VERIFICATION_UNLOCKS}. Browsing works either way.`
 
 /** The same reason, shortened for the banner that sits above every page (it must stay a few lines on a phone). */
-export const VERIFICATION_BANNER_REASON = "Verifying lets you list a business, service, tutor or property, or send a request. Browsing works either way."
+export const VERIFICATION_BANNER_REASON = "Verifying lets you list a business, tutor or property, or send a service request. Browsing works either way."

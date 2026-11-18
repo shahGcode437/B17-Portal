@@ -42,7 +42,7 @@ test('register through the real form: the account is created unverified and the 
   // S5A: the page the new account lands on already says verification is required (development wording: nothing is e-mailed).
   const banner = page.getByRole('complementary', { name: 'Your email is not verified' })
   await expect(banner).toBeVisible()
-  await expect(banner).toContainText(/list a business, service, tutor or property, or send a request/i)
+  await expect(banner).toContainText(/list a business, tutor or property, or send a service request/i)
   await expect(banner).toContainText(/no e-mail is sent/i)
   await page.goto('/profile')
   await expect(page.getByRole('region', { name: 'Email verification' })).toBeVisible()

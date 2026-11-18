@@ -325,7 +325,7 @@ describe("VerificationNotice", () => {
     await screen.findByRole("button", { name: "Resend verification email" })
     const reason = screen.getByTestId("verification-reason")
     expect(reason).toHaveTextContent("ayesha@example.org is not verified yet.")
-    expect(reason).toHaveTextContent(/lets you create a professional profile, list a business, service, tutor or property, or send a service request/i)
+    expect(reason).toHaveTextContent(/lets you create a professional profile, list a business, tutor or property, or send a service request/i)
     expect(reason).toHaveTextContent(/browsing works either way/i)
     expect(screen.queryByText(/we sent|on its way|check your inbox|check your e-?mail/i)).not.toBeInTheDocument()
     expect(screen.queryByTestId("dev-verification-hint")).not.toBeInTheDocument()
