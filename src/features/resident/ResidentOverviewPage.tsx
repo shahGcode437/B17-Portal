@@ -1,7 +1,7 @@
 import { useState } from "react"
-import { useNavigate } from "react-router-dom"
+import { Link, useNavigate } from "react-router-dom"
 import { motion } from "motion/react"
-import { Heart, ClipboardList, Activity, LogOut, UserRound } from "lucide-react"
+import { Heart, ClipboardList, Activity, LogOut, ShieldCheck, UserRound } from "lucide-react"
 import { Container } from "@/components/foundation/Container"
 import { Grid } from "@/components/foundation/Grid"
 import { Stack } from "@/components/foundation/Stack"
@@ -18,6 +18,7 @@ import { SAVED_KIND_META, describeSavedEntry } from "@/features/resident/savedIt
 import { useActiveRequestCount, useMyRequests, useSaved } from "@/hooks/useResidentReads"
 import { ReadError } from "@/components/feedback/ReadError"
 import { useAuth } from "@/hooks/useAuth"
+import { useIsAdmin } from "@/hooks/useIsAdmin"
 import { useToast } from "@/hooks/useToast"
 import { VerificationNotice } from "@/features/auth/VerificationNotice"
 import { useRequireAuth } from "@/hooks/useRequireAuth"
@@ -37,6 +38,7 @@ const RECENT_LIMIT = 3
 function ResidentOverviewPage() {
   const user = useRequireAuth()
   const { logout } = useAuth()
+  const isAdmin = useIsAdmin()
   const { show } = useToast()
   const navigate = useNavigate()
   const saved = useSaved()
@@ -75,10 +77,23 @@ function ResidentOverviewPage() {
                   {user.email}
                 </Typography>
               </Stack>
-              <Button variant="outline" className="h-11 shrink-0" onClick={handleLogout}>
-                <LogOut />
-                Log Out
-              </Button>
+              <Stack direction="row" align="center" gap={2} className="shrink-0">
+                {isAdmin && (
+                  // Admin-only account action: a shortcut to the Admin Dashboard from the user's
+                  // own Account page. Visibility is UX only — ``require_admin`` on the backend
+                  // remains the authority on every /admin/* request.
+                  <Button asChild variant="outline" className="h-11">
+                    <Link to={routes.adminDashboard}>
+                      <ShieldCheck />
+                      Admin Dashboard
+                    </Link>
+                  </Button>
+                )}
+                <Button variant="outline" className="h-11" onClick={handleLogout}>
+                  <LogOut />
+                  Log Out
+                </Button>
+              </Stack>
             </Stack>
           </motion.div>
 

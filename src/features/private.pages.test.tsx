@@ -358,3 +358,69 @@ describe("Overview pages (real counts)", () => {
     expect(within(tile("Rejected / taken down")).getByText("1")).toBeInTheDocument()
   })
 })
+
+describe("Admin Dashboard shortcut (Task 3B)", () => {
+  /**
+   * Task 3B: an authenticated admin sees an Admin Dashboard shortcut on their account surfaces so
+   * they do not have to type /admin by hand. Visibility is UX only — ``require_admin`` on the
+   * backend is the authority on every /admin/* request. These assertions pin the shortcut's
+   * visibility to the role from the AuthProvider's /auth/me answer, so a user without the role
+   * never sees it.
+   */
+  const admin = () =>
+    adminUser({ displayName: "Demo Admin", professional: { planCode: "free" as const } })
+  const professional = () =>
+    testUser({ displayName: "Faisal Pro", professional: { planCode: "free" as const } })
+
+  it("resident overview: a signed-in admin sees a visible Admin Dashboard link to /admin", async () => {
+    backend(["admin"])
+    const { ResidentOverviewPage } = await import("@/features/resident/ResidentOverviewPage")
+    renderPage(<ResidentOverviewPage />, { url: "/profile", user: admin() })
+    const link = await screen.findByRole("link", { name: "Admin Dashboard" })
+    expect(link).toBeInTheDocument()
+    expect(link).toHaveAttribute("href", "/admin")
+  })
+
+  it("resident overview: an ordinary resident does NOT see the Admin Dashboard link", async () => {
+    const { ResidentOverviewPage } = await import("@/features/resident/ResidentOverviewPage")
+    renderPage(<ResidentOverviewPage />, { url: "/profile", user: resident() })
+    // The surrounding account card renders synchronously; wait for its heading so a late admin
+    // button (there must be none) cannot slip past the assertion.
+    await screen.findByRole("heading", { level: 1, name: "Rana Resident" })
+    expect(screen.queryByRole("link", { name: "Admin Dashboard" })).toBeNull()
+  })
+
+  it("resident overview: a plain professional (no admin role) does NOT see the Admin Dashboard link", async () => {
+    const { ResidentOverviewPage } = await import("@/features/resident/ResidentOverviewPage")
+    renderPage(<ResidentOverviewPage />, { url: "/profile", user: professional() })
+    await screen.findByRole("heading", { level: 1, name: "Faisal Pro" })
+    expect(screen.queryByRole("link", { name: "Admin Dashboard" })).toBeNull()
+  })
+
+  it("resident overview: the loading auth state does NOT flash the Admin Dashboard link", () => {
+    renderPage(<AdminDashboardPage />, { url: "/profile", user: null, status: "loading" })
+    // During `loading`, the AuthGate (and `useRequireAuth` inside pages) returns null, so the
+    // overview never renders at all — the admin link cannot appear before /auth/me answers.
+    expect(screen.queryByRole("link", { name: "Admin Dashboard" })).toBeNull()
+  })
+
+  it("professional overview: an admin + professional sees the Admin Dashboard link", async () => {
+    backend(["admin"])
+    const { ProfessionalOverviewPage } = await import(
+      "@/features/provider/ProfessionalOverviewPage"
+    )
+    renderPage(<ProfessionalOverviewPage />, { url: "/provider", user: admin() })
+    const link = await screen.findByRole("link", { name: "Admin Dashboard" })
+    expect(link).toBeInTheDocument()
+    expect(link).toHaveAttribute("href", "/admin")
+  })
+
+  it("professional overview: a plain professional (no admin role) does NOT see the Admin Dashboard link", async () => {
+    const { ProfessionalOverviewPage } = await import(
+      "@/features/provider/ProfessionalOverviewPage"
+    )
+    renderPage(<ProfessionalOverviewPage />, { url: "/provider", user: professional() })
+    await screen.findByRole("heading", { level: 1, name: "Overview" })
+    expect(screen.queryByRole("link", { name: "Admin Dashboard" })).toBeNull()
+  })
+})

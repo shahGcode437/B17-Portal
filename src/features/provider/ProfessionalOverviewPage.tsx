@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom"
 import { motion } from "motion/react"
-import { Store, Inbox, Layers, Clock, CheckCircle2, XCircle, Archive, MessageSquareText, Plus, LayoutDashboard } from "lucide-react"
+import { Store, Inbox, Layers, Clock, CheckCircle2, XCircle, Archive, MessageSquareText, Plus, LayoutDashboard, ShieldCheck } from "lucide-react"
 import { Container } from "@/components/foundation/Container"
 import { Grid } from "@/components/foundation/Grid"
 import { Stack } from "@/components/foundation/Stack"
@@ -20,6 +20,7 @@ import { ListingStatusBadge } from "@/features/provider/ListingStatusBadge"
 import { PlanBadge } from "@/features/provider/PlanBadge"
 import { useLeads } from "@/hooks/useResidentReads"
 import { useLeadStatusCounts, useOwnerListings } from "@/hooks/useWorkspaceReads"
+import { useIsAdmin } from "@/hooks/useIsAdmin"
 import { useRequireAuth } from "@/hooks/useRequireAuth"
 import { usePlanEntitlements } from "@/hooks/useCapability"
 import { routes } from "@/config/routes"
@@ -53,6 +54,7 @@ function RecentRow({ title, badge, date, capitalize }: { title: string; badge: R
  */
 function ProfessionalOverviewPage() {
   const user = useRequireAuth()
+  const isAdmin = useIsAdmin()
   const listings = useOwnerListings()
   const leads = useLeads()
   const leadCounts = useLeadStatusCounts()
@@ -91,6 +93,18 @@ function ProfessionalOverviewPage() {
             actions={
               <>
                 <PlanBadge />
+                {isAdmin && (
+                  // Portal staff use the Professional workspace to author Service / Professional
+                  // listings (Task 2) — surface the Admin Dashboard here so they do not have to
+                  // leave the workspace to reach moderation. Hidden from non-admin professionals;
+                  // the backend ``require_admin`` is still the authority on every /admin/* call.
+                  <Button asChild size="lg" variant="outline" className="h-11">
+                    <Link to={routes.adminDashboard}>
+                      <ShieldCheck />
+                      Admin Dashboard
+                    </Link>
+                  </Button>
+                )}
                 <Button asChild size="lg" className="h-11">
                   <Link to={routes.createListing}>
                     <Plus />

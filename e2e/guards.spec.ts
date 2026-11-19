@@ -81,6 +81,35 @@ test.describe('roles are separate', () => {
     await openApp(page, '/')
     await expect(page.locator('a[href^="/admin"]')).toHaveCount(0)
   })
+
+  test('a signed-in admin reaches the Admin Dashboard via the account-page shortcut (no manual URL typing)', async ({ page }) => {
+    // Task 3B: the Admin Dashboard shortcut lives on the authenticated account surface (the
+    // resident overview at /profile), not beside the public categories. An admin opens their
+    // profile, clicks the visible shortcut, and lands on the Admin Dashboard.
+    await openApp(page, '/')
+    await page.getByRole('banner').getByRole('link', { name: 'Log in' }).click()
+    await expectPage(page, 'Log In')
+    await signIn(page, 'Demo Admin', 'admin')
+    await page.goto('/profile')
+    await expectPage(page, 'Demo Admin')
+    const shortcut = page.getByRole('link', { name: 'Admin Dashboard' })
+    await expect(shortcut).toBeVisible()
+    await expect(shortcut).toHaveAttribute('href', '/admin')
+    await shortcut.click()
+    await expectPage(page, 'Admin Dashboard')
+    await expect(page).toHaveURL(/\/admin$/)
+  })
+
+  test('an ordinary resident never sees the Admin Dashboard shortcut on their account page', async ({ page }) => {
+    // Complement of the test above: visibility is scoped to the admin role from /auth/me.
+    await openApp(page, '/')
+    await page.getByRole('banner').getByRole('link', { name: 'Log in' }).click()
+    await expectPage(page, 'Log In')
+    await signIn(page, 'Rana Resident', 'resident')
+    await page.goto('/profile')
+    await expectPage(page, 'Rana Resident')
+    await expect(page.getByRole('link', { name: 'Admin Dashboard' })).toHaveCount(0)
+  })
 })
 
 test('logging out of Admin returns to Admin Login on the next admin page', async ({ page }) => {
