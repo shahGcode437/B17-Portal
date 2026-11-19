@@ -1,6 +1,6 @@
 # B-17 Portal — Authentication, Authorization & Roles
 
-**Status:** **frozen by Phase 11A; email/password authentication, sessions, CSRF and the RBAC foundation are IMPLEMENTED in Phase 11B** (§20 lists exactly what was built and the few as-built refinements). **Google OAuth, account linking/claiming (Connect/Disconnect) and the OAuth schema (§10, migration `0004`) are IMPLEMENTED in Phase 11C** (§21 lists exactly what was built and the few as-built refinements; the real-Google smoke test is a documented manual step). Phase 12A adds §22 (the authorization matrix for the write APIs and the frontend integration contract; Phase 11 behaviour is unchanged). Where a number is marked *tunable*, 11B/11C may adjust it inside the stated bounds; every other statement is binding.
+**Status:** **frozen by Phase 11A; email/password authentication, sessions, CSRF and the RBAC foundation are IMPLEMENTED in Phase 11B** (§20 lists exactly what was built and the few as-built refinements). **Google OAuth, account linking/claiming (Connect/Disconnect) and the OAuth schema (§10, migration `0004`) are IMPLEMENTED in Phase 11C** (§21 lists exactly what was built and the few as-built refinements; the real-Google smoke test is a documented manual step). Phase 12A adds §22 (the authorization matrix for the write APIs and the frontend integration contract; Phase 11 behaviour is unchanged). Where a number is marked *tunable*, 11B/11C may adjust it inside the stated bounds; every other statement is binding. **Phase RBAC-0 (2026-11-19, documentation only) adds §27: a design freeze for a Super Admin + Scoped Moderator model that is NOT IMPLEMENTED. §11, §22, §24, §25 and §26 remain the description of the running system.**
 **Owns:** the identity model, session/cookie/CSRF design, password and token handling, email verification and reset, Google OAuth and account linking, roles and authorization architecture, the auth API contract, the auth schema plan, the threat review and the security test matrix.
 **Does not own:** general table design → [`DATA_MODEL.md`](DATA_MODEL.md) · HTTP conventions/envelopes → [`API_CONTRACT.md`](API_CONTRACT.md) · layering/logging/CORS baseline → [`BACKEND_ARCHITECTURE.md`](BACKEND_ARCHITECTURE.md) · hosting/secrets/ops → [`DEPLOYMENT.md`](DEPLOYMENT.md).
 
@@ -27,6 +27,8 @@
 | D15 | `401` unauthenticated / `403` authenticated-but-not-allowed / `404` for resources the caller may not know exist. | §11.5 |
 | D16 | PostgreSQL only: sessions, tokens, OAuth flows, audit events and identity-keyed rate-limit counters. **No Redis.** | §4.2, §13 |
 | D17 | Phasing (**approved**): **11A** design freeze · **11B** email/password + PostgreSQL sessions + CSRF + authorization/RBAC foundation (migration `0003`) · **11C** Google OAuth + linking + authentication hardening (migration `0004`) · then **12** write APIs + frontend integration · **13** media + production deployment. | §19 |
+
+> **RBAC-0 note (2026-11-19):** D13 and D14 describe the system as built. A later design freeze (§27, **not implemented**) refines them: the stored value `admin` keeps its name and takes Super Admin semantics, a second role `moderator` is added with scope assignments, and the authorization dependencies gain scope-aware, Super Admin-only and recent-authentication variants. Until the phases in §27.16 ship, D13 and D14 are unchanged.
 
 ## 2. Current state (audited in Phase 11A)
 
@@ -319,7 +321,7 @@ Unlinking: `DELETE /auth/oauth/google` (authenticated + CSRF) is refused unless 
 | **Professional** | A `professional_profiles` row exists — a **capability**, not a `user_roles` value, so there is no role/profile duplication. Created self-service by a *verified* user on first use of the workspace (preserving today's "any signed-in user can list"); a professional-verification state is a future seam on the profile. |
 | **Admin** | An explicit `user_roles` row `admin`. **Never** inferred from an email domain, OAuth provider, frontend state, query parameter, `localStorage`, or any client-supplied field. |
 
-`RoleName = {admin}` and the `user_roles` table are **sufficient as built** (no change). A user can be Resident + Professional + Admin; roles only add capabilities. The capability matrix of the 10A design (who may save, list, moderate, feature, publish news, manage categories) is unchanged and is the specification for the Phase 12 authorization tests.
+`RoleName = {admin}` and the `user_roles` table are **sufficient as built** (no change). A user can be Resident + Professional + Admin; roles only add capabilities. The capability matrix of the 10A design (who may save, list, moderate, feature, publish news, manage categories) is unchanged and is the specification for the Phase 12 authorization tests. *(RBAC-0 freeze, 2026-11-19: "sufficient as built" stays true of the running system. The planned model adds a second role value, `moderator`, with scope assignments, and gives the `admin` value Super Admin semantics, with no rename — §27.2; not implemented.)*
 
 ### 11.2 Dependencies (D14) — `app/dependencies/auth.py`
 
@@ -359,7 +361,7 @@ The frontend treats **any** `401` as "anonymous / sign in again" and **any** `40
 
 ### 11.6 Admin security
 
-Backend-only grants (`python -m app.cli.admin grant <email>` / `revoke`, requiring an existing, active, **verified** account; every grant/revoke is audited and revokes that user's sessions); **no public admin signup, no endpoint that lets a user change roles** (an admin role-management tool is a later admin-only feature); shorter effective session (§4.4); every admin write is audited (listing moderation already writes `listing_status_history`; role/status changes write `auth_events`); `require_admin` is the single seam where **step-up auth / MFA** will be added later (the session row can gain `mfa_verified_at`) without touching routers.
+Backend-only grants (`python -m app.cli.admin grant <email>` / `revoke`, requiring an existing, active, **verified** account; every grant/revoke is audited and revokes that user's sessions); **no public admin signup, no endpoint that lets a user change roles** (an admin role-management tool is a later admin-only feature); shorter effective session (§4.4); every admin write is audited (listing moderation already writes `listing_status_history`; role/status changes write `auth_events`); `require_admin` is the single seam where **step-up auth / MFA** will be added later (the session row can gain `mfa_verified_at`) without touching routers. *(RBAC-0 freeze, 2026-11-19: Super Admin promotion and demotion stay operator-CLI-only in v1 — there is no web endpoint for them before MFA exists — and a Super Admin-only moderator-management API is planned instead of the "admin role-management tool" mentioned above; MFA becomes mandatory for Super Admin and Moderator before public production — §27.6, §27.7, §27.13; none of it implemented.)*
 
 ### 11.7 Account status
 
@@ -555,6 +557,8 @@ Full-stack Playwright against real auth is Phase 12.
 
 **Confirmed in the Phase 11A review:** the narrow unverified-account claim (§10.4), the explicit `email_already_registered` registration conflict (§7.1, §13.1), fragment-delivered tokens (§8), the 11A/11B/11C split, and the 127.0.0.1 development topology (§5.1). **Still required before auth is enabled outside development:** a production email provider and a custom domain that makes frontend and API same-site (§5.1).
 
+*(RBAC-0 freeze, 2026-11-19, refining the deferrals above: **MFA/step-up** is now a hard requirement before public production, for Super Admin and Moderator alike — §27.13; an **admin role-management UI** is planned only as a Super Admin-only moderator-management screen (Super Admin promotion stays CLI-only) — §27.7; a general **database-driven permission model** stays deferred, because the freeze adds only a `moderator` role plus scope assignments. None of it is implemented.)*
+
 ## 20. Implementation notes — Phase 11B as built
 
 Source: `backend/app/{core/security,models/auth.py,repositories/auth.py,services/auth*.py,services/email.py,services/rate_limit.py,dependencies/auth.py,middleware/auth_security.py,api/v1/auth.py,cli}/` and migration `0003_auth_sessions_tokens_events_rate_limits`. Everything in §1–§19 that is marked 11B is implemented; this section records the *as-built* detail and the few refinements. Nothing frozen was changed.
@@ -709,7 +713,7 @@ Phase 11 mechanics (cookie, CSRF, Origin, session store) are unchanged; the eigh
 - **Fresh session (as built):** the admin's session must have been created ≤ 12 h and last seen ≤ 2 h ago (the `ADMIN_SESSION_IDLE_MINUTES` / `ADMIN_SESSION_MAX_HOURS` settings, injected clock in tests). A stale session gets `401 session_expired` **before** any write or read happens, and the refused request does not count as activity (it cannot keep a stale session alive). Signing in again restores access. The absolute 30-day session lifetime is unchanged.
 - **CSRF / Origin** are the central middleware's: every admin `POST` / `PATCH` needs an allowed `Origin` and the session's CSRF token (`403 csrf_failed` otherwise, nothing written). `GET` is exempt as everywhere.
 - **Caching:** `/admin/*` joins `/auth/*` and `/users/me/*` in the middleware's `Cache-Control: no-store` prefix list, errors included.
-- **Admin may moderate their own listing.** No rule forbids it (no multi-admin roles exist yet); the audit trail records the actor. Granular roles (Master Admin, Property Moderator, …) remain deferred.
+- **Admin may moderate their own listing.** No rule forbids it (no multi-admin roles exist yet); the audit trail records the actor. Granular roles (Master Admin, Property Moderator, …) remain deferred. *(Superseded as the TARGET design by the RBAC-0 freeze, 2026-11-19: self-moderation will be denied, with one temporary, approval-only, audited override for Service / Professional listings, and the `admin` value will mean Super Admin beside a scoped `moderator` role — §27.2, §27.8. This bullet stays true of the running system until RBAC-B ships.)*
 - **Matrix as tested** (`tests/db/test_admin_security_api.py`): {anonymous, unverified, unverified admin, verified resident, professional, Premium professional, suspended, admin with stale session, fresh admin} × all eight operations; Origin / CSRF tampering on every mutation; the stale-session boundary on each side of both limits.
 
 
@@ -742,3 +746,219 @@ It prints a fresh link; opening it in the browser runs the normal `POST /auth/ve
 - there is **no HTTP endpoint** and **no setting** that verifies anyone automatically, and the raw token is never logged. The development-only copy (`src/config/devMail.ts`, `import.meta.env.DEV`, compiled out of production builds) names this command on the profile page and never claims an e-mail was sent (verification notice, resend confirmation, post-registration toast, the not-verified error, forgot-password); production wording is unchanged.
 
 Tests: `backend/tests/test_dev_verification_guard.py` (environment / database-host guard, CLI exit codes, no HTTP surface) and `backend/tests/db/test_dev_verification.py` (real PostgreSQL: the issued token is accepted by the real endpoint exactly once and verifies nobody by itself).
+
+## 27. Super Admin + Scoped Moderator RBAC — design freeze (Phase RBAC-0)
+
+**Status: DESIGN FREEZE ONLY — NOTHING IN THIS SECTION IS IMPLEMENTED.** Phase RBAC-0 (2026-11-19) changed documentation only: no code, migration, test or dependency. The running system is exactly what §11, §22, §24, §25 and §26 describe. The statements below that use **MUST / MUST NOT** bind the implementation phases in §27.16; they record the product owner's approved decisions (compact record: `DECISIONS.md`, "RBAC-0"). What genuinely remains undecided — implementation details that cannot safely be fixed before the code is inspected — is listed in §27.17 instead of being silently assumed. The *proposed* schema is `DATA_MODEL.md` §17 and the *planned* effect on the existing admin endpoints is `API_CONTRACT.md` §14; neither is a contract until its phase ships, and no new endpoint path is defined anywhere in the freeze.
+
+### 27.1 Current state (as built at `079cd6a`; unchanged by RBAC-0)
+
+- **One privileged tier.** `RoleName = {admin}` (`user_roles`, `CHECK role IN ('admin')`). Every `/admin/*` route sits behind one router-level `require_admin`: verified e-mail, the `admin` role read from the database on every request, and a fresh session (§4.4). There is no scope: any admin reads and decides any listing, and the queue, the per-status counts and the detail are global.
+- **Admin detail carries the exact stored location** (`LOCATION_MAP.md` §7.3).
+- **Self-moderation is allowed** and only recorded (`listing_status_history` actor); a test pins it (`test_an_admin_may_moderate_their_own_listing`). Taxonomy writes are open to any admin.
+- **Roles are granted only by the operator CLI** (`python -m app.cli.admin grant|revoke`): no HTTP endpoint; `grant` needs an active, verified account; both commands revoke the target's sessions and write an `auth_events` `role_granted` / `role_revoked`. The CLI takes no reason and has **no last-admin guard**.
+- **Service / Professional (`provider`) listings are portal-managed since Task 2** (commit `5d1e638`): only an admin may create, edit or archive them (anyone else: `403 forbidden`, detail code `provider_admin_only`); they never count against the plan quota. Authoring is still **owner-bound**: it runs through the owner endpoints, so the author needs `ProfessionalUser` (verified e-mail + a professional profile), only the author can edit or archive (another admin gets `404`), and an author who stops being an admin gets `provider_admin_only` on their own provider listings.
+- **News** has a table (`news_articles`, `created_by`) and public reads only; there is no news administration API (the admin screen says so).
+- **Audit:** `listing_status_history` (append-only by application convention; `actor_role` is `owner` or `admin`) and `auth_events` (closed vocabulary, allow-listed `details`, **purged after 400 days** — §13.5). There is no durable staff audit.
+- **Demo data:** `scripts/dev_fixtures.py` refuses only `ENVIRONMENT=production`; its fixture admin has no password and an unverified e-mail.
+- **Frontend:** six sites check `roles.includes("admin")`; the Task 3B Admin Dashboard shortcut on `/profile` and `/provider` is gated by `useIsAdmin()`.
+
+### 27.2 Roles and terminology
+
+| Term | Meaning in the target model | Stored as |
+|---|---|---|
+| Resident | every account | not stored |
+| Professional | a profile / capability — **not** a staff role and never privileged | `professional_profiles` row |
+| **Super Admin** | full portal authority, every scope | the existing `user_roles.role = 'admin'` — **the value is not renamed** |
+| **Moderator** | limited staff; authority only through assigned scopes | a new `user_roles.role = 'moderator'` **plus** scope assignments (proposed shape: `DATA_MODEL.md` §17) |
+| Staff | a Super Admin, or a Moderator with at least one active scope | — |
+
+- **Moderator authority requires BOTH the role and at least one active scope.** A Moderator with no scope has no authority (deny by default).
+- **Super Admin and Moderator are mutually exclusive.** An account holding `admin` MUST NOT also hold `moderator`: appointing a Moderator refuses a Super Admin target; promoting an account to Super Admin removes its `moderator` role and every scope assignment in the same transaction; and a scope assignment cannot exist without the `moderator` role. The shared authority service enforces this transactionally (§27.6, §27.7) and it is tested (§27.15).
+- **Naming.** In existing code, columns, tests and docs, "admin" means Super Admin. Code introduced by later phases MUST use explicit names — `is_super_admin`, `require_super_admin`, `useIsSuperAdmin` — and bare "admin" MUST NOT be used to mean "any staff". Existing names (`require_admin`, `useIsAdmin`, the test helpers) keep their Super Admin meaning until the phase that touches them renames them; there is no rename for its own sake.
+- Staff authenticate through the **same account, password / Google identity and session system** as everyone (§4); there is no separate credential store. Professional status neither grants nor is required for staff authority.
+- Professional remains a capability (§11.1); public modules stay unrestricted for every role.
+
+### 27.3 Scopes
+
+The canonical scopes are the names of the code-defined taxonomy modules (`CategoryModule`); a scope is never created by inserting a row.
+
+| Scope | Resource it covers | Derived from |
+|---|---|---|
+| `services` | Service / Professional (`provider`) resources | `listings.kind = provider` |
+| `directory` | General Business listings | `kind = business` and `business_profiles.vertical = general` |
+| `food` | Food Business listings | `kind = business` and `vertical = food` |
+| `education` | Tutor listings | `kind = tutor` |
+| `property` | Property listings | `kind = property` |
+| `news` | News articles — a **separate resource model** (`news_articles`), not listing moderation | reserved |
+
+1. A resource's scope MUST be derived **server-side from the authoritative database state of that resource**. It MUST NOT be taken from a category, a request-body field, a URL, a query parameter or any frontend state.
+2. **Business splits by vertical.** Food is a vertical of Business (`DATA_MODEL.md` §5), so `directory` and `food` are separate scopes; a `kind = business` test alone is never a scope check.
+3. **Deny by default.** A resource whose scope is unknown, unmapped or corrupt (for example a business listing with no business profile, or a future kind nobody mapped) MAY be acted on by a Super Admin and MUST NOT be acted on by a Moderator, whatever their scopes. The mapping from resource state to scope MUST be exhaustive and tested as such (§27.15).
+4. **Scope follows the resource's current state.** A Business that its owner switches between General and Food moves between `directory` and `food`; scope MUST therefore be evaluated at decision time under the resource's lock, never cached.
+5. **`news` is reserved.** It becomes assignable only once a News administration API actually exists; until then no Moderator can be given it. News MUST NOT be forced into listing moderation.
+6. No per-section role names (`tutor_admin` and similar): the model is `moderator` + scope assignments.
+
+### 27.4 Authorization rules
+
+1. **The backend is the authority.** Frontend visibility is UX only and a hidden URL is never a control. Every authority decision is made from live backend state on each request, never from a cached claim (roles are already re-read from the database per request, §22.1).
+2. **Responses.** A non-staff caller on any staff surface gets `403` (as non-admins do today). A Moderator on a Super Admin–only surface gets `403`. A Moderator who reads or mutates a resource outside their scopes gets **the same `404` as for a nonexistent resource** (indistinguishable body). A self-moderation refusal is `403` with a stable detail code (name frozen in RBAC-B).
+3. **Queue filtering alone is insufficient.** The queue, the counts and any dashboard metric are scoped by the same rule, **and** the detail and every mutation MUST derive the resource's actual scope from the database under the appropriate lock and compare it with the actor's live authority. A Moderator MUST NOT be able to read, approve, reject or take down an out-of-scope item merely because they know its id.
+4. **Revocation cannot be raced.** A decision either commits before a concurrent scope or role removal takes effect, or is refused; the mechanism (for example re-verifying the actor's live assignment inside the decision transaction) is chosen in RBAC-B.
+5. **Taxonomy is Super Admin only in v1.** Moderators MUST NOT create, edit, reorder or (de)activate global categories.
+6. **Fail closed.** The `/admin` surface stays privileged by default: a route that declares nothing finer is at least staff-only, never public. `require_staff` MUST admit only a Super Admin, or a Moderator with **at least one active scope** (§27.7); a Moderator with zero scopes is refused.
+7. **Route inventory.** Every privileged `/admin/*` backend route MUST have an explicit authority classification (for example Super Admin only, or staff with a scope check) recorded in one place, and a CI / security test MUST fail when any `/admin/*` route is unclassified (§27.15).
+
+### 27.5 Permission matrix (target)
+
+| Capability | Super Admin | Moderator, item in an assigned scope | Moderator, item outside every assigned scope | Non-staff |
+|---|---|---|---|---|
+| Queue and counts | all, global | assigned scopes only, counts scoped | not listed | `403` |
+| Review detail | any | in scope, reduced location (§27.10) | `404` | `403` |
+| Approve / reject / take down | any, except their own content (§27.8); the one temporary exception is *approving* their own Service / Professional listing, with an audited override | in scope, **never their own content** | `404` | `403` |
+| Taxonomy (categories) | yes | `403` | `403` | `403` |
+| Provider (Service / Professional) resources | any (staff-managed, §27.9) | `services` scope only | `403` | `403` |
+| News administration (future API) | yes | `news` scope only | `403` | `403` |
+| Appoint / remove Moderators, change scopes | yes, with recent authentication | `403` | `403` | `403` |
+| Promote or demote a Super Admin | operator CLI only (v1) | no endpoint | no endpoint | no endpoint |
+| Staff audit view | yes | `403` | `403` | `403` |
+| Exact stored location | yes | no (reduced projection) | `404` | `403` |
+
+### 27.6 Super Admin policy and invariants
+
+- **Count.** The operational production target is **1–2** trusted Super Admin accounts. "At most 2" MUST NOT be a database invariant. Any count above 2 MUST produce a strong audit record and an operator warning. Because promotion is CLI-only in v1, a promotion that takes the count **above the normal target of 2** MUST require an **explicit CLI override with a reason**; a transient third Super Admin is allowed for safe credential or account rotation. A configurable **safety ceiling** (default: one transient extra account, so 3) bounds promotion in the application, and a promotion beyond it requires an explicit **break-glass** action. No limit may ever block a demotion or a recovery grant. The hard invariant is the opposite bound: never accidentally reach **zero** usable Super Admins (below).
+- **Usable Super Admin** — the unit the invariant counts. A Super Admin is *usable* only while **all** of these hold: the account status is `active`; the e-mail is verified; the account holds the `admin` role; it has a valid, usable sign-in method (a password, or a linked identity that can actually sign in); and, once staff MFA ships (§27.13), it has a valid enrolled MFA factor of the required kind.
+- **Last-Super-Admin invariant.** There MUST never be zero **usable** Super Admins by accident, and the invariant evaluates *usable* Super Admins, not merely `admin` role rows. Demotion, suspension, deletion / tombstone (`DATA_MODEL.md` §11) and any other removal of the privilege or of the account's usability MUST be refused, transactionally, when it would leave zero usable Super Admins. The check and the change run in one transaction, **serialized with the repository's established transaction-scoped PostgreSQL advisory-lock pattern** (the taxonomy lock and the per-requester request lock; a session-level lock was tried and rejected — `DECISIONS.md`, Phase 12F), taken before any user row lock. The rule applies to every application path including the CLI. Recovery from a zero state is always a *grant*, which is never refused.
+- **Promotion and demotion are CLI-only in v1.** There is **no web endpoint** for them before MFA exists. They MUST go through one shared authority service — not raw database writes — and MUST: require an explicit reason, be audited (§27.11), revoke the target's sessions and, for a promotion, remove any `moderator` role and scopes the target holds in the same transaction (§27.2); a promotion that takes the count above 2 additionally needs the explicit override of the Count rule. **Break-glass recovery stays possible out of band**: an operator with database access can always run the CLI.
+- No endpoint available to a Moderator may grant or alter the Super Admin role; Super Admin accounts are never modifiable through moderator-management surfaces.
+
+### 27.7 Staff management and sessions
+
+**Appointment.** A Super Admin may appoint an **existing, active, verified** account as Moderator and assign scopes. A Professional profile is **not** required. **Appointing a Super Admin as Moderator is refused** (the roles are mutually exclusive, §27.2). The staff-management API is added in RBAC-C; no path or schema is defined here.
+
+**A Moderator MUST NOT:** manage staff, change their own scopes, change another Moderator's scopes, promote themselves, grant the Super Admin role, or modify any Super Admin account.
+
+**Pause and remove.**
+- **Pause Moderator:** the account **keeps** the `moderator` role, **all** of its scope assignments are removed, **all** of its active sessions are revoked, and a staff audit event is written. A Moderator with zero scopes has **zero staff authority**.
+- **Remove Moderator:** the `moderator` role and every scope row are deleted, all sessions are revoked, and the action is audited.
+- **`require_staff`** MUST admit only a Super Admin, or a Moderator with **at least one active scope** (§27.4, rule 6); a paused Moderator is not staff.
+
+**Sessions on authority changes** (extends §4.5):
+
+| Event | Effect |
+|---|---|
+| Appointed Moderator, or a scope added (any elevation) | all of the target's existing sessions are revoked; the new authority is usable only after a fresh login |
+| Scope removed, Moderator paused, or Moderator removed | access ends immediately through the live per-request check; **all** of the target's sessions are also revoked (defence in depth) |
+| Super Admin promoted or demoted | the target's sessions are revoked (as the CLI already does); a promotion also removes the target's `moderator` role and scopes in the same transaction |
+| Account suspended or tombstoned | existing behaviour (sessions unusable / revoked) plus the last-Super-Admin guard (§27.6) |
+
+**Staff freshness (every privileged staff action).** Staff authorization — Super Admin and Moderator alike — initially **reuses the existing strong admin freshness policy** (§4.4; today an idle limit of about 2 hours and a session-age limit of about 12 hours, both settings). A later MFA / re-authentication step-up strengthens it without changing role or scope semantics.
+
+**Sensitive staff-management window.** Staff and role management mutations MUST **additionally** require recent authentication. The initial implementation is a **15-minute limit on session age** (the session was created no more than 15 minutes earlier). This is an **interim approximation** of recent authentication: it measures when the session was established, not when the person last proved their identity. Once explicit re-authentication / MFA step-up exists, sensitive authorization MUST use the dedicated re-authentication / MFA timestamp instead of session creation alone (§27.13).
+
+### 27.8 Self-moderation and conflict of interest
+
+1. A **Moderator MUST NEVER** approve, reject or take down their own listing or content.
+2. A **Super Admin MUST NOT** self-moderate (approve, reject or take down) ordinary personally-owned Business, Food, Tutor or Property content either; another staff member decides it.
+3. **Temporary exception — approval only, Service / Professional listings only.** While provider listings remain individually owner-bound (§27.1), a Super Admin may **approve their own portal-managed Service / Professional listing** only with **both** an **explicit, normalized override reason** and a **durable staff audit record** (§27.11). **No silent override, ever.** The exception is **approval-only**: rejecting or taking down one's own Service / Professional listing does **not** receive this override and stays denied (while provider authoring is owner-bound the author can still archive it through the owner path). It never extends to Business, Food, Tutor or Property.
+4. **The exception is temporary.** It exists only because the provider model is currently individually staff-owned, and it MUST be removed when RBAC-D makes provider resources staff-managed rather than individually staff-owned (§27.9).
+5. Content with no owner has no owner conflict.
+6. The rule is enforced in the backend, under the resource's lock. The existing test that pins today's behaviour is intentionally rewritten by RBAC-B.
+
+### 27.9 Provider / Service resources
+
+- **Today (§27.1): transitional.** Provider authoring is admin-only but owner-bound; this MUST be fixed early in the RBAC sequence (RBAC-D, immediately after RBAC-C).
+- **Target.** Provider resources are **staff-managed portal resources**: a Super Admin can manage any of them; a Moderator with the `services` scope can manage them; ordinary Professionals stay forbidden from provider authoring. Provider authority MUST NOT depend on the staff user's Professional Profile, and demoting or removing the original author MUST NOT orphan a resource.
+- **The security / product invariant is frozen now; the storage representation is not.** Service / Professional resources are portal-managed; authority never depends on an individual staff author's Professional Profile; demoting or removing the original author never orphans a provider; a Super Admin may manage every provider; a Moderator with the `services` scope may manage providers; ordinary users and Professionals remain forbidden. **How a portal-managed provider is represented in the database is intentionally not chosen here** — no candidate representation is proposed or ruled out. RBAC-D opens with a mini-design that inspects the schema and selects the safest representation before its migration (§27.17). Provider staff mutations are audited (§27.11).
+- Until RBAC-D ships, no Moderator authors providers, and the temporary approval-only override of §27.8 applies.
+
+### 27.10 Location privacy for Moderators
+
+- Moderator-facing responses follow least privilege. A Moderator MUST NOT receive the raw precise stored latitude / longitude **by default**; they receive only the location information genuinely needed to moderate: the visibility mode, the area and block, and the location the public would see for that listing — nothing more precise than the public sees. The stored exact point, and the private address and landmark of a non-exact listing, remain **Super Admin only**; a Super Admin retains precise-location authority.
+- If precise access is ever required for Moderators, it MUST be an **explicit, audited capability / reveal**, never a default exposure.
+- **The reduced Moderator projection ships in RBAC-B, before RBAC-C can appoint any Moderator** (§27.16, invariant 1). RBAC-G verifies it; it does not introduce it. `LOCATION_MAP.md` §7.3 describes today's admin detail.
+
+### 27.11 Audit
+
+- **Listing decisions** (approve, reject, takedown) stay in `listing_status_history`. It will need to represent a Moderator as an actor role (`DATA_MODEL.md` §17).
+- A **durable, append-only staff audit** records: Moderator appointment and removal; scope grant and revoke; Super Admin promotion and demotion; sensitive staff changes; provider staff mutations; taxonomy mutations; and any exceptional self-override. It is separate from `auth_events`, which is the account-security timeline and is purged after 400 days (§13.5) — so it MUST NOT be the only record of a change in staff authority.
+- **When it exists, and who writes it.** The durable staff audit **infrastructure** — the table, its append-only enforcement and the writer — is **created in RBAC-A**. RBAC-B and RBAC-C each write the audit records their own security-sensitive features require: RBAC-B the Service / Professional approval override (§27.8); RBAC-C Moderator appointment, scope changes, pause, removal and Super Admin promotion and demotion, including those made through the CLI; and RBAC-D the provider staff mutations. **RBAC-G expands and hardens audit coverage (for example taxonomy mutations and a viewer); it does NOT introduce the first authoritative audit writer.**
+- **No secrets, ever:** no password or hash, session / reset / CSRF token, cookie, or OAuth code, token or credential in any audit record.
+- Records carry who acted, on whom or what, which action, the previous and new state, when, the request id and, where appropriate, the reason. They are written in the same transaction as the change they record and have no application update or delete path.
+
+### 27.12 Staff login and frontend
+
+- **Eventually `/admin/login` becomes the single Staff Login**, over the **same authentication backend and session system**. After authentication: a Super Admin goes to the global dashboard, a Moderator to the scoped moderation dashboard, a non-staff account is shown access denied. The normal `/login` remains valid for staff. A hidden URL is never a security control.
+- The Moderator dashboard shows only the assigned scopes' queue and scope-limited metrics; global totals are for Super Admin (detail frozen in RBAC-F).
+- **Task 3B stays as built:** the Admin Dashboard shortcut remains Super Admin–only (`useIsAdmin()` keeps meaning Super Admin until renamed `useIsSuperAdmin`); Moderators later get a separate Moderation / Staff shortcut.
+- The scope list the SPA receives is UX only; the API re-enforces every request (§22.5). No staff secret is ever held in the frontend or in web storage.
+
+### 27.13 MFA
+
+- **Before PUBLIC production, every Super Admin and every Moderator MUST have MFA.** There is **no production staff bypass.** Any bypass MUST be explicit and development-only (a setting that staging and production refuse at startup, like the other hosted refusals in `Settings`).
+- MFA is **not implemented during the RBAC phases.** The design keeps one enforcement seam — the staff dependencies of §27.4 — so MFA can be added without changing role semantics (§11.6). Until it exists, §27.7's recent-authentication window protects staff management, and MFA is a launch blocker.
+
+### 27.14 Demo and production safety
+
+- **Development fixtures and demo staff identities exist only in development / local environments** (`development`, and throwaway `test` databases) and MUST be refused in **both `staging` and `production`**. Today's loader refuses only `production`; enforcing the staging refusal is planned for RBAC-H, and until then it is an operational rule (`DEPLOYMENT.md` §1).
+- **Staging seeds no staff identity automatically.** A staging Super Admin is **explicitly provisioned through the staff CLI** (§27.6) from an account that is active, has a verified e-mail, and belongs to an approved, controlled staging / test domain or account. There is no fixture admin, default account or seeded password in any hosted environment. The non-staff test data a staging run uses is an RBAC-H detail and is never the fixtures loader.
+- **Hosted environments MUST reject known fixture, demo and reserved-TLD identities for privileged grants** (for example `@fixtures.example` and the reserved `.example`, `.test`, `.invalid` and `.localhost` domains).
+- A demo staff account such as the local `B17 Demo User` is development / demo staff only: it may act as a demo Super Admin in a local database, and production MUST NOT rely on demo credentials. Hosted environments have no seeded or default staff accounts or passwords, no fake OAuth identity, and no shared staff credentials.
+- Already in place: the `fake` Google provider is refused when hosted, `dev_verify` refuses outside development / test and against a non-local database, console / memory e-mail is refused when hosted, and `grant` requires an active, verified account.
+
+### 27.15 Required security tests
+
+The implementation phases MUST add, with positive and negative cases:
+
+1. The scope matrix: Moderator scopes × resource kind and vertical × {queue, detail, approve, reject, takedown}.
+2. IDOR: an out-of-scope id answers exactly like a nonexistent id; scope claims in a body, URL or query are ignored or refused.
+3. `listing_scope` is exhaustive over every kind × vertical, including corrupt data (§27.3, rule 3), and a vertical flip moves a listing between scopes.
+4. Self-moderation: Moderator denied for approve, reject and takedown; Super Admin denied for ordinary Business / Food / Tutor / Property content; Super Admin denied reject / takedown of an own provider listing; the approval override needs a normalized reason and writes a durable audit row; no silent override.
+5. The last-Super-Admin invariant at every removal path, counting only **usable** Super Admins (a suspended, unverified or sign-in-less admin does not count), including concurrent mutual demotions and concurrent removal of the last usable admin (SQL-level, like the existing admin concurrency suite); a promotion above 2 needs the CLI override and a reason, one beyond the safety ceiling needs break-glass, and no ceiling ever blocks a demotion.
+6. Revocation: a removed Moderator or removed scope loses access on the next request, across several sessions, and every session is revoked.
+7. A Moderator cannot manage staff, scopes, themselves or a Super Admin, and nothing outside the shared authority service writes role or scope assignments.
+8. CSRF / Origin on every staff mutation; the recent-authentication boundary.
+9. **Route inventory:** a CI / security test fails when any `/admin/*` route has no explicit authority classification (decision 25).
+10. Audit: written in the same transaction, no secrets, append-only.
+11. Production safety: hosted refusal of fixtures, of the fake OAuth provider and of fixture / demo / reserved-TLD staff grants.
+12. Frontend and end-to-end: Super Admin sees the global navigation, a Moderator only their scopes, a non-staff account neither, a stale permission fails safely; appoint → sign in → only the assigned queue → moderate in scope → a direct cross-scope attempt is refused → scope removed → access lost at once.
+13. Mutual exclusivity: appointing a Super Admin as Moderator is refused; promotion removes the target's `moderator` role and scopes in the same transaction; a scope row cannot exist without the `moderator` role.
+14. Pause and remove: pausing keeps the role, removes every scope, revokes every session and writes an audit event; a Moderator with zero scopes is refused by `require_staff`; removing deletes the role and scope rows, revokes sessions and audits.
+15. Freshness: staff routes keep the existing admin recency policy; staff-management mutations additionally refuse a session older than 15 minutes (the interim window) until a dedicated re-authentication / MFA timestamp replaces it.
+16. The Moderator location view carries no raw precise coordinates, and RBAC-C cannot appoint a Moderator before it exists.
+
+These run in the existing CI gates (the backend job already runs the whole `pytest` suite including PostgreSQL; the frontend job runs the mock-contract lane). The real-stack lane stays local (`TESTING.md`).
+
+### 27.16 Implementation order and dependency invariants
+
+| Phase | Scope |
+|---|---|
+| **RBAC-A** | schema + authorization primitives |
+| **RBAC-B** | scoped listing moderation backend |
+| **RBAC-C** | staff management backend / Super Admin invariants |
+| **RBAC-D** | staff-managed provider / service authoring |
+| **RBAC-E** | Super Admin Staff & Roles UI |
+| **RBAC-F** | Moderator dashboard and scoped navigation |
+| **RBAC-G** | audit / privacy / security hardening |
+| **RBAC-H** | full security / e2e / production hardening |
+
+After RBAC: staff-login hardening, rate limits and MFA implementation. Per-phase detail is in `ROADMAP.md`. Dependency invariants:
+
+1. **B before C.** No Moderator may be appointable before scope-checked moderation, the Moderator location projection (§27.10) and the self-moderation rule (§27.8) exist: **the reduced location projection ships in RBAC-B, before RBAC-C can appoint any Moderator.**
+2. **D immediately after C.** The owner-bound provider model is transitional (§27.9).
+3. **Audit infrastructure in RBAC-A.** The durable staff audit (table, append-only enforcement, writer) is created in RBAC-A. RBAC-B and RBAC-C write the audit records their own security-sensitive features require (§27.11); RBAC-G expands and hardens coverage and does **not** introduce the first authoritative audit writer.
+4. **E and F need C** (accounts to manage and moderate with) **and B** (scoped reads).
+5. Placement of the RBAC phases relative to Phase 13 is for the product owner; the MFA gate (§27.13) applies before public production regardless.
+
+### 27.17 Superseded statements and remaining unresolved items
+
+**Superseded as the TARGET design** (the as-built text stays true until the named phase ships; each is annotated in place): §11.1 "`RoleName = {admin}` … sufficient as built"; §11.6 "an admin role-management tool is a later admin-only feature"; §19 deferrals (MFA / step-up, admin role-management UI, database-driven permission model); §25 "Admin may moderate their own listing … granular roles remain deferred". The matching `DECISIONS.md` entries carry dated pointers.
+
+**Decided in the RBAC-0 follow-up (2026-11-19) and now stated normatively above — no longer open:** Moderator location privacy ships in RBAC-B before RBAC-C can appoint a Moderator (§27.10, §27.16); the durable staff audit infrastructure is created in RBAC-A, with B and C writing their own records (§27.11, §27.16); the Super Admin self-moderation exception is approval-only and temporary (§27.8); fixtures are development / local only and a staging Super Admin is provisioned explicitly through the staff CLI (§27.14); the definition of a usable Super Admin (§27.6); the interim 15-minute sensitive window (§27.7); mutual exclusivity of Super Admin and Moderator (§27.2); pause and remove semantics and `require_staff` (§27.7); staff freshness reusing the existing admin policy (§27.7); the Super Admin count policy and its CLI override (§27.6); the portal-owned provider invariant (§27.9); the single Staff Login (§27.12); and the MFA production gate (§27.13).
+
+**Remaining unresolved — each needs the code inspected before it can be decided safely:**
+
+1. **The RBAC-D provider storage representation.** Only the security / product invariant is frozen (§27.9); RBAC-D opens with a mini-design that inspects the schema and picks the safest representation before its migration.
+2. **The exact future News administration API design**, and therefore when the `news` scope becomes assignable (§27.3, rule 5).
+3. **Mobile staff-navigation overflow.** How the larger Super Admin navigation fits at 375 px — an RBAC-E / RBAC-F implementation detail.
+4. **Implementation details recorded here by the phase that settles them:** the names of the settings (the Super Admin safety ceiling, the sensitive window) and of the stable `details[].code` values for self-moderation and override refusals; the exact fields of the Moderator location view within the §27.10 limit; whether a database-level backstop accompanies the service-level Super Admin / Moderator exclusivity rule; whether the existing session revoke reasons and `auth_events` vocabulary suffice unchanged (`DATA_MODEL.md` §17); and the non-staff test data a staging run uses (never the fixtures loader — RBAC-H).

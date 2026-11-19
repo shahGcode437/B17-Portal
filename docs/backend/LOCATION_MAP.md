@@ -143,7 +143,7 @@ Notes: a mobile / home-based / online business or professional uses `area_only` 
 
 - The **public** schemas (`/search`, `/listings/{id}`) are explicit Pydantic models with **no field** for the exact point, `address`/`landmark` under non-exact visibility, or any private column. The mapper reads `block`, `location_visibility`, `public_latitude`, `public_longitude` and — only when the mode is `exact` — `address` and `landmark`.
 - The **owner** (`GET /users/me/listings…`) and **admin** (`GET /admin/listings…`) schemas are separate models containing the full location, `status`, `revision`, rejection reason, **and `publicLocation`** — exactly what an anonymous visitor would receive — so the owner sees the consequence of their privacy choice. Both are `Cache-Control: no-store`; ownership failures answer `404` (never `403`).
-- **Hiding in the frontend is never the protection.** The exact point of an `approximate` or `area_only` listing is never sent to a browser that is not its owner or an admin.
+- **Hiding in the frontend is never the protection.** The exact point of an `approximate` or `area_only` listing is never sent to a browser that is not its owner or an admin. *(RBAC-0 freeze, 2026-11-19: "an admin" is, in the planned model, a **Super Admin**; a scoped Moderator will receive a reduced projection with no raw precise point by default (it ships in RBAC-B, before any Moderator can be appointed), and any precise access for Moderators would be an explicit audited reveal — `AUTH_RBAC.md` §27.10. Not implemented: today every admin receives the exact point on the admin detail.)*
 - Distance-style queries (future) must use `public_*` only. Ranking by distance from the *exact* point would let a caller triangulate it from many query positions.
 
 ### 7.4 Changing visibility after approval (frozen — closes the narrowing loophole)
@@ -281,7 +281,7 @@ Search cards *display* the area and block as text (their payload also carries th
 
 ## 15. Fixtures
 
-`scripts/dev_fixtures.py` (development / test / staging only; it refuses production) gains an **explicit, idempotent demo-location step** that is separate from — and never part of — the migration:
+`scripts/dev_fixtures.py` (development / test / staging only; it refuses production — *RBAC freeze, 2026-11-19: it is planned to refuse `staging` as well, `AUTH_RBAC.md` §27.14; today it refuses only production*) gains an **explicit, idempotent demo-location step** that is separate from — and never part of — the migration:
 
 - **Keyed by the fixed fixture UUIDs only**: a static table maps each fixture id to its new `area` (`B-17`), `block` (the letter already shown in that fixture's demo string, e.g. `Block C` → `C`), a synthetic demo `address`, a `location_visibility` and a coordinate. No other row is touched, and nothing is derived by parsing arbitrary data.
 - Coordinates are **synthetic**: a deterministic grid of offsets (a few hundred metres apart) around one `FIXTURE_CENTER` constant documented as a *placeholder* — not B-17's real centre and not tied to the fictional names. The set covers all three modes (exact for businesses / food / property; approximate for one tutor; area-only for providers and another tutor).

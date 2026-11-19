@@ -103,7 +103,7 @@ backend/
   .env.example               # documented variables, no secrets
 ```
 
-Conventions: file names are domain nouns (`listings.py`, not `listing_helpers.py`); one repository + one service per aggregate; if a domain outgrows the layer-first layout, it can become a package (`app/modules/listings/…`) without changing the layering rules. Seed/fixture loaders live under `backend/scripts/` (dev/staging only) when needed — never in `app/`.
+Conventions: file names are domain nouns (`listings.py`, not `listing_helpers.py`); one repository + one service per aggregate; if a domain outgrows the layer-first layout, it can become a package (`app/modules/listings/…`) without changing the layering rules. Seed/fixture loaders live under `backend/scripts/` (dev/staging only) when needed — never in `app/`. *(RBAC freeze, 2026-11-19: fixture loaders are planned to be refused in staging as well, leaving development and test databases only — `AUTH_RBAC.md` §27.14; not enforced yet.)*
 
 ## 5. Transaction rules
 
@@ -191,7 +191,7 @@ Password hashing with a modern memory-hard algorithm (Argon2id preferred) · sec
 
 **Isolation rule (implemented in `tests/db_safety.py`):** a database is reset only if **all** hold — it comes from an explicit `TEST_DATABASE_URL` (never a fallback to `DATABASE_URL`); its name **ends in `_test`**; its host is `localhost`, `127.0.0.1`, `::1` or the Compose service `db`; its name differs from the application `DATABASE_URL`'s; and `SELECT current_database()` confirms it after connecting. Otherwise the DB suite **fails loudly** (it is never silently run elsewhere). With no `TEST_DATABASE_URL`, DB tests skip locally but **fail when `CI` is set**, so a CI misconfiguration cannot turn the suite off. The production database is unreachable from tests by construction.
 
-**Frontend E2E later:** the Playwright suite (see `docs/development/TESTING.md`) is re-pointed at the real backend with a seeded **test/staging** database. That will require deterministic fixture ids (UUIDs fixed in fixtures) because today's specs use prototype ids such as `business-01`.
+**Frontend E2E later:** the Playwright suite (see `docs/development/TESTING.md`) is re-pointed at the real backend with a seeded **test/staging** database. That will require deterministic fixture ids (UUIDs fixed in fixtures) because today's specs use prototype ids such as `business-01`. *(RBAC freeze, 2026-11-19: development fixtures are planned to be refused in staging — `AUTH_RBAC.md` §27.14. Staging seeds no staff identity (a staging Super Admin is provisioned explicitly through the staff CLI), and the non-staff test data a staging run uses is an RBAC-H detail; the local real-stack lane and test databases are unaffected.)*
 
 ## 9. Migrations policy (Alembic)
 

@@ -165,7 +165,7 @@ PostgreSQL is sufficient initially (`pg_trgm` + B-tree/GIN; see `DATA_MODEL.md` 
 
 ## 5. Resource groups (all under `/api/v1`)
 
-Legend — **Auth:** A anonymous · R signed-in · O owner · P professional · M admin.
+Legend — **Auth:** A anonymous · R signed-in · O owner · P professional · M admin (the `admin` role; in the planned RBAC model it means Super Admin and `/admin` gains scoped Moderator access — §14, not implemented).
 
 | Group | Representative operations | Auth | Why this shape | Owner phase |
 |---|---|---|---|---|
@@ -354,6 +354,8 @@ UPDATE listings SET …, revision = revision + 1
 
 A Professional has **no** admin power; an Admin has no implicit ownership of other users' listings. Frontend guards remain UX only.
 
+*Current-state note (RBAC-0, 2026-11-19; the table above predates it):* since Task 2 (`5d1e638`) the `provider` kind (Service / Professional) is **portal-managed**: only an admin may create, edit or archive it (anyone else: `403 forbidden`, `details[].code = provider_admin_only`) and it never counts against the plan quota. It still runs through the owner endpoints, so the author must hold a professional profile and only the author can edit or archive it. The planned change to staff-managed provider resources is in §14.
+
 ### 10.6 Listing create payloads
 
 A discriminated union on `kind`; each branch carries the common fields, its own typed block, and `location`. There is no free-form JSON blob.
@@ -446,7 +448,7 @@ Eight operations under `/api/v1/admin`, all behind `require_admin` (verified e-m
 - *Transitions:* approve = `pending → approved`; reject = `pending → rejected` and `approved → rejected` (takedown). Everything else (including any decision on `archived`, or on a listing already in the target state) is `409 invalid_state_transition`. Order of refusal: `404` (missing or malformed id) → status → revision.
 - *Revision guard:* the body's `revision` must equal the listing's current one, else `409 listing_conflict` (the details carry the current revision). A decision acts **on the reviewed revision and does not bump it** (§10.4): approving revision 3 leaves revision 3, so the owner's next edit is revision 4. The guarded `UPDATE … WHERE id AND revision = :expected AND status = :from` follows a `SELECT … FOR UPDATE` of the row, so an owner edit and an admin decision serialise: if the edit wins, the admin's decision is stale (`409`); if the decision wins, the edit then re-submits the listing (`pending`, revision + 1). An owner edit is never lost and an approval never publishes content the admin did not review.
 - *Reason:* required on reject, trimmed, 10–500 characters (`422`, `details[].field = "reason"`, codes `required` / `too_short` / `too_long`); not accepted on approve (`not_allowed`). A takedown uses the same history action `rejected`; its `from_status` (`approved`) distinguishes it, and the owner and admin shapes expose that as `takenDown: true` (S5A) while the listing stays `rejected`. The reason is shown to the owner through `rejectionReason` (and the label through `takenDown`) until the next submission.
-- *History:* one row per decision (`approved` / `rejected`), actor = the admin (`actor_role = admin`), written in the same transaction as the status change. An admin may moderate a listing they own (nothing forbids it; the audit trail records it).
+- *History:* one row per decision (`approved` / `rejected`), actor = the admin (`actor_role = admin`), written in the same transaction as the status change. An admin may moderate a listing they own (nothing forbids it; the audit trail records it). *(Target design, RBAC-0 freeze, 2026-11-19: self-moderation will be denied, with one temporary, approval-only, audited override for Service / Professional listings — §14, `AUTH_RBAC.md` §27.8. Not implemented; this bullet describes the running API until RBAC-B ships.)*
 - *Visibility:* the status flip is the only thing public reads depend on, so an approval publishes and a takedown unpublishes the listing in the same commit. Moderation does not touch the search document (it holds no status).
 
 **Categories as built** (the §10.7 rules):
@@ -523,3 +525,29 @@ The requester can never accept, start or complete. The provider is whoever **own
 **A request outlives its listing.** Nothing about a request depends on the target listing's later status: after an edit, takedown or archive both parties can still read it, list it and progress or cancel it; it is not cancelled for them. Only a **new** request needs the listing approved at that moment. If the listing is hard-deleted (no API does this), the FK is `ON DELETE SET NULL`: the requester keeps the record (with the name snapshot); the provider side, which is derived from the listing, no longer has it.
 
 **Not built in 12F:** any contact data, chat, WhatsApp / SMS / call integration, notifications, payments, a requester edit, reopen, an admin request surface, request deletion.
+
+## 14. Planned authorization changes to the admin surface (RBAC-0 design freeze — NOT IMPLEMENTED)
+
+**Status: planned only.** Nothing here exists. §10.5 and §12 remain the contract of the running API; this section records how the approved Super Admin + Scoped Moderator model (`AUTH_RBAC.md` §27) will change the **authority** of endpoints that already exist. It defines **no new endpoint path, request body, response field or error code**: those are frozen by the phase that builds them (RBAC-B onwards) and added to this document then.
+
+**Authority classification of the existing operations (target):**
+
+| Operation (§12) | Target authority | Notes |
+|---|---|---|
+| `GET /admin/listings` | staff; a Moderator sees only the scopes assigned to them | `meta.counts` and any dashboard metric are scoped by the caller's authority; a Super Admin keeps today's global counts. Any scope filter added later is intersected with the caller's authority and never widens it. |
+| `GET /admin/listings/{id}` | staff with the item's scope | a Moderator's response carries a reduced location (no raw precise point; `AUTH_RBAC.md` §27.10); a Super Admin keeps the full admin shape |
+| `POST /admin/listings/{id}/approve`, `…/reject` | staff with the item's scope | never on the caller's own content (the one temporary, approval-only Service / Professional override, below) |
+| `GET/POST/PATCH /admin/categories`, `POST /admin/categories/reorder` | Super Admin only | Moderators cannot touch global taxonomy |
+| `POST/PATCH /listings`, `POST /listings/{id}/archive` for `kind = provider` | today: admin, owner-bound (§10.5 note); target: staff-managed | Super Admin manages any provider resource, a Moderator with the `services` scope manages them, ordinary Professionals stay forbidden, and the authority never depends on the staff user's professional profile (RBAC-D) |
+
+**Wire semantics (target):**
+
+- **Non-staff** on any staff surface: `403 forbidden`, as non-admins get today. A Moderator on a Super Admin–only operation: `403 forbidden`.
+- **Out of scope:** a Moderator reading or deciding a listing outside their scopes gets the **same `404 not_found`** as for a nonexistent id (identical body). The scope is derived from the stored listing, never from the request.
+- **Self-moderation refused:** `403 forbidden` with a stable `details[].code` (its name is frozen in RBAC-B). Moderators are always refused on their own content; a Super Admin is refused on ordinary Business / Food / Tutor / Property content too.
+- **Temporary Service / Professional override (approval only):** while provider listings are individually owner-bound, a Super Admin approving their own Service / Professional listing will need an explicit override carrying a normalized reason, and it writes a durable staff audit record (`AUTH_RBAC.md` §27.8). Rejecting or taking down one's own provider listing gets no override and is refused. The override is removed when RBAC-D makes provider resources staff-managed.
+- **Unchanged:** `401 session_expired` for a stale session, CSRF / Origin enforcement, `Cache-Control: no-store`, the revision guard and the 409 / 422 behaviour of §12.
+
+**Not defined here:** the staff-management API (appointing and removing Moderators, changing scopes — Super Admin only, recent authentication required) and the staff-audit read API. Super Admin promotion and demotion have **no HTTP endpoint** in v1 (operator CLI only). When a News administration API exists (`/admin/news` in §5 is still unbuilt), its operations will be classified under the `news` scope.
+
+**Route inventory (required with RBAC-B):** every privileged `/admin/*` route must have an explicit authority classification, and a CI / security test fails when one does not (`AUTH_RBAC.md` §27.4, §27.15).
