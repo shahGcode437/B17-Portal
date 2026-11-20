@@ -846,7 +846,7 @@ def test_0007_adds_the_staff_tables_triggers_and_widened_checks(scratch_url: str
     assert columns_except_staff(scratch_url) == columns_before  # not one column elsewhere changed
     assert trigger_names(scratch_url) == STAFF_TRIGGERS
     assert function_names(scratch_url) >= STAFF_FUNCTIONS
-    assert STAFF_INDEXES <= index_names(scratch_url, table="user_roles")
+    assert index_names(scratch_url, table="user_roles") >= STAFF_INDEXES
     partial = str(
         scalar(
             scratch_url,
