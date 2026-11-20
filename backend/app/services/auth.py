@@ -344,6 +344,7 @@ class AuthService:
             session_created_at=principal.session_created_at,
             session_last_seen_at=self._clock(),
             session_expires_at=expires_at,
+            staff_scopes=principal.staff_scopes,
         )
         return IssuedSession(rotated, raw_session, (password_changed_notice(user.email),))
 

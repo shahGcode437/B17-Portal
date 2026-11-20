@@ -56,6 +56,7 @@ export function meBody(overrides: Record<string, unknown> = {}) {
     email: "ayesha@example.org",
     emailVerified: true,
     roles: [],
+    staffScopes: [],
     authMethods: { password: true, providers: [] },
     session: { expiresAt: "2030-01-01T00:00:00Z" },
     csrfToken: "csrf-1",

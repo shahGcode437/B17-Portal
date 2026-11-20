@@ -961,7 +961,7 @@ Locked by the product owner on 2026-10-31. The full specification and the archit
 
 **Reported for the product owner (not resolved here):** Phase 13 in the roadmap also contains production deployment and transactional e-mail, which the approved order does not place; Phase 9I's mock notification centre conflicts with the no-fake-notification rule; `ServiceRequest` still accepts `whatsapp` / `phone` as a stored preference; the profile PUT is documented as having no writable field; a service request to an ownerless (`owner_id = NULL`) provider listing is accepted today and has no recipient (Inquiry must refuse that case). Code and tests that assume the current situation (the "no simulated contact" guards, the provider-specific sign-in resume, the lead-named surfaces) are listed in `docs/product/CONTACT_MODEL.md` §4.
 
-## RBAC-0 — Super Admin + Scoped Moderator design freeze (NOT implemented)
+## RBAC-0 — Super Admin + Scoped Moderator design freeze (design; only the RBAC-A foundation is built — see "RBAC-A Result" below)
 
 Frozen on 2026-11-19 by the product owner; **documentation only** (baseline `079cd6a`; Task 3A `0c29519` and Task 3B `079cd6a` are committed). The specification is `docs/backend/AUTH_RBAC.md` §27, the compact record is in `DECISIONS.md` ("RBAC-0"), the proposed schema is `docs/backend/DATA_MODEL.md` §17, the planned authority of the admin endpoints is `docs/backend/API_CONTRACT.md` §14 and the phase order is in `ROADMAP.md`. **This section is a decision, not a description of the running product.**
 

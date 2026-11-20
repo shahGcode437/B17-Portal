@@ -5,6 +5,7 @@
 """
 
 import uuid
+from collections.abc import Sequence
 from typing import Any
 
 from httpx import Response
@@ -12,7 +13,7 @@ from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.models import Listing, ListingStatusHistory
-from app.models.enums import ActorRole, HistoryAction, ListingStatus, PlanCode
+from app.models.enums import ActorRole, CategoryModule, HistoryAction, ListingStatus, PlanCode
 from tests.db.auth_helpers import AuthApi, AuthEnv, make_account
 from tests.write_payloads import (
     LISTINGS,
@@ -62,9 +63,12 @@ def signed_in(
     verified: bool = True,
     professional: PlanCode | None = PlanCode.FREE,
     admin: bool = False,
+    moderator_scopes: Sequence[CategoryModule] | None = None,
     display_name: str = "Sana Baker",
 ) -> AuthApi:
     """A browser signed in (real login) as a fresh account with the given capabilities.
+
+    ``moderator_scopes`` makes a Moderator (RBAC-A): ``[]`` = the role with no scope.
 
     Default is a plain professional (least-privileged owner). Tests that create, edit or archive a
     Service / Professional (``provider``) listing opt in with ``admin=True`` — provider listings
@@ -78,6 +82,7 @@ def signed_in(
         verified=verified,
         professional=professional,
         admin=admin,
+        moderator_scopes=moderator_scopes,
         display_name=display_name,
     )
     api = env.client()

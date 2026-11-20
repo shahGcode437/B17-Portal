@@ -52,6 +52,7 @@ def test_register_creates_a_resident_signs_in_and_sets_a_safe_cookie(auth_env: A
         "email",
         "emailVerified",
         "roles",
+        "staffScopes",  # RBAC-A, additive: a Moderator's effective scopes; [] for everyone else
         "authMethods",
         "session",
         "csrfToken",
@@ -59,6 +60,7 @@ def test_register_creates_a_resident_signs_in_and_sets_a_safe_cookie(auth_env: A
     assert data["email"] == EMAIL and data["displayName"] == "Ayesha Khan"
     assert data["emailVerified"] is False
     assert data["roles"] == []  # Resident is implicit: no role row, no "resident" value
+    assert data["staffScopes"] == []  # a new account has no staff authority of any kind
     assert "professional" not in data
     assert data["authMethods"] == {"password": True, "providers": []}
     assert response.headers["cache-control"] == "no-store"

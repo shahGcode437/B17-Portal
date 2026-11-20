@@ -89,8 +89,13 @@ class HistoryAction(StrEnum):
 
 
 class ActorRole(StrEnum):
+    """Who a ``listing_status_history`` row says acted. ``admin`` is a Super Admin (the stored role
+    value is not renamed); ``moderator`` exists in the vocabulary from RBAC-A but nothing writes it
+    until RBAC-B (docs/backend/AUTH_RBAC.md §27)."""
+
     OWNER = "owner"
     ADMIN = "admin"
+    MODERATOR = "moderator"
 
 
 class RequestStatus(StrEnum):
@@ -125,9 +130,15 @@ class UserStatus(StrEnum):
 
 
 class RoleName(StrEnum):
-    """Explicit role grants only. Resident is every account; professional is a profile row."""
+    """Explicit role grants only. Resident is every account; professional is a profile row.
+
+    ``admin`` is the stored value of the **Super Admin** role (docs/backend/AUTH_RBAC.md §27.2): the
+    value is never renamed, only its meaning is named. ``moderator`` is limited staff whose
+    authority exists only through scope assignments (``staff_scope_assignments``); the two roles are
+    mutually exclusive (a database trigger enforces it)."""
 
     ADMIN = "admin"
+    MODERATOR = "moderator"
 
 
 class AuthProvider(StrEnum):
@@ -193,6 +204,43 @@ class AuthEventType(StrEnum):
     ROLE_REVOKED = "role_revoked"
     ACCOUNT_SUSPENDED = "account_suspended"
     ACCOUNT_REACTIVATED = "account_reactivated"
+
+
+class StaffAuditSource(StrEnum):
+    """Where a staff action came from: the web API, or the operator CLI (which has no web actor)."""
+
+    WEB = "web"
+    CLI = "cli"
+
+
+class StaffAuditAction(StrEnum):
+    """The closed vocabulary of the durable staff audit (docs/backend/AUTH_RBAC.md §27.11).
+
+    Nothing writes most of these yet: RBAC-B writes the override, RBAC-C the staff changes, RBAC-D
+    the provider mutations, RBAC-G the taxonomy ones. They are in the vocabulary (and the database
+    CHECK) from RBAC-A so no later phase has to widen a closed set to record its own event."""
+
+    MODERATOR_APPOINTED = "moderator_appointed"
+    MODERATOR_PAUSED = "moderator_paused"
+    MODERATOR_REMOVED = "moderator_removed"
+    SCOPE_GRANTED = "scope_granted"
+    SCOPE_REVOKED = "scope_revoked"
+    SUPER_ADMIN_PROMOTED = "super_admin_promoted"
+    SUPER_ADMIN_DEMOTED = "super_admin_demoted"
+    MODERATION_SELF_OVERRIDE = "moderation_self_override"
+    PROVIDER_CREATED = "provider_created"
+    PROVIDER_UPDATED = "provider_updated"
+    PROVIDER_ARCHIVED = "provider_archived"
+    TAXONOMY_CREATED = "taxonomy_created"
+    TAXONOMY_UPDATED = "taxonomy_updated"
+    TAXONOMY_REORDERED = "taxonomy_reordered"
+
+
+class StaffAuditResource(StrEnum):
+    """What a staff audit event's ``resource_id`` points at (no foreign key: see the model)."""
+
+    LISTING = "listing"
+    CATEGORY = "category"
 
 
 class OAuthPurpose(StrEnum):

@@ -10,6 +10,7 @@ export function testUser(overrides: Partial<CurrentUser> = {}): CurrentUser {
     email: "tester@example.org",
     emailVerified: true,
     roles: [],
+    staffScopes: [],
     authMethods: { password: true, providers: [] },
     session: { expiresAt: "2030-01-01T00:00:00Z" },
     ...overrides,
@@ -35,7 +36,15 @@ export function authContextValue(overrides: Partial<AuthContextValue> = {}): Aut
   }
 }
 
-/** A signed-in admin: authority comes only from the backend roles on `/auth/me`. */
+/** A signed-in admin (= Super Admin): authority comes only from the backend roles on `/auth/me`. */
 export function adminUser(overrides: Partial<CurrentUser> = {}): CurrentUser {
   return testUser({ displayName: "Site Admin", roles: ["admin"], ...overrides })
+}
+
+/** A signed-in Moderator (RBAC-A: reportable by the backend, but no screen is Moderator-accessible yet). */
+export function moderatorUser(
+  staffScopes: CurrentUser["staffScopes"] = ["food"],
+  overrides: Partial<CurrentUser> = {}
+): CurrentUser {
+  return testUser({ displayName: "Scoped Moderator", roles: ["moderator"], staffScopes, ...overrides })
 }

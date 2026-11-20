@@ -93,7 +93,8 @@ def test_a_role_can_be_granted_to_a_user_only_once(db_session: Session) -> None:
 def test_unknown_roles_are_rejected_and_resident_is_not_a_role_row(db_session: Session) -> None:
     user = make_user(db_session)
 
-    for role in ("moderator", "resident", "professional"):
+    # ``moderator`` joined the vocabulary in RBAC-A (migration 0007); these never will.
+    for role in ("resident", "professional", "super_admin", "staff"):
         with violates(db_session, "ck_user_roles_role_valid"):
             raw_insert(db_session, "user_roles", user_id=user.id, role=role)
 

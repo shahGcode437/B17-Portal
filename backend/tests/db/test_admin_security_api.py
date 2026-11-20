@@ -14,7 +14,8 @@ from typing import Any
 import pytest
 from sqlalchemy import text
 
-from app.models.enums import PlanCode
+from app.models.enums import CategoryModule, PlanCode
+from app.services.staff_scopes import ASSIGNABLE_STAFF_SCOPES
 from tests.db.admin_helpers import (
     ADMIN_CATEGORIES,
     ADMIN_LISTINGS,
@@ -131,6 +132,30 @@ NON_ADMIN_ACTORS: dict[str, tuple[Callable[[AuthEnv], AuthApi], int, str]] = {
         ),
         403,
         "email_not_verified",
+    ),
+    # RBAC-A: a Moderator exists in the schema and `require_staff` recognises them, but NO current
+    # /admin/* route is Moderator-accessible until RBAC-B scopes every read and write.
+    "a moderator of one scope": (
+        lambda env: signed_in(
+            env, "mod-one@example.org", professional=None, moderator_scopes=[CategoryModule.FOOD]
+        ),
+        403,
+        "forbidden",
+    ),
+    "a moderator of every assignable scope": (
+        lambda env: signed_in(
+            env,
+            "mod-all@example.org",
+            professional=None,
+            moderator_scopes=sorted(ASSIGNABLE_STAFF_SCOPES),
+        ),
+        403,
+        "forbidden",
+    ),
+    "a moderator with no scope": (
+        lambda env: signed_in(env, "mod-none@example.org", professional=None, moderator_scopes=[]),
+        403,
+        "forbidden",
     ),
 }
 

@@ -22,12 +22,14 @@ from app.models import (
     AuthToken,
     OAuthFlow,
     ProfessionalProfile,
+    StaffScopeAssignment,
     User,
     UserRole,
 )
 from app.models.enums import (
     AuthProvider,
     AuthTokenPurpose,
+    CategoryModule,
     PlanCode,
     RoleName,
     SessionRevokeReason,
@@ -103,6 +105,15 @@ class SessionRepository:
             select(ProfessionalProfile.plan_code).where(ProfessionalProfile.user_id == user_id)
         ).one_or_none()
         return roles, plan
+
+    def moderator_scopes(self, user_id: uuid.UUID) -> list[CategoryModule]:
+        """The stored scope assignments of a Moderator (policy — which of them confer authority —
+        is the service's: see ``effective_staff_scopes``)."""
+        return list(
+            self._session.scalars(
+                select(StaffScopeAssignment.scope).where(StaffScopeAssignment.user_id == user_id)
+            )
+        )
 
     def active_for_user(self, user_id: uuid.UUID, now: datetime) -> list[AuthSession]:
         """Active sessions, oldest first. Ties on ``created_at`` break on ``id`` (deterministic)."""

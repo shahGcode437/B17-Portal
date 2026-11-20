@@ -1,25 +1,49 @@
 import { apiRequest } from "@/lib/api/client"
-import type { AuthUser } from "@/types/auth"
+import type { AuthUser, StaffScope } from "@/types/auth"
 
 /**
  * Typed wrappers for the backend auth endpoints (docs/backend/AUTH_RBAC.md §12). Request fields are
  * the backend's exact camelCase names. Nothing here stores anything; the AuthProvider owns state.
  */
 
+const STAFF_SCOPES = ["services", "directory", "food", "education", "property", "news"] as const
+
+// A compile-time tripwire: the list above must contain every `StaffScope`.
+type MissingScope = Exclude<StaffScope, (typeof STAFF_SCOPES)[number]>
+const scopesAreComplete: [MissingScope] extends [never] ? true : never = true
+void scopesAreComplete
+
+/**
+ * The staff scopes the UI may rely on: only canonical values, de-duplicated, in canonical order. A
+ * missing field (an older backend, a mock), a non-array or an unknown / forged value (including a role
+ * name) is dropped, so a malformed `/auth/me` can never put a surprise value in front of the UI. This
+ * is a UX hint — the API re-checks authority on every request.
+ */
+export function normalizeStaffScopes(value: unknown): StaffScope[] {
+  if (!Array.isArray(value)) return []
+  return STAFF_SCOPES.filter((scope) => value.includes(scope))
+}
+
+function normalizeAuthUser(user: AuthUser): AuthUser {
+  return { ...user, staffScopes: normalizeStaffScopes(user.staffScopes) }
+}
+
 /** `GET /auth/me` — 200 = signed in, 401 = anonymous. Pre-session by nature (it is how we find out). */
-export function fetchMe(signal?: AbortSignal): Promise<AuthUser> {
-  return apiRequest<AuthUser>("GET", "/auth/me", { signal })
+export async function fetchMe(signal?: AbortSignal): Promise<AuthUser> {
+  return normalizeAuthUser(await apiRequest<AuthUser>("GET", "/auth/me", { signal }))
 }
 
-export function login(email: string, password: string): Promise<AuthUser> {
-  return apiRequest<AuthUser>("POST", "/auth/login", { body: { email, password } })
+export async function login(email: string, password: string): Promise<AuthUser> {
+  return normalizeAuthUser(await apiRequest<AuthUser>("POST", "/auth/login", { body: { email, password } }))
 }
 
-export function register(input: { email: string; password: string; displayName: string }): Promise<AuthUser> {
-  // Only these three fields: never a role, admin, professional or emailVerified flag.
-  return apiRequest<AuthUser>("POST", "/auth/register", {
-    body: { email: input.email, password: input.password, displayName: input.displayName },
-  })
+export async function register(input: { email: string; password: string; displayName: string }): Promise<AuthUser> {
+  // Only these three fields: never a role, admin, professional, emailVerified or staff-scope flag.
+  return normalizeAuthUser(
+    await apiRequest<AuthUser>("POST", "/auth/register", {
+      body: { email: input.email, password: input.password, displayName: input.displayName },
+    })
+  )
 }
 
 /** `POST /auth/logout` — revokes the server session. Needs the session and the CSRF token. */

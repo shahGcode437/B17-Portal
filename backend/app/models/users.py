@@ -22,6 +22,7 @@ from sqlalchemy import (
     UniqueConstraint,
     Uuid,
     func,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -71,7 +72,18 @@ class UserRole(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
 
-    __table_args__ = (in_values("role", RoleName, name="role_valid"),)
+    __table_args__ = (
+        in_values("role", RoleName, name="role_valid"),
+        # RBAC-A: Super Admin / Moderator mutual exclusivity (docs/backend/AUTH_RBAC.md §27.2).
+        # A native, isolation-independent uniqueness invariant — a concurrent INSERT or UPDATE that
+        # would give one user both roles is refused with SQLSTATE 23505.
+        Index(
+            "uq_user_roles_one_staff_role",
+            "user_id",
+            unique=True,
+            postgresql_where=text("role IN ('admin', 'moderator')"),
+        ),
+    )
 
 
 class AuthIdentity(UUIDPrimaryKeyMixin, Base):

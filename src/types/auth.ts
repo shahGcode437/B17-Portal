@@ -14,8 +14,18 @@ export type AuthStatus =
   /** Bootstrapping failed for a network / server reason: neither signed in nor out; retry is offered. */
   | "unavailable"
 
-/** Explicit grants only. A Resident has none; Professional is a capability, not a role. */
-export type AuthRole = "admin"
+/**
+ * Explicit grants only. A Resident has none; Professional is a capability, not a role. `admin` is the
+ * stored value of the SUPER ADMIN role (not renamed); `moderator` is scoped staff (RBAC-A: the backend
+ * can report it, but no screen or route is Moderator-accessible yet). UX hint only — the API decides.
+ */
+export type AuthRole = "admin" | "moderator"
+
+/**
+ * The canonical staff scopes (mirrors the backend's `CategoryModule`; docs/backend/AUTH_RBAC.md §27.3).
+ * Only a Moderator has any; a Super Admin's authority is the `admin` role itself, never "all scopes".
+ */
+export type StaffScope = "services" | "directory" | "food" | "education" | "property" | "news"
 
 export interface ProfessionalSummary {
   planCode: "free" | "premium"
@@ -39,6 +49,8 @@ export interface AuthUser {
   email: string
   emailVerified: boolean
   roles: AuthRole[]
+  /** A Moderator's effective scopes; `[]` for everyone else. A UX hint only — never an authority. */
+  staffScopes: StaffScope[]
   /** Present iff the account has a professional profile (the capability). */
   professional?: ProfessionalSummary
   authMethods: AuthMethods

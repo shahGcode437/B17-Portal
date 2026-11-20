@@ -65,7 +65,7 @@ def test_a_fresh_database_upgrades_to_head(scratch_url: str) -> None:
     command.upgrade(alembic_config(scratch_url), "head")
 
     assert tables(scratch_url) == EXPECTED_TABLES | {"alembic_version"}
-    assert version(scratch_url) == "0006"
+    assert version(scratch_url) == "0007"
 
 
 def test_it_downgrades_to_base_and_upgrades_again(scratch_url: str) -> None:
@@ -90,8 +90,9 @@ def test_the_models_and_the_migrations_have_not_drifted(scratch_url: str) -> Non
 def test_there_is_a_single_linear_migration_history(scratch_url: str) -> None:
     script = ScriptDirectory.from_config(alembic_config(scratch_url))
 
-    assert script.get_heads() == ["0006"]
+    assert script.get_heads() == ["0007"]
     assert [revision.revision for revision in script.walk_revisions()] == [
+        "0007",
         "0006",
         "0005",
         "0004",
@@ -165,7 +166,7 @@ def test_0002_downgrades_cleanly_to_0001_and_upgrades_again(scratch_url: str) ->
     assert "search_document" not in columns(scratch_url, "listings")
     assert "pg_trgm" not in extensions(scratch_url)
     command.upgrade(config, "head")
-    assert version(scratch_url) == "0006"
+    assert version(scratch_url) == "0007"
     command.check(config)
 
 
@@ -252,7 +253,7 @@ def test_0003_downgrades_to_0002_and_upgrades_again(scratch_url: str) -> None:
     assert tables(scratch_url).isdisjoint(AUTH_TABLES)
     assert "ck_users_email_normalized" not in user_checks(scratch_url)
     command.upgrade(config, "head")
-    assert version(scratch_url) == "0006"
+    assert version(scratch_url) == "0007"
     assert tables(scratch_url) >= AUTH_TABLES
 
 
@@ -358,7 +359,7 @@ def test_0004_downgrades_to_0003_and_upgrades_again(scratch_url: str) -> None:
         scratch_url, "auth_identities"
     )
     command.upgrade(config, "head")
-    assert version(scratch_url) == "0006" and "oauth_flows" in tables(scratch_url)
+    assert version(scratch_url) == "0007" and "oauth_flows" in tables(scratch_url)
 
 
 def test_0004_refuses_to_run_over_duplicate_provider_identities(scratch_url: str) -> None:
@@ -560,7 +561,7 @@ def test_0005_downgrades_to_0004_and_reupgrades_without_touching_listings(
 
     command.upgrade(config, "head")
 
-    assert version(scratch_url) == "0006" and listing_snapshot(scratch_url) == before
+    assert version(scratch_url) == "0007" and listing_snapshot(scratch_url) == before
     command.check(config)
 
 
@@ -649,7 +650,8 @@ def test_0006_adds_exactly_the_two_tables_and_changes_no_other_table(scratch_url
     assert tables(scratch_url) - tables_before == NEW_TABLES
     assert column_map(scratch_url) == columns_before  # not one column added to or dropped elsewhere
     assert version(scratch_url) == "0006"
-    command.check(config)  # the models and the migration agree
+    # (No drift check here: 0006 is no longer head, so the models are rightly ahead of this schema.
+    # `test_the_models_and_the_migrations_have_not_drifted` checks head, and so do the 0007 tests.)
 
 
 def test_0006_keeps_every_existing_row_of_a_populated_0005_database(scratch_url: str) -> None:
@@ -727,7 +729,7 @@ def test_0006_downgrades_to_0005_and_reupgrades_without_touching_existing_data(
 
     command.upgrade(config, "head")
 
-    assert version(scratch_url) == "0006" and existing_data(scratch_url) == before
+    assert version(scratch_url) == "0007" and existing_data(scratch_url) == before
     command.check(config)
 
 
@@ -750,3 +752,245 @@ def test_0006_is_ddl_only_with_no_data_statement(scratch_url: str) -> None:
         # DDL on the two new tables only: no data statement, no change to any existing table
         assert statement.startswith(("CREATE TABLE", "CREATE INDEX")), statement[:80]
         assert "SERVICE_REQUEST" in statement.split("(")[0], statement[:80]
+
+
+# -- 0007: staff authority (RBAC-A; docs/backend/DATA_MODEL.md §17, AUTH_RBAC.md §27) ---------------
+
+STAFF_TABLES = {"staff_scope_assignments", "staff_audit_events"}
+STAFF_INDEXES = {"uq_user_roles_one_staff_role"}  # the Super Admin / Moderator exclusivity backstop
+STAFF_TRIGGERS = {
+    "trg_staff_audit_events_append_only",  # row-level: BEFORE UPDATE OR DELETE
+    "trg_staff_audit_events_no_truncate",  # statement-level: BEFORE TRUNCATE (shares the function)
+}
+STAFF_FUNCTIONS = {"staff_audit_events_append_only"}
+
+
+def execute(url: str, sql: str, **params: object) -> None:
+    engine = create_engine(url)
+    try:
+        with engine.begin() as connection:
+            connection.execute(text(sql), params)
+    finally:
+        engine.dispose()
+
+
+def scalar(url: str, sql: str, **params: object) -> object:
+    engine = create_engine(url)
+    try:
+        with engine.connect() as connection:
+            return connection.execute(text(sql), params).scalar_one()
+    finally:
+        engine.dispose()
+
+
+def trigger_names(url: str) -> set[str]:
+    return {
+        str(name) for (name,) in rows(url, "SELECT tgname FROM pg_trigger WHERE NOT tgisinternal")
+    }
+
+
+def function_names(url: str) -> set[str]:
+    return {
+        str(name)
+        for (name,) in rows(
+            url,
+            "SELECT p.proname FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace "
+            "WHERE n.nspname = 'public'",
+        )
+    }
+
+
+def index_names(url: str, table: str | None = None) -> set[str]:
+    sql = "SELECT indexname FROM pg_indexes WHERE schemaname = 'public'"
+    if table is not None:
+        sql += f" AND tablename = '{table}'"
+    return {str(name) for (name,) in rows(url, sql)}
+
+
+def columns_except_staff(url: str) -> dict[str, set[str]]:
+    found: dict[str, set[str]] = {}
+    for table, column in rows(
+        url,
+        "SELECT table_name, column_name FROM information_schema.columns "
+        "WHERE table_schema = 'public'",
+    ):
+        if str(table) not in STAFF_TABLES:
+            found.setdefault(str(table), set()).add(str(column))
+    return found
+
+
+def seed_0006_world(url: str) -> None:
+    """A populated 0006 database, including an admin role row."""
+    seed_0005_world(url)
+    execute(url, "INSERT INTO user_roles (user_id, role) SELECT id, 'admin' FROM users")
+
+
+ROLE_SNAPSHOT = "SELECT user_id, role FROM user_roles ORDER BY user_id, role"
+ADD_USER = (
+    "INSERT INTO users (id, email, display_name) "
+    "VALUES (gen_random_uuid(), 'staff@example.test', 'Staff User')"
+)
+
+
+def test_0007_adds_the_staff_tables_triggers_and_widened_checks(scratch_url: str) -> None:
+    config = alembic_config(scratch_url)
+    command.upgrade(config, "0006")
+    tables_before, columns_before = tables(scratch_url), columns_except_staff(scratch_url)
+    indexes_before = index_names(scratch_url, table="user_roles")
+    assert not STAFF_TABLES & tables_before and not trigger_names(scratch_url)
+    assert not STAFF_INDEXES & indexes_before
+
+    command.upgrade(config, "0007")
+
+    assert tables(scratch_url) - tables_before == STAFF_TABLES
+    assert columns_except_staff(scratch_url) == columns_before  # not one column elsewhere changed
+    assert trigger_names(scratch_url) == STAFF_TRIGGERS
+    assert function_names(scratch_url) >= STAFF_FUNCTIONS
+    assert STAFF_INDEXES <= index_names(scratch_url, table="user_roles")
+    partial = str(
+        scalar(
+            scratch_url,
+            "SELECT pg_get_indexdef(oid) FROM pg_class "
+            "WHERE relname = 'uq_user_roles_one_staff_role'",
+        )
+    )
+    assert "UNIQUE" in partial and "user_id" in partial
+    assert "WHERE" in partial and "admin" in partial and "moderator" in partial
+    assert version(scratch_url) == "0007"
+    role_check = str(
+        scalar(
+            scratch_url,
+            "SELECT pg_get_constraintdef(oid) FROM pg_constraint "
+            "WHERE conname = 'ck_user_roles_role_valid'",
+        )
+    )
+    actor_check = str(
+        scalar(
+            scratch_url,
+            "SELECT pg_get_constraintdef(oid) FROM pg_constraint "
+            "WHERE conname = 'ck_listing_status_history_actor_role_valid'",
+        )
+    )
+    assert "admin" in role_check and "moderator" in role_check
+    assert all(word in actor_check for word in ("owner", "admin", "moderator"))
+    command.check(config)  # the models and the migration agree
+
+
+def test_0007_keeps_every_existing_row_of_a_populated_0006_database(scratch_url: str) -> None:
+    """THE regression test: users, listings, saved items, categories and admin roles survive."""
+    config = alembic_config(scratch_url)
+    command.upgrade(config, "0006")
+    seed_0006_world(scratch_url)
+    before, roles_before = existing_data(scratch_url), rows(scratch_url, ROLE_SNAPSHOT)
+    assert all(before.values()) and roles_before == [(roles_before[0][0], "admin")]
+
+    command.upgrade(config, "0007")
+
+    assert existing_data(scratch_url) == before
+    assert rows(scratch_url, ROLE_SNAPSHOT) == roles_before  # the admin role is untouched
+    assert rows(scratch_url, "SELECT count(*) FROM staff_scope_assignments") == [(0,)]
+    assert rows(scratch_url, "SELECT count(*) FROM staff_audit_events") == [(0,)]  # none invented
+
+
+def test_0007_downgrades_an_empty_staff_schema_and_reupgrades(scratch_url: str) -> None:
+    config = alembic_config(scratch_url)
+    command.upgrade(config, "head")
+
+    command.downgrade(config, "0006")
+
+    assert version(scratch_url) == "0006"
+    assert not STAFF_TABLES & tables(scratch_url)
+    assert not trigger_names(scratch_url) and not STAFF_FUNCTIONS & function_names(scratch_url)
+    assert not STAFF_INDEXES & index_names(scratch_url, table="user_roles")
+    # the role vocabulary is narrowed back: ``moderator`` is no longer a valid role
+    execute(scratch_url, ADD_USER)
+    with pytest.raises(Exception, match="ck_user_roles_role_valid"):
+        execute(
+            scratch_url, "INSERT INTO user_roles (user_id, role) SELECT id, 'moderator' FROM users"
+        )
+
+    command.upgrade(config, "head")
+
+    assert version(scratch_url) == "0007" and tables(scratch_url) >= STAFF_TABLES
+    command.check(config)
+
+
+def test_0007_downgrade_keeps_admin_roles_and_every_existing_row(scratch_url: str) -> None:
+    config = alembic_config(scratch_url)
+    command.upgrade(config, "0006")
+    seed_0006_world(scratch_url)
+    before, roles_before = existing_data(scratch_url), rows(scratch_url, ROLE_SNAPSHOT)
+    command.upgrade(config, "0007")
+
+    command.downgrade(config, "0006")  # an admin is Super Admin data worth keeping: not a blocker
+
+    assert version(scratch_url) == "0006"
+    assert existing_data(scratch_url) == before and rows(scratch_url, ROLE_SNAPSHOT) == roles_before
+
+
+MODERATOR_ROLE = "INSERT INTO user_roles (user_id, role) SELECT id, 'moderator' FROM users"
+LIVE_STAFF_DATA = {
+    "a moderator role grant": ([MODERATOR_ROLE], "1 moderator role grants"),
+    "a scope assignment": (
+        [
+            MODERATOR_ROLE,
+            "INSERT INTO staff_scope_assignments (user_id, scope) SELECT id, 'food' FROM users",
+        ],
+        "1 staff scope assignments",
+    ),
+    "a staff audit event": (
+        [
+            "INSERT INTO staff_audit_events (id, source, action) "
+            "VALUES (gen_random_uuid(), 'cli', 'scope_granted')"
+        ],
+        "1 staff audit events",
+    ),
+    "a moderator listing decision": (
+        [
+            "INSERT INTO listings (id, kind, title, area) "
+            "VALUES (gen_random_uuid(), 'provider', 'T', 'B-17')",
+            "INSERT INTO listing_status_history (id, listing_id, from_status, to_status, action, "
+            "revision, actor_user_id, actor_role) SELECT gen_random_uuid(), l.id, 'pending', "
+            "'approved', 'approved', 1, u.id, 'moderator' FROM listings l CROSS JOIN users u",
+        ],
+        "1 moderator listing decisions",
+    ),
+}
+CLEAR_STAFF_DATA = [
+    "DELETE FROM listing_status_history WHERE actor_role = 'moderator'",
+    "DELETE FROM staff_scope_assignments",
+    "DELETE FROM user_roles WHERE role = 'moderator'",
+    # The audit is append-only: BOTH a row-level (UPDATE / DELETE) trigger and a statement-level
+    # (TRUNCATE) trigger protect it. An operator who wants a legitimate downgrade must drop its
+    # protection first; a raw ``DROP TABLE`` in the downgrade then cascades the triggers safely.
+    "DROP TRIGGER trg_staff_audit_events_no_truncate ON staff_audit_events",
+    "DROP TRIGGER trg_staff_audit_events_append_only ON staff_audit_events",
+    "TRUNCATE staff_audit_events",
+]
+
+
+@pytest.mark.parametrize("case", list(LIVE_STAFF_DATA))
+def test_0007_refuses_to_downgrade_over_live_staff_data_and_changes_nothing(
+    scratch_url: str, case: str
+) -> None:
+    statements, expected = LIVE_STAFF_DATA[case]
+    config = alembic_config(scratch_url)
+    command.upgrade(config, "head")
+    execute(scratch_url, ADD_USER)
+    for statement in statements:
+        execute(scratch_url, statement)
+    tables_before = tables(scratch_url)
+
+    with pytest.raises(RuntimeError, match="Refusing to downgrade 0007") as refused:
+        command.downgrade(config, "0006")
+
+    assert expected in str(refused.value)  # it says exactly what it would have destroyed
+    assert version(scratch_url) == "0007"  # nothing was downgraded...
+    assert tables(scratch_url) == tables_before  # ...no table was dropped...
+    assert trigger_names(scratch_url) == STAFF_TRIGGERS  # ...and the protection is still in place
+    for statement in CLEAR_STAFF_DATA:  # the operator removes the data deliberately
+        execute(scratch_url, statement)
+
+    command.downgrade(config, "0006")
+
+    assert version(scratch_url) == "0006" and not STAFF_TABLES & tables(scratch_url)

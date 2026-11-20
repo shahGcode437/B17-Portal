@@ -13,6 +13,7 @@ from app.models.listings import (
 from app.models.news import NewsArticle
 from app.models.requests import ServiceRequest, ServiceRequestStatusHistory
 from app.models.saved import SavedItem
+from app.models.staff import StaffAuditEvent, StaffScopeAssignment
 from app.models.taxonomy import Category, ListingCategory
 from app.models.users import AuthIdentity, ProfessionalProfile, User, UserRole
 
@@ -36,6 +37,8 @@ __all__ = [
     "SavedItem",
     "ServiceRequest",
     "ServiceRequestStatusHistory",
+    "StaffAuditEvent",
+    "StaffScopeAssignment",
     "TutorProfile",
     "User",
     "UserRole",

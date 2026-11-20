@@ -6,6 +6,7 @@ jar. Two ``AuthApi`` objects on the same ``AuthEnv`` are two devices.
 """
 
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -21,8 +22,16 @@ from app.core.security.passwords import PasswordService
 from app.core.security.tokens import hash_token
 from app.dependencies.db import get_db_session
 from app.factory import create_app
-from app.models import AuthEvent, AuthSession, AuthToken, ProfessionalProfile, User, UserRole
-from app.models.enums import PlanCode, RoleName, UserStatus
+from app.models import (
+    AuthEvent,
+    AuthSession,
+    AuthToken,
+    ProfessionalProfile,
+    StaffScopeAssignment,
+    User,
+    UserRole,
+)
+from app.models.enums import CategoryModule, PlanCode, RoleName, UserStatus
 from app.services.email import MemoryEmailSender
 
 ORIGIN = "http://127.0.0.1:5173"
@@ -198,7 +207,12 @@ def make_account(
     display_name: str = "Ayesha Khan",
     professional: PlanCode | None = None,
     admin: bool = False,
+    moderator_scopes: Sequence[CategoryModule] | None = None,
 ) -> User:
+    """A database-built account. ``admin`` = Super Admin. ``moderator_scopes`` makes a Moderator:
+    ``None`` is not one, ``[]`` is a Moderator with no scope (zero staff authority), a non-empty
+    list is a Moderator holding exactly those scope rows (``news`` included — it is stored, though it
+    confers no authority yet)."""
     user = User(
         email=email,
         display_name=display_name,
@@ -212,6 +226,11 @@ def make_account(
         session.add(ProfessionalProfile(user_id=user.id, plan_code=professional))
     if admin:
         session.add(UserRole(user_id=user.id, role=RoleName.ADMIN))
+    if moderator_scopes is not None:
+        session.add(UserRole(user_id=user.id, role=RoleName.MODERATOR))
+        session.flush()  # the scope rows' composite foreign key needs the role row first
+        for scope in moderator_scopes:
+            session.add(StaffScopeAssignment(user_id=user.id, scope=scope))
     session.commit()
     return user
 

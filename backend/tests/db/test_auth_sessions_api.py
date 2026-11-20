@@ -49,12 +49,14 @@ def test_me_returns_exactly_the_approved_fields(auth_env: AuthEnv) -> None:
         "email",
         "emailVerified",
         "roles",
+        "staffScopes",  # RBAC-A, additive
         "professional",
         "authMethods",
         "session",
         "csrfToken",
     }
     assert data["roles"] == ["admin"] and data["professional"] == {"planCode": "premium"}
+    assert data["staffScopes"] == []  # a Super Admin's authority is the role, never scope rows
     assert set(data["session"]) == {"expiresAt"}
     assert response.headers["cache-control"] == "no-store"
     body = response.text.lower()

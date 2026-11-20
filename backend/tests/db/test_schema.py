@@ -25,6 +25,8 @@ EXPECTED_TABLES = {
     "saved_items",
     "service_request_status_history",
     "service_requests",
+    "staff_audit_events",
+    "staff_scope_assignments",
     "tutor_profiles",
     "user_roles",
     "users",
@@ -144,7 +146,8 @@ def test_every_timestamp_is_timezone_aware_and_every_id_is_a_uuid(db_session: Se
             "SELECT table_name || '.' || column_name FROM information_schema.columns "
             "WHERE table_schema = 'public' AND (column_name = 'id' OR column_name LIKE '%\\_id') "
             "AND table_name <> 'alembic_version' AND data_type <> 'uuid' "
-            "AND NOT (table_name = 'auth_events' AND column_name = 'request_id')"  # request id text
+            "AND NOT (table_name IN ('auth_events', 'staff_audit_events') "
+            "AND column_name = 'request_id')"  # a request id is text, not a uuid
         )
     ).all()
 

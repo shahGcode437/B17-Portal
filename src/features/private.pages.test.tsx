@@ -11,7 +11,7 @@ import { AdminDashboardPage } from "@/features/admin/AdminDashboardPage"
 import { fail, installFetchMock, ok, okPage, type MockCall } from "@/test/apiMock"
 import { fakeBackend } from "@/test/fixtures/fakeBackend"
 import { IDS, PRIVATE_ADDRESS, PRIVATE_POINT } from "@/test/fixtures/apiFixtures"
-import { adminUser, testUser } from "@/test/authFixtures"
+import { adminUser, moderatorUser, testUser } from "@/test/authFixtures"
 import { renderPage } from "@/test/renderPage"
 
 const resident = () => testUser({ displayName: "Rana Resident" })
@@ -421,6 +421,29 @@ describe("Admin Dashboard shortcut (Task 3B)", () => {
     )
     renderPage(<ProfessionalOverviewPage />, { url: "/provider", user: professional() })
     await screen.findByRole("heading", { level: 1, name: "Overview" })
+    expect(screen.queryByRole("link", { name: "Admin Dashboard" })).toBeNull()
+  })
+
+  it("RBAC-A: a Moderator (even holding every scope) does NOT see the Super Admin shortcut", async () => {
+    // The shortcut stays Super Admin-only: `useIsAdmin()` means the `admin` role, and no Moderator
+    // navigation exists yet. A Moderator's scopes (a UX hint) must never widen it.
+    const { ResidentOverviewPage } = await import("@/features/resident/ResidentOverviewPage")
+    const everyScope = ["services", "directory", "food", "education", "property", "news"] as const
+    renderPage(<ResidentOverviewPage />, {
+      url: "/profile",
+      user: moderatorUser([...everyScope], { displayName: "Scoped Moderator" }),
+    })
+    await screen.findByRole("heading", { level: 1, name: "Scoped Moderator" })
+    expect(screen.queryByRole("link", { name: "Admin Dashboard" })).toBeNull()
+  })
+
+  it("RBAC-A: forged staff scopes on an ordinary account never create an admin shortcut", async () => {
+    const { ResidentOverviewPage } = await import("@/features/resident/ResidentOverviewPage")
+    renderPage(<ResidentOverviewPage />, {
+      url: "/profile",
+      user: testUser({ displayName: "Forged Scopes", staffScopes: ["food", "directory"] }),
+    })
+    await screen.findByRole("heading", { level: 1, name: "Forged Scopes" })
     expect(screen.queryByRole("link", { name: "Admin Dashboard" })).toBeNull()
   })
 })

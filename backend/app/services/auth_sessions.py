@@ -25,6 +25,7 @@ from app.db.session import transaction
 from app.models import AuthSession, User
 from app.models.enums import (
     AuthEventType,
+    CategoryModule,
     PlanCode,
     RoleName,
     SessionRevokeReason,
@@ -32,6 +33,7 @@ from app.models.enums import (
 )
 from app.repositories.auth import SessionRepository, UserAuthRepository
 from app.services.auth_audit import AuthAuditService
+from app.services.staff_scopes import effective_staff_scopes
 
 #: ``last_seen_at`` (and the sliding idle expiry) is written at most this often per session.
 LAST_SEEN_INTERVAL = timedelta(minutes=5)
@@ -53,14 +55,36 @@ class Principal:
     #: The value *before* this request touched it (admin recency must not see its own touch).
     session_last_seen_at: datetime
     session_expires_at: datetime
+    #: The Moderator's LIVE, effective scope assignments (docs/backend/AUTH_RBAC.md §27.3), read
+    #: from the database with the session on every request — never from a cookie or a client claim.
+    #: Empty for everyone else, a Super Admin included: a Super Admin's authority is the ``admin``
+    #: role itself and is never encoded as "all scopes" rows.
+    staff_scopes: frozenset[CategoryModule] = frozenset()
 
     @property
     def is_professional(self) -> bool:
         return self.plan_code is not None
 
     @property
-    def is_admin(self) -> bool:
+    def is_super_admin(self) -> bool:
+        """Holds the ``admin`` role — the stored value of the Super Admin role (not renamed)."""
         return RoleName.ADMIN in self.roles
+
+    @property
+    def is_admin(self) -> bool:
+        """Compatibility alias of :attr:`is_super_admin` for existing callers."""
+        return self.is_super_admin
+
+    @property
+    def is_moderator(self) -> bool:
+        """Holds the ``moderator`` role. Not authority by itself: see :attr:`is_staff`."""
+        return RoleName.MODERATOR in self.roles and not self.is_super_admin
+
+    @property
+    def is_staff(self) -> bool:
+        """Super Admin, or a Moderator with at least one effective scope. A Moderator with zero
+        scopes (paused, or holding only a reserved scope) has no staff authority at all."""
+        return self.is_super_admin or (self.is_moderator and bool(self.staff_scopes))
 
 
 @dataclass(frozen=True)
@@ -176,7 +200,17 @@ class SessionService:
     def principal_for_new(self, auth_session: AuthSession, user: User) -> Principal:
         """The principal of a session this request just created (roles/plan are looked up)."""
         roles, plan_code = self._sessions.roles_and_plan(user.id)
-        return self.principal_for(auth_session, user, plan_code, roles)
+        return self.principal_for(
+            auth_session, user, plan_code, roles, staff_scopes=self._staff_scopes(user.id, roles)
+        )
+
+    def _staff_scopes(self, user_id: uuid.UUID, roles: list[RoleName]) -> frozenset[CategoryModule]:
+        """Live scopes of a Moderator; no query at all for anyone who is not one. A Super Admin has
+        none by definition (the roles are mutually exclusive, and ``admin`` wins if a corrupt state
+        ever held both)."""
+        if RoleName.MODERATOR not in roles or RoleName.ADMIN in roles:
+            return frozenset()
+        return effective_staff_scopes(self._sessions.moderator_scopes(user_id))
 
     def principal_for(
         self,
@@ -185,6 +219,7 @@ class SessionService:
         plan_code: PlanCode | None,
         roles: list[RoleName],
         *,
+        staff_scopes: frozenset[CategoryModule] = frozenset(),
         last_seen_before: datetime | None = None,
         expires_at: datetime | None = None,
     ) -> Principal:
@@ -199,6 +234,7 @@ class SessionService:
             session_created_at=auth_session.created_at,
             session_last_seen_at=last_seen_before or auth_session.last_seen_at,
             session_expires_at=expires_at or auth_session.expires_at,
+            staff_scopes=staff_scopes,
         )
 
     def authenticate(self, raw_token: str | None) -> Authentication:
@@ -231,6 +267,7 @@ class SessionService:
             user,
             plan_code,
             roles,
+            staff_scopes=self._staff_scopes(user.id, roles),
             last_seen_before=last_seen_before,
             expires_at=expires_at,
         )

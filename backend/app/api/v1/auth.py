@@ -72,6 +72,7 @@ def auth_user_body(principal: Principal, methods: AccountMethods, session_token:
         email=principal.email,
         email_verified=principal.email_verified,
         roles=sorted(principal.roles),
+        staff_scopes=sorted(principal.staff_scopes),
         professional=(
             ProfessionalSummary(plan_code=principal.plan_code)
             if principal.plan_code is not None

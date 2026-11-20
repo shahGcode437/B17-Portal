@@ -10,7 +10,10 @@ are UX only — these are the authority.
 ``require_verified_user``  + ``403 email_not_verified``
 ``require_professional``   verified + a ``professional_profiles`` row, else
                            ``403 professional_profile_required``
-``require_admin``          verified + the ``admin`` role + a recent session, else 403 / 401
+``require_super_admin``    verified + the ``admin`` role (= Super Admin) + a recent session, else
+                           403 / 401. ``require_admin`` is its unchanged compatibility alias.
+``require_staff``          verified + (Super Admin, or a Moderator with >= 1 effective scope) + a
+                           recent session. Defined in RBAC-A; attached to no route yet.
 =========================  =========================================================================
 
 Professional is a *capability* (a profile row), not a role. Resident is every account.
@@ -150,23 +153,57 @@ def admin_session_is_fresh(principal: Principal, settings: Settings, clock: Cloc
     )
 
 
-def require_admin(
+def _require_fresh_staff_session(
+    principal: Principal,
+    authentication: Authentication,
+    db: DbSession,
+    settings: Settings,
+    clock: Clock,
+) -> None:
+    """The one staff freshness rule (idle <= 2 h, age <= 12 h). A refused request must not count as
+    activity, so the touch it already made is undone and a retry is refused too."""
+    if admin_session_is_fresh(principal, settings, clock):
+        return
+    if authentication.refreshed_max_age is not None:
+        SessionService(db, settings, clock, AuthAuditService(db, clock)).restore_activity(principal)
+    raise AppError(ErrorCode.SESSION_EXPIRED, status_code=401)
+
+
+def require_super_admin(
     principal: VerifiedUser,
     authentication: AuthenticationDep,
     db: DbSession,
     settings: SettingsDep,
     clock: ClockDep,
 ) -> Principal:
-    if not principal.is_admin:
+    """A verified, active Super Admin (the ``admin`` role, read live) with a fresh session."""
+    if not principal.is_super_admin:
         raise AppError(ErrorCode.FORBIDDEN, status_code=403)
-    if not admin_session_is_fresh(principal, settings, clock):
-        if authentication.refreshed_max_age is not None:
-            # this refused request already slid last_seen: undo it, so a retry is refused too
-            SessionService(db, settings, clock, AuthAuditService(db, clock)).restore_activity(
-                principal
-            )
-        raise AppError(ErrorCode.SESSION_EXPIRED, status_code=401)
+    _require_fresh_staff_session(principal, authentication, db, settings, clock)
     return principal
 
 
-AdminUser = Annotated[Principal, Depends(require_admin)]
+#: Compatibility alias: every existing caller (the whole ``/admin`` router, ``AdminUser``) keeps
+#: exactly its current Super Admin-only behaviour. Do not repoint it at ``require_staff``.
+require_admin = require_super_admin
+
+
+def require_staff(
+    principal: VerifiedUser,
+    authentication: AuthenticationDep,
+    db: DbSession,
+    settings: SettingsDep,
+    clock: ClockDep,
+) -> Principal:
+    """A verified, active Super Admin, or a Moderator who holds at least one effective scope, with
+    a fresh session. A Moderator with zero scopes is refused. RBAC-A defines it; no route uses it
+    until RBAC-B scopes every read and write (docs/backend/AUTH_RBAC.md §27.4, §27.16)."""
+    if not principal.is_staff:
+        raise AppError(ErrorCode.FORBIDDEN, status_code=403)
+    _require_fresh_staff_session(principal, authentication, db, settings, clock)
+    return principal
+
+
+SuperAdminUser = Annotated[Principal, Depends(require_super_admin)]
+AdminUser = SuperAdminUser
+StaffUser = Annotated[Principal, Depends(require_staff)]
