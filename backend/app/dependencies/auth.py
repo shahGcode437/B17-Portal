@@ -13,7 +13,11 @@ are UX only — these are the authority.
 ``require_super_admin``    verified + the ``admin`` role (= Super Admin) + a recent session, else
                            403 / 401. ``require_admin`` is its unchanged compatibility alias.
 ``require_staff``          verified + (Super Admin, or a Moderator with >= 1 effective scope) + a
-                           recent session. Defined in RBAC-A; attached to no route yet.
+                           recent session. Attached only to the listing-moderation routes (RBAC-B).
+``require_sensitive_super_admin``
+                           ``require_super_admin`` + a session created within the staff sensitive
+                           window (15 minutes), else ``403 sensitive_reauth_required``. Guards every
+                           staff-management mutation (RBAC-C).
 =========================  =========================================================================
 
 Professional is a *capability* (a profile row), not a role. Resident is every account.
@@ -27,7 +31,7 @@ from fastapi import Depends, Request, Response
 from app.api.cookies import clear_cookie_header, clear_session_cookie, set_session_cookie
 from app.core.clock import Clock
 from app.core.config import Settings
-from app.core.errors import AppError, ErrorCode
+from app.core.errors import AppError, ErrorCode, ErrorDetail
 from app.core.rate_limit import RateLimiter
 from app.core.security.passwords import PasswordService
 from app.dependencies.db import DbSession
@@ -204,6 +208,39 @@ def require_staff(
     return principal
 
 
+def require_sensitive_super_admin(
+    principal: Annotated[Principal, Depends(require_super_admin)],
+    settings: SettingsDep,
+    clock: ClockDep,
+) -> Principal:
+    """A Super Admin whose SESSION is recent enough for a staff-management change.
+
+    Runs after ``require_super_admin`` (so a non-admin is ``403``, an idle / over-age session is
+    ``401 session_expired``, exactly as before) and then also requires that the session was CREATED
+    no more than ``staff_sensitive_window_minutes`` ago (15 by default, boundary inclusive).
+
+    This is an INTERIM approximation of recent authentication (``AUTH_RBAC.md §27.7``): it measures
+    when the session was established, not when the person last proved their identity. Once explicit
+    re-authentication / MFA step-up exists, this is the one place that switches to the dedicated
+    timestamp. The answer is a stable ``403`` detail code and carries no session metadata (no age,
+    no timestamp); the SPA treats it as "sign in again", not as a lost session."""
+    window = timedelta(minutes=settings.staff_sensitive_window_minutes)
+    if clock() - principal.session_created_at > window:
+        raise AppError(
+            ErrorCode.FORBIDDEN,
+            status_code=403,
+            details=[
+                ErrorDetail(
+                    field="session",
+                    code="sensitive_reauth_required",
+                    message="Sign in again to manage staff.",
+                )
+            ],
+        )
+    return principal
+
+
 SuperAdminUser = Annotated[Principal, Depends(require_super_admin)]
 AdminUser = SuperAdminUser
 StaffUser = Annotated[Principal, Depends(require_staff)]
+SensitiveSuperAdminUser = Annotated[Principal, Depends(require_sensitive_super_admin)]

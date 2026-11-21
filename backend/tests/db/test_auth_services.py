@@ -17,15 +17,14 @@ import pytest
 from sqlalchemy import Connection, Engine, event, func, select, text
 from sqlalchemy.orm import Session
 
-from app.cli import admin as admin_cli
 from app.cli import auth_maintenance as maintenance_cli
+from app.cli import staff as staff_cli
 from app.core.config import Settings, get_settings
 from app.core.errors import AppError
 from app.core.rate_limit import FORGOT_PASSWORD, LOGIN_FAILURES, REGISTER, RatePolicy
 from app.core.security.tokens import hash_token, is_well_formed_token, new_token
-from app.models import AuthEvent, AuthRateLimit, AuthSession, AuthToken, UserRole
-from app.models.enums import AuthEventType, AuthTokenPurpose, RoleName, SessionRevokeReason
-from app.services.admin_roles import AdminRoleError, AdminRoleService
+from app.models import AuthEvent, AuthRateLimit, AuthSession, AuthToken
+from app.models.enums import AuthEventType, AuthTokenPurpose, SessionRevokeReason
 from app.services.auth import AuthService
 from app.services.auth_audit import AuthAuditService
 from app.services.auth_maintenance import AuthMaintenanceService
@@ -329,94 +328,6 @@ def test_every_auth_flow_leaves_no_secret_in_the_audit_trail(auth_env: AuthEnv) 
     assert "ayesha@example.org" not in blob and "$argon2" not in blob
 
 
-# -- admin roles ----------------------------------------------------------------------------------------------------
-
-
-def make_admin_service(session: Session, clock: FakeClock) -> AdminRoleService:
-    return AdminRoleService(session, clock)
-
-
-def test_granting_admin_adds_a_role_revokes_sessions_and_audits(db_session: Session) -> None:
-    user = make_account(db_session)
-    clock = FakeClock()
-    _, sessions = audit_and_sessions(db_session, clock)
-    sessions.create(user.id, None)
-    sessions.create(user.id, None)
-    db_session.commit()
-
-    change = make_admin_service(db_session, clock).grant_admin(user.email)
-
-    assert change.changed and change.sessions_revoked == 2
-    assert db_session.get(UserRole, (user.id, RoleName.ADMIN)) is not None
-    assert active_sessions_of(db_session, user.id) == []
-    assert {s.revoke_reason for s in sessions_of(db_session, user.id)} == {"role_change"}
-    assert [e.event_type for e in events_of(db_session, user.id)] == [AuthEventType.ROLE_GRANTED]
-
-
-def test_granting_twice_changes_nothing_and_never_duplicates_a_role(db_session: Session) -> None:
-    user = make_account(db_session)
-    service = make_admin_service(db_session, FakeClock())
-    service.grant_admin(user.email)
-
-    again = service.grant_admin(user.email)
-
-    assert again.changed is False and again.sessions_revoked == 0
-    assert db_session.scalar(select(func.count()).select_from(UserRole)) == 1
-    assert len(events_of(db_session, user.id)) == 1
-
-
-@pytest.mark.parametrize(
-    ("account", "message"),
-    [
-        ({"verified": False}, "not verified"),
-        ({"status": "suspended"}, "not active"),
-        ({"status": "deleted"}, "not active"),
-    ],
-)
-def test_only_active_verified_accounts_can_become_admin(
-    db_session: Session, account: dict[str, Any], message: str
-) -> None:
-    user = make_account(db_session, **account)
-
-    with pytest.raises(AdminRoleError, match=message):
-        make_admin_service(db_session, FakeClock()).grant_admin(user.email)
-
-    assert db_session.scalar(select(func.count()).select_from(UserRole)) == 0
-    assert events_of(db_session) == []
-
-
-def test_granting_admin_to_an_unknown_account_is_refused(db_session: Session) -> None:
-    with pytest.raises(AdminRoleError, match="no account"):
-        make_admin_service(db_session, FakeClock()).grant_admin("ghost@example.org")
-
-
-def test_revoking_admin_removes_the_role_and_ends_sessions(db_session: Session) -> None:
-    user = make_account(db_session, admin=True)
-    clock = FakeClock()
-    _, sessions = audit_and_sessions(db_session, clock)
-    sessions.create(user.id, None)
-    db_session.commit()
-
-    change = make_admin_service(db_session, clock).revoke_admin(user.email)
-
-    assert change.changed and change.sessions_revoked == 1
-    assert db_session.scalar(select(func.count()).select_from(UserRole)) == 0
-    assert [e.event_type for e in events_of(db_session, user.id)] == [AuthEventType.ROLE_REVOKED]
-    assert make_admin_service(db_session, clock).revoke_admin(user.email).changed is False
-
-
-def test_a_new_admin_must_sign_in_again_and_then_has_the_role(auth_env: AuthEnv) -> None:
-    user = make_account(auth_env.session)
-    api = auth_env.client()
-    api.login()
-    assert api.me().json()["data"]["roles"] == []
-
-    make_admin_service(auth_env.session, auth_env.clock).grant_admin(user.email)
-
-    assert api.me().json()["error"]["code"] == "session_expired"  # privilege change ends sessions
-    assert api.login().json()["data"]["roles"] == ["admin"]
-
-
 # -- rate limiter ---------------------------------------------------------------------------------------------------
 
 
@@ -702,25 +613,6 @@ def test_concurrent_logins_never_exceed_the_session_cap(db_engine: Engine) -> No
             assert {s.revoke_reason for s in revoked} == {SessionRevokeReason.SESSION_CAP}
 
 
-def test_concurrent_admin_grants_create_one_role(db_engine: Engine) -> None:
-    with committed_world(db_engine):
-        with Session(db_engine) as setup:
-            user = make_account(setup)
-            email, user_id = user.email, user.id
-
-        def grant(_: int) -> object:
-            with Session(db_engine, expire_on_commit=False) as session:
-                return AdminRoleService(session, FakeClock()).grant_admin(email).changed
-
-        results = run_threads(4, grant)
-
-        assert sorted(results, key=str) == [False, False, False, True], results
-        with Session(db_engine) as check:
-            assert check.scalar(select(func.count()).select_from(UserRole)) == 1
-            events = events_of(check, user_id)
-            assert [e.event_type for e in events] == [AuthEventType.ROLE_GRANTED]
-
-
 # -- the operator CLIs, end to end against the test database -------------------------------------------------------
 
 
@@ -735,48 +627,16 @@ def cli_database(db_engine: Engine, monkeypatch: pytest.MonkeyPatch) -> Iterator
             get_settings.cache_clear()
 
 
-def test_the_admin_cli_grants_and_revokes_for_a_verified_account(
-    cli_database: Engine, capsys: pytest.CaptureFixture[str]
-) -> None:
-    with Session(cli_database) as setup:
-        make_account(setup, "cli@example.org")
-
-    assert admin_cli.main(["grant", "  CLI@Example.org "]) == 0
-    assert "Admin role granted" in capsys.readouterr().out
-    with Session(cli_database) as check:
-        assert check.scalar(select(func.count()).select_from(UserRole)) == 1
-    assert admin_cli.main(["grant", "cli@example.org"]) == 0
-    assert "No change" in capsys.readouterr().out
-
-    assert admin_cli.main(["revoke", "cli@example.org"]) == 0
-    with Session(cli_database) as check:
-        assert check.scalar(select(func.count()).select_from(UserRole)) == 0
-
-
-def test_the_admin_cli_refuses_unverified_unknown_and_suspended_accounts(
-    cli_database: Engine, capsys: pytest.CaptureFixture[str]
-) -> None:
-    with Session(cli_database) as setup:
-        make_account(setup, "unverified@example.org", verified=False)
-        make_account(setup, "suspended@example.org", status="suspended")
-
-    for email in ("unverified@example.org", "suspended@example.org", "ghost@example.org"):
-        assert admin_cli.main(["grant", email]) == 1
-    assert "Refused" in capsys.readouterr().err
-    with Session(cli_database) as check:
-        assert check.scalar(select(func.count()).select_from(UserRole)) == 0
-
-
 def test_the_clis_need_a_database(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     monkeypatch.delenv("DATABASE_URL", raising=False)
     get_settings.cache_clear()
     # Hermetic: a developer's local ``backend/.env`` must not make a database appear.
-    monkeypatch.setattr(admin_cli, "get_settings", lambda: Settings(_env_file=None))
+    monkeypatch.setattr(staff_cli, "get_settings", lambda: Settings(_env_file=None))
     monkeypatch.setattr(maintenance_cli, "get_settings", lambda: Settings(_env_file=None))
 
-    assert admin_cli.main(["grant", "x@example.org"]) == 1
+    assert staff_cli.main(["roster"]) == 1
     assert maintenance_cli.main(["purge"]) == 1
     assert "DATABASE_URL is not set" in capsys.readouterr().err
     get_settings.cache_clear()

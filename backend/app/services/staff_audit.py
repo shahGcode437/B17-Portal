@@ -43,6 +43,8 @@ ALLOWED_STATE_KEYS = frozenset(
         "sessions_revoked",
         "super_admin_count",
         "break_glass",
+        "policy_override",
+        "paused",
         "override",
         "name",
         "slug",

@@ -551,3 +551,21 @@ The requester can never accept, start or complete. The provider is whoever **own
 **Not defined here:** the staff-management API (appointing and removing Moderators, changing scopes — Super Admin only, recent authentication required) and the staff-audit read API. Super Admin promotion and demotion have **no HTTP endpoint** in v1 (operator CLI only). When a News administration API exists (`/admin/news` in §5 is still unbuilt), its operations will be classified under the `news` scope.
 
 **Route inventory (required with RBAC-B):** every privileged `/admin/*` route must have an explicit authority classification, and a CI / security test fails when one does not (`AUTH_RBAC.md` §27.4, §27.15).
+
+## 15. Implementation notes — RBAC-C as built (staff management)
+
+Super Admin only; the design and the reasons are `AUTH_RBAC.md` §30. Every response is `Cache-Control: no-store`. A field with no value is omitted (§1); the audit's `before` / `after` objects are returned exactly as stored. **Audit semantics:** appoint = `moderator_appointed`; scope replacement = `scope_granted` and / or `scope_revoked` (only the kinds that happened, each with the full before / after sets); pause = `moderator_paused`; remove = `moderator_removed`; **resume has no action of its own — it is `scope_granted` with `before.paused = true` and `after.paused = false`** (there is no `moderator_resumed` action and no migration for one); CLI promotion / demotion = `super_admin_promoted` / `super_admin_demoted` with `source = "cli"`.
+
+| Method and path | Auth | Success | Notes |
+|---|---|---|---|
+| `GET /admin/staff?limit&offset` | Super Admin | `200` `{data: StaffMember[], meta}` | Super Admins first, then by name; `limit` 1-100 (default 50) |
+| `GET /admin/audit?action&actor&target&resource&since&until&limit&offset` | Super Admin | `200` `{data: StaffAuditEntry[], meta}` | newest first; `limit` 1-100 (default 25); `since` / `until` need a time zone; read-only |
+| `POST /admin/staff/moderators` `{email, scopes}` | Super Admin, session <= 15 min | `201` `{data: StaffMember}` | appoint an existing, active, verified account |
+| `PUT /admin/staff/moderators/{user_id}/scopes` `{scopes}` | same | `200` `{data: StaffMember}` | replace-set; at least one scope |
+| `POST /admin/staff/moderators/{user_id}/pause` | same | `200` `{data: StaffMember}` | keeps the role, deletes every scope |
+| `POST /admin/staff/moderators/{user_id}/resume` `{scopes}` | same | `200` `{data: StaffMember}` | at least one scope |
+| `DELETE /admin/staff/moderators/{user_id}` | same | `204` | removes the role; the account stays |
+
+`StaffMember` = `{userId, displayName, email, role ("admin" | "moderator"), scopes[], paused, accountStatus, emailVerified, grantedAt, grantedBy?: {userId, displayName}}`. `StaffAuditEntry` = `{id, occurredAt, source ("web" | "cli"), action, actor?, target?: {userId, displayName?}, resourceType?, resourceId?, before?, after?, reason?, requestId?}`. A request body accepts only the declared fields (`role`, `userId`, `staffScopes`, ... are `422`). Scopes are the assignable modules `services` `directory` `food` `education` `property`; `news` is reserved and refused.
+
+Refusals (`details[0].code`): `403 forbidden` (not a Super Admin / `super_admin_target_forbidden`) · `403 sensitive_reauth_required` (the session is older than the 15-minute window: sign in again; reads are not affected) · `403 csrf_failed` · `404 moderator_not_found` · `409 already_moderator | moderator_paused | moderator_not_paused | moderator_already_paused` · `422 invalid_staff_scope | target_not_eligible | validation_error` · `429 rate_limited` (20 mutation attempts per 15 minutes per Super Admin; `Retry-After`). There is no endpoint that promotes or demotes a Super Admin (operator CLI only).

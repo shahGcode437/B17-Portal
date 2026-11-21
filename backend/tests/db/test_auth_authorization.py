@@ -226,8 +226,9 @@ def test_the_production_api_has_no_role_or_probe_routes(auth_env: AuthEnv) -> No
     paths = list(auth_env.app.openapi()["paths"])
 
     assert not any("role" in p or "_probe" in p for p in paths)
-    # Phase 12E: the admin surface is exactly the moderation + taxonomy routes (and no admin/role
-    # management route exists at all)
+    # Phase 12E + RBAC-C: the admin surface is exactly the moderation + taxonomy routes plus the
+    # staff-management routes (roster, audit, Moderator appointment / scopes / pause / resume /
+    # removal). There is still NO route that grants or removes the Super Admin role: that is CLI-only.
     assert [p for p in paths if "/admin" in p] == [
         "/api/v1/admin/listings",
         "/api/v1/admin/listings/{listing_id}",
@@ -236,6 +237,13 @@ def test_the_production_api_has_no_role_or_probe_routes(auth_env: AuthEnv) -> No
         "/api/v1/admin/categories",
         "/api/v1/admin/categories/reorder",
         "/api/v1/admin/categories/{category_id}",
+        "/api/v1/admin/staff",
+        "/api/v1/admin/audit",
+        "/api/v1/admin/staff/moderators",
+        "/api/v1/admin/staff/moderators/{user_id}/scopes",
+        "/api/v1/admin/staff/moderators/{user_id}/pause",
+        "/api/v1/admin/staff/moderators/{user_id}/resume",
+        "/api/v1/admin/staff/moderators/{user_id}",
     ]
     assert [p for p in paths if "/auth/" in p] == [
         "/api/v1/auth/register",

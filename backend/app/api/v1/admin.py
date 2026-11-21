@@ -93,16 +93,22 @@ _MODERATION_ERRORS: dict[int | str, dict[str, Any]] = {
     422: {"model": ErrorResponse, "description": "validation_error"},
 }
 
-#: Every route under ``/admin/*`` is classified here (RBAC-B; ``AUTH_RBAC.md §27.4 rule 7``).
+#: Every route under ``/admin/*`` is classified here (RBAC-B / RBAC-C; ``AUTH_RBAC.md §27.4``
+#: rule 7), including those declared in ``admin_staff.py``.
 #:
 #: ``scoped_staff`` — reachable by a Super Admin and by a Moderator whose live scope matches the
-#: resource (the service re-checks under the row lock).
+#: resource (the service re-checks under the row lock). Router: ``admin.staff_router``.
 #:
-#: ``super_admin_only`` — reachable by a Super Admin only (``require_super_admin``). A Moderator
-#: is refused with ``403 forbidden``.
+#: ``super_admin_only`` — reachable by a Super Admin only (``require_super_admin``); a Moderator is
+#: refused with ``403 forbidden``. Router: ``admin.router`` / ``admin_staff.router`` (the
+#: fail-closed defaults).
 #:
-#: A CI test fails when any ``/admin/*`` route has no entry here, or when its runtime dependency
-#: is weaker than the entry says.
+#: ``super_admin_sensitive`` — a Super Admin only, and ADDITIONALLY a session created within the
+#: sensitive window plus a per-actor rate limit (``require_staff_mutation``). Every staff-management
+#: mutation. Router: ``admin_staff.sensitive_router``.
+#:
+#: A CI test fails when any ``/admin/*`` route has no entry here, sits on the wrong router, or its
+#: runtime dependency is weaker than the entry says.
 ADMIN_AUTHORITY: dict[str, str] = {
     "GET /admin/listings": "scoped_staff",
     "GET /admin/listings/{listing_id}": "scoped_staff",
@@ -112,6 +118,13 @@ ADMIN_AUTHORITY: dict[str, str] = {
     "POST /admin/categories": "super_admin_only",
     "POST /admin/categories/reorder": "super_admin_only",
     "PATCH /admin/categories/{category_id}": "super_admin_only",
+    "GET /admin/staff": "super_admin_only",
+    "GET /admin/audit": "super_admin_only",
+    "POST /admin/staff/moderators": "super_admin_sensitive",
+    "PUT /admin/staff/moderators/{user_id}/scopes": "super_admin_sensitive",
+    "POST /admin/staff/moderators/{user_id}/pause": "super_admin_sensitive",
+    "POST /admin/staff/moderators/{user_id}/resume": "super_admin_sensitive",
+    "DELETE /admin/staff/moderators/{user_id}": "super_admin_sensitive",
 }
 
 

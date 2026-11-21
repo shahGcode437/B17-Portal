@@ -37,25 +37,44 @@ def admin_operations(document: dict[str, Any]) -> set[tuple[str, str]]:
     }
 
 
+#: The Phase 12E surface (moderation + taxonomy): unchanged by RBAC-C.
+PHASE_12E_OPERATIONS = {
+    ("GET", "/admin/listings"),
+    ("GET", "/admin/listings/{listing_id}"),
+    ("POST", "/admin/listings/{listing_id}/approve"),
+    ("POST", "/admin/listings/{listing_id}/reject"),
+    ("GET", "/admin/categories"),
+    ("POST", "/admin/categories"),
+    ("POST", "/admin/categories/reorder"),
+    ("PATCH", "/admin/categories/{category_id}"),
+}
+#: RBAC-C: staff management. Moderators only; there is NO Super Admin promotion / demotion route.
+RBAC_C_OPERATIONS = {
+    ("GET", "/admin/staff"),
+    ("GET", "/admin/audit"),
+    ("POST", "/admin/staff/moderators"),
+    ("PUT", "/admin/staff/moderators/{user_id}/scopes"),
+    ("POST", "/admin/staff/moderators/{user_id}/pause"),
+    ("POST", "/admin/staff/moderators/{user_id}/resume"),
+    ("DELETE", "/admin/staff/moderators/{user_id}"),
+}
+
+
 def test_exactly_the_frozen_admin_operations_exist(document: dict[str, Any]) -> None:
-    assert admin_operations(document) == {
-        ("GET", "/admin/listings"),
-        ("GET", "/admin/listings/{listing_id}"),
-        ("POST", "/admin/listings/{listing_id}/approve"),
-        ("POST", "/admin/listings/{listing_id}/reject"),
-        ("GET", "/admin/categories"),
-        ("POST", "/admin/categories"),
-        ("POST", "/admin/categories/reorder"),
-        ("PATCH", "/admin/categories/{category_id}"),
-    }
+    assert admin_operations(document) == PHASE_12E_OPERATIONS | RBAC_C_OPERATIONS
 
 
-def test_there_is_no_delete_no_module_endpoint_no_role_management_and_no_later_slice(
+def test_the_phase_12e_surface_has_no_delete_no_module_endpoint_and_no_later_slice(
     document: dict[str, Any],
 ) -> None:
-    operations = admin_operations(document)
+    """The moderation + taxonomy routes are unchanged: no DELETE / PUT, no module / role / user
+    endpoint, nothing from a later slice. (RBAC-C's staff routes are checked separately below.)"""
+    operations = {
+        (method, path) for method, path in admin_operations(document) if path not in _staff_paths()
+    }
     paths = [path for _, path in operations]
 
+    assert operations == PHASE_12E_OPERATIONS
     assert not any(
         method == "DELETE" for method, _ in operations
     )  # a used category cannot be deleted
@@ -76,6 +95,62 @@ def test_there_is_no_delete_no_module_endpoint_no_role_management_and_no_later_s
         for path in document["paths"]
         for later in ("/media", "/upload", "/notifications", "/payments", "/chat")
     )
+
+
+def _staff_paths() -> set[str]:
+    return {path for _, path in RBAC_C_OPERATIONS}
+
+
+def test_staff_management_manages_moderators_only_and_never_a_super_admin(
+    document: dict[str, Any],
+) -> None:
+    """Promotion and demotion are CLI-only: no staff path or method can grant, remove or even name
+    the Super Admin role, and the only DELETE removes a MODERATOR."""
+    operations = {op for op in admin_operations(document) if op in RBAC_C_OPERATIONS}
+    paths = [path for _, path in operations]
+
+    assert operations == RBAC_C_OPERATIONS
+    assert [path for method, path in operations if method == "DELETE"] == [
+        "/admin/staff/moderators/{user_id}"
+    ]
+    for forbidden in ("super", "promot", "demot", "role", "grant", "revoke", "admin-"):
+        assert not any(forbidden in path.removeprefix("/admin") for path in paths), forbidden
+    # request bodies cannot name a role either
+    for name in ("AppointModeratorRequest", "ReplaceScopesRequest", "ResumeModeratorRequest"):
+        properties = set(schemas(document)[name]["properties"])
+        assert not {"role", "roles", "superAdmin", "userId", "grantedBy"} & properties, name
+
+
+def test_the_staff_request_bodies_are_exactly_the_declared_fields(document: dict[str, Any]) -> None:
+    appoint = schemas(document)["AppointModeratorRequest"]
+    assert set(appoint["properties"]) == {"email", "scopes"} and set(appoint["required"]) == {
+        "email",
+        "scopes",
+    }
+    for name in ("ReplaceScopesRequest", "ResumeModeratorRequest"):
+        body = schemas(document)[name]
+        assert set(body["properties"]) == {"scopes"} and body["required"] == ["scopes"]
+
+
+def test_every_staff_mutation_documents_its_refusals(document: dict[str, Any]) -> None:
+    for method, path in RBAC_C_OPERATIONS:
+        if method == "GET":
+            continue
+        codes = set(document["paths"][f"{PREFIX}{path}"][method.lower()]["responses"])
+        assert {"401", "403", "422", "429"} <= codes or method == "DELETE", (method, path)
+        assert {"401", "403", "429"} <= codes, (method, path)
+
+
+def test_the_staff_responses_describe_no_secret(document: dict[str, Any]) -> None:
+    secret = {
+        "password", "passwordHash", "csrfToken", "token", "sessionId", "authMethods", "roles",
+        "providerSubject", "searchDocument",
+    }  # fmt: skip
+    for name in ("StaffMember", "StaffGrantor", "StaffPerson", "StaffAuditEntry"):
+        properties = set(schemas(document)[name]["properties"])
+        assert not secret & properties, (name, secret & properties)
+    assert set(schemas(document)["StaffGrantor"]["properties"]) == {"userId", "displayName"}
+    assert "sessionId" not in schemas(document)["StaffAuditEntry"]["properties"]
 
 
 def test_every_admin_operation_documents_the_auth_failures(document: dict[str, Any]) -> None:

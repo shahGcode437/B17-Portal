@@ -31,6 +31,10 @@ DEVELOPMENT_API_BASE_URL = "http://127.0.0.1:8000"
 #: Environments served over HTTPS behind a real hostname.
 HOSTED_ENVIRONMENTS = frozenset({"staging", "production"})
 
+#: The recent-authentication window for staff management (AUTH_RBAC.md §27.7). A hosted
+#: environment may shorten it but never weaken it.
+MAX_HOSTED_STAFF_SENSITIVE_WINDOW_MINUTES = 15
+
 #: The OWASP Argon2id floor (m=19 MiB, t=2, p=1) that hosted environments may not go below.
 ARGON2_MIN_MEMORY_KIB = 19456
 ARGON2_MIN_TIME_COST = 2
@@ -81,6 +85,14 @@ class Settings(BaseSettings):
     #: Admin actions additionally need a recent session (AUTH_RBAC.md §4.4).
     admin_session_idle_minutes: int = Field(default=120, ge=5, le=1440)
     admin_session_max_hours: int = Field(default=12, ge=1, le=72)
+    #: Staff-management mutations additionally need a session NO OLDER than this (AUTH_RBAC.md
+    #: §27.7): an interim approximation of recent authentication until MFA / re-authentication
+    #: exists. Hosted environments refuse a value above the frozen 15 minutes.
+    staff_sensitive_window_minutes: int = Field(default=15, ge=1, le=60)
+    #: The most usable Super Admins a CLI promotion may create without ``--break-glass``
+    #: (AUTH_RBAC.md §27.6): the normal target is 2, so the default of 3 allows one transient extra
+    #: account for a safe credential rotation. It bounds PROMOTION only — never a demotion.
+    super_admin_safety_ceiling: int = Field(default=3, ge=2, le=10)
     max_sessions_per_user: int = Field(default=10, ge=1, le=50)
     #: Exact frontend origin used in email links (verification/reset). Must be a configured
     #: frontend origin in staging/production; defaults to the Vite origin in development.
@@ -241,6 +253,12 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "password hashing parameters are below the OWASP Argon2id floor "
                     f"(memory >= {ARGON2_MIN_MEMORY_KIB} KiB, time cost >= {ARGON2_MIN_TIME_COST})"
+                )
+            if self.staff_sensitive_window_minutes > MAX_HOSTED_STAFF_SENSITIVE_WINDOW_MINUTES:
+                raise ValueError(
+                    "STAFF_SENSITIVE_WINDOW_MINUTES cannot exceed "
+                    f"{MAX_HOSTED_STAFF_SENSITIVE_WINDOW_MINUTES} in staging/production "
+                    "(the recent-authentication window for staff management is frozen at 15)"
                 )
         if self.password_hash_memory_cost_kib < 8 * self.password_hash_parallelism:
             raise ValueError("PASSWORD_HASH_MEMORY_COST_KIB must be at least 8 x parallelism")

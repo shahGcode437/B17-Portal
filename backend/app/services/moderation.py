@@ -39,8 +39,8 @@ LOCK ORDER (the only one — a future staff mutation must follow it too)::
     listings (row)  →  users (actor, KEY SHARE)  →  user_roles (actor's staff row, SHARE)
                     →  staff_scope_assignments (actor's one scope row, SHARE)
 
-* A staff mutation (RBAC-C; ``AdminRoleService`` already does the first two steps) locks
-  ``users`` (``FOR UPDATE`` / ``NO KEY UPDATE``) → ``user_roles`` → ``staff_scope_assignments`` and
+* A staff mutation (``StaffAuthorityService``, RBAC-C) takes the staff-authority advisory lock,
+  then locks ``users`` (``FOR UPDATE``) → ``user_roles`` → ``staff_scope_assignments`` and
   **never locks a listing**. Both sides therefore walk ``users → user_roles → scopes`` in the same
   direction and neither holds, while waiting, a lock the other needs: no cycle is possible.
 * The ``users`` KEY SHARE is taken early on purpose. The history row's foreign key to ``users``

@@ -5,6 +5,7 @@ from fastapi import APIRouter
 from app.api.routing import ContractRoute
 from app.api.v1 import (
     admin,
+    admin_staff,
     auth,
     categories,
     health,
@@ -34,4 +35,6 @@ api_router.include_router(requests.router)
 # Moderation first, taxonomy second: the order the published OpenAPI document has always listed.
 api_router.include_router(admin.staff_router)
 api_router.include_router(admin.router)
+api_router.include_router(admin_staff.router)
+api_router.include_router(admin_staff.sensitive_router)
 api_router.include_router(news.router)

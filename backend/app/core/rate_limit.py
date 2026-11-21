@@ -44,6 +44,14 @@ REQUEST_CREATE = RatePolicy("request_create", limit=5, window_seconds=60 * 60)
 REQUEST_PER_PROVIDER = RatePolicy("request_per_provider", limit=1, window_seconds=24 * 60 * 60)
 
 
+#: Staff-management mutations (RBAC-C; AUTH_RBAC.md §27.7) per acting Super Admin. A tripwire for
+#: automation and abuse, not the security boundary (the recent-authentication window, the Super
+#: Admin role and the advisory lock are): generous enough for a real appointment session, far
+#: below a script. Every attempt that reaches the mutation counts, failures included, so probing
+#: for accounts through the appointment endpoint is throttled too.
+STAFF_MUTATION = RatePolicy("staff_mutation", limit=20, window_seconds=15 * 60)
+
+
 class RateLimiter(Protocol):
     def blocked(self, identifier: str, policy: RatePolicy) -> RateDecision:
         """Is ``identifier`` already over ``policy`` (without counting this call)?"""

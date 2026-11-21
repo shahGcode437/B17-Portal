@@ -17,6 +17,7 @@ from fastapi.routing import APIRoute
 from sqlalchemy import select, text
 
 from app.api.v1 import admin as admin_routes
+from app.api.v1 import admin_staff as admin_staff_routes
 from app.api.v1 import auth as auth_routes
 from app.api.v1 import (
     categories,
@@ -35,6 +36,7 @@ from app.dependencies.auth import (
     StaffUser,
     SuperAdminUser,
     require_admin,
+    require_sensitive_super_admin,
     require_staff,
     require_super_admin,
 )
@@ -399,15 +401,19 @@ ROUTER_MODULES = [
     saved,
     requests,
     admin_routes,
+    admin_staff_routes,
     news,
 ]
 
 
 def _routes(module: Any) -> list[APIRoute]:
-    """Every route a module declares: ``router``, plus ``staff_router`` when it has one."""
+    """Every route a module declares: ``router`` plus any ``staff_router`` / ``sensitive_router``."""
     routers = [module.router]
-    if hasattr(module, "staff_router"):
-        routers.append(module.staff_router)
+    routers += [
+        getattr(module, name)
+        for name in ("staff_router", "sensitive_router")
+        if hasattr(module, name)
+    ]
     return [route for router in routers for route in router.routes if isinstance(route, APIRoute)]
 
 
@@ -419,11 +425,13 @@ def test_every_current_admin_route_has_an_explicit_authority_classification() ->
 
     expected_by_key: dict[str, str] = ADMIN_AUTHORITY
     found: dict[str, str] = {}
-    for route in _routes(admin_routes):
+    for route in [*_routes(admin_routes), *_routes(admin_staff_routes)]:
         calls = _calls(route.dependant)
         for method in route.methods or set():
             key = f"{method} {route.path}"
-            if require_super_admin in calls and require_staff not in calls:
+            if require_sensitive_super_admin in calls and require_staff not in calls:
+                found[key] = "super_admin_sensitive"
+            elif require_super_admin in calls and require_staff not in calls:
                 found[key] = "super_admin_only"
             elif require_staff in calls and require_super_admin not in calls:
                 found[key] = "scoped_staff"
@@ -431,9 +439,18 @@ def test_every_current_admin_route_has_an_explicit_authority_classification() ->
                 found[key] = "UNCLASSIFIED"  # the test below catches this
 
     assert found == expected_by_key, f"routes: {found}; expected: {expected_by_key}"
-    # And the taxonomy group is Super Admin only — a Moderator never reaches it:
-    taxonomy = {k for k, v in expected_by_key.items() if "/categories" in k}
-    assert taxonomy == {k for k, v in expected_by_key.items() if v == "super_admin_only"}
+    # And nothing a Moderator can reach is anything but the four scoped moderation routes:
+    assert {k for k, v in expected_by_key.items() if v == "scoped_staff"} == {
+        "GET /admin/listings",
+        "GET /admin/listings/{listing_id}",
+        "POST /admin/listings/{listing_id}/approve",
+        "POST /admin/listings/{listing_id}/reject",
+    }
+    assert set(expected_by_key.values()) == {
+        "scoped_staff",
+        "super_admin_only",
+        "super_admin_sensitive",
+    }
 
 
 def test_the_default_admin_router_is_super_admin_only_and_staff_is_opt_in() -> None:
@@ -456,10 +473,49 @@ def test_the_default_admin_router_is_super_admin_only_and_staff_is_opt_in() -> N
     assert on_staff_router == {k for k, v in ADMIN_AUTHORITY.items() if v == "scoped_staff"}
 
 
+def test_staff_management_reads_are_the_default_and_every_mutation_is_sensitive() -> None:
+    """RBAC-C routers: the module default (``router``) is Super Admin only and carries the two READ
+    routes; ``sensitive_router`` carries exactly the mutations, each of which needs the recent-session
+    window AND the rate limit (``require_staff_mutation``), and never ``require_staff``."""
+    from app.api.v1.admin import ADMIN_AUTHORITY
+    from app.dependencies.staff import require_staff_mutation
+
+    default = [dep.dependency for dep in admin_staff_routes.router.dependencies]
+    sensitive = [dep.dependency for dep in admin_staff_routes.sensitive_router.dependencies]
+    assert require_super_admin in default and require_staff_mutation not in default
+    assert require_staff_mutation in sensitive and require_staff not in sensitive + default
+
+    def keys(router: APIRouter) -> set[str]:
+        return {
+            f"{method} {route.path}"
+            for route in router.routes
+            if isinstance(route, APIRoute)
+            for method in route.methods or set()
+        }
+
+    registry = ADMIN_AUTHORITY
+    assert keys(admin_staff_routes.router) == {
+        k for k in registry if k in ("GET /admin/staff", "GET /admin/audit")
+    }
+    assert keys(admin_staff_routes.sensitive_router) == {
+        k for k, v in registry.items() if v == "super_admin_sensitive"
+    }
+    for route in admin_staff_routes.sensitive_router.routes:
+        assert isinstance(route, APIRoute)
+        calls = _calls(route.dependant)
+        assert {require_sensitive_super_admin, require_super_admin} <= calls
+        assert require_staff not in calls
+        assert route.methods and not (route.methods & {"GET", "HEAD"})  # mutations only
+    for route in admin_staff_routes.router.routes:
+        assert isinstance(route, APIRoute)
+        assert require_sensitive_super_admin not in _calls(route.dependant)  # reads: normal window
+
+
 #: What a developer who adds a route to the DEFAULT admin router and forgets to think about
 #: authority would write. It reuses the real router's dependencies, so it behaves exactly as a
 #: route added to ``admin.router`` would.
 forgotten = APIRouter(prefix="/admin", dependencies=admin_routes.router.dependencies)
+forgotten_staff = APIRouter(prefix="/admin", dependencies=admin_staff_routes.router.dependencies)
 
 
 @forgotten.get("/forgotten-probe")
@@ -467,13 +523,22 @@ def forgotten_probe() -> dict[str, bool]:
     return {"reached": True}
 
 
-def test_a_route_added_to_the_default_admin_router_is_reachable_by_a_super_admin_only(
-    env: AuthEnv,
+@forgotten_staff.get("/forgotten-staff-probe")
+def forgotten_staff_probe() -> dict[str, bool]:
+    return {"reached": True}
+
+
+@pytest.mark.parametrize(
+    ("router", "path"),
+    [(forgotten, "/admin/forgotten-probe"), (forgotten_staff, "/admin/forgotten-staff-probe")],
+    ids=["admin.router", "admin_staff.router"],
+)
+def test_a_route_added_to_a_default_admin_router_is_reachable_by_a_super_admin_only(
+    env: AuthEnv, router: APIRouter, path: str
 ) -> None:
-    """The behavioural proof of fail-closed: nobody but a Super Admin gets through, so a forgotten
-    route is never public and never Moderator-accessible by accident."""
-    env.app.include_router(forgotten, prefix="/api/v1")
-    path = "/admin/forgotten-probe"
+    """The behavioural proof of fail-closed, for BOTH modules' default routers: nobody but a Super
+    Admin gets through, so a forgotten route is never public and never Moderator-accessible."""
+    env.app.include_router(router, prefix="/api/v1")
 
     assert as_actor(env, "anonymous").get(path).status_code == 401
     assert as_actor(env, "resident").get(path).status_code == 403
@@ -509,4 +574,6 @@ def test_require_staff_is_only_attached_to_the_classified_scoped_moderation_rout
     attached_paths = sorted({row.split(" ", 1)[1] for row in attached})
     assert attached_paths == expected
     assert sum(len(_routes(module)) for module in ROUTER_MODULES) > 30  # the walk is not vacuous
-    assert not any("staff" in path for path in auth_env.app.openapi()["paths"])
+    # RBAC-C: staff management exists, but ONLY under /admin/staff (never a public or other path)
+    staff_paths = [path for path in auth_env.app.openapi()["paths"] if "staff" in path]
+    assert staff_paths and all(path.startswith("/api/v1/admin/staff") for path in staff_paths)

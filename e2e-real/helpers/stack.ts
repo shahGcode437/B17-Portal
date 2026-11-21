@@ -189,7 +189,13 @@ export async function createUser(
       }
     }
     if (opts.admin) {
-      execFileSync(PY, ['-m', 'app.cli.admin', 'grant', email], { cwd: BACKEND, encoding: 'utf8' })
+      // RBAC-C: a reason is mandatory, and the lane's dev database accumulates throwaway admins, so it
+      // passes the explicit count-policy flags (a developer database only; see AUTH_RBAC.md section 30).
+      execFileSync(
+        PY,
+        ['-m', 'app.cli.staff', 'promote-super-admin', email, '--reason', 'real-stack lane fixture', '--override-policy', '--break-glass'],
+        { cwd: BACKEND, encoding: 'utf8' },
+      )
     }
   } finally {
     await api.dispose()
