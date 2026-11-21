@@ -23,8 +23,19 @@ deliberately not reachable through ``ListingKind``.
 """
 
 from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
+from enum import Enum
+from typing import TYPE_CHECKING
 
-from app.models.enums import BusinessVertical, CategoryModule, ListingKind
+from sqlalchemy import and_, false, or_
+
+from app.models import Listing
+from app.models.enums import BusinessVertical, CategoryModule, ListingKind, RoleName
+
+if TYPE_CHECKING:
+    from sqlalchemy.sql.elements import ColumnElement
+
+    from app.services.auth_sessions import Principal
 
 #: Scopes a Moderator can hold today. ``news`` is in the canonical vocabulary but reserved: it
 #: becomes assignable only once a News administration API exists (AUTH_RBAC.md §27.3, rule 5).
@@ -61,3 +72,94 @@ def effective_staff_scopes(stored: Iterable[CategoryModule]) -> frozenset[Catego
     """The stored scope assignments that actually confer authority: only assignable scopes count,
     so a stray ``news`` row grants nothing until a News administration API exists."""
     return frozenset(scope for scope in stored if scope in ASSIGNABLE_STAFF_SCOPES)
+
+
+class ScopeFilterKind(Enum):
+    ALL = "all"
+    OF = "of"
+    NONE = "none"
+
+
+@dataclass(frozen=True)
+class ScopeFilter:
+    """A listing-visibility filter (RBAC-B; docs/backend/AUTH_RBAC.md §27.4):
+
+    * ``all()`` — Super Admin: unrestricted.
+    * ``of(scopes)`` — Moderator: only listings whose derived scope is in ``scopes``.
+    * ``none()`` — no staff authority: nothing is visible.
+
+    There is NO default of "all"; a repository that forgets to pass a filter cannot compile.
+
+    The filter comes ONLY from the actor's authority. The one client-supplied narrowing the queue
+    accepts is ``?status=`` / ``?kind=``, which the repository ANDs with this filter (so it can only
+    shrink the result). A ``module`` / ``scope`` query key is not a queue parameter at all: it is
+    ignored, never read, and so can neither narrow nor widen anything.
+    """
+
+    kind: ScopeFilterKind
+    scopes: frozenset[CategoryModule] = frozenset()
+
+    @classmethod
+    def all(cls) -> "ScopeFilter":
+        return cls(ScopeFilterKind.ALL)
+
+    @classmethod
+    def of(cls, scopes: Iterable[CategoryModule]) -> "ScopeFilter":
+        allowed = frozenset(scopes) & ASSIGNABLE_STAFF_SCOPES
+        return cls.none() if not allowed else cls(ScopeFilterKind.OF, allowed)
+
+    @classmethod
+    def none(cls) -> "ScopeFilter":
+        return cls(ScopeFilterKind.NONE)
+
+    @property
+    def is_empty(self) -> bool:
+        return self.kind is ScopeFilterKind.NONE
+
+
+def scope_filter_for(principal: "Principal") -> ScopeFilter:
+    """The listing scope filter for the READ routes (queue, counts, detail), from the principal
+    ``require_staff`` resolved at the start of the request — a read is stale for at most its own
+    duration and changes nothing. A DECISION never uses this: ``ModerationService.decide`` reads and
+    locks the actor's authority rows inside its transaction instead."""
+    if RoleName.ADMIN in principal.roles:
+        return ScopeFilter.all()
+    if RoleName.MODERATOR in principal.roles:
+        effective = effective_staff_scopes(principal.staff_scopes)
+        return ScopeFilter.of(effective) if effective else ScopeFilter.none()
+    return ScopeFilter.none()
+
+
+#: The SQL fragments a scope maps to on ``listings`` joined with ``business_profiles``. Business
+#: listings join ``business_profiles`` via an outer join so a (structurally corrupt) business
+#: without a profile has a NULL vertical and matches nothing here — it stays Super Admin only.
+def _scope_predicate(scope: CategoryModule) -> "ColumnElement[bool]":
+    from app.models import BusinessProfile
+
+    if scope is CategoryModule.SERVICES:
+        return Listing.kind == ListingKind.PROVIDER
+    if scope is CategoryModule.DIRECTORY:
+        return and_(
+            Listing.kind == ListingKind.BUSINESS,
+            BusinessProfile.vertical == BusinessVertical.GENERAL,
+        )
+    if scope is CategoryModule.FOOD:
+        return and_(
+            Listing.kind == ListingKind.BUSINESS, BusinessProfile.vertical == BusinessVertical.FOOD
+        )
+    if scope is CategoryModule.EDUCATION:
+        return Listing.kind == ListingKind.TUTOR
+    if scope is CategoryModule.PROPERTY:
+        return Listing.kind == ListingKind.PROPERTY
+    # ``news`` is a separate resource model; no listing ever matches.
+    return false()
+
+
+def listing_scope_sql(filter_: ScopeFilter) -> "ColumnElement[bool] | None":
+    """The WHERE fragment this filter applies to a ``Listing`` query (left-joined with
+    ``business_profiles``). ``None`` means "no restriction" (Super Admin)."""
+    if filter_.kind is ScopeFilterKind.ALL:
+        return None
+    if filter_.kind is ScopeFilterKind.NONE:
+        return false()
+    return or_(*(_scope_predicate(scope) for scope in filter_.scopes))

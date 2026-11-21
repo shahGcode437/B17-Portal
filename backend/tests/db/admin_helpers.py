@@ -37,10 +37,18 @@ def owner_signed_in(
     return signed_in(env, email, professional=plan, display_name="Sana Baker", admin=admin)
 
 
-def approve(api: AuthApi, listing_id: str, revision: int, **kwargs: Any) -> Response:
-    return api.request(
-        "POST", f"{ADMIN_LISTINGS}/{listing_id}/approve", json={"revision": revision}, **kwargs
-    )
+def approve(
+    api: AuthApi,
+    listing_id: str,
+    revision: int,
+    *,
+    overrideReason: str | None = None,
+    **kwargs: Any,
+) -> Response:
+    body: dict[str, Any] = {"revision": revision}
+    if overrideReason is not None:
+        body["overrideReason"] = overrideReason
+    return api.request("POST", f"{ADMIN_LISTINGS}/{listing_id}/approve", json=body, **kwargs)
 
 
 def reject(

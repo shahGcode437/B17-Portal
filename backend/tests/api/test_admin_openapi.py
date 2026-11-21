@@ -90,7 +90,10 @@ def test_the_moderation_request_bodies(document: dict[str, Any]) -> None:
     approve = schemas(document)["ApproveRequest"]
     reject = schemas(document)["RejectRequest"]
 
-    assert set(approve["properties"]) == {"revision"} and approve["required"] == ["revision"]
+    # ``overrideReason`` is RBAC-B's temporary Super Admin self-approval override: optional, used
+    # only when a Super Admin approves their own Service / Professional listing.
+    assert set(approve["properties"]) == {"revision", "overrideReason"}
+    assert approve["required"] == ["revision"]
     assert set(reject["properties"]) == {"revision", "reason"}
     assert set(reject["required"]) == {"revision", "reason"}
     assert (

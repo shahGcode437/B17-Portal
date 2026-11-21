@@ -133,29 +133,36 @@ NON_ADMIN_ACTORS: dict[str, tuple[Callable[[AuthEnv], AuthApi], int, str]] = {
         403,
         "email_not_verified",
     ),
-    # RBAC-A: a Moderator exists in the schema and `require_staff` recognises them, but NO current
-    # /admin/* route is Moderator-accessible until RBAC-B scopes every read and write.
-    "a moderator of one scope": (
-        lambda env: signed_in(
-            env, "mod-one@example.org", professional=None, moderator_scopes=[CategoryModule.FOOD]
-        ),
-        403,
-        "forbidden",
-    ),
-    "a moderator of every assignable scope": (
-        lambda env: signed_in(
-            env,
-            "mod-all@example.org",
-            professional=None,
-            moderator_scopes=sorted(ASSIGNABLE_STAFF_SCOPES),
-        ),
-        403,
-        "forbidden",
-    ),
+    # RBAC-B: a Moderator with no effective scope is refused by ``require_staff`` on every route,
+    # exactly like a non-staff account.
     "a moderator with no scope": (
         lambda env: signed_in(env, "mod-none@example.org", professional=None, moderator_scopes=[]),
         403,
         "forbidden",
+    ),
+    "a moderator with only the reserved news scope": (
+        lambda env: signed_in(
+            env, "mod-news@example.org", professional=None, moderator_scopes=[CategoryModule.NEWS]
+        ),
+        403,
+        "forbidden",
+    ),
+}
+
+
+# RBAC-B: a Moderator with an effective scope is STAFF — the queue / detail / approve / reject
+# routes no longer refuse them with 403, they just see an empty scope or get a 404 for an
+# out-of-scope listing. That belongs to ``test_scoped_moderation_api.py``. Here we only pin that
+# taxonomy remains Super Admin-only, so a Moderator cannot reach any category operation.
+MODERATOR_ACTORS: dict[str, Callable[[AuthEnv], AuthApi]] = {
+    "a moderator of one scope": lambda env: signed_in(
+        env, "mod-one@example.org", professional=None, moderator_scopes=[CategoryModule.FOOD]
+    ),
+    "a moderator of every assignable scope": lambda env: signed_in(
+        env,
+        "mod-all@example.org",
+        professional=None,
+        moderator_scopes=sorted(ASSIGNABLE_STAFF_SCOPES),
     ),
 }
 
@@ -185,6 +192,26 @@ def test_only_an_admin_reaches_any_admin_route(auth_env: AuthEnv, actor: str, ca
     assert (response.status_code, error_code(response)) == (status, code), (actor, call)
     assert response.headers["Cache-Control"] == "no-store"
     assert world.state() == before  # nothing was read into a response and nothing was written
+
+
+@pytest.mark.parametrize("actor", list(MODERATOR_ACTORS))
+@pytest.mark.parametrize(
+    "call", ["list categories", "create category", "patch category", "reorder"]
+)
+def test_a_moderator_can_never_reach_taxonomy_routes(
+    auth_env: AuthEnv, actor: str, call: str
+) -> None:
+    """Taxonomy is Super Admin only (``AUTH_RBAC.md §27.5``). Even a Moderator holding every
+    assignable scope is refused with ``403 forbidden`` on every category operation."""
+    world = World(auth_env)
+    api = MODERATOR_ACTORS[actor](auth_env)
+    before = world.state()
+
+    response = world.calls[call](api)
+
+    assert (response.status_code, error_code(response)) == (403, "forbidden"), (actor, call)
+    assert response.headers["Cache-Control"] == "no-store"
+    assert world.state() == before  # nothing was read or written
 
 
 def test_a_non_admin_learns_nothing_from_a_bad_body_or_an_unknown_id(auth_env: AuthEnv) -> None:

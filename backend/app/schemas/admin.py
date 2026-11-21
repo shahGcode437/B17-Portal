@@ -59,9 +59,26 @@ class AdminListingsQuery(ApiModel):
 
 
 class ApproveRequest(StrictRequest):
-    """``revision`` is the value the admin reviewed."""
+    """``revision`` is the value the admin reviewed.
+
+    ``overrideReason`` is the Super Admin self-approval override for an **own Service / Professional
+    listing** (RBAC-B; ``AUTH_RBAC.md §27.8``): a normalised reason of at least 10 characters; the
+    backend writes a ``moderation_self_override`` row in ``staff_audit_events`` in the same
+    transaction. It is never accepted for any other action, or for a non-own / non-provider
+    approval, or from a Moderator — the service refuses those on top of the schema.
+    """
 
     revision: Revision
+    override_reason: (
+        Annotated[
+            str,
+            StringConstraints(
+                strip_whitespace=True, min_length=1, max_length=MAX_REJECTION_REASON_LENGTH * 2
+            ),
+            printable(True),
+        ]
+        | None
+    ) = None
 
 
 class RejectRequest(StrictRequest):

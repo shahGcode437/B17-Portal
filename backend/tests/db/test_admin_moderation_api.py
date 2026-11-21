@@ -249,14 +249,81 @@ def test_approval_does_not_touch_the_content_or_the_search_document(auth_env: Au
     assert SearchIndexer(auth_env.session).find_stale() == []
 
 
-def test_an_admin_may_moderate_their_own_listing(auth_env: AuthEnv) -> None:
-    """No separation-of-duties rule is frozen (an Admin has no implicit ownership either way)."""
+def test_a_super_admin_approving_their_own_provider_listing_needs_an_override_reason(
+    auth_env: AuthEnv,
+) -> None:
+    """RBAC-B rewrite of the old "admin may moderate their own listing" test
+    (``AUTH_RBAC.md §27.8``): self-moderation is denied in general; the one temporary exception is
+    a Super Admin approving their OWN Service / Professional (``provider``) listing, which needs an
+    explicit normalised override reason and writes a durable audit row. Reject / takedown of one's
+    own listing never get the override, and no override lets anyone else self-moderate."""
+    from sqlalchemy import select
+
+    from app.models import StaffAuditEvent
+    from app.models.enums import StaffAuditAction
     from tests.db.write_helpers import signed_in
 
     both = signed_in(auth_env, "both@example.org", admin=True)
     listing_id = pending(both, provider_body())
 
-    assert approve(both, listing_id, 1).status_code == 200
+    # No override reason: refused with the stable detail code, the listing is unchanged.
+    refused = approve(both, listing_id, 1)
+    assert refused.status_code == 403
+    assert refused.json()["error"]["details"][0]["code"] == "override_required"
+    assert not auth_env.session.scalars(select(StaffAuditEvent)).all()
+
+    # Override reason too short: `validation_error`, listing still unchanged.
+    short = approve(both, listing_id, 1, overrideReason="short")
+    assert short.status_code == 422
+
+    # Normalised, 10+ chars: approve succeeds and writes exactly one audit row.
+    reason = "   Only  available   reviewer  today.  "
+    ok = approve(both, listing_id, 1, overrideReason=reason)
+    assert ok.status_code == 200, ok.text
+    audit_rows = auth_env.session.scalars(select(StaffAuditEvent)).all()
+    assert len(audit_rows) == 1
+    row = audit_rows[0]
+    assert row.action is StaffAuditAction.MODERATION_SELF_OVERRIDE
+    assert row.actor_user_id is not None  # web action always has an actor
+    assert row.reason == "Only available reviewer today."  # normalised whitespace
+    assert row.before == {"status": "pending", "revision": 1}
+    assert row.after == {"status": "approved", "revision": 1, "override": True}
+
+
+def test_a_super_admin_cannot_self_takedown_or_self_reject_even_with_an_override_reason(
+    auth_env: AuthEnv,
+) -> None:
+    """The override is approval-only; there is no reject / takedown path for own content."""
+    from sqlalchemy import select
+
+    from app.models import StaffAuditEvent
+    from tests.db.write_helpers import signed_in
+
+    both = signed_in(auth_env, "both@example.org", admin=True)
+    listing_id = pending(both, provider_body())
+
+    # Reject of the own pending provider listing: refused (no override even if sent).
+    response = reject(both, listing_id, 1, "A plausible explanation for the owner.")
+    assert response.status_code == 403
+    assert response.json()["error"]["details"][0]["code"] == "self_moderation_forbidden"
+    assert not auth_env.session.scalars(select(StaffAuditEvent)).all()
+
+
+def test_a_super_admin_cannot_self_moderate_non_provider_listings(auth_env: AuthEnv) -> None:
+    """Ordinary Business / Food / Tutor / Property self-moderation is denied; the override exists
+    only while the provider model stays owner-bound."""
+    from sqlalchemy import select
+
+    from app.models import StaffAuditEvent
+    from tests.db.write_helpers import business_body, signed_in
+
+    both = signed_in(auth_env, "both-general@example.org", admin=True)
+    listing_id = pending(both, business_body())
+
+    response = approve(both, listing_id, 1, overrideReason="Very good justification indeed.")
+    assert response.status_code == 403
+    assert response.json()["error"]["details"][0]["code"] == "self_moderation_forbidden"
+    assert not auth_env.session.scalars(select(StaffAuditEvent)).all()
 
 
 # -- reject ------------------------------------------------------------------------------------------
