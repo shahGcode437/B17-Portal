@@ -45,8 +45,6 @@ interface State {
   history: Record<string, RequestHistoryEntryDto[]>
   categories: AdminCategoryDto[]
   nextSerial: number
-  /** Who created a listing in this session (the fixtures have no owner identity): the basis of `own_listing`. */
-  owners: Record<string, string>
   /** Counters the real API keeps per user (AUTH_RBAC §22.1): listing creates and request creates "this hour". */
   listingCreates: Record<string, number>
   requestCreates: Record<string, number>
@@ -68,7 +66,6 @@ function freshState(): State {
     history: Object.fromEntries(Object.entries(REQUEST_HISTORY).map(([id, rows]) => [id, rows.map((r) => ({ ...r }))])),
     categories: CATEGORIES.map((c) => ({ ...c })),
     nextSerial: 1000,
-    owners: {},
     listingCreates: {},
     requestCreates: {},
     requestedToday: new Set<string>(),
@@ -288,16 +285,12 @@ function applyPatch(l: OwnerListingDto, body: Record<string, unknown>): void {
 
 /**
  * The Free plan allows 3 ACTIVE (pending + approved) listings; Premium is unlimited
- * (API_CONTRACT §10.9). Service / Professional (``provider``) listings are portal-managed and
- * never consume the owner's quota (Task 2, AUTH_RBAC §22.6): a provider create is always allowed,
- * and existing provider rows are not counted against other kinds' quota.
+ * (API_CONTRACT §10.9). A Service / Professional (``provider``) listing is portal-managed and has no
+ * owner (RBAC-D): it is never created through this API and can never occupy a plan slot.
  */
-function planIsFull(planCode: "free" | "premium" | undefined, kind: string | undefined): boolean {
+function planIsFull(planCode: "free" | "premium" | undefined): boolean {
   if (planCode === "premium") return false
-  if (kind === "provider") return false
-  return state.listings.filter(
-    (l) => (l.status === "pending" || l.status === "approved") && l.kind !== "provider",
-  ).length >= 3
+  return state.listings.filter((l) => l.status === "pending" || l.status === "approved").length >= 3
 }
 
 /**
@@ -344,18 +337,19 @@ export function routeWrite(
     // One request per user per provider per day, and 5 per user per hour (AUTH_RBAC §22.1): `429 rate_limited`.
     if (state.requestedToday.has(`${user}|${String(body.providerListingId)}`)) return fail(429, "rate_limited")
     if ((state.requestCreates[user] ?? 0) >= 5) return fail(429, "rate_limited")
-    const target = state.listings.find((l) => l.id === body.providerListingId && l.status === "approved")
+    // A request targets an APPROVED public listing. The Providers are portal-managed (RBAC-D): they have no owner, so
+    // they are not in anyone's own listings — they are the public fixtures. There is no "own listing" refusal any more:
+    // nobody owns a Provider, and a request is addressed to the portal, not to a person.
+    const target: { id: string; kind: string; name?: string } | undefined =
+      state.listings.find((l) => l.id === body.providerListingId && l.status === "approved") ??
+      PROVIDERS.find((p) => p.id === body.providerListingId)
     if (!target) return fail(404, "not_found")
-    // Never to your own listing (`422 validation_error` + `details[].code = own_listing`).
-    if (state.owners[target.id] !== undefined && state.owners[target.id] === me.email) {
-      return fail(422, "validation_error", [{ field: "providerListingId", code: "own_listing", message: "You cannot send a request to your own listing." }])
-    }
     if (target.kind !== "provider") {
       // The real shape (API_CONTRACT §10.8): 422 validation_error with the rule as a detail code.
       return fail(422, "validation_error", [{ field: "providerListingId", code: "not_requestable", message: "Only service providers can receive requests." }])
     }
     const requesterName = me.displayName ?? "Requester"
-    const providerName = (target as { name: string }).name
+    const providerName = target.name ?? "Service provider"
     const id = uuid()
     const row: RequestSummaryDto = {
       id,
@@ -386,16 +380,20 @@ export function routeWrite(
     const act = action[2] as "accept" | "start" | "complete" | "cancel"
     const row = state.myRequests.find((r) => r.id === id) ?? state.leads.find((r) => r.id === id)
     if (!row) return fail(404, "not_found")
-    const next: Record<string, RequestStatusDto> = { accept: "accepted", start: "in-progress", complete: "completed", cancel: "cancelled" }
-    const allowed: Record<string, RequestStatusDto[]> = {
-      accept: ["submitted"],
-      start: ["accepted"],
-      complete: ["in-progress"],
-      cancel: ["submitted", "accepted", "in-progress"],
-    }
-    if (!allowed[act].includes(row.status)) return fail(409, "invalid_state_transition")
+    // Authority parity with the real API (RBAC-D): `/requests/{id}/{action}` is the REQUESTER's API, and the requester
+    // may only cancel. accept / start / complete are provider-side transitions, and a Service request for a Provider is
+    // handled by PORTAL STAFF (a Super Admin, or a Moderator with the live `services` scope) through `/admin/requests`.
+    // The mock has no staff session and invents none inside an ordinary session, so the boundary is modelled as it is:
+    // 403 `forbidden`, after the 404 for an id that is not the caller's and before any state check (the real order).
+    // Staff-side request journeys are real-stack / backend only until the staff UI phase.
+    if (act !== "cancel") return fail(403, "forbidden")
+    // The REQUESTER's cancel rule, copied from the real lifecycle (`request_rules.SOURCES`, API_CONTRACT §13):
+    //   submitted | accepted -> cancelled   (requester)   |   in-progress, completed, cancelled -> 409
+    // (only staff may cancel an in-progress request). Refused BEFORE anything is touched: no status, history or lead
+    // mutation, the same `409 invalid_state_transition` the real API answers.
+    if (!["submitted", "accepted"].includes(row.status)) return fail(409, "invalid_state_transition")
     const from = row.status
-    const to = next[act]
+    const to: RequestStatusDto = "cancelled"
     const stamp = nowIso()
     row.status = to
     row.updatedAt = stamp
@@ -408,10 +406,10 @@ export function routeWrite(
       }
     }
     const history = (state.history[id] ??= [])
-    history.push({ fromStatus: from, toStatus: to, actorRole: act === "cancel" ? "requester" : "provider", createdAt: stamp })
+    history.push({ fromStatus: from, toStatus: to, actorRole: "requester", createdAt: stamp })
     const lead = state.leads.find((r) => r.id === id)
     const requesterName = lead?.requesterName ?? me.displayName ?? "Requester"
-    const detail: RequestDetailDto = { ...row, requesterName, viewerRole: "provider", history }
+    const detail: RequestDetailDto = { ...row, requesterName, viewerRole: "requester", history }
     return ok(detail)
   }
 
@@ -430,6 +428,12 @@ export function routeWrite(
   if (path === "/listings" && method === "POST") {
     const kind = String(body.kind ?? "")
     if (!["provider", "business", "tutor", "property"].includes(kind)) return fail(422, "validation_error", [{ field: "kind", code: "required" }])
+    // A Service / Professional listing is portal-managed and has no owner (RBAC-D): the owner API refuses it
+    // for EVERYONE, an admin included. Staff author it through `/admin/providers`.
+    if (kind === "provider")
+      return fail(403, "forbidden", [
+        { field: "kind", code: "provider_admin_only", message: "Service / Professional listings are managed by portal staff." },
+      ])
     const required = requireFields(body, kind === "property" ? ["title", "listingType", "propertyType", "price"] : ["name"])
     if (required) return required
     const location = (body.location ?? {}) as Record<string, unknown>
@@ -448,7 +452,7 @@ export function routeWrite(
     // 10 creates per user per hour (a refused request does not use a slot), then the Free plan's 3 active listings.
     const owner = me.email ?? me.displayName ?? "anonymous"
     if ((state.listingCreates[owner] ?? 0) >= 10) return fail(429, "rate_limited")
-    if (planIsFull(me.planCode, kind)) return fail(403, "plan_limit_reached")
+    if (planIsFull(me.planCode)) return fail(403, "plan_limit_reached")
     state.listingCreates[owner] = (state.listingCreates[owner] ?? 0) + 1
 
     const id = uuid()
@@ -496,7 +500,6 @@ export function routeWrite(
       listing = { ...base, kind: "provider", name: String(body.name), category: String(body.category ?? "") }
     }
     state.listings.push(listing)
-    if (me.email) state.owners[listing.id] = me.email
     return created(listing)
   }
 
@@ -542,7 +545,7 @@ export function routeWrite(
       return ok(listing)
     }
     // Resubmitting a REJECTED listing takes an active slot again, so the Free plan's quota applies (API_CONTRACT §10.9).
-    if (listing.status === "rejected" && planIsFull(me.planCode, listing.kind)) {
+    if (listing.status === "rejected" && planIsFull(me.planCode)) {
       state.listings[state.listings.indexOf(listing)] = snapshot // a refused write changes nothing
       return fail(403, "plan_limit_reached")
     }

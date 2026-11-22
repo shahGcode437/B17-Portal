@@ -208,6 +208,16 @@ def test_downgrade_then_upgrade_again_needs_the_reindex_again(
     command.upgrade(config, "head")  # includes 0002; the CLI needs the current schema
     assert search_index_cli.main(["rebuild"]) == 0
 
+    # The 0008 downgrade refuses over a LIVE Provider (RBAC-D: the previous release could not edit the
+    # ownerless row), so the operator archives it deliberately first, as its message says.
+    engine = create_engine(url)
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text("UPDATE listings SET status = 'archived' WHERE kind = 'provider'")
+            )
+    finally:
+        engine.dispose()
     command.downgrade(config, "0001")
     command.upgrade(config, "head")  # includes 0002; the CLI needs the current schema
 

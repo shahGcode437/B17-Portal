@@ -87,7 +87,7 @@ test.describe("Admin: the queue row says Taken down for a takedown and Rejected 
 
     // No reload: the SAME mounted panel opens for the next listing, and it must not inherit the reject form or the text
     // typed for the first one (it used to open already on "Rejection reason" with that text in it).
-    await page.getByRole("button", { name: "Review Approved Plumbing Co" }).click()
+    await page.getByRole("button", { name: "Review Approved Physics Tutor" }).click()
     const takedown = page.getByRole("dialog", { name: "Review Listing" })
     await expect(takedown.getByRole("button", { name: /^Take down$/ })).toBeVisible()
     await expect(takedown.getByLabel(/Rejection reason|Take down reason/)).toHaveCount(0)
@@ -100,38 +100,31 @@ test.describe("Admin: the queue row says Taken down for a takedown and Rejected 
 
     // The queue rows themselves (not only the dialog) say which it was; both are still filed under Rejected.
     await page.getByRole("radio", { name: /^Rejected/ }).click()
-    await expect(queueRow(page, "Approved Plumbing Co")).toContainText("Taken down")
-    await expect(queueRow(page, "Approved Plumbing Co")).not.toContainText("Rejected")
+    await expect(queueRow(page, "Approved Physics Tutor")).toContainText("Taken down")
+    await expect(queueRow(page, "Approved Physics Tutor")).not.toContainText("Rejected")
     await expect(queueRow(page, "Pending Stationers")).toContainText("Rejected")
     await expect(queueRow(page, "Pending Stationers")).not.toContainText("Taken down")
     await page.getByRole("radio", { name: /^All/ }).click()
-    await expect(queueRow(page, "Approved Plumbing Co")).toContainText("Taken down")
+    await expect(queueRow(page, "Approved Physics Tutor")).toContainText("Taken down")
 
     // A reload reads the same answer from the server, and the review dialog agrees with the row.
     await page.reload()
     await expectPage(page, "Listing Review")
     await page.getByRole("radio", { name: /^All/ }).click()
-    await expect(queueRow(page, "Approved Plumbing Co")).toContainText("Taken down")
-    await page.getByRole("button", { name: "Review Approved Plumbing Co" }).click()
+    await expect(queueRow(page, "Approved Physics Tutor")).toContainText("Taken down")
+    await page.getByRole("button", { name: "Review Approved Physics Tutor" }).click()
     await expect(page.getByRole("dialog", { name: "Review Listing" })).toContainText("Taken down")
   })
 })
 
-test.describe("Listing create: all five variants hit the API with the right payload", () => {
-  // Service / Professional is portal-managed (admin-only) since Task 2, so the provider variant
-  // signs in as admin and sees the four-kind chooser heading; every other kind is still a plain
-  // professional and sees the three-kind heading.
+test.describe("Listing create: the four owned variants hit the API with the right payload (Service / Professional is staff-managed, RBAC-D)", () => {
+  // A Service / Professional listing is portal-managed and has no owner (RBAC-D): nobody lists one on this page, so the
+  // chooser is always the three-kind one and every variant here is a plain professional.
   async function enterCreateFlow(page: import("@playwright/test").Page, name: string, kindLabel: RegExp) {
-    const isProvider = kindLabel.test("Service / Professional")
-    // ``adminProfessional`` has the admin role AND a professional profile — needed because the
-    // ``/provider/*`` workspace is guarded on ``user.professional``, and Service / Professional
-    // authoring is admin-only (Task 2, AUTH_RBAC §22.6).
-    const accountKind = isProvider ? "adminProfessional" : "professional"
-    const heading = isProvider ? "List a Service, Business, Tutor or Property" : "List a Business, Tutor or Property"
     await page.goto("/provider/listings/new")
     await expectPage(page, "Log In")
-    await signIn(page, name, accountKind)
-    await expectPage(page, heading)
+    await signIn(page, name, "professional")
+    await expectPage(page, "List a Business, Tutor or Property")
     await page.getByRole("button", { name: kindLabel }).click()
   }
 
@@ -152,30 +145,32 @@ test.describe("Listing create: all five variants hit the API with the right payl
     return sent
   }
 
-  test("Service / Professional creates with kind=provider, area_only default, no owner/status fields", async ({ page }) => {
-    const sent = await recordWrites(page)
-    await enterCreateFlow(page, "Imran Pro", /Service \/ Professional/)
-    await page.getByLabel("Name", { exact: true }).fill("Imran Electrical Works")
-    await page.getByLabel("Service Category").selectOption({ label: "Electrical" })
-    await page.getByLabel("Description", { exact: true }).fill("Wiring, repairs and fittings across B-17.")
-    // Area is a fixed choice (B-17), not free text.
-    await expect(page.getByLabel("Area", { exact: true })).toHaveValue("B-17")
-    await page.getByLabel(/Services offered/).fill("wiring, repairs")
-    await page.getByRole("button", { name: "Submit for Review" }).click()
+  test("a Super Admin is not offered a Service / Professional form, and the API refuses one for everyone (403 provider_admin_only), writing nothing", async ({ page }) => {
+    // The owner API creates listings the caller will OWN, and a Service / Professional has no owner: staff author it
+    // through /admin/providers. So the owner form never offers it - not even to a Super Admin, who gets one plain
+    // sentence instead of a form that would always fail - and a direct write is refused for an admin too.
+    await page.goto("/provider/listings/new")
+    await expectPage(page, "Log In")
+    await signIn(page, "Imran Admin", "adminProfessional")
+    await expectPage(page, "List a Business, Tutor or Property")
+    await expect(page.getByRole("button", { name: /Service \/ Professional/ })).toHaveCount(0)
+    await expect(page.getByText(/Service \/ Professional listings are managed by portal staff/)).toBeVisible()
+    for (const name of ["Business / Shop", "Tutor", "Property"]) await expect(page.getByRole("button", { name: new RegExp(`^${name}`) })).toBeVisible()
 
-    await expectPage(page, "Listings")
-    await expect(page.getByText("Imran Electrical Works")).toBeVisible()
-
-    const post = sent.find((s) => s.method === "POST" && s.path === "/listings")!
-    expect(post).toBeTruthy()
-    const body = post.body as Record<string, unknown>
-    expect(body.kind).toBe("provider")
-    for (const forbidden of ["id", "ownerId", "status", "revision", "featured", "submittedAt", "approvedAt", "rejectedAt"]) {
-      expect(body).not.toHaveProperty(forbidden)
-    }
-    expect((body.location as { visibility: string }).visibility).toBe("area_only")
-    // The category is the server's SLUG (a label or free text is refused by the real backend).
-    expect(body.category).toBe("electrical")
+    const attempt = await page.evaluate(async () => {
+      const response = await fetch("/api/v1/listings", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind: "provider", name: "Portal Service", category: "electrical", description: "Wiring, repairs and fittings across B-17.", area: "B-17", tags: ["wiring"], location: { visibility: "area_only" } }),
+      })
+      return { status: response.status, body: (await response.json()) as { error?: { code: string; details?: { code: string }[] } } }
+    })
+    expect(attempt.status).toBe(403)
+    expect(attempt.body.error?.code).toBe("forbidden")
+    expect(attempt.body.error?.details?.some((detail) => detail.code === "provider_admin_only")).toBe(true)
+    const listings = await page.evaluate(async () => ((await (await fetch("/api/v1/users/me/listings", { credentials: "include" })).json()) as { data: { name?: string }[] }).data)
+    expect(listings.some((l) => l.name === "Portal Service")).toBe(false)
   })
 
   test("General Business creates with kind=business, vertical=general, no food block", async ({ page }) => {
@@ -220,7 +215,7 @@ test.describe("Listing create: all five variants hit the API with the right payl
 
   test("Tutor creates with kind=tutor and a grade field; the subject is the category slug", async ({ page }) => {
     const sent = await recordWrites(page)
-    await enterCreateFlow(page, "Sara Tutor", /Tutor/)
+    await enterCreateFlow(page, "Sara Tutor", /^Tutor/)
     await page.getByLabel("Grade / level you teach").fill("Grade 9")
     await page.getByLabel("Name", { exact: true }).fill("Sara Science Tutor")
     // A tutor's category is a SUBJECT from the education taxonomy (not a service category).
@@ -299,23 +294,23 @@ function captureCreatedId(page: import("@playwright/test").Page): { id: () => st
 test.describe("Presentation regression (end-to-end round trip)", () => {
   test("create → pending → admin approves → public sees it → material edit → pending → admin rejects → owner sees reason → resubmit → pending; survives reload", async ({ page }) => {
     test.setTimeout(90_000) // a ~21 s journey: the 30 s default has no headroom under parallel load
-    const name = "Sunrise Solar Pro"
+    const name = "Sunrise Physics Tutor"
     const created = captureCreatedId(page)
 
-    // 1. An admin (portal staff) with a professional profile creates a Provider listing through
-    // the real form. Service / Professional is portal-managed (Task 2, AUTH_RBAC §22.6); the
-    // profile is still required because /provider/* guards on it.
+    // 1. A professional creates a Tutor listing through the real form. (The round trip used to run on a Service /
+    // Professional; that kind is portal-managed and ownerless since RBAC-D, so it is not created here.)
     await page.goto("/provider/listings/new")
     await expectPage(page, "Log In")
-    await signIn(page, "Sana Owner", "adminProfessional")
-    await expectPage(page, "List a Service, Business, Tutor or Property")
-    await page.getByRole("button", { name: /Service \/ Professional/ }).click()
+    await signIn(page, "Sana Owner", "professional")
+    await expectPage(page, "List a Business, Tutor or Property")
+    await page.getByRole("button", { name: /^Tutor/ }).click()
     await page.getByLabel("Name", { exact: true }).fill(name)
-    await page.getByLabel("Service Category").selectOption({ label: "Solar" })
-    await page.getByLabel("Description", { exact: true }).fill("Rooftop solar design and installation for B-17 homes.")
+    await page.getByLabel("Subject", { exact: true }).selectOption({ label: "Physics" })
+    await page.getByLabel("Grade / level you teach").fill("Matric / A-Levels")
+    await page.getByLabel("Description", { exact: true }).fill("Physics lessons for matric and A-level students in B-17.")
     // Area is a fixed choice (B-17), not free text.
     await expect(page.getByLabel("Area", { exact: true })).toHaveValue("B-17")
-    await page.getByLabel(/Services offered/).fill("solar, installation")
+    await page.getByLabel(/Topics you teach/).fill("physics, past papers")
     await page.getByRole("button", { name: "Submit for Review" }).click()
 
     // 2. The owner dashboard shows the new row as pending, revision 1 (both are the server's).
@@ -325,8 +320,8 @@ test.describe("Presentation regression (end-to-end round trip)", () => {
 
     // 3. The listing is NOT public while pending.
     expect(created.id()).not.toBe("")
-    await page.goto(`/providers/${created.id()}`)
-    await expect(page.getByRole("heading", { level: 1, name: "Provider not found" })).toBeVisible()
+    await page.goto(`/tutors/${created.id()}`)
+    await expect(page.getByRole("heading", { level: 1, name: "Tutor not found" })).toBeVisible()
 
     // 4. Admin sees it pending in the queue, opens the detail and approves.
     await enterAdmin(page)
@@ -338,7 +333,7 @@ test.describe("Presentation regression (end-to-end round trip)", () => {
     await expect(review).toBeHidden({ timeout: 10_000 })
 
     // 5. The public listing page now reads it.
-    await page.goto(`/providers/${created.id()}`)
+    await page.goto(`/tutors/${created.id()}`)
     await expectPage(page, name)
 
     // 6. The owner sees Approved and makes a MATERIAL edit through the real form.
@@ -348,7 +343,7 @@ test.describe("Presentation regression (end-to-end round trip)", () => {
     await expect(ownerCard(page, name)).toContainText("Approved")
     await ownerCard(page, name).getByRole("button", { name: "Edit" }).click()
     await expectPage(page, "Edit Listing")
-    await page.getByLabel("Description", { exact: true }).fill("Rooftop solar design and installation for B-17 - now with inverter and battery options.")
+    await page.getByLabel("Description", { exact: true }).fill("Physics lessons for matric and A-level students in B-17 - now with past-paper practice sessions.")
     await page.getByRole("button", { name: "Save Changes" }).click()
 
     // 7. The page navigates back to Listings; the server's answer is pending, revision 2.
@@ -365,16 +360,16 @@ test.describe("Presentation regression (end-to-end round trip)", () => {
     const review2 = page.getByRole("dialog", { name: "Review Listing" })
     await expect(review2).toContainText("Pending Review")
     await review2.getByRole("button", { name: /^Reject$/ }).click()
-    await review2.getByLabel(/Rejection reason/).fill("Please add before-and-after installation photos.")
+    await review2.getByLabel(/Rejection reason/).fill("Please add a short syllabus outline.")
     await review2.getByRole("button", { name: /Confirm Rejection/ }).click()
     await expect(review2).toBeHidden({ timeout: 10_000 })
 
     // 9. The owner sees the reason, edits again and resubmits.
     await adminToOwner(page)
-    await expect(ownerCard(page, name)).toContainText("Please add before-and-after installation photos.")
+    await expect(ownerCard(page, name)).toContainText("Please add a short syllabus outline.")
     await ownerCard(page, name).getByRole("button", { name: "Edit" }).click()
     await expectPage(page, "Edit Listing")
-    await page.getByLabel("Description", { exact: true }).fill("Rooftop solar design and installation for B-17 - photo gallery of past installs available on request.")
+    await page.getByLabel("Description", { exact: true }).fill("Physics lessons for matric and A-level students in B-17 - a syllabus outline is available on request.")
     await page.getByRole("button", { name: "Resubmit for Review" }).click()
     await expectPage(page, "Listings")
 
@@ -386,7 +381,7 @@ test.describe("Presentation regression (end-to-end round trip)", () => {
       }
       await expect(ownerCard(page, name)).toContainText("Pending Review")
       await expect(ownerCard(page, name)).toContainText("revision 3")
-      await expect(ownerCard(page, name)).not.toContainText("Please add before-and-after installation photos.")
+      await expect(ownerCard(page, name)).not.toContainText("Please add a short syllabus outline.")
     }
 
     // 11. Nothing server-authoritative lives in localStorage.
@@ -400,12 +395,12 @@ test.describe("Presentation regression (end-to-end round trip)", () => {
     await signIn(page, "Sana Owner")
     await expectPage(page, "Listings")
     page.on("dialog", (d) => void d.accept())
-    await ownerCard(page, "Approved Plumbing Co").getByRole("button", { name: "Archive" }).click()
-    await expect(ownerCard(page, "Approved Plumbing Co")).toContainText("Archived", { timeout: 10_000 })
+    await ownerCard(page, "Approved Physics Tutor").getByRole("button", { name: "Archive" }).click()
+    await expect(ownerCard(page, "Approved Physics Tutor")).toContainText("Archived", { timeout: 10_000 })
     await page.reload()
     await expectPage(page, "Listings")
-    await expect(ownerCard(page, "Approved Plumbing Co")).toContainText("Archived")
-    await expect(ownerCard(page, "Approved Plumbing Co").getByRole("button", { name: "Edit" })).toHaveCount(0)
+    await expect(ownerCard(page, "Approved Physics Tutor")).toContainText("Archived")
+    await expect(ownerCard(page, "Approved Physics Tutor").getByRole("button", { name: "Edit" })).toHaveCount(0)
   })
 })
 
@@ -422,34 +417,34 @@ test.describe("Listing edit / resubmit through the real form", () => {
     page.on("request", (request) => {
       if (request.method() === "PATCH" && /\/api\/v1\/listings\//.test(request.url())) patches.push(JSON.parse(request.postData() ?? "{}"))
     })
-    await expect(ownerCard(page, "Approved Plumbing Co")).toContainText("Approved")
-    await expect(ownerCard(page, "Approved Plumbing Co")).toContainText("revision 3")
-    await ownerCard(page, "Approved Plumbing Co").getByRole("button", { name: "Edit" }).click()
+    await expect(ownerCard(page, "Approved Physics Tutor")).toContainText("Approved")
+    await expect(ownerCard(page, "Approved Physics Tutor")).toContainText("revision 3")
+    await ownerCard(page, "Approved Physics Tutor").getByRole("button", { name: "Edit" }).click()
     await expectPage(page, "Edit Listing")
     // The form is prefilled from the owner read: category slug selected, name and description present.
-    await expect(page.getByLabel("Service Category")).toHaveValue("plumbing")
-    await expect(page.getByLabel("Name", { exact: true })).toHaveValue("Approved Plumbing Co")
-    await page.getByLabel("Description", { exact: true }).fill("Plumbing repairs and bathroom fittings across B-17, same-day call-outs.")
+    await expect(page.getByLabel("Subject", { exact: true })).toHaveValue("physics")
+    await expect(page.getByLabel("Name", { exact: true })).toHaveValue("Approved Physics Tutor")
+    await page.getByLabel("Description", { exact: true }).fill("Physics lessons for matric and A-level students across B-17, small groups and past papers.")
     await page.getByRole("button", { name: "Save Changes" }).click()
 
     await expect(page.getByText("Changes submitted for review")).toBeVisible()
     await expect(page).toHaveURL(/\/provider\/listings$/)
     await expectPage(page, "Listings")
-    await expect(ownerCard(page, "Approved Plumbing Co")).toContainText("Pending Review")
-    await expect(ownerCard(page, "Approved Plumbing Co")).toContainText("revision 4")
-    await expect(ownerCard(page, "Approved Plumbing Co")).not.toContainText(/Approved(?! Plumbing)/)
+    await expect(ownerCard(page, "Approved Physics Tutor")).toContainText("Pending Review")
+    await expect(ownerCard(page, "Approved Physics Tutor")).toContainText("revision 4")
+    await expect(ownerCard(page, "Approved Physics Tutor")).not.toContainText(/Approved(?! Physics)/)
 
     expect(patches).toHaveLength(1)
     expect(patches[0].revision).toBe(3) // the revision that was LOADED, not a guess
-    expect(patches[0].category).toBe("plumbing")
+    expect(patches[0].category).toBe("physics")
     for (const forbidden of ["id", "ownerId", "status", "kind", "approvedAt", "rejectedAt", "rejectionReason"]) expect(patches[0]).not.toHaveProperty(forbidden)
 
     // Reload: still pending / revision 4, and the edit itself persisted.
     await page.reload()
     await expectPage(page, "Listings")
-    await expect(ownerCard(page, "Approved Plumbing Co")).toContainText("Pending Review")
-    await ownerCard(page, "Approved Plumbing Co").getByRole("button", { name: "Edit" }).click()
-    await expect(page.getByLabel("Description", { exact: true })).toHaveValue(/same-day call-outs/)
+    await expect(ownerCard(page, "Approved Physics Tutor")).toContainText("Pending Review")
+    await ownerCard(page, "Approved Physics Tutor").getByRole("button", { name: "Edit" }).click()
+    await expect(page.getByLabel("Description", { exact: true })).toHaveValue(/small groups and past papers/)
   })
 
   test("rejected → the owner sees the reason → edits a real field → PATCH → pending, the stale reason is gone; reload keeps it", async ({ page }) => {
@@ -495,9 +490,9 @@ test.describe("Listing edit / resubmit through the real form", () => {
   })
 
   test("a stale edit (the listing changed after the form was opened) is refused 409, the form reloads and says so", async ({ page }) => {
-    await ownerCard(page, "Approved Plumbing Co").getByRole("button", { name: "Edit" }).click()
+    await ownerCard(page, "Approved Physics Tutor").getByRole("button", { name: "Edit" }).click()
     await expectPage(page, "Edit Listing")
-    await page.getByLabel("Description", { exact: true }).fill("Plumbing repairs and bathroom fittings across B-17, with a 12-month warranty.")
+    await page.getByLabel("Description", { exact: true }).fill("Physics lessons for matric and A-level students across B-17, with weekly mock tests.")
     // Somebody else changes the listing: the server answers the PATCH with a revision conflict.
     await page.route(/\/api\/v1\/listings\/[^/]+$/, async (route) => {
       if (route.request().method() !== "PATCH") return route.fallback()
@@ -527,7 +522,7 @@ test.describe("Professional capability: the server decides", () => {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ kind: "provider", name: "Sneaky Listing", category: "solar", description: "A listing created without a professional profile.", area: "B-17", tags: ["x"], location: { visibility: "area_only" } }),
+        body: JSON.stringify({ kind: "tutor", name: "Sneaky Listing", category: "physics", grade: "Grade 9", description: "A listing created without a professional profile.", area: "B-17", tags: ["x"], location: { visibility: "area_only" } }),
       })
       return { status: response.status, body: (await response.json()) as { error?: { code: string } } }
     })
@@ -539,8 +534,8 @@ test.describe("Professional capability: the server decides", () => {
   })
 
   test("creating the professional profile (PUT) unlocks the same flow, which then succeeds", async ({ page }) => {
-    // A resident signs up for a professional profile and creates a business listing — Service /
-    // Professional is admin-only (Task 2), but every other kind opens up with the profile.
+    // A resident signs up for a professional profile and creates a business listing — every owned kind
+    // opens up with the profile (a Service / Professional is staff-managed and is not one of them).
     await page.goto("/provider/listings/new")
     await expectPage(page, "Log In")
     await signIn(page, "Rana Resident", "resident")
@@ -600,7 +595,7 @@ test.describe("Professional capability: the server decides", () => {
     await page.getByRole("button", { name: "Log In", exact: true }).click()
     await expectPage(page)
 
-    await navigateInApp(page, `/providers/${IDS.ownerApproved}`, /./)
+    await navigateInApp(page, `/providers/${IDS.provider}`, /./)
     await page.getByRole("button", { name: "Request Service" }).click()
     const dialog = page.getByRole("dialog")
     await expect(dialog.getByRole("heading", { name: "Verify your email first" })).toBeVisible()
@@ -612,74 +607,56 @@ test.describe("Professional capability: the server decides", () => {
   })
 })
 
-test.describe("Service requests: full lifecycle", () => {
-  test("requester creates → provider accept/start/complete → requester sees completed", async ({ page }) => {
-    // A pre-approved provider listing from the fixtures (public reads find it).
-    const providerId = IDS.ownerApproved // "Approved Plumbing Co" in the owner fixtures (also approved)
+test.describe("Service requests: the requester's side (a Service / Professional is portal-managed, RBAC-D)", () => {
+  // A Service / Professional has no owner, so a request for one is addressed to the PORTAL: it is handled by staff
+  // (a Super Admin or a Services Moderator) through the staff request API — there is no provider inbox, and no
+  // staff screen yet. What a resident does and sees is exactly what these tests pin; the staff lifecycle is covered
+  // by the backend tests and, against the real stack, by the real-stack lane (e2e-real/05).
+  const PROVIDER_NAME = "Sunrise Solar Solutions" // the approved public Provider of the fixtures
+
+  test("requester creates a request for a portal Provider: it is Submitted, names no personal recipient, and survives a reload", async ({ page }) => {
     await page.goto("/login")
     await expectPage(page, "Log In")
     await signIn(page, "Naila Requester")
     await expectPage(page)
 
-    await navigateInApp(page, `/providers/${providerId}`, /./)
+    const sent: Record<string, unknown>[] = []
+    page.on("request", (request) => {
+      if (request.method() === "POST" && /\/api\/v1\/requests$/.test(request.url())) sent.push(JSON.parse(request.postData() ?? "{}"))
+    })
+    await navigateInApp(page, `/providers/${IDS.provider}`, /./)
     await page.getByRole("button", { name: "Request Service" }).click()
     const dialog = page.getByRole("dialog", { name: /Request / })
     await expect(dialog).toBeVisible()
-    // S5A / B-13: no contact-method choice that does nothing - the request goes to the provider in B-17 Portal.
+    // S5A / B-13: no contact-method choice that does nothing.
     await expect(dialog.getByLabel("Preferred contact method")).toHaveCount(0)
     await expect(dialog.getByRole("option", { name: /whatsapp|phone/i })).toHaveCount(0)
     const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
-    const uniqueDetails = `Please quote a kitchen plumbing fix - UNIQUE${Date.now()}`
-    await dialog.getByLabel("What do you need?").fill(uniqueDetails)
+    await dialog.getByLabel("What do you need?").fill(`Please quote a rooftop solar inspection - UNIQUE${Date.now()}`)
     await dialog.getByLabel("Area / Location").fill("B-17, Block A")
     await dialog.getByLabel("Preferred Date").fill(tomorrow)
     await dialog.getByRole("button", { name: /Submit Request/ }).click()
     await expect(dialog.getByText("Request sent")).toBeVisible()
     await dialog.getByRole("button", { name: "Done" }).click()
 
-    // The requester's My Requests shows the submitted row (identified by provider snapshot).
-    await navigateInApp(page, "/profile/requests", "My Requests")
-    const row = page.getByRole("button").filter({ hasText: /Approved Plumbing Co/ }).filter({ hasText: /Submitted/ }).first()
-    await expect(row).toBeVisible()
-
-    // Switch to the provider account: it sees the lead.
-    await navigateInApp(page, "/admin/login", "Admin Login")
-    const switchAccount = page.getByRole("button", { name: "Log out to switch account" })
-    if (await switchAccount.isVisible()) await switchAccount.click()
-    await page.goto("/provider/leads")
-    await expectPage(page, "Log In")
-    await signIn(page, "Sana Owner")
-    await expectPage(page, "Leads")
-    const leadRow = page.getByRole("button").filter({ hasText: /From Naila Requester/ }).first()
-    await expect(leadRow).toBeVisible()
-
-    // Provider accept → start → complete.
-    for (const [action, badge] of [
-      ["Accept", /Accepted/],
-      ["Start work", /In Progress/],
-      ["Mark complete", /Completed/],
-    ] as const) {
-      await page.getByRole("button").filter({ hasText: /From Naila Requester/ }).first().click()
-      const leadDialog = page.getByRole("dialog")
-      await leadDialog.getByRole("button", { name: action }).click()
-      // After acting, the dialog closes and the list refreshes to show the new status.
-      await expect(leadDialog).toBeHidden({ timeout: 10_000 })
-      await expect(page.getByText(badge).first()).toBeVisible()
+    // The body carries the target LISTING and the request's own fields - never a person to send it to.
+    expect(sent).toHaveLength(1)
+    expect(sent[0]!.providerListingId).toBe(IDS.provider)
+    for (const forbidden of ["providerId", "providerUserId", "ownerId", "requesterId", "status", "providerName", "id", "history"]) {
+      expect(sent[0]!, forbidden).not.toHaveProperty(forbidden)
     }
 
-    // Requester reload: the completed state persists on the server.
-    await navigateInApp(page, "/admin/login", "Admin Login")
-    const switchAccount2 = page.getByRole("button", { name: "Log out to switch account" })
-    if (await switchAccount2.isVisible()) await switchAccount2.click()
-    await page.goto("/profile/requests")
-    await expectPage(page, "Log In")
-    await signIn(page, "Naila Requester")
+    // My Requests shows the Submitted row (identified by the provider snapshot), and so does a reload.
+    await navigateInApp(page, "/profile/requests", "My Requests")
+    const row = page.getByRole("button").filter({ hasText: new RegExp(PROVIDER_NAME) }).filter({ hasText: /Submitted/ }).first()
+    await expect(row).toBeVisible()
+    await page.reload()
     await expectPage(page, "My Requests")
-    await expect(page.getByText("Completed", { exact: true }).first()).toBeVisible()
+    await expect(page.getByRole("button").filter({ hasText: new RegExp(PROVIDER_NAME) }).filter({ hasText: /Submitted/ }).first()).toBeVisible()
   })
 
   test("requester cancels a submitted request; it moves to Cancelled", async ({ page }) => {
-    const providerId = IDS.ownerApproved
+    const providerId = IDS.provider
     await page.goto("/login")
     await signIn(page, "Faisal Cancel")
     await expectPage(page)
@@ -697,7 +674,7 @@ test.describe("Service requests: full lifecycle", () => {
 
     page.on("dialog", (d) => void d.accept())
     // The newest submitted row is identified by its provider snapshot.
-    const row = page.getByRole("button").filter({ hasText: /To Approved Plumbing Co/ }).filter({ hasText: /Submitted/ }).first()
+    const row = page.getByRole("button").filter({ hasText: new RegExp(`To ${PROVIDER_NAME}`) }).filter({ hasText: /Submitted/ }).first()
     await expect(row).toBeVisible()
     await row.click()
     const detail = page.getByRole("dialog")
@@ -796,27 +773,26 @@ test.describe("Admin categories: writes round trip", () => {
 
 test.describe("Network failure: no fake success on any write", () => {
   test("listing create failure keeps the form state; no toast says it was saved", async ({ page }) => {
-    // Admin (with a professional profile) is signed in because this test exercises a Service /
-    // Professional create — the only kind restricted to portal staff (Task 2, AUTH_RBAC §22.6).
     await page.goto("/provider/listings/new")
     await expectPage(page, "Log In")
-    await signIn(page, "Sana Offline", "adminProfessional")
-    await expectPage(page, "List a Service, Business, Tutor or Property")
-    await page.getByRole("button", { name: /Service \/ Professional/ }).click()
-    await page.getByLabel("Name", { exact: true }).fill("Would-Be Service")
-    await page.getByLabel("Service Category").selectOption({ label: "Solar" })
-    await page.getByLabel("Description", { exact: true }).fill("A service that should NOT be created when the network fails.")
+    await signIn(page, "Sana Offline", "professional")
+    await expectPage(page, "List a Business, Tutor or Property")
+    await page.getByRole("button", { name: /^Tutor/ }).click()
+    await page.getByLabel("Name", { exact: true }).fill("Would-Be Tutor")
+    await page.getByLabel("Subject", { exact: true }).selectOption({ label: "Physics" })
+    await page.getByLabel("Grade / level you teach").fill("Grade 9")
+    await page.getByLabel("Description", { exact: true }).fill("A tutor listing that should NOT be created when the network fails.")
     // Area is a fixed choice (B-17), not free text.
     await expect(page.getByLabel("Area", { exact: true })).toHaveValue("B-17")
-    await page.getByLabel(/Services offered/).fill("solar, repairs")
+    await page.getByLabel(/Topics you teach/).fill("physics, revision")
 
     // Simulate a server failure on POST /listings.
     await page.route("**/api/v1/listings", (route) => (route.request().method() === "POST" ? route.abort("failed") : route.continue()))
     await page.getByRole("button", { name: "Submit for Review" }).click()
 
     // The form stays, no "submitted" page, and the form data survives.
-    await expect(page.getByRole("heading", { level: 1, name: /List a Service, Business, Tutor or Property/ })).toBeVisible()
-    await expect(page.getByLabel("Name", { exact: true })).toHaveValue("Would-Be Service")
+    await expect(page.getByRole("heading", { level: 1, name: /List a Business, Tutor or Property/ })).toBeVisible()
+    await expect(page.getByLabel("Name", { exact: true })).toHaveValue("Would-Be Tutor")
     await expect(page.getByText(/submitted for review/i)).toHaveCount(0)
   })
 })

@@ -194,8 +194,8 @@ test.describe('Bug C: a signed-in person is never sent to Log In by a slow or un
 
   test('resident: the Professional area asks for a professional profile, not a login; professional: it opens, also after a reload', async ({ page }) => {
     // A resident creates a professional profile and lands on the three-kind create chooser. The
-    // Service / Professional kind is admin-only and hidden from a plain professional (Task 2,
-    // AUTH_RBAC §22.6) — hence "List a Business, Tutor or Property" here.
+    // Service / Professional kind is portal-managed and ownerless (RBAC-D), so it is never offered
+    // here — hence "List a Business, Tutor or Property".
     await openApp(page, '/login', 'Log In')
     await signIn(page, 'Rana Resident', 'resident')
     await expectPage(page)
@@ -214,7 +214,7 @@ test.describe('Bug C: a signed-in person is never sent to Log In by a slow or un
 
   test('a slow /auth/me on a hard reload of the create form shows the session check, then the form', async ({ page }) => {
     // Same as above: a plain professional signs in and sees the three-kind chooser (Service /
-    // Professional is admin-only; AUTH_RBAC §22.6).
+    // Professional is portal-managed and ownerless; RBAC-D).
     await signInFromLoginPage(page, 'Pat Pro')
     mockFor(page).meDelayMs = 1200
     await page.goto('/provider/listings/new', { waitUntil: 'commit' })

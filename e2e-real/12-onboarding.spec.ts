@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { PASSWORD, TAG, devVerify, emailFor, expectH1, newContext, ownerCard, rows, scalar } from './helpers/stack'
-import { createProvider } from './helpers/ui'
+import { createTutor } from './helpers/ui'
 
 /**
  * Phase 12S: a FRESH person, start to finish, with nothing pre-verified and no test shortcut: register ->
@@ -108,22 +108,22 @@ test('verified with the helper link: still signed in, then Professional profile 
   await page.goto('/provider/listings/new')
   await expect(page.getByText('Professional profile needed')).toBeVisible()
   await page.getByRole('button', { name: 'Create a professional profile' }).click()
-  await expectH1(page, 'List a Service, Business, Tutor or Property')
+  await expectH1(page, 'List a Business, Tutor or Property')
   await page.reload()
-  await expectH1(page, 'List a Service, Business, Tutor or Property')
+  await expectH1(page, 'List a Business, Tutor or Property')
   expect(scalar(`SELECT plan_code FROM professional_profiles WHERE user_id = (SELECT id FROM users WHERE email = '${email}')`)).toBe('free')
 
-  // A Provider listing, and the owner dashboard after a reload.
-  const id = await createProvider(page, {
+  // A Tutor listing (a Service / Professional is portal-managed and ownerless, RBAC-D), and the owner dashboard after a reload.
+  const id = await createTutor(page, {
     name: listing,
-    category: 'Plumbing',
-    description: 'Plumbing repairs and fittings for homes across B-17, created by a brand new user.',
+    subject: 'Physics',
+    description: 'Physics lessons for matric and A-level students across B-17, created by a brand new user.',
   })
   await page.reload()
   await expectH1(page, 'Listings')
   await expect(ownerCard(page, listing)).toContainText('Pending Review')
   await expect(ownerCard(page, listing)).toContainText('revision 1')
-  expect(rows(`SELECT kind, status, revision FROM listings WHERE id = '${id}'`)[0]).toEqual(['provider', 'pending', '1'])
+  expect(rows(`SELECT kind, status, revision FROM listings WHERE id = '${id}'`)[0]).toEqual(['tutor', 'pending', '1'])
   expect(scalar(`SELECT count(*) FROM listing_status_history WHERE listing_id = '${id}' AND action = 'submitted'`)).toBe('1')
 
   // Nothing server-owned was kept in the browser.

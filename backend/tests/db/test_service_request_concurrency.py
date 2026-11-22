@@ -13,6 +13,8 @@ Guarantees under test:
 * nothing deadlocks when request writes race listing moderation and owner edits.
 """
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Any
 
 from sqlalchemy import Engine, text
@@ -22,6 +24,8 @@ from app.models.enums import PlanCode
 from tests.db.admin_helpers import approve, reject
 from tests.db.auth_helpers import AuthApi, AuthEnv
 from tests.db.request_helpers import REQUESTS, SAVED, request_body
+from tests.db.request_helpers import staff_act as provider_act
+from tests.db.staff_helpers import purge_staff_audit
 from tests.db.test_admin_concurrency import clients, set_status
 from tests.db.test_listing_write_concurrency import (
     browser,
@@ -29,15 +33,26 @@ from tests.db.test_listing_write_concurrency import (
     race,
     statuses,
 )
-from tests.write_payloads import LISTINGS, provider_body
+from tests.write_payloads import staff_provider_body
 
 REASON = "Reported as closed for good."
+PROVIDERS = "/admin/providers"
 
 
-def provider_listing(engine: Engine, owner: AuthApi, name: str = "Race Wiring Services") -> str:
-    # Service requests target ``kind=provider`` only (``service_requests.py``), so the setup
-    # listing must be a provider — authored by the admin ``owner`` these tests sign in as.
-    response = owner.request("POST", LISTINGS, json=provider_body(name=name))
+@contextmanager
+def portal_world(engine: Engine) -> Iterator[AuthEnv]:
+    """A committed world for the portal's request handling. Authoring a Provider through the staff
+    API writes the append-only staff audit, which has no foreign key (so truncating users does not
+    reach it): it is cleared in teardown. Nothing else about the world is special — a Provider has
+    no owner and the provider side of a request is staff work, so there is no recipient to set up."""
+    with purge_staff_audit(engine), committed_world(engine) as env:
+        yield env
+
+
+def provider_listing(engine: Engine, author: AuthApi, name: str = "Race Wiring Services") -> str:
+    """An approved Provider, authored through the staff API by the admin ``author`` these tests sign
+    in as (a Provider has no owner; ``author`` is just one staff member)."""
+    response = author.request("POST", PROVIDERS, json=staff_provider_body(name=name))
     assert response.status_code == 201, response.text
     listing_id = str(response.json()["data"]["id"])
     set_status(engine, listing_id, "approved")
@@ -118,7 +133,7 @@ def assert_unbroken_chain(
 
 
 def test_many_simultaneous_saves_leave_exactly_one_row(db_engine: Engine) -> None:
-    with committed_world(db_engine) as env:
+    with portal_world(db_engine) as env:
         owner = browser(env, "owner@example.org", professional=PlanCode.PREMIUM, admin=True)
         listing_id = provider_listing(db_engine, owner)
         browser(env, "resident@example.org", professional=None)
@@ -131,7 +146,7 @@ def test_many_simultaneous_saves_leave_exactly_one_row(db_engine: Engine) -> Non
 
 
 def test_simultaneous_saves_by_different_users_each_get_their_own_row(db_engine: Engine) -> None:
-    with committed_world(db_engine) as env:
+    with portal_world(db_engine) as env:
         owner = browser(env, "owner@example.org", professional=PlanCode.PREMIUM, admin=True)
         listing_id = provider_listing(db_engine, owner)
         people = [
@@ -146,7 +161,7 @@ def test_simultaneous_saves_by_different_users_each_get_their_own_row(db_engine:
 
 
 def test_saving_racing_unsaving_always_ends_in_a_valid_state(db_engine: Engine) -> None:
-    with committed_world(db_engine) as env:
+    with portal_world(db_engine) as env:
         owner = browser(env, "owner@example.org", professional=PlanCode.PREMIUM, admin=True)
         listing_id = provider_listing(db_engine, owner)
         browser(env, "resident@example.org", professional=None)
@@ -168,7 +183,7 @@ def test_saving_racing_unsaving_always_ends_in_a_valid_state(db_engine: Engine) 
 
 
 def test_many_simultaneous_unsaves_are_all_fine(db_engine: Engine) -> None:
-    with committed_world(db_engine) as env:
+    with portal_world(db_engine) as env:
         owner = browser(env, "owner@example.org", professional=PlanCode.PREMIUM, admin=True)
         listing_id = provider_listing(db_engine, owner)
         resident = browser(env, "resident@example.org", professional=None)
@@ -182,7 +197,7 @@ def test_many_simultaneous_unsaves_are_all_fine(db_engine: Engine) -> None:
 
 
 def test_saving_racing_a_takedown_never_errors(db_engine: Engine) -> None:
-    with committed_world(db_engine) as env:
+    with portal_world(db_engine) as env:
         owner = browser(env, "owner@example.org", professional=PlanCode.PREMIUM, admin=True)
         listing_id = provider_listing(db_engine, owner)
         admin = browser(env, "admin@example.org", professional=None, admin=True)
@@ -210,7 +225,7 @@ def test_saving_racing_a_takedown_never_errors(db_engine: Engine) -> None:
 def test_parallel_requests_to_one_provider_respect_the_once_a_day_limit(
     db_engine: Engine,
 ) -> None:
-    with committed_world(db_engine) as env:
+    with portal_world(db_engine) as env:
         owner = browser(env, "owner@example.org", professional=PlanCode.PREMIUM, admin=True)
         listing_id = provider_listing(db_engine, owner)
         browser(env, "resident@example.org", professional=None)
@@ -225,7 +240,7 @@ def test_parallel_requests_to_one_provider_respect_the_once_a_day_limit(
 
 
 def test_parallel_requests_by_one_user_respect_the_five_an_hour_limit(db_engine: Engine) -> None:
-    with committed_world(db_engine) as env:
+    with portal_world(db_engine) as env:
         owner = browser(env, "owner@example.org", professional=PlanCode.PREMIUM, admin=True)
         listings = [provider_listing(db_engine, owner, name=f"Race Provider {n}") for n in range(8)]
         browser(env, "resident@example.org", professional=None)
@@ -240,7 +255,7 @@ def test_parallel_requests_by_one_user_respect_the_five_an_hour_limit(db_engine:
 
 
 def test_different_requesters_do_not_block_or_limit_each_other(db_engine: Engine) -> None:
-    with committed_world(db_engine) as env:
+    with portal_world(db_engine) as env:
         owner = browser(env, "owner@example.org", professional=PlanCode.PREMIUM, admin=True)
         listing_id = provider_listing(db_engine, owner)
         people = [
@@ -257,11 +272,13 @@ def test_different_requesters_do_not_block_or_limit_each_other(db_engine: Engine
 
 
 def test_creating_racing_a_takedown_is_consistent_and_never_deadlocks(db_engine: Engine) -> None:
-    with committed_world(db_engine) as env:
+    with portal_world(db_engine) as env:
         owner = browser(env, "owner@example.org", professional=PlanCode.PREMIUM, admin=True)
         admin = browser(env, "admin@example.org", professional=None, admin=True)
-        # Service requests target ``kind=provider`` only, so create a provider listing directly.
-        response = owner.request("POST", LISTINGS, json=provider_body(name="Race Takedown Co"))
+        # Service requests target ``kind=provider`` only, so author a provider listing (staff API).
+        response = owner.request(
+            "POST", PROVIDERS, json=staff_provider_body(name="Race Takedown Co")
+        )
         assert response.status_code == 201, response.text
         listing_id = str(response.json()["data"]["id"])
         set_status(db_engine, listing_id, "pending")
@@ -305,11 +322,11 @@ def lifecycle_world(env: AuthEnv, engine: Engine, extra_tabs: int = 1) -> dict[s
 
 
 def test_two_accepts_exactly_one_wins(db_engine: Engine) -> None:
-    with committed_world(db_engine) as env:
+    with portal_world(db_engine) as env:
         w = lifecycle_world(env, db_engine)
         tabs = w["provider"]
 
-        results = race(2, lambda i: act(tabs[i], w["request_id"], "accept"))
+        results = race(2, lambda i: provider_act(tabs[i], w["request_id"], "accept"))
 
         assert statuses(results) == [200, 409]
         assert_unbroken_chain(db_engine, w["request_id"], successes=1)
@@ -319,13 +336,13 @@ def test_two_accepts_exactly_one_wins(db_engine: Engine) -> None:
 def test_accept_racing_a_requester_cancel_ends_cancelled_with_a_legal_history(
     db_engine: Engine,
 ) -> None:
-    with committed_world(db_engine) as env:
+    with portal_world(db_engine) as env:
         w = lifecycle_world(env, db_engine)
 
         results = race(
             2,
             lambda i: (
-                act(w["provider"][0], w["request_id"], "accept")
+                provider_act(w["provider"][0], w["request_id"], "accept")
                 if i == 0
                 else act(w["requester"][0], w["request_id"], "cancel")
             ),
@@ -348,14 +365,14 @@ def test_accept_racing_a_requester_cancel_ends_cancelled_with_a_legal_history(
 def test_start_racing_a_requester_cancel_exactly_one_wins(db_engine: Engine) -> None:
     """After ``accepted`` the requester may still cancel, but not once work has started: the two
     are incompatible, so exactly one succeeds and the final status is the winner's."""
-    with committed_world(db_engine) as env:
+    with portal_world(db_engine) as env:
         w = lifecycle_world(env, db_engine)
         move(db_engine, w["request_id"], "accepted")
 
         results = race(
             2,
             lambda i: (
-                act(w["provider"][0], w["request_id"], "start")
+                provider_act(w["provider"][0], w["request_id"], "start")
                 if i == 0
                 else act(w["requester"][0], w["request_id"], "cancel")
             ),
@@ -370,14 +387,14 @@ def test_start_racing_a_requester_cancel_exactly_one_wins(db_engine: Engine) -> 
 
 def test_complete_racing_a_requester_cancel_always_completes(db_engine: Engine) -> None:
     """The requester can never cancel work in progress, whatever the timing."""
-    with committed_world(db_engine) as env:
+    with portal_world(db_engine) as env:
         w = lifecycle_world(env, db_engine)
         move(db_engine, w["request_id"], "in-progress")
 
         results = race(
             2,
             lambda i: (
-                act(w["provider"][0], w["request_id"], "complete")
+                provider_act(w["provider"][0], w["request_id"], "complete")
                 if i == 0
                 else act(w["requester"][0], w["request_id"], "cancel")
             ),
@@ -389,14 +406,14 @@ def test_complete_racing_a_requester_cancel_always_completes(db_engine: Engine) 
 
 
 def test_complete_racing_a_provider_cancel_exactly_one_wins(db_engine: Engine) -> None:
-    with committed_world(db_engine) as env:
+    with portal_world(db_engine) as env:
         w = lifecycle_world(env, db_engine)
         move(db_engine, w["request_id"], "in-progress")
         tabs = w["provider"]
 
         results = race(
             2,
-            lambda i: act(tabs[i], w["request_id"], "complete" if i == 0 else "cancel"),
+            lambda i: provider_act(tabs[i], w["request_id"], "complete" if i == 0 else "cancel"),
         )
 
         assert statuses(results) == [200, 409]
@@ -408,24 +425,24 @@ def test_complete_racing_a_provider_cancel_exactly_one_wins(db_engine: Engine) -
 
 
 def test_two_starts_and_two_completes_exactly_one_wins_each(db_engine: Engine) -> None:
-    with committed_world(db_engine) as env:
+    with portal_world(db_engine) as env:
         w = lifecycle_world(env, db_engine)
         tabs = w["provider"]
         move(db_engine, w["request_id"], "accepted")
-        first = race(2, lambda i: act(tabs[i], w["request_id"], "start"))
-        second = race(2, lambda i: act(tabs[i], w["request_id"], "complete"))
+        first = race(2, lambda i: provider_act(tabs[i], w["request_id"], "start"))
+        second = race(2, lambda i: provider_act(tabs[i], w["request_id"], "complete"))
 
         assert statuses(first) == [200, 409] and statuses(second) == [200, 409]
         assert status_of(db_engine, w["request_id"]) == "completed"
 
 
 def test_cancel_by_both_parties_at_once_exactly_one_wins(db_engine: Engine) -> None:
-    with committed_world(db_engine) as env:
+    with portal_world(db_engine) as env:
         w = lifecycle_world(env, db_engine)
 
         results = race(
             2,
-            lambda i: act(
+            lambda i: (provider_act if i == 0 else act)(
                 (w["provider"] if i == 0 else w["requester"])[0], w["request_id"], "cancel"
             ),
         )
@@ -452,12 +469,12 @@ def test_a_free_for_all_always_leaves_a_legal_status_and_an_unbroken_history(
         ("provider", "start"), ("provider", "complete"), ("provider", "cancel"),
         ("requester", "cancel"), ("provider", "start"),
     ]  # fmt: skip
-    with committed_world(db_engine) as env:
+    with portal_world(db_engine) as env:
         w = lifecycle_world(env, db_engine, extra_tabs=len(plan))
 
         results = race(
             len(plan),
-            lambda i: act(
+            lambda i: (provider_act if plan[i][0] == "provider" else act)(
                 w["provider" if plan[i][0] == "provider" else "requester"][i],
                 w["request_id"],
                 plan[i][1],
@@ -478,17 +495,17 @@ def test_a_free_for_all_always_leaves_a_legal_status_and_an_unbroken_history(
             assert any(previous in sources for sources in allowed), rows
 
 
-def test_request_actions_racing_moderation_and_owner_edits_never_deadlock(
+def test_request_actions_racing_moderation_and_provider_edits_never_deadlock(
     db_engine: Engine,
 ) -> None:
-    with committed_world(db_engine) as env:
+    with portal_world(db_engine) as env:
         w = lifecycle_world(env, db_engine, extra_tabs=2)
         admin = browser(env, "admin@example.org", professional=None, admin=True)
         other = browser(env, "other@example.org", professional=None, display_name="Other Person")
 
         def work(i: int) -> Any:
             if i == 0:
-                return act(w["provider"][0], w["request_id"], "accept")
+                return provider_act(w["provider"][0], w["request_id"], "accept")
             if i == 1:
                 return act(w["requester"][0], w["request_id"], "cancel")
             if i == 2:
@@ -496,7 +513,7 @@ def test_request_actions_racing_moderation_and_owner_edits_never_deadlock(
             if i == 3:
                 return w["provider"][1].request(
                     "PATCH",
-                    f"/listings/{w['listing_id']}",
+                    f"{PROVIDERS}/{w['listing_id']}",
                     json={"revision": 1, "name": "Renamed During The Race"},
                 )
             if i == 4:

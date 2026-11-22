@@ -215,9 +215,9 @@ def test_the_transaction_helper_commits_on_success_and_rolls_back_on_error(
     db_session: Session, owner: User
 ) -> None:
     with transaction(db_session):
-        db_session.add(Listing(kind="provider", title="Kept", area="B-17", owner_id=owner.id))
+        db_session.add(Listing(kind="business", title="Kept", area="B-17", owner_id=owner.id))
     with pytest.raises(RuntimeError), transaction(db_session):
-        db_session.add(Listing(kind="provider", title="Discarded", area="B-17", owner_id=owner.id))
+        db_session.add(Listing(kind="business", title="Discarded", area="B-17", owner_id=owner.id))
         db_session.flush()
         raise RuntimeError("boom")
 

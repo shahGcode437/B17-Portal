@@ -122,7 +122,16 @@ describe("the owner preview of the other kinds (existing data only)", () => {
   })
 
   it("a service keeps its category, description and tags, with no facts block of its own", async () => {
-    const service = OWNER_LISTINGS.find((l) => l.id === IDS.ownerApproved) as OwnerListingDto
+    // A Service / Professional listing is portal-managed and has no owner (RBAC-D), so the owner API never returns one
+    // any more; the preview still renders the kind (the shared DTO has it), which is what this pins.
+    const { grade: _grade, ...approved } = OWNER_LISTINGS.find((l) => l.id === IDS.ownerApproved) as Extract<OwnerListingDto, { kind: "tutor" }>
+    const service = {
+      ...approved,
+      kind: "provider",
+      category: "plumbing",
+      categoryLabel: "Plumbing",
+      description: "Plumbing repairs and fittings for homes across B-17.",
+    } as OwnerListingDto
     open(service)
     const dialog = await screen.findByRole("dialog")
     expect(within(dialog).getByText("Service / Professional · Plumbing")).toBeInTheDocument()

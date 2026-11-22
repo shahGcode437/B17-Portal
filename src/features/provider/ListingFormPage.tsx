@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { ArrowRight, Building2, GraduationCap, KeyRound, PlusCircle, Wrench } from "lucide-react"
+import { ArrowRight, Building2, GraduationCap, KeyRound, PlusCircle } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import { Container } from "@/components/foundation/Container"
 import { Stack } from "@/components/foundation/Stack"
@@ -17,12 +17,7 @@ import { useRequireAuth } from "@/hooks/useRequireAuth"
 import { useToast } from "@/hooks/useToast"
 import { createListing } from "@/lib/api/writes/listings"
 import type { LocationWrite } from "@/lib/api/writes/listings"
-import {
-  businessCreate,
-  propertyCreate,
-  providerCreate,
-  tutorCreate,
-} from "@/features/provider/listingWriteAdapters"
+import { businessCreate, propertyCreate, tutorCreate } from "@/features/provider/listingWriteAdapters"
 import { isApiError } from "@/lib/api/errors"
 import { friendlyFieldErrors, userMessageFor } from "@/lib/api/writeErrors"
 import { locationTextProblems } from "@/features/provider/locationRules"
@@ -31,7 +26,13 @@ import { routes } from "@/config/routes"
 import { gradeProblem } from "@/features/provider/listingSchema"
 import type { ListingFormValues, PropertyFormValues } from "@/features/provider/listingSchema"
 
-type Kind = "provider" | "business" | "tutor" | "property"
+/**
+ * The kinds an owner lists here. A Service / Professional ("provider") listing is portal-managed (RBAC-D):
+ * it has no owner and is authored by portal staff through `/admin/providers`, so this page — which creates
+ * listings the signed-in user will OWN — never offers it, to anyone (the server refuses it for everyone
+ * with `provider_admin_only`). Staff authoring of Services moves to the admin surface (RBAC-E / RBAC-F).
+ */
+type Kind = "business" | "tutor" | "property"
 
 interface KindChoice {
   value: Kind
@@ -41,21 +42,18 @@ interface KindChoice {
 }
 
 const KIND_CHOICES: KindChoice[] = [
-  { value: "provider", title: "Service / Professional", description: "Trades, construction, electrical, cleaning and other services you provide.", icon: Wrench },
   { value: "business", title: "Business / Shop", description: "A retail business, including restaurants, cafes and bakeries (Food & Dining).", icon: Building2 },
   { value: "tutor", title: "Tutor", description: "Individual tutoring in a subject or for a grade.", icon: GraduationCap },
   { value: "property", title: "Property", description: "A house, flat or plot for sale or rent.", icon: KeyRound },
 ]
 
 const DEFAULT_LOCATION: Record<Kind, LocationWrite> = {
-  provider: { visibility: "area_only" },
   tutor: { visibility: "area_only" },
   business: { visibility: "exact" },
   property: { visibility: "exact" },
 }
 
 const ALLOWED_VISIBILITY: Record<Kind, ReadonlyArray<"exact" | "approximate" | "area_only">> = {
-  provider: ["area_only", "approximate", "exact"],
   tutor: ["area_only", "approximate", "exact"],
   business: ["exact", "approximate", "area_only"],
   // Property forbids area_only (API_CONTRACT §10.6 / LOCATION_MAP §6).
@@ -64,7 +62,7 @@ const ALLOWED_VISIBILITY: Record<Kind, ReadonlyArray<"exact" | "approximate" | "
 
 /**
  * Create a listing (Phase 12H; VR5 visuals). The owner picks a kind, fills the shared form (`ListingForm` for
- * provider / business / tutor, `PropertyListingForm` for property) plus a `LocationFieldset`, and submits to
+ * business / tutor, `PropertyListingForm` for property) plus a `LocationFieldset`, and submits to
  * `POST /listings`. The server is the authority: success navigates to the real owner listings page with the new
  * row highlighted; a `422` maps field errors back onto the location block; a plan-limit or verification problem
  * is announced plainly through `FormAlert`. The over-the-limit warning stays as advice from the counts the
@@ -85,10 +83,10 @@ function ListingFormPage() {
 
   if (!user) return null
 
-  // Service / Professional listings are portal-managed: only an admin sees the option (the backend
-  // enforces the same rule — this filter is only the UX layer, never the security boundary).
+  // Service / Professional listings are portal-managed and are not created here by anyone (see `Kind`).
+  // A Super Admin used to see the option; they now get one plain sentence instead of a form that the
+  // server would always refuse. (The backend is the authority; this is only the honest UX.)
   const isAdmin = user.roles.includes("admin")
-  const availableChoices = KIND_CHOICES.filter((choice) => choice.value !== "provider" || isAdmin)
 
   if (!kind) {
     return (
@@ -98,12 +96,20 @@ function ListingFormPage() {
             <PageHeader
               icon={PlusCircle}
               eyebrow="Professional"
-              title={isAdmin ? "List a Service, Business, Tutor or Property" : "List a Business, Tutor or Property"}
+              title="List a Business, Tutor or Property"
               description="What are you listing? You can change this on the next step."
             />
             {limitNotice}
+            {isAdmin && (
+              <FormAlert
+                tone="info"
+                role="status"
+                title="Service / Professional listings are managed by portal staff"
+                description="They are no longer listed from this page. Managing Services is moving to the staff admin area."
+              />
+            )}
             <Stack gap={3}>
-              {availableChoices.map((choice) => {
+              {KIND_CHOICES.map((choice) => {
                 const Icon = choice.icon
                 return (
                   <button
@@ -164,9 +170,7 @@ function ListingFormPage() {
           ? propertyCreate(values as PropertyFormValues, location)
           : kind === "tutor"
             ? tutorCreate(values as ListingFormValues, grade.trim(), location)
-            : kind === "provider"
-              ? providerCreate(values as ListingFormValues, location)
-              : businessCreate(values as ListingFormValues, location)
+            : businessCreate(values as ListingFormValues, location)
       const created = await createMutation.mutate(payload)
       show("Listing submitted for review")
       navigate(routes.providerListings, { state: { highlightId: created.id } })
@@ -194,7 +198,7 @@ function ListingFormPage() {
           <PageHeader
             icon={kindChoice.icon}
             eyebrow={`Professional · ${kindChoice.title}`}
-            title="List a Service, Business, Tutor or Property"
+            title="List a Business, Tutor or Property"
             description="Everything you submit is reviewed before it is public."
           />
 

@@ -65,7 +65,7 @@ def test_a_fresh_database_upgrades_to_head(scratch_url: str) -> None:
     command.upgrade(alembic_config(scratch_url), "head")
 
     assert tables(scratch_url) == EXPECTED_TABLES | {"alembic_version"}
-    assert version(scratch_url) == "0007"
+    assert version(scratch_url) == "0008"
 
 
 def test_it_downgrades_to_base_and_upgrades_again(scratch_url: str) -> None:
@@ -90,8 +90,9 @@ def test_the_models_and_the_migrations_have_not_drifted(scratch_url: str) -> Non
 def test_there_is_a_single_linear_migration_history(scratch_url: str) -> None:
     script = ScriptDirectory.from_config(alembic_config(scratch_url))
 
-    assert script.get_heads() == ["0007"]
+    assert script.get_heads() == ["0008"]
     assert [revision.revision for revision in script.walk_revisions()] == [
+        "0008",
         "0007",
         "0006",
         "0005",
@@ -166,7 +167,7 @@ def test_0002_downgrades_cleanly_to_0001_and_upgrades_again(scratch_url: str) ->
     assert "search_document" not in columns(scratch_url, "listings")
     assert "pg_trgm" not in extensions(scratch_url)
     command.upgrade(config, "head")
-    assert version(scratch_url) == "0007"
+    assert version(scratch_url) == "0008"
     command.check(config)
 
 
@@ -253,7 +254,7 @@ def test_0003_downgrades_to_0002_and_upgrades_again(scratch_url: str) -> None:
     assert tables(scratch_url).isdisjoint(AUTH_TABLES)
     assert "ck_users_email_normalized" not in user_checks(scratch_url)
     command.upgrade(config, "head")
-    assert version(scratch_url) == "0007"
+    assert version(scratch_url) == "0008"
     assert tables(scratch_url) >= AUTH_TABLES
 
 
@@ -359,7 +360,7 @@ def test_0004_downgrades_to_0003_and_upgrades_again(scratch_url: str) -> None:
         scratch_url, "auth_identities"
     )
     command.upgrade(config, "head")
-    assert version(scratch_url) == "0007" and "oauth_flows" in tables(scratch_url)
+    assert version(scratch_url) == "0008" and "oauth_flows" in tables(scratch_url)
 
 
 def test_0004_refuses_to_run_over_duplicate_provider_identities(scratch_url: str) -> None:
@@ -463,6 +464,12 @@ def listing_snapshot(url: str) -> list[tuple[object, ...]]:
     return rows(url, f"SELECT {LEGACY_COLUMNS} FROM listings ORDER BY title")
 
 
+def portal_managed(snapshot: list[tuple[object, ...]]) -> list[tuple[object, ...]]:
+    """What 0008 does to a legacy snapshot (``LEGACY_COLUMNS`` order: ``kind`` second, ``owner_id``
+    third): a provider loses its owner; every other row, and every other column, is identical."""
+    return [(row[0], row[1], None, *row[3:]) if row[1] == "provider" else row for row in snapshot]
+
+
 def listing_indexes(url: str) -> set[str]:
     return {
         str(name)
@@ -561,7 +568,9 @@ def test_0005_downgrades_to_0004_and_reupgrades_without_touching_listings(
 
     command.upgrade(config, "head")
 
-    assert version(scratch_url) == "0007" and listing_snapshot(scratch_url) == before
+    # Re-upgrading to head also applies 0008, which makes the legacy providers portal-managed.
+    assert version(scratch_url) == "0008"
+    assert listing_snapshot(scratch_url) == portal_managed(before)
     command.check(config)
 
 
@@ -729,7 +738,10 @@ def test_0006_downgrades_to_0005_and_reupgrades_without_touching_existing_data(
 
     command.upgrade(config, "head")
 
-    assert version(scratch_url) == "0007" and existing_data(scratch_url) == before
+    # Re-upgrading to head also applies 0008, which makes the legacy providers portal-managed.
+    assert version(scratch_url) == "0008"
+    expected = {**before, "listings": portal_managed(before["listings"])}
+    assert existing_data(scratch_url) == expected
     command.check(config)
 
 
@@ -873,7 +885,8 @@ def test_0007_adds_the_staff_tables_triggers_and_widened_checks(scratch_url: str
     )
     assert "admin" in role_check and "moderator" in role_check
     assert all(word in actor_check for word in ("owner", "admin", "moderator"))
-    command.check(config)  # the models and the migration agree
+    # (No drift check here: 0007 is no longer head, so the models are rightly ahead of this schema.
+    # `test_the_models_and_the_migrations_have_not_drifted` and the 0008 tests check head.)
 
 
 def test_0007_keeps_every_existing_row_of_a_populated_0006_database(scratch_url: str) -> None:
@@ -911,7 +924,7 @@ def test_0007_downgrades_an_empty_staff_schema_and_reupgrades(scratch_url: str) 
 
     command.upgrade(config, "head")
 
-    assert version(scratch_url) == "0007" and tables(scratch_url) >= STAFF_TABLES
+    assert version(scratch_url) == "0008" and tables(scratch_url) >= STAFF_TABLES
     command.check(config)
 
 
@@ -947,8 +960,10 @@ LIVE_STAFF_DATA = {
     ),
     "a moderator listing decision": (
         [
-            "INSERT INTO listings (id, kind, title, area) "
-            "VALUES (gen_random_uuid(), 'provider', 'T', 'B-17')",
+            # ARCHIVED, so the 0008 downgrade that runs first (it refuses over a live Provider) lets
+            # this test reach the 0007 refusal it is about.
+            "INSERT INTO listings (id, kind, title, area, status) "
+            "VALUES (gen_random_uuid(), 'provider', 'T', 'B-17', 'archived')",
             "INSERT INTO listing_status_history (id, listing_id, from_status, to_status, action, "
             "revision, actor_user_id, actor_role) SELECT gen_random_uuid(), l.id, 'pending', "
             "'approved', 'approved', 1, u.id, 'moderator' FROM listings l CROSS JOIN users u",
@@ -985,7 +1000,7 @@ def test_0007_refuses_to_downgrade_over_live_staff_data_and_changes_nothing(
         command.downgrade(config, "0006")
 
     assert expected in str(refused.value)  # it says exactly what it would have destroyed
-    assert version(scratch_url) == "0007"  # nothing was downgraded...
+    assert version(scratch_url) == "0008"  # nothing was downgraded...
     assert tables(scratch_url) == tables_before  # ...no table was dropped...
     assert trigger_names(scratch_url) == STAFF_TRIGGERS  # ...and the protection is still in place
     for statement in CLEAR_STAFF_DATA:  # the operator removes the data deliberately
@@ -994,3 +1009,299 @@ def test_0007_refuses_to_downgrade_over_live_staff_data_and_changes_nothing(
     command.downgrade(config, "0006")
 
     assert version(scratch_url) == "0006" and not STAFF_TABLES & tables(scratch_url)
+
+
+# -- 0008: portal-managed Providers (RBAC-D; docs/backend/DATA_MODEL.md §18, AUTH_RBAC.md §31) -------
+
+PROVIDER_CONSTRAINT = "ck_listings_provider_has_no_owner"
+LISTING_ROW_SQL = (
+    "SELECT title, kind, owner_id, status, revision, is_featured, area, submitted_at, created_at, "
+    "updated_at, search_document FROM listings ORDER BY title"
+)
+HISTORY_SQL = (
+    "SELECT listing_id, from_status, to_status, action, revision, actor_user_id, actor_role "
+    "FROM listing_status_history ORDER BY listing_id, created_at, id"
+)
+ADD_USER_A = (
+    "INSERT INTO users (id, email, display_name) "
+    "VALUES (gen_random_uuid(), 'a@example.test', 'User A')"
+)
+
+
+def listing_check_constraints(url: str) -> set[str]:
+    return {
+        str(name)
+        for (name,) in rows(
+            url,
+            "SELECT conname FROM pg_constraint "
+            "WHERE conrelid = 'listings'::regclass AND contype = 'c'",
+        )
+    }
+
+
+def seed_0007_world(url: str) -> dict[str, str]:
+    """A populated 0007 database: two accounts, owned AND ownerless listings of several kinds, and
+    the submission history of every owned listing (the only place a provider's old ownership was
+    ever written down). Returns ``title -> listing id``."""
+    execute(
+        url,
+        "INSERT INTO users (id, email, display_name) VALUES "
+        "(gen_random_uuid(), 'admin-author@example.test', 'Admin Author'), "
+        "(gen_random_uuid(), 'owner@example.test', 'Plain Owner')",
+    )
+    rows_to_add = (
+        ("Owned provider", "provider", "admin-author@example.test", "approved"),
+        ("Pending owned provider", "provider", "owner@example.test", "pending"),
+        ("Seeded provider", "provider", None, "approved"),
+        ("Owned business", "business", "owner@example.test", "approved"),
+        ("Seeded business", "business", None, "approved"),
+    )
+    for title, kind, owner_email, status in rows_to_add:
+        execute(
+            url,
+            "INSERT INTO listings (id, kind, owner_id, status, title, area, revision, "
+            "submitted_at, created_at, updated_at, search_document) "
+            "VALUES (gen_random_uuid(), :k, (SELECT id FROM users WHERE email = :e), :s, :t, "
+            "'B-17, Block C', 4, '2026-01-02T03:04:05Z', '2026-01-02T03:04:05Z', "
+            "'2026-02-03T04:05:06Z', :d)",
+            k=kind,
+            e=owner_email,
+            s=status,
+            t=title,
+            d=title.lower(),
+        )
+    execute(
+        url,
+        "INSERT INTO listing_status_history (id, listing_id, from_status, to_status, action, "
+        "revision, actor_user_id, actor_role) "
+        "SELECT gen_random_uuid(), l.id, NULL, 'pending', 'submitted', 1, l.owner_id, 'owner' "
+        "FROM listings l WHERE l.owner_id IS NOT NULL",
+    )
+    return {
+        str(title): str(listing_id)
+        for title, listing_id in rows(url, "SELECT title, id FROM listings")
+    }
+
+
+def test_0008_adds_exactly_one_check_constraint_and_changes_no_column(scratch_url: str) -> None:
+    config = alembic_config(scratch_url)
+    command.upgrade(config, "0007")
+    before_constraints = listing_check_constraints(scratch_url)
+    before_columns = columns_except_staff(scratch_url)
+    assert PROVIDER_CONSTRAINT not in before_constraints
+
+    command.upgrade(config, "head")
+
+    assert version(scratch_url) == "0008"
+    assert listing_check_constraints(scratch_url) == before_constraints | {PROVIDER_CONSTRAINT}
+    assert columns_except_staff(scratch_url) == before_columns  # no column added, dropped, altered
+    assert tables(scratch_url) >= STAFF_TABLES  # and no table appears or disappears
+    command.check(config)  # the model declares the very same constraint: no drift
+
+
+def test_0008_backfills_every_owned_provider_and_changes_nothing_else(scratch_url: str) -> None:
+    config = alembic_config(scratch_url)
+    command.upgrade(config, "0007")
+    ids = seed_0007_world(scratch_url)
+    before = rows(scratch_url, LISTING_ROW_SQL)
+    history_before = rows(scratch_url, HISTORY_SQL)
+    users_before = rows(scratch_url, "SELECT id, email, display_name FROM users ORDER BY email")
+    assert len(before) == 5 and len(history_before) == 3
+    owned_providers = rows(
+        scratch_url,
+        "SELECT count(*) FROM listings WHERE kind = 'provider' AND owner_id IS NOT NULL",
+    )
+    assert owned_providers == [(2,)]
+
+    command.upgrade(config, "head")
+
+    after = rows(scratch_url, LISTING_ROW_SQL)
+    assert len(after) == len(before)  # nothing deleted, nothing added
+    for old, new in zip(before, after, strict=True):
+        title, kind = old[0], old[1]
+        if kind == "provider":
+            assert new[2] is None, title  # portal-managed now
+            assert new[:2] + new[3:] == old[:2] + old[3:], title  # EVERY other column untouched
+        else:
+            assert new == old, title  # a business keeps its owner (or lack of one) exactly
+    # History is NOT rewritten: the original author is still the actor of the submission row.
+    assert rows(scratch_url, HISTORY_SQL) == history_before
+    assert (
+        rows(scratch_url, "SELECT id, email, display_name FROM users ORDER BY email")
+        == users_before
+    )
+    assert rows(
+        scratch_url, f"SELECT count(*) FROM listings WHERE id = '{ids['Owned provider']}'"
+    ) == [(1,)]
+    # ...and nothing was invented in the staff audit for a past that had none.
+    assert rows(scratch_url, "SELECT count(*) FROM staff_audit_events") == [(0,)]
+
+
+def test_0008_constraint_forbids_an_owned_provider_and_nothing_else(scratch_url: str) -> None:
+    config = alembic_config(scratch_url)
+    command.upgrade(config, "head")
+    execute(scratch_url, ADD_USER_A)
+    owned = (
+        "INSERT INTO listings (id, kind, owner_id, title, area) VALUES "
+        "(gen_random_uuid(), :k, (SELECT id FROM users LIMIT 1), 'T', 'B-17')"
+    )
+    ownerless = (
+        "INSERT INTO listings (id, kind, owner_id, title, area) "
+        "VALUES (gen_random_uuid(), :k, NULL, 'T', 'B-17')"
+    )
+
+    with pytest.raises(Exception, match=PROVIDER_CONSTRAINT):
+        execute(scratch_url, owned, k="provider")
+    for kind in ("business", "tutor", "property"):
+        execute(scratch_url, owned, k=kind)  # Business / Tutor / Property ownership is untouched
+        execute(scratch_url, ownerless, k=kind)  # and an ownerless one is still legal
+    execute(scratch_url, ownerless, k="provider")  # the portal-managed Provider
+
+    # Giving an existing Provider an owner is refused on the update path as well, and so is turning
+    # an owned listing of another kind into a Provider (kind is not editable anyway).
+    with pytest.raises(Exception, match=PROVIDER_CONSTRAINT):
+        execute(
+            scratch_url,
+            "UPDATE listings SET owner_id = (SELECT id FROM users LIMIT 1) WHERE kind = 'provider'",
+        )
+    with pytest.raises(Exception, match=PROVIDER_CONSTRAINT):
+        execute(
+            scratch_url,
+            "UPDATE listings SET kind = 'provider' WHERE kind = 'business' AND owner_id IS NOT NULL",
+        )
+
+
+def seed_post_0008_world(url: str, *, provider_status: str) -> None:
+    """A head database as RBAC-D leaves it: an ownerless Provider in ``provider_status`` and an owned
+    Business."""
+    execute(url, ADD_USER_A)
+    execute(
+        url,
+        "INSERT INTO listings (id, kind, owner_id, status, title, area) VALUES "
+        "(gen_random_uuid(), 'provider', NULL, :s, 'Portal provider', 'B-17'), "
+        "(gen_random_uuid(), 'business', (SELECT id FROM users LIMIT 1), 'approved', "
+        "'Owned business', 'B-17')",
+        s=provider_status,
+    )
+
+
+@pytest.mark.parametrize("status", ["pending", "approved", "rejected"])
+def test_0008_refuses_to_downgrade_over_a_live_provider_and_changes_nothing(
+    scratch_url: str, status: str
+) -> None:
+    """The backfill cannot be undone (the previous owners are gone and are never guessed) and the
+    pre-RBAC-D release can only edit an OWNED listing, so a downgrade would strand every live
+    Provider. The repository's destructive-downgrade convention applies: refuse, change nothing."""
+    config = alembic_config(scratch_url)
+    command.upgrade(config, "head")
+    seed_post_0008_world(scratch_url, provider_status=status)
+    before = rows(scratch_url, LISTING_ROW_SQL)
+    tables_before = tables(scratch_url)
+
+    with pytest.raises(RuntimeError, match="Refusing to downgrade 0008") as refused:
+        command.downgrade(config, "0007")
+
+    assert "1 live Service / Professional listing" in str(refused.value)
+    assert "WITHOUT downgrading" in str(refused.value)  # it names the safe way to roll back
+    assert version(scratch_url) == "0008"  # nothing was downgraded...
+    assert PROVIDER_CONSTRAINT in listing_check_constraints(scratch_url)  # ...the guard is intact
+    assert tables(scratch_url) == tables_before
+    assert rows(scratch_url, LISTING_ROW_SQL) == before  # not one row changed
+    owners = rows(scratch_url, "SELECT owner_id FROM listings WHERE kind = 'provider'")
+    assert owners == [(None,)]  # and NO owner was invented for the provider
+
+
+def test_0008_refusal_counts_every_live_provider_and_ignores_the_other_kinds(
+    scratch_url: str,
+) -> None:
+    config = alembic_config(scratch_url)
+    command.upgrade(config, "head")
+    seed_post_0008_world(scratch_url, provider_status="approved")
+    execute(
+        scratch_url,
+        "INSERT INTO listings (id, kind, owner_id, status, title, area) VALUES "
+        "(gen_random_uuid(), 'provider', NULL, 'pending', 'Second provider', 'B-17'), "
+        "(gen_random_uuid(), 'provider', NULL, 'archived', 'Retired provider', 'B-17'), "
+        "(gen_random_uuid(), 'tutor', NULL, 'approved', 'Curated tutor', 'B-17')",
+    )
+
+    with pytest.raises(RuntimeError, match="2 live Service / Professional listing"):
+        command.downgrade(config, "0007")  # the archived provider and the tutor do not count
+
+    assert version(scratch_url) == "0008"
+
+
+def test_0008_downgrades_when_no_provider_is_live_without_touching_any_row(
+    scratch_url: str,
+) -> None:
+    """An empty database, or one whose providers are all archived (inert: nothing can be stranded),
+    downgrades cleanly; no row changes; re-upgrading is idempotent and backfills any provider the
+    pre-RBAC-D release wrote in between."""
+    config = alembic_config(scratch_url)
+    command.upgrade(config, "head")
+    seed_post_0008_world(scratch_url, provider_status="archived")
+    before = rows(scratch_url, LISTING_ROW_SQL)
+
+    command.downgrade(config, "0007")
+
+    assert version(scratch_url) == "0007"
+    assert PROVIDER_CONSTRAINT not in listing_check_constraints(scratch_url)
+    assert rows(scratch_url, LISTING_ROW_SQL) == before  # not one row changed
+    # Under 0007 an owned provider is legal again (that is what the old release wrote)...
+    execute(
+        scratch_url,
+        "INSERT INTO listings (id, kind, owner_id, title, area) VALUES "
+        "(gen_random_uuid(), 'provider', (SELECT id FROM users LIMIT 1), 'Stray owned', 'B-17')",
+    )
+
+    command.upgrade(config, "head")  # ...and re-upgrading backfills it again before the constraint
+
+    assert version(scratch_url) == "0008"
+    assert PROVIDER_CONSTRAINT in listing_check_constraints(scratch_url)
+    stray = rows(scratch_url, "SELECT owner_id FROM listings WHERE title = 'Stray owned'")
+    assert stray == [(None,)]
+    business = rows(
+        scratch_url, "SELECT owner_id IS NOT NULL FROM listings WHERE kind = 'business'"
+    )
+    assert business == [(True,)]
+    command.check(config)
+
+
+def test_0008_keeps_ownerless_curated_listings_of_every_other_kind_legal(
+    scratch_url: str,
+) -> None:
+    """INTENTIONAL, not an oversight: the constraint is ONE-directional. ``owner_id IS NULL`` is a
+    documented state for admin-curated / unclaimed content (``DATA_MODEL.md`` §4 and §12: seed data
+    is loaded with ``owner_id NULL``, and databases loaded by earlier fixture versions hold such
+    rows), and no owner can be fabricated for them in a migration. Strengthening the constraint to
+    "every non-Provider has an owner" would make ``alembic upgrade`` fail on those databases."""
+    config = alembic_config(scratch_url)
+    command.upgrade(config, "0007")
+    execute(
+        scratch_url,
+        "INSERT INTO listings (id, kind, owner_id, status, title, area) VALUES "
+        "(gen_random_uuid(), 'business', NULL, 'approved', 'Curated business', 'B-17'), "
+        "(gen_random_uuid(), 'tutor', NULL, 'approved', 'Curated tutor', 'B-17'), "
+        "(gen_random_uuid(), 'property', NULL, 'approved', 'Curated property', 'B-17')",
+    )
+
+    command.upgrade(config, "head")  # the upgrade succeeds over ownerless curated rows...
+
+    kinds = rows(scratch_url, "SELECT kind, owner_id IS NULL FROM listings ORDER BY kind")
+    assert kinds == [("business", True), ("property", True), ("tutor", True)]  # ...and keeps them
+    execute(
+        scratch_url,
+        "INSERT INTO listings (id, kind, owner_id, title, area) "
+        "VALUES (gen_random_uuid(), 'business', NULL, 'Another curated one', 'B-17')",
+    )  # ...and the constraint still allows them
+    command.check(config)
+
+
+def test_0008_downgrades_all_the_way_to_base_and_upgrades_again(scratch_url: str) -> None:
+    config = alembic_config(scratch_url)
+    command.upgrade(config, "head")
+    command.downgrade(config, "base")
+    assert tables(scratch_url) == {"alembic_version"}
+    command.upgrade(config, "head")
+    assert version(scratch_url) == "0008"
+    command.check(config)

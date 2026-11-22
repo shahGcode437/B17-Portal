@@ -2,10 +2,11 @@ import { expect, test, type Locator, type Page } from '@playwright/test'
 import { ApiClient, createUser, emailFor, expectH1, newContext, ownerCard, rows, scalar, signInAs, type TestUser } from './helpers/stack'
 import {
   KIND,
-  approvedProvider,
+  approvedPortalProvider,
+  approvedTutor,
   createFood,
+  createPortalProvider,
   createProperty,
-  createProvider,
   createTutor,
   openCreateForm,
   openReviewInUi,
@@ -74,7 +75,8 @@ test('B-01: the admin review shows the facts of a provider, a Food business, a t
   const foodName = unique('S5A Review Bakery')
   const tutorName = unique('S5A Review Tutor')
   const propertyTitle = unique('S5A Review House')
-  await createProvider(ownerPage, { name: providerName, category: 'Solar', tags: 'solar panels, net metering' })
+  // A Provider is portal-managed and ownerless (RBAC-D): STAFF author it through the real staff API.
+  await createPortalProvider(admin, 'S5A Review Provider', { category: 'solar', tags: ['solar panels', 'net metering'] })
   await createFood(ownerPage, { name: foodName, location: { visibility: 'area_only', block: 'B' } })
   await createTutor(ownerPage, { name: tutorName, subject: 'Physics', grade: 'Grade 9' })
   await createProperty(ownerPage, {
@@ -129,9 +131,10 @@ test('B-01: the admin review shows the facts of a provider, a Food business, a t
 })
 
 test('B-03: a takedown reads "Taken down" for the owner and the admin; a plain rejection reads "Rejected"; visibility is unchanged', async () => {
-  const live = await approvedProvider(owner, admin, 'S5A Takedown')
+  // The owner-facing markers need an OWNED listing, so the subject is a Tutor (a Provider has no owner, RBAC-D).
+  const live = await approvedTutor(owner, admin, 'S5A Takedown')
   const refusedName = unique('S5A Refused')
-  const refusedId = await createProvider(ownerPage, { name: refusedName, category: 'Solar' })
+  const refusedId = await createTutor(ownerPage, { name: refusedName, subject: 'Physics' })
   const reason = 'Reported as closed; please confirm you still trade.'
 
   await takedownInUi(adminPage, live.name, reason)
@@ -225,7 +228,6 @@ test('B-03: a takedown reads "Taken down" for the owner and the admin; a plain r
 test('B-04: a one-character name says it is too short, for every kind', async () => {
   const tooShort = 'Name must be at least 2 characters.'
   for (const [kind, label] of [
-    [KIND.provider, 'Name'],
     [KIND.business, 'Business Name'],
     [KIND.tutor, 'Name'],
   ] as const) {
@@ -242,7 +244,7 @@ test('B-04: a one-character name says it is too short, for every kind', async ()
 })
 
 test('B-13: Request Service offers no contact-method choice, and the request is stored as in-app', async ({ browser }) => {
-  const target = await approvedProvider(owner, admin, 'S5A Request Target')
+  const target = await approvedPortalProvider(admin, 'S5A Request Target')
   const page = await signInAs(browser, resident)
   await page.goto(`/providers/${target.id}`)
   await expectH1(page, target.name)
@@ -273,7 +275,7 @@ test('B-13: Request Service offers no contact-method choice, and the request is 
 
   // The API still accepts the historic values (a stored whatsapp / phone preference stays valid).
   const api = await ApiClient.shared(resident.email)
-  const other = await approvedProvider(owner, admin, 'S5A Historic Target')
+  const other = await approvedPortalProvider(admin, 'S5A Historic Target')
   const historic = await api.call('POST', '/requests', {
     providerListingId: other.id,
     service: 'Plumbing',
@@ -323,21 +325,9 @@ test('password reset: the screen says a link was REQUESTED (never sent or on its
 })
 
 test('review dialog: after rejecting one listing, opening another never shows the previous reject form or text', async () => {
-  const o = await ApiClient.shared(owner.email)
   const names = [unique('S5A Dialog A'), unique('S5A Dialog B')]
-  for (const name of names) {
-    const created = await o.call('POST', '/listings', {
-      kind: 'provider',
-      name,
-      category: 'plumbing',
-      description: `${name} - plumbing repairs across B-17.`,
-      area: 'B-17',
-      tags: ['plumbing'],
-      location: { visibility: 'area_only' },
-    })
-    expect(created.status).toBe(201)
-  }
-  await o.dispose()
+  // Two pending Providers, authored by staff (a Provider has no owner, RBAC-D).
+  for (const what of ['S5A Dialog A', 'S5A Dialog B']) await createPortalProvider(admin, what)
 
   await adminPage.goto('/admin/moderation')
   await expectH1(adminPage, 'Listing Review')

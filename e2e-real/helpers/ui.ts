@@ -4,11 +4,15 @@ import { API, ApiClient, TAG, expectH1, type TestUser } from './stack'
 /** UI drivers shared by the real-stack specs. Semantic locators only (role / label / text). */
 
 export type KindButton = RegExp
+/**
+ * The kinds an owner lists on the create page. A Service / Professional ("provider") listing is portal-managed and has
+ * no owner (RBAC-D): it is authored by staff through `POST /admin/providers` (`createPortalProvider` below), never on
+ * this form, so there is deliberately no `provider` entry. The Tutor is the lane's generic OWNED listing.
+ */
 export const KIND = {
-  provider: /Service \/ Professional/,
   business: /Business \/ Shop/,
-  tutor: /Tutor/,
-  property: /Property/,
+  tutor: /^Tutor/,
+  property: /^Property/,
 } as const
 
 export interface LocationInput {
@@ -22,7 +26,7 @@ export interface LocationInput {
 
 export async function openCreateForm(page: Page, kind: KindButton) {
   await page.goto('/provider/listings/new')
-  await expectH1(page, 'List a Service, Business, Tutor or Property')
+  await expectH1(page, 'List a Business, Tutor or Property')
   await page.getByRole('button', { name: kind }).click()
 }
 
@@ -51,23 +55,24 @@ export async function submitCreate(page: Page): Promise<string> {
   return id
 }
 
-export interface ProviderFields {
+export interface TutorFields {
   name: string
-  category: string
+  subject: string
+  grade?: string
   description?: string
   tags?: string
   location?: LocationInput
 }
 
-export async function createProvider(page: Page, f: ProviderFields): Promise<string> {
-  await openCreateForm(page, KIND.provider)
+/** Fills the Tutor create form (kind already chosen) without submitting: the lane's generic owned listing. */
+export async function fillTutorForm(page: Page, f: TutorFields) {
+  await page.getByLabel('Grade / level you teach').fill(f.grade ?? 'Grade 9')
   await page.getByLabel('Name', { exact: true }).fill(f.name)
-  await page.getByLabel('Service Category').selectOption({ label: f.category })
-  await page.getByLabel('Description', { exact: true }).fill(f.description ?? `${f.name} - professional services across B-17.`)
+  await page.getByLabel('Subject').selectOption({ label: f.subject })
+  await page.getByLabel('Description', { exact: true }).fill(f.description ?? `${f.name} - physics and chemistry for matric and O-level.`)
   await page.getByLabel('Area', { exact: true }).selectOption('B-17')
-  await page.getByLabel(/Services offered/).fill(f.tags ?? 'repairs, installation')
+  await page.getByLabel(/Topics you teach/).fill(f.tags ?? 'physics, chemistry')
   if (f.location) await setLocation(page, f.location)
-  return submitCreate(page)
 }
 
 export async function createGeneralBusiness(page: Page, f: { name: string; category: string; location?: LocationInput }): Promise<string> {
@@ -94,15 +99,9 @@ export async function createFood(page: Page, f: { name: string; location?: Locat
   return submitCreate(page)
 }
 
-export async function createTutor(page: Page, f: { name: string; subject: string; grade: string; location?: LocationInput }): Promise<string> {
+export async function createTutor(page: Page, f: TutorFields): Promise<string> {
   await openCreateForm(page, KIND.tutor)
-  await page.getByLabel('Grade / level you teach').fill(f.grade)
-  await page.getByLabel('Name', { exact: true }).fill(f.name)
-  await page.getByLabel('Subject').selectOption({ label: f.subject })
-  await page.getByLabel('Description', { exact: true }).fill(`${f.name} - physics and chemistry for matric and O-level.`)
-  await page.getByLabel('Area', { exact: true }).selectOption('B-17')
-  await page.getByLabel(/Topics you teach/).fill('physics, chemistry')
-  if (f.location) await setLocation(page, f.location)
+  await fillTutorForm(page, f)
   return submitCreate(page)
 }
 
@@ -125,19 +124,20 @@ export async function createProperty(
 
 export const unique = (what: string) => `${TAG} ${what}`
 
-/** Creates an APPROVED listing through the API (owner + admin sessions) — set-up for journeys whose subject is something else. */
-export async function approvedProvider(owner: TestUser, admin: TestUser, what: string, extra: Record<string, unknown> = {}): Promise<{ id: string; name: string; revision: number }> {
+/** Creates an APPROVED OWNED listing (a Tutor) through the API (owner + admin sessions) — set-up for journeys whose subject is something else. */
+export async function approvedTutor(owner: TestUser, admin: TestUser, what: string, extra: Record<string, unknown> = {}): Promise<{ id: string; name: string; revision: number }> {
   const name = unique(what)
   const o = await ApiClient.shared(owner.email)
   const a = await ApiClient.shared(admin.email)
   try {
     const created = await o.call('POST', '/listings', {
-      kind: 'provider',
+      kind: 'tutor',
       name,
-      category: 'plumbing',
-      description: `${name} - plumbing repairs and fittings across B-17.`,
+      category: 'physics',
+      grade: 'Grade 9',
+      description: `${name} - physics lessons and past papers across B-17.`,
       area: 'B-17',
-      tags: ['plumbing', 'repairs'],
+      tags: ['physics', 'lessons'],
       location: { visibility: 'area_only', block: 'C' },
       ...extra,
     })
@@ -147,6 +147,58 @@ export async function approvedProvider(owner: TestUser, admin: TestUser, what: s
     return { id: created.body!.data.id as string, name, revision: approved.body!.data.revision as number }
   } finally {
     await o.dispose()
+    await a.dispose()
+  }
+}
+
+/**
+ * A Service / Professional is PORTAL-MANAGED (RBAC-D): it has no owner and is authored by STAFF. The real staff API
+ * creates it (`POST /admin/providers`, pending, revision 1) with a Super Admin session — no database shortcut, no
+ * owner path (the owner API refuses a Provider for everyone). Its name carries the lane's `P12I` tag, which is how
+ * `cleanup()` finds it (an ownerless row cannot be found through an owner).
+ */
+export async function createPortalProvider(admin: TestUser, what: string, extra: Record<string, unknown> = {}): Promise<{ id: string; name: string; revision: number }> {
+  const name = unique(what)
+  const a = await ApiClient.shared(admin.email)
+  try {
+    const created = await a.call('POST', '/admin/providers', {
+      name,
+      category: 'plumbing',
+      description: `${name} - plumbing repairs and fittings across B-17.`,
+      area: 'B-17',
+      tags: ['plumbing', 'repairs'],
+      location: { visibility: 'area_only', block: 'C' },
+      ...extra,
+    })
+    if (created.status !== 201) throw new Error(`create provider: ${created.status} ${JSON.stringify(created.body)}`)
+    return { id: created.body!.data.id as string, name, revision: created.body!.data.revision as number }
+  } finally {
+    await a.dispose()
+  }
+}
+
+/** A staff-authored Provider that is already APPROVED (the request target of the Saved / request journeys). */
+export async function approvedPortalProvider(admin: TestUser, what: string, extra: Record<string, unknown> = {}): Promise<{ id: string; name: string; revision: number }> {
+  const created = await createPortalProvider(admin, what, extra)
+  const a = await ApiClient.shared(admin.email)
+  try {
+    const approved = await a.call('POST', `/admin/listings/${created.id}/approve`, { revision: created.revision })
+    if (approved.status !== 200) throw new Error(`approve provider: ${approved.status} ${JSON.stringify(approved.body)}`)
+    return { ...created, revision: approved.body!.data.revision as number }
+  } finally {
+    await a.dispose()
+  }
+}
+
+/**
+ * The PORTAL handles a Service Request (RBAC-D): a Super Admin (or a Services Moderator) acts through the staff request
+ * API. There is no provider inbox and no staff screen yet, so the lane drives the real endpoint. Returns the HTTP status.
+ */
+export async function staffAct(admin: TestUser, requestId: string, action: 'accept' | 'start' | 'complete' | 'cancel'): Promise<number> {
+  const a = await ApiClient.shared(admin.email)
+  try {
+    return (await a.call('POST', `/admin/requests/${requestId}/${action}`, {})).status
+  } finally {
     await a.dispose()
   }
 }

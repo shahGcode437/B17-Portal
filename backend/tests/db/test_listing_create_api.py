@@ -4,10 +4,13 @@ ownership, quota, rate limit, atomicity and public invisibility until approval.
 Real PostgreSQL, the real app, real login. The stored rows are inspected directly, not only the
 API's description of them.
 
-The default principal signs in with ``admin=True`` throughout this file because ``provider_body`` is
-the canonical generic fixture used in most tests, and Service / Professional listings are portal-
-managed (``docs/backend/AUTH_RBAC.md §22.6``) — only an admin may author them. Tests that specifically
-probe non-admin behaviour pass ``admin=False`` locally.
+This is the OWNER API: it creates Business, Food, Tutor and Property listings. A Service /
+Professional ("provider") listing is portal-managed and is authored by staff through
+``/admin/providers`` (RBAC-D, ``docs/backend/AUTH_RBAC.md §31``); here it is refused for everyone,
+and ``test_provider_authoring_api.py`` covers the staff API. The Tutor is the closest owner-side
+analogue of a Provider (name, one category, area-only by default), so it is the generic fixture
+below. A few tests keep ``admin=True`` to prove that staff who are also professionals create and
+own listings here exactly like anyone else.
 """
 
 from datetime import timedelta
@@ -58,8 +61,10 @@ from tests.db.write_helpers import (
     tutor_body,
 )
 
+#: The kinds this OWNER API creates. ``provider`` is deliberately absent: a Provider is portal-managed
+#: and is authored through ``/admin/providers`` (``test_provider_authoring_api.py``); this API refuses
+#: it for everyone (``test_listing_write_security.py``).
 KIND_BODIES = {
-    "provider": provider_body,
     "business": business_body,
     "food": food_body,
     "tutor": tutor_body,
@@ -128,6 +133,8 @@ def test_a_valid_listing_is_created_pending_at_revision_one(auth_env: AuthEnv, n
 
 
 def test_a_provider_listing_has_no_subtype_row_and_one_services_category(auth_env: AuthEnv) -> None:
+    """The stored shape of a Provider as the staff API creates it (``created_id`` routes a provider
+    body to ``POST /admin/providers``): no subtype row, one ``services`` category, no owner."""
     api = signed_in(auth_env, admin=True)
 
     listing_id = created_id(api, provider_body(tags=[" Wiring", "WIRING", "repairs", ""]))
@@ -234,7 +241,7 @@ def test_area_is_canonicalised_and_text_is_trimmed_on_the_way_in(auth_env: AuthE
 
     listing_id = created_id(
         api,
-        provider_body(name="  Bright Spark  ", area=" b-17 ", image=" /assets/spark.png "),
+        tutor_body(name="  Bright Spark  ", area=" b-17 ", image=" /assets/spark.png "),
     )
 
     columns = stored_columns(auth_env.session, listing_id)
@@ -249,7 +256,7 @@ def test_an_unknown_locality_is_rejected_with_its_own_code(auth_env: AuthEnv) ->
     api = signed_in(auth_env, admin=True)
 
     for area in ("F-8", "B-17, Block C", "Islamabad"):
-        response = create(api, provider_body(area=area))
+        response = create(api, tutor_body(area=area))
         assert response.status_code == 422, area
         assert codes(response) == [("area", "unknown_locality")], area
     assert nothing_was_written(auth_env.session)
@@ -261,8 +268,8 @@ def test_configured_localities_are_honoured(auth_env: AuthEnv, db_session: Sessi
     env = build_env(db_session, localities=["B-17", "G-13"])
     api = signed_in(env, "wide@example.org", admin=True)
 
-    ok = create(api, provider_body(area="g-13"))
-    bad = create(api, provider_body(area="F-8"))
+    ok = create(api, tutor_body(area="g-13"))
+    bad = create(api, tutor_body(area="F-8"))
 
     assert ok.status_code == 201 and ok.json()["data"]["area"] == "G-13"
     assert bad.status_code == 422
@@ -275,9 +282,9 @@ def test_configured_localities_are_honoured(auth_env: AuthEnv, db_session: Sessi
 @pytest.mark.parametrize(
     ("make", "field", "slug"),
     [
-        (provider_body, "category", "no-such-category"),
-        (provider_body, "category", "bakeries"),  # a Food slug is not a services slug
-        (provider_body, "category", "grocery"),  # a directory slug is not a services slug
+        (tutor_body, "category", "no-such-category"),
+        (tutor_body, "category", "bakeries"),  # a Food slug is not an education slug
+        (tutor_body, "category", "grocery"),  # a directory slug is not an education slug
         (business_body, "category", "electrical"),
         (tutor_body, "category", "house"),
         (property_body, "propertyType", "physics"),
@@ -303,7 +310,7 @@ def test_an_inactive_category_cannot_be_chosen(auth_env: AuthEnv) -> None:
     )
     auth_env.session.commit()
 
-    response = create(api, provider_body(category="plumbing"))
+    response = create(api, tutor_body(category="plumbing"))
 
     assert (response.status_code, codes(response)) == (422, [("category", "unknown_category")])
 
@@ -392,10 +399,10 @@ def test_other_kinds_cannot_carry_business_or_property_fields(auth_env: AuthEnv)
     api = signed_in(auth_env, admin=True)
 
     for body in (
-        provider_body(food={"categories": ["bakeries"], "serviceOptions": ["takeaway"]}),
-        provider_body(vertical="food"),
+        tutor_body(food={"categories": ["bakeries"], "serviceOptions": ["takeaway"]}),
+        tutor_body(vertical="food"),
         tutor_body(price="PKR 1"),
-        provider_body(listingType="sale"),
+        tutor_body(listingType="sale"),
     ):
         assert create(api, body).status_code == 422, body
     assert nothing_was_written(auth_env.session)
@@ -465,13 +472,12 @@ def test_an_approximate_property_needs_no_address(auth_env: AuthEnv) -> None:
         ("food", None, [("location", "required")]),
         ("food", exact(), []),
         ("food", area_only(), []),
-        # Provider / Tutor: area_only by default, never a forced public home point.
-        ("provider", None, []),
-        ("provider", exact(), []),
-        ("provider", approximate(), []),
-        ("provider", area_only(), []),
-        ("provider", exact(address=None), [("location.address", "required")]),
+        # Tutor: area_only by default, never a forced public home point. (A Provider's location
+        # rules are the same and are tested through the staff API.)
         ("tutor", None, []),
+        ("tutor", exact(), []),
+        ("tutor", area_only(), []),
+        ("tutor", exact(address=None), [("location.address", "required")]),
         ("tutor", approximate(), []),
         (
             "tutor",
@@ -498,10 +504,10 @@ def test_location_requiredness_by_kind(
         assert response.status_code == 201, response.text
 
 
-def test_provider_and_tutor_default_to_area_only_with_no_stored_point(auth_env: AuthEnv) -> None:
+def test_a_tutor_defaults_to_area_only_with_no_stored_point(auth_env: AuthEnv) -> None:
     api = signed_in(auth_env, admin=True)
 
-    for body in (provider_body(), tutor_body()):
+    for body in (tutor_body(),):
         data = create(api, body).json()["data"]
         assert data["location"] == {"visibility": "area_only"}
         assert data["publicLocation"] == {"visibility": "area_only"}
@@ -615,7 +621,7 @@ def test_whole_block_and_pin_geometry_is_not_a_geofence(auth_env: AuthEnv) -> No
 def test_only_public_media_references_are_accepted(auth_env: AuthEnv, image: str) -> None:
     api = signed_in(auth_env, admin=True)
 
-    response = create(api, provider_body(image=image))
+    response = create(api, tutor_body(image=image))
 
     assert (response.status_code, codes(response)) == (422, [("image", "invalid_media_reference")])
 
@@ -623,8 +629,8 @@ def test_only_public_media_references_are_accepted(auth_env: AuthEnv, image: str
 def test_a_public_https_url_or_site_path_is_accepted(auth_env: AuthEnv) -> None:
     api = signed_in(auth_env, admin=True)
 
-    https = create(api, provider_body(image="https://cdn.example.org/a.jpg"))
-    path = create(api, provider_body(image="/assets/a.jpg"))
+    https = create(api, tutor_body(image="https://cdn.example.org/a.jpg"))
+    path = create(api, tutor_body(image="/assets/a.jpg"))
 
     assert https.status_code == 201 and path.status_code == 201
     assert path.json()["data"]["image"] == "/assets/a.jpg"
@@ -676,7 +682,7 @@ def test_server_owned_fields_are_rejected_whatever_their_value(
     auth_env: AuthEnv, field: str, value: Any
 ) -> None:
     api = signed_in(auth_env, admin=True)
-    body = provider_body()
+    body = tutor_body()
     body[field] = value
 
     response = create(api, body)
@@ -705,14 +711,14 @@ def test_public_coordinates_cannot_be_written_inside_location(auth_env: AuthEnv)
 def test_every_new_listing_starts_pending_even_for_an_admin(auth_env: AuthEnv) -> None:
     api = signed_in(auth_env, admin=True)
 
-    for body in (provider_body(), business_body(), property_body()):
+    for body in (tutor_body(), business_body(), property_body()):
         assert create(api, body).json()["data"]["status"] == "pending"
 
 
 def test_a_verified_user_without_a_profile_is_told_to_create_one(auth_env: AuthEnv) -> None:
     api = signed_in(auth_env, professional=None)
 
-    response = create(api, provider_body())
+    response = create(api, tutor_body())
 
     assert (response.status_code, error_code(response)) == (403, "professional_profile_required")
     assert nothing_was_written(auth_env.session)
@@ -721,7 +727,7 @@ def test_a_verified_user_without_a_profile_is_told_to_create_one(auth_env: AuthE
 def test_an_unverified_professional_cannot_create(auth_env: AuthEnv) -> None:
     api = signed_in(auth_env, verified=False)
 
-    response = create(api, provider_body())
+    response = create(api, tutor_body())
 
     assert (response.status_code, error_code(response)) == (403, "email_not_verified")
     assert nothing_was_written(auth_env.session)
@@ -729,7 +735,7 @@ def test_an_unverified_professional_cannot_create(auth_env: AuthEnv) -> None:
 
 
 def test_anonymous_cannot_create(auth_env: AuthEnv) -> None:
-    response = create(auth_env.client(), provider_body())
+    response = create(auth_env.client(), tutor_body())
 
     assert (response.status_code, error_code(response)) == (401, "unauthenticated")
 
@@ -932,6 +938,6 @@ def test_timestamps_follow_the_app_clock(auth_env: AuthEnv) -> None:
     api = signed_in(auth_env, admin=True)
     auth_env.clock.advance(days=2)
 
-    listing_id = created_id(api, provider_body())
+    listing_id = created_id(api, tutor_body())
 
     assert stored(auth_env.session, listing_id).submitted_at == START + timedelta(days=2)

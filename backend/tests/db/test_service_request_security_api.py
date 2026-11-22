@@ -13,6 +13,7 @@ from sqlalchemy import text
 
 from tests.db.auth_helpers import AuthApi, AuthEnv
 from tests.db.request_helpers import (
+    PORTAL_REQUESTS,
     REQUESTS,
     SAVED,
     World,
@@ -24,6 +25,7 @@ from tests.db.request_helpers import (
     requester_signed_in,
     saved_rows,
     sent_id,
+    staff_act,
     stored_request,
     world,
 )
@@ -36,7 +38,9 @@ TAMPERINGS: dict[str, dict[str, Any]] = {
     "wrong csrf": {"csrf": "not-the-token"},
     "empty csrf": {"csrf": ""},
 }
-UNSAFE = ["create", "accept", "start", "complete", "cancel", "save", "unsave"]
+UNSAFE = ["create", "accept", "start", "complete", "cancel", "portal_cancel", "save", "unsave"]
+#: The calls only portal staff make (the provider side lives on ``/admin/requests``).
+STAFF_CALLS = ("accept", "start", "complete", "portal_cancel")
 
 
 class Scene:
@@ -46,17 +50,20 @@ class Scene:
         self.request_id = sent_id(self.w.resident, self.w.listing_id)
 
     def api_for(self, call: str) -> AuthApi:
-        return self.w.resident if call in ("create", "cancel", "save", "unsave") else self.w.owner
+        return self.w.author if call in STAFF_CALLS else self.w.resident
 
     def send(self, call: str, **tamper: Any) -> Any:
         api = self.api_for(call)
         if call == "create":
-            other_listing = approved_provider(self.env, self.w.owner, name="Another Provider Co")
+            other_listing = approved_provider(self.env, self.w.author, name="Another Provider Co")
             return api.request("POST", REQUESTS, json=request_body(other_listing), **tamper)
         if call == "save":
             return api.request("PUT", f"{SAVED}/{self.w.listing_id}", **tamper)
         if call == "unsave":
             return api.request("DELETE", f"{SAVED}/{self.w.listing_id}", **tamper)
+        if call in STAFF_CALLS:
+            action = call.removeprefix("portal_")
+            return api.request("POST", f"{PORTAL_REQUESTS}/{self.request_id}/{action}", **tamper)
         return api.request("POST", f"{REQUESTS}/{self.request_id}/{call}", **tamper)
 
     def state(self) -> tuple[Any, ...]:
@@ -75,9 +82,9 @@ def test_origin_and_csrf_protect_every_new_write(auth_env: AuthEnv, call: str, t
     if call == "unsave":
         scene.w.resident.request("PUT", f"{SAVED}/{scene.w.listing_id}")  # something to protect
     if call in ("start", "complete"):
-        act(scene.w.owner, scene.request_id, "accept")
+        staff_act(scene.w.author, scene.request_id, "accept")
         if call == "complete":
-            act(scene.w.owner, scene.request_id, "start")
+            staff_act(scene.w.author, scene.request_id, "start")
     before = scene.state()
 
     response = scene.send(call, **TAMPERINGS[tamper])
@@ -92,9 +99,9 @@ def test_a_valid_origin_and_csrf_token_succeed(auth_env: AuthEnv, call: str) -> 
     if call == "unsave":
         scene.w.resident.request("PUT", f"{SAVED}/{scene.w.listing_id}")
     if call in ("start", "complete"):
-        act(scene.w.owner, scene.request_id, "accept")
+        staff_act(scene.w.author, scene.request_id, "accept")
         if call == "complete":
-            act(scene.w.owner, scene.request_id, "start")
+            staff_act(scene.w.author, scene.request_id, "start")
 
     response = scene.send(call)
 
@@ -104,9 +111,9 @@ def test_a_valid_origin_and_csrf_token_succeed(auth_env: AuthEnv, call: str) -> 
 def test_another_browsers_csrf_token_is_not_accepted(auth_env: AuthEnv) -> None:
     scene = Scene(auth_env)
 
-    response = scene.w.owner.request(
+    response = scene.w.author.request(
         "POST",
-        f"{REQUESTS}/{scene.request_id}/accept",
+        f"{PORTAL_REQUESTS}/{scene.request_id}/accept",
         csrf=scene.w.resident.csrf,  # a valid token, but for someone else's session
     )
 
@@ -121,7 +128,9 @@ def test_reads_do_not_need_a_csrf_token(auth_env: AuthEnv) -> None:
         (scene.w.resident, REQUESTS),
         (scene.w.resident, f"{REQUESTS}/{scene.request_id}"),
         (scene.w.resident, SAVED),
-        (scene.w.owner, "/users/me/leads"),
+        (scene.w.author, "/users/me/leads"),
+        (scene.w.author, PORTAL_REQUESTS),
+        (scene.w.author, f"{PORTAL_REQUESTS}/{scene.request_id}"),
     ):
         assert api.request("GET", path, csrf=None, origin=None).status_code == 200, path
 
@@ -200,6 +209,8 @@ def test_saving_a_listing_gives_no_access_to_its_requests(auth_env: AuthEnv) -> 
     assert saver.get(f"{REQUESTS}/{scene.request_id}").status_code == 404
     assert act(saver, scene.request_id, "cancel").status_code == 404
     assert saver.get("/users/me/leads").status_code == 403
+    assert saver.get(PORTAL_REQUESTS).status_code == 403
+    assert saver.get(f"{PORTAL_REQUESTS}/{scene.request_id}").status_code == 403
 
 
 # -- accounts that lose access -----------------------------------------------------------------------
@@ -224,15 +235,16 @@ def test_a_suspended_account_loses_every_new_surface_immediately(auth_env: AuthE
     assert scene.state()[0] == "submitted"
 
 
-def test_a_suspended_provider_can_no_longer_work_their_inbox(auth_env: AuthEnv) -> None:
+def test_a_suspended_staff_member_can_no_longer_work_the_portal_queue(auth_env: AuthEnv) -> None:
     scene = Scene(auth_env)
     auth_env.session.execute(
         text("UPDATE users SET status = 'suspended' WHERE email = 'provider@example.org'")
     )
     auth_env.session.commit()
 
-    assert scene.w.owner.get("/users/me/leads").status_code == 401
-    assert act(scene.w.owner, scene.request_id, "accept").status_code == 401
+    assert scene.w.author.get(PORTAL_REQUESTS).status_code == 401
+    assert scene.w.author.get(f"{PORTAL_REQUESTS}/{scene.request_id}").status_code == 401
+    assert staff_act(scene.w.author, scene.request_id, "accept").status_code == 401
     assert scene.state()[0] == "submitted"
 
 
@@ -249,7 +261,7 @@ def test_authorization_comes_from_the_database_not_from_the_session_age(
 ) -> None:
     """Dropping the professional profile revokes the inbox on the next request (re-read every time)."""
     scene = Scene(auth_env)
-    assert scene.w.owner.get("/users/me/leads").status_code == 200
+    assert scene.w.author.get("/users/me/leads").status_code == 200
     auth_env.session.execute(
         text(
             "DELETE FROM professional_profiles WHERE user_id = "
@@ -258,13 +270,15 @@ def test_authorization_comes_from_the_database_not_from_the_session_age(
     )
     auth_env.session.commit()
 
-    assert scene.w.owner.get("/users/me/leads").status_code == 403
+    assert scene.w.author.get("/users/me/leads").status_code == 403
 
 
-def test_a_provider_who_lost_their_profile_can_still_act_on_a_request_they_own(
+def test_portal_staff_need_no_professional_profile_to_handle_a_request(
     auth_env: AuthEnv,
 ) -> None:
-    """Actions are authorised by ownership of the listing (API_CONTRACT §13), not by the capability."""
+    """Authority over a portal request is the live staff role and scope, not a Professional Profile
+    (there is no owner, no plan and no capability involved), so dropping the author's profile
+    changes nothing about what they may do on the portal API."""
     scene = Scene(auth_env)
     auth_env.session.execute(
         text(
@@ -274,7 +288,7 @@ def test_a_provider_who_lost_their_profile_can_still_act_on_a_request_they_own(
     )
     auth_env.session.commit()
 
-    assert act(scene.w.owner, scene.request_id, "accept").status_code == 200
+    assert staff_act(scene.w.author, scene.request_id, "accept").status_code == 200
 
 
 def test_roles_in_the_request_body_or_query_grant_nothing(auth_env: AuthEnv) -> None:
@@ -289,4 +303,21 @@ def test_roles_in_the_request_body_or_query_grant_nothing(auth_env: AuthEnv) -> 
 
     assert response.status_code == 422
     assert act(resident, scene.request_id, "accept", params={"as": "provider"}).status_code == 403
+    assert scene.state()[0] == "submitted"
+
+
+def test_claims_in_headers_or_query_never_open_the_portal_api(auth_env: AuthEnv) -> None:
+    scene = Scene(auth_env)
+    resident = scene.w.resident
+    claims = {"X-Staff-Scope": "services", "X-Admin": "true", "X-Roles": "admin"}
+    query = {"scope": "services", "role": "admin", "as": "staff"}
+
+    for method, path in (
+        ("GET", PORTAL_REQUESTS),
+        ("GET", f"{PORTAL_REQUESTS}/{scene.request_id}"),
+        ("POST", f"{PORTAL_REQUESTS}/{scene.request_id}/accept"),
+        ("POST", f"{PORTAL_REQUESTS}/{scene.request_id}/cancel"),
+    ):
+        response = resident.request(method, path, headers=claims, params=query)
+        assert response.status_code == 403, (method, path, response.text)
     assert scene.state()[0] == "submitted"

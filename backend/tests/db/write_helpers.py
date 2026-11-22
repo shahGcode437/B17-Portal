@@ -26,19 +26,25 @@ from tests.write_payloads import (
     food_body,
     property_body,
     provider_body,
+    staff_provider_body,
     tutor_body,
 )
+
+PROVIDERS = "/admin/providers"
 
 __all__ = [
     "LISTINGS",
     "MINE",
     "PROFILE",
+    "PROVIDERS",
     "approximate",
     "area_only",
     "archive",
+    "archive_provider",
     "business_body",
     "codes",
     "create",
+    "create_provider",
     "created_id",
     "error_code",
     "exact",
@@ -46,10 +52,12 @@ __all__ = [
     "history",
     "mine",
     "patch",
+    "patch_provider",
     "property_body",
     "provider_body",
     "set_status",
     "signed_in",
+    "staff_provider_body",
     "stored",
     "stored_columns",
     "tutor_body",
@@ -71,10 +79,11 @@ def signed_in(
     ``moderator_scopes`` makes a Moderator (RBAC-A): ``[]`` = the role with no scope.
 
     Default is a plain professional (least-privileged owner). Tests that create, edit or archive a
-    Service / Professional (``provider``) listing opt in with ``admin=True`` — provider listings
-    are portal-managed (``docs/backend/AUTH_RBAC.md §22.6``), so only an admin may author them.
-    Keeping the default non-admin means a future authorization regression would show up as a test
-    failure rather than being masked by an incidentally-admin principal.
+    Service / Professional (``provider``) listing opt in with ``admin=True`` (or a ``services``
+    Moderator) — provider listings are portal-managed (``docs/backend/AUTH_RBAC.md §27.9``, §31) and
+    only staff author them, through ``/admin/providers``. Keeping the default non-admin means a
+    future authorization regression would show up as a test failure rather than being masked by an
+    incidentally-admin principal.
     """
     make_account(
         env.session,
@@ -96,9 +105,33 @@ def create(api: AuthApi, body: dict[str, Any]) -> Response:
 
 
 def created_id(api: AuthApi, body: dict[str, Any]) -> str:
-    response = create(api, body)
+    """The id of a listing the test SET UP through the API (asserts ``201``).
+
+    A ``provider`` body is portal-managed and cannot be created through ``POST /listings`` any more
+    (RBAC-D): fixtures that need one are authored by the signed-in STAFF account through the real
+    ``POST /admin/providers`` — the one canonical path — and the body's ``kind`` (which the staff
+    API does not accept) is dropped. Tests that PROBE the refusal on ``/listings`` call
+    :func:`create` directly, which never rewrites anything."""
+    if body.get("kind") == "provider":
+        staff_body = {key: value for key, value in body.items() if key != "kind"}
+        response = create_provider(api, staff_body)
+    else:
+        response = create(api, body)
     assert response.status_code == 201, response.text
     return str(response.json()["data"]["id"])
+
+
+def create_provider(api: AuthApi, body: dict[str, Any] | None = None) -> Response:
+    """``POST /admin/providers`` — the staff Provider authoring API (RBAC-D)."""
+    return api.request("POST", PROVIDERS, json=staff_provider_body() if body is None else body)
+
+
+def patch_provider(api: AuthApi, listing_id: str, revision: int, **fields: Any) -> Response:
+    return api.request("PATCH", f"{PROVIDERS}/{listing_id}", json={"revision": revision, **fields})
+
+
+def archive_provider(api: AuthApi, listing_id: str, revision: int) -> Response:
+    return api.request("POST", f"{PROVIDERS}/{listing_id}/archive", json={"revision": revision})
 
 
 def patch(api: AuthApi, listing_id: str, revision: int, **fields: Any) -> Response:
@@ -169,8 +202,9 @@ def set_status(
     """Stand in for the Admin moderation API (slice 12E): move a listing's status and, for a
     rejection, append the history row the real action will write. Test setup only."""
     listing = stored(session, listing_id)
-    owner_id = listing.owner_id
-    assert owner_id is not None
+    # A Provider has no owner (RBAC-D); any existing user satisfies the history row's foreign key.
+    actor_id = listing.owner_id or session.scalar(text("SELECT id FROM users ORDER BY id LIMIT 1"))
+    assert actor_id is not None
     previous = listing.status
     revision = listing.revision
     session.execute(
@@ -185,7 +219,7 @@ def set_status(
                 to_status=ListingStatus.REJECTED,
                 action=HistoryAction.REJECTED,
                 revision=revision,
-                actor_user_id=owner_id,  # any user satisfies the FK; the role is what matters
+                actor_user_id=actor_id,  # any user satisfies the FK; the role is what matters
                 actor_role=ActorRole.ADMIN,
                 reason=reason or "Please add opening hours and a clearer description.",
             )

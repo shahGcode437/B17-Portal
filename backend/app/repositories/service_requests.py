@@ -1,7 +1,11 @@
 """Service requests (Phase 12F; docs/backend/API_CONTRACT.md §13).
 
-Query / add / guarded-update only — the service owns the transaction and the state machine. The
-provider is never stored: it is the owner of ``provider_listing_id`` and is joined in when needed.
+Query / add / guarded-update only — the service owns the transaction and the state machine.
+
+There is no stored provider and no personal provider recipient. A Service / Professional listing is
+portal-managed and has no owner (RBAC-D), so the provider side of a request is handled by PORTAL
+STAFF: a request is joined to its target listing only for that listing's ``kind`` (which decides the
+staff scope that may handle it).
 """
 
 import dataclasses
@@ -22,16 +26,16 @@ class TargetListing:
     id: uuid.UUID
     kind: ListingKind
     status: ListingStatus
-    owner_id: uuid.UUID | None
     title: str
 
 
 @dataclasses.dataclass(frozen=True)
 class RequestRow:
-    """A request with its derived provider and the requester's display name."""
+    """A request with the KIND of its target listing (``None`` if the listing was hard-deleted) —
+    which decides the staff scope that handles it — and the requester's display name."""
 
     request: ServiceRequest
-    provider_owner_id: uuid.UUID | None
+    provider_kind: ListingKind | None
     requester_name: str
 
 
@@ -68,13 +72,13 @@ class ServiceRequestRepository:
         this create serialise, so a request is never created against a listing in a state the
         decision has already left. Takes no other lock, so it cannot take part in a cycle."""
         row = self._session.execute(
-            select(Listing.id, Listing.kind, Listing.status, Listing.owner_id, Listing.title)
+            select(Listing.id, Listing.kind, Listing.status, Listing.title)
             .where(Listing.id == listing_id)
             .with_for_update(read=True, of=Listing)
         ).one_or_none()
         if row is None:
             return None
-        return TargetListing(row[0], row[1], row[2], row[3], row[4])
+        return TargetListing(row[0], row[1], row[2], row[3])
 
     # -- writes ----------------------------------------------------------------------------------
 
@@ -123,10 +127,10 @@ class ServiceRequestRepository:
     # -- single-request reads --------------------------------------------------------------------
 
     def get(self, request_id: uuid.UUID, *, lock: bool = False) -> RequestRow | None:
-        """The request, its provider (the listing's owner, if the listing still exists) and the
+        """The request, the kind of its target listing (if the listing still exists) and the
         requester's display name. ``lock`` takes ``FOR UPDATE`` on the request row ONLY."""
         statement = (
-            select(ServiceRequest, Listing.owner_id, User.display_name)
+            select(ServiceRequest, Listing.kind, User.display_name)
             .outerjoin(Listing, Listing.id == ServiceRequest.provider_listing_id)
             .join(User, User.id == ServiceRequest.requester_id)
             .where(ServiceRequest.id == request_id)
@@ -137,7 +141,7 @@ class ServiceRequestRepository:
         row = self._session.execute(statement).one_or_none()
         if row is None:
             return None
-        return RequestRow(request=row[0], provider_owner_id=row[1], requester_name=row[2])
+        return RequestRow(request=row[0], provider_kind=row[1], requester_name=row[2])
 
     def history(self, request_id: uuid.UUID) -> list[HistoryRow]:
         rows = self._session.execute(
@@ -173,11 +177,40 @@ class ServiceRequestRepository:
         ).all()
         return int(total or 0), list(rows)
 
+    def portal_page(
+        self, status: RequestStatus | None, limit: int, offset: int
+    ) -> tuple[int, list[tuple[ServiceRequest, str]]]:
+        """Every request made to a PROVIDER listing (whatever the listing's status now is), newest
+        first, with the requester's display name — the portal's Service request queue. Authority
+        over it is decided by the caller (``PortalRequestService``), never here."""
+        conditions = [Listing.kind == ListingKind.PROVIDER]
+        if status is not None:
+            conditions.append(ServiceRequest.status == status)
+        total = self._session.scalar(
+            select(func.count())
+            .select_from(ServiceRequest)
+            .join(Listing, Listing.id == ServiceRequest.provider_listing_id)
+            .where(*conditions)
+        )
+        rows = self._session.execute(
+            select(ServiceRequest, User.display_name)
+            .join(Listing, Listing.id == ServiceRequest.provider_listing_id)
+            .join(User, User.id == ServiceRequest.requester_id)
+            .where(*conditions)
+            .order_by(ServiceRequest.created_at.desc(), ServiceRequest.id)
+            .limit(limit)
+            .offset(offset)
+        ).all()
+        return int(total or 0), [(row[0], row[1]) for row in rows]
+
     def lead_page(
         self, owner_id: uuid.UUID, status: RequestStatus | None, limit: int, offset: int
     ) -> tuple[int, list[tuple[ServiceRequest, str]]]:
         """Requests made to listings the caller OWNS (whatever the listing's status now is),
-        newest first, with the requester's display name — one query, however many rows."""
+        newest first, with the requester's display name — one query, however many rows. Since
+        RBAC-D no listing a request can target (a Provider) has an owner, so this inbox is empty
+        for everyone: it is kept only so the existing Professional Workspace keeps working, and
+        goes with the staff request UI. Portal requests are handled through ``portal_page``."""
         conditions = [Listing.owner_id == owner_id]
         if status is not None:
             conditions.append(ServiceRequest.status == status)

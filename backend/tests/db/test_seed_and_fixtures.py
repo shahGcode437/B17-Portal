@@ -17,7 +17,7 @@ from app.models import (
     User,
     UserRole,
 )
-from app.models.enums import CategoryModule, ListingStatus, RoleName
+from app.models.enums import ActorRole, CategoryModule, ListingKind, ListingStatus, RoleName
 from app.repositories.taxonomy import CategoryRepository
 from scripts.dev_fixtures import (
     ADMIN_ID,
@@ -143,6 +143,25 @@ def test_fixtures_load_a_coherent_demo_dataset(db_session: Session) -> None:
     assert db_session.get(UserRole, (ADMIN_ID, RoleName.ADMIN)) is not None
     assert db_session.get(SavedItem, (RESIDENT_ID, BAKERS_ID)) is not None
     assert total(db_session, FoodMenuItem) == 8
+
+
+def test_fixture_providers_are_portal_managed_and_authored_by_staff(db_session: Session) -> None:
+    """RBAC-D: a Service / Professional fixture has NO owner (the database refuses one) and its
+    history records the fixture admin — a staff member — as its author, never an ``owner``. Every
+    other kind is still owned by the fixture professional."""
+    load_dev_fixtures(db_session)
+
+    providers = db_session.scalars(
+        select(Listing).where(Listing.kind == ListingKind.PROVIDER)
+    ).all()
+    others = db_session.scalars(select(Listing).where(Listing.kind != ListingKind.PROVIDER)).all()
+
+    assert len(providers) == 3 and all(listing.owner_id is None for listing in providers)
+    assert all(listing.owner_id is not None for listing in others)
+    for listing in providers:
+        first = listing.status_history[0]
+        assert (first.actor_user_id, first.actor_role) == (ADMIN_ID, ActorRole.ADMIN)
+        assert all(step.actor_role is not ActorRole.OWNER for step in listing.status_history)
 
 
 def test_fixtures_are_idempotent_and_keep_their_ids(db_session: Session) -> None:

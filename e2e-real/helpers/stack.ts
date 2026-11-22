@@ -236,7 +236,11 @@ export const ownerCard = (page: Page, name: string) =>
 // -- cleanup ---------------------------------------------------------------------------------------
 
 const TAG_USERS = `(SELECT id FROM users WHERE email LIKE 'p12i.%')`
-const TAG_LISTINGS = `(SELECT id FROM listings WHERE owner_id IN ${TAG_USERS})`
+/**
+ * The lane's listings: those its throwaway users OWN, plus the Providers its Super Admins authored. A Provider is
+ * portal-managed and has NO owner (RBAC-D), so it can only be found by its `P12I` name tag.
+ */
+const TAG_LISTINGS = `(SELECT id FROM listings WHERE owner_id IN ${TAG_USERS} OR (kind = 'provider' AND title LIKE 'P12I-%'))`
 
 /**
  * The rate limiter keys its counters by sha256 of an identifier (an e-mail, a user id, or "user:listing"),
@@ -284,7 +288,7 @@ export function cleanup(): { before: Record<string, number>; after: Record<strin
 BEGIN;
 DELETE FROM service_requests WHERE requester_id IN ${TAG_USERS} OR provider_listing_id IN ${TAG_LISTINGS};
 DELETE FROM saved_items WHERE user_id IN ${TAG_USERS} OR listing_id IN ${TAG_LISTINGS};
-DELETE FROM listings WHERE owner_id IN ${TAG_USERS};
+DELETE FROM listings WHERE id IN ${TAG_LISTINGS};
 DELETE FROM categories WHERE name LIKE 'P12I-%' AND parent_id IS NOT NULL;
 DELETE FROM categories WHERE name LIKE 'P12I-%';
 DELETE FROM professional_profiles WHERE user_id IN ${TAG_USERS};

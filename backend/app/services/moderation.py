@@ -20,19 +20,21 @@ Sequence (``BEGIN`` … ``COMMIT``):
    just moved General -> Food is Food now. A Moderator then ``FOR SHARE``-locks the ONE
    ``staff_scope_assignments`` row that proves they hold that scope; no row → ``404``, the same
    answer as a listing that does not exist (an out-of-scope id is never confirmed).
-5. Self-moderation (``AUTH_RBAC.md §27.8``): a Moderator never decides on their own listing; a Super
-   Admin neither, except to APPROVE their own ``provider`` listing with ``overrideReason``
-   (normalised, >= 10 chars), which writes a ``moderation_self_override`` row in
-   ``staff_audit_events`` in THIS transaction. Reject / takedown never get the override.
+5. Self-moderation (``AUTH_RBAC.md §27.8``): nobody - Moderator or Super Admin - decides on a
+   listing they personally OWN (``owner_id`` equals the actor): ``403 self_moderation_forbidden``.
+   There is no override. (RBAC-D removed the temporary Super Admin exception for an own Service /
+   Professional listing: a Provider is portal-managed and has no owner, so there is nothing to
+   override and nothing to exempt. A Provider's author is recorded in the staff audit and in
+   ``listing_status_history``, not in ``owner_id``.)
 6. Lifecycle as in Phase 12E: ``target_status(action, status)``, stale-revision check, guarded
    ``UPDATE ... WHERE revision = :reviewed AND status = :from``.
-7. History row (``actor_role = admin`` for a Super Admin, ``moderator`` for a Moderator), then the
-   audit row when the override was used. ``COMMIT`` releases every lock.
+7. History row (``actor_role = admin`` for a Super Admin, ``moderator`` for a Moderator).
+   ``COMMIT`` releases every lock.
 
 Order of refusal: CSRF / Origin → ``require_staff`` / ``require_super_admin`` (``401`` / ``403``) →
 no staff role now (``403``) → listing missing or out of scope (``404``) → self-moderation (``403
-self_moderation_forbidden`` / ``override_required``) → wrong status (``409
-invalid_state_transition``) → stale revision (``409 listing_conflict``).
+self_moderation_forbidden``) → wrong status (``409 invalid_state_transition``) → stale revision
+(``409 listing_conflict``).
 
 LOCK ORDER (the only one — a future staff mutation must follow it too)::
 
@@ -59,18 +61,10 @@ atomically with this commit.
 
 from sqlalchemy.orm import Session
 
-from app.core.clock import Clock
 from app.core.errors import AppError, ErrorCode, ErrorDetail
 from app.db.session import transaction
 from app.models import Listing, ListingStatusHistory
-from app.models.enums import (
-    ActorRole,
-    ListingKind,
-    RoleName,
-    StaffAuditAction,
-    StaffAuditResource,
-    StaffAuditSource,
-)
+from app.models.enums import ActorRole, RoleName
 from app.repositories.admin_listings import AdminListingRepository
 from app.repositories.staff import StaffAuthorityRepository
 from app.services.auth_sessions import Principal
@@ -83,16 +77,12 @@ from app.services.listing_writes import (
 )
 from app.services.moderation_rules import (
     HISTORY_ACTION,
-    MAX_REJECTION_REASON_LENGTH,
     ModerationAction,
     normalize_reason,
     reason_problem,
     target_status,
 )
-from app.services.staff_audit import StaffAuditService
 from app.services.staff_scopes import ScopeFilter, listing_scope
-
-MIN_OVERRIDE_REASON_CHARS = 10
 
 
 def self_moderation_forbidden() -> AppError:
@@ -110,60 +100,11 @@ def self_moderation_forbidden() -> AppError:
     )
 
 
-def override_required() -> AppError:
-    """A Super Admin approving their own ``provider`` listing needs an explicit reason."""
-    return AppError(
-        ErrorCode.FORBIDDEN,
-        status_code=403,
-        details=[
-            ErrorDetail(
-                field="overrideReason",
-                code="override_required",
-                message=(
-                    "Approving your own Service / Professional listing needs a normalised "
-                    "override reason of at least 10 characters."
-                ),
-            )
-        ],
-    )
-
-
-def _clean_override(raw: str) -> str:
-    """The normalised override reason, or a ``422`` for one that is too short or too long."""
-    clean = normalize_reason(raw)
-    if len(clean) < MIN_OVERRIDE_REASON_CHARS:
-        raise AppError(
-            ErrorCode.VALIDATION_ERROR,
-            status_code=422,
-            details=[
-                problem(
-                    "overrideReason",
-                    "too_short",
-                    f"The override reason must be at least {MIN_OVERRIDE_REASON_CHARS} characters.",
-                )
-            ],
-        )
-    if len(clean) > MAX_REJECTION_REASON_LENGTH:
-        raise AppError(
-            ErrorCode.VALIDATION_ERROR,
-            status_code=422,
-            details=[
-                problem(
-                    "overrideReason",
-                    "too_long",
-                    f"Keep the override reason under {MAX_REJECTION_REASON_LENGTH} characters.",
-                )
-            ],
-        )
-    return clean
-
-
 class ModerationService:
-    def __init__(self, session: Session, clock: Clock) -> None:
+    def __init__(self, session: Session) -> None:
         self._session = session
         self._listings = AdminListingRepository(session)
         self._authority = StaffAuthorityRepository(session)
-        self._audit = StaffAuditService(session, clock)
 
     def decide(
         self,
@@ -173,7 +114,6 @@ class ModerationService:
         revision: int,
         *,
         reason: str | None = None,
-        override_reason: str | None = None,
     ) -> Listing:
         """Decide on the listing the actor reviewed at ``revision``; returns it reloaded.
 
@@ -193,7 +133,6 @@ class ModerationService:
                     status_code=422,
                     details=[problem("reason", issue[0], issue[1])],
                 )
-        clean_override = _clean_override(override_reason) if override_reason is not None else None
 
         with transaction(self._session):
             # 1. The listing row first: everything below is decided against its CURRENT state.
@@ -223,21 +162,10 @@ class ModerationService:
                     raise not_found()  # same answer as a listing that does not exist
                 reload_scope = ScopeFilter.of({derived_scope})
 
-            # 5. Self-moderation.
-            override_used = False
+            # 5. Self-moderation: nobody decides on a listing they personally own. A Provider has
+            # no owner (RBAC-D), so this can never apply to one — and there is no override.
             if listing.owner_id is not None and listing.owner_id == actor_id:
-                if not is_super_admin:
-                    raise self_moderation_forbidden()
-                # Super Admin: only a provider APPROVE may use the temporary override. Reject /
-                # takedown, and approval of a non-provider own listing, are refused.
-                if (
-                    action is not ModerationAction.APPROVE
-                    or listing.kind is not ListingKind.PROVIDER
-                ):
-                    raise self_moderation_forbidden()
-                if clean_override is None:
-                    raise override_required()
-                override_used = True
+                raise self_moderation_forbidden()
 
             # 6. Lifecycle.
             new_status = target_status(action, listing.status)
@@ -251,7 +179,7 @@ class ModerationService:
             ):
                 raise stale_revision(listing.revision)  # defensive: the row lock prevents this
 
-            # 7. History (and the audit row for an override), same transaction.
+            # 7. History, same transaction.
             self._listings.record_history(
                 ListingStatusHistory(
                     listing_id=listing_id,
@@ -264,20 +192,6 @@ class ModerationService:
                     reason=clean_reason,
                 )
             )
-            if override_used:
-                assert clean_override is not None  # guaranteed by the `override_required` check
-                self._audit.record(
-                    StaffAuditAction.MODERATION_SELF_OVERRIDE,
-                    source=StaffAuditSource.WEB,
-                    actor_user_id=actor_id,
-                    target_user_id=listing.owner_id,
-                    resource_type=StaffAuditResource.LISTING,
-                    resource_id=listing_id,
-                    before={"status": previous.value, "revision": revision},
-                    after={"status": new_status.value, "revision": revision, "override": True},
-                    reason=clean_override,
-                    session_id=principal.session_id,
-                )
             self._listings.expire_all()
         reloaded = self._listings.get(listing_id, reload_scope)
         if reloaded is None:  # pragma: no cover - the row was just written by this transaction

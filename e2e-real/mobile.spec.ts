@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { ApiClient, createUser, expectH1, loginOn, ownerCard, scalar, type TestUser, newContext } from './helpers/stack'
-import { approvedProvider, createProperty, createProvider, unique } from './helpers/ui'
+import { approvedPortalProvider, createProperty, createTutor, staffAct, unique } from './helpers/ui'
 
 /**
  * Mobile closeout (Phase 12I): the critical REAL flows at 375px (touch targets: primary page CTAs >= 36px, dialog / secondary actions >= 32px - the design-system default, above WCAG 2.2 AA's 24px minimum) - login, Professional profile, listing
@@ -33,7 +33,7 @@ test('375px: login -> Professional profile -> create a Property with a map locat
   const owner = await createUser('mob-owner', { professional: 'premium' })
   const admin = await createUser('mob-admin', { admin: true })
   const requester = await createUser('mob-requester')
-  const approved = await approvedProvider(owner, admin, 'Mobile Provider')
+  const approved = await approvedPortalProvider(admin, 'Mobile Provider') // portal-managed (RBAC-D): staff-authored, no owner
   const openAs = async (user: TestUser) => {
     const context = await newContext(browser, { viewport: { width: 375, height: 812 } })
     const page = await context.newPage()
@@ -57,7 +57,7 @@ test('375px: login -> Professional profile -> create a Property with a map locat
   await fits(page, 'professional gate')
   await tappable(page.getByRole('button', { name: 'Create a professional profile' }), 'create profile button', 36)
   await page.getByRole('button', { name: 'Create a professional profile' }).click()
-  await expectH1(page, 'List a Service, Business, Tutor or Property')
+  await expectH1(page, 'List a Business, Tutor or Property')
   await fits(page, 'create form (kind picker)')
   await context.close()
 
@@ -78,8 +78,8 @@ test('375px: login -> Professional profile -> create a Property with a map locat
   await ownerPage.goto(`/provider/listings/${pid}/edit`)
   await expectH1(ownerPage, 'Edit Listing')
   await fits(ownerPage, 'edit form')
-  const providerListing = await createProvider(ownerPage, { name: unique('Mobile Provider Create'), category: 'Plumbing' })
-  expect(providerListing).toBeTruthy()
+  const tutorListing = await createTutor(ownerPage, { name: unique('Mobile Tutor Create'), subject: 'Physics' })
+  expect(tutorListing).toBeTruthy()
 
   // ---- Saved + request creation as the requester ----
   const requesterPage = await openAs(requester)
@@ -115,18 +115,19 @@ test('375px: login -> Professional profile -> create a Property with a map locat
   await expectH1(requesterPage, 'My Requests')
   await fits(requesterPage, 'My Requests')
 
-  // ---- provider leads + actions ----
+  // ---- the legacy owner Leads page still fits a phone (it is empty: nobody owns a Provider, RBAC-D) ----
   await ownerPage.goto('/provider/leads')
   await expectH1(ownerPage, 'Leads')
   await fits(ownerPage, 'Leads')
-  await ownerPage.getByRole('button').filter({ hasText: requester.name }).first().click()
-  const lead = ownerPage.getByRole('dialog')
-  await fits(ownerPage, 'lead dialog')
-  const accept = lead.getByRole('button', { name: 'Accept' })
-  await tappable(accept, 'Accept')
-  await accept.click()
-  await expect(lead).toBeHidden({ timeout: 15_000 })
   await ownerPage.close()
+
+  // ---- the PORTAL handles the request (staff API; no staff screen yet) and the requester sees the new state ----
+  const requestId = scalar(`SELECT id FROM service_requests WHERE requester_id = (SELECT id FROM users WHERE email = '${requester.email}') ORDER BY created_at DESC LIMIT 1`)
+  expect(await staffAct(admin, requestId, 'accept')).toBe(200)
+  await requesterPage.reload()
+  await expectH1(requesterPage, 'My Requests')
+  await fits(requesterPage, 'My Requests after staff accept')
+  await expect(requesterPage.getByRole('button').filter({ hasText: approved.name }).first()).toContainText('Accepted')
 
   // ---- Admin moderation ----
   const adminPage = await openAs(admin)
@@ -174,9 +175,9 @@ test('375px (Phase 12S S3): a footer link opens at the top; a resident is asked 
   const proPage = await proContext.newPage()
   await loginOn(proPage, professional)
   await proPage.goto('/provider/listings/new')
-  await expectH1(proPage, 'List a Service, Business, Tutor or Property')
+  await expectH1(proPage, 'List a Business, Tutor or Property')
   await proPage.reload()
-  await expectH1(proPage, 'List a Service, Business, Tutor or Property')
+  await expectH1(proPage, 'List a Business, Tutor or Property')
   await fits(proPage, 'create listing entry')
   await proContext.close()
 })
@@ -186,9 +187,10 @@ test('375px (Phase 12S Step A): a Free owner at 3 of 3 sees the limit notice on 
   const api = await ApiClient.shared(owner.email)
   for (const n of ['One', 'Two', 'Three']) {
     const r = await api.call('POST', '/listings', {
-      kind: 'provider',
+      kind: 'tutor',
       name: unique(`Mobile Limit ${n}`),
-      category: 'plumbing',
+      category: 'physics',
+      grade: 'Grade 9',
       description: 'An active listing that fills the Free plan quota on a phone.',
       area: 'B-17',
       location: { visibility: 'area_only' },
@@ -222,7 +224,7 @@ test('375px (Phase 12S Step A): a Free owner at 3 of 3 sees the limit notice on 
   await expect(dialog).toHaveCount(0)
 
   await newListing.click()
-  await expectH1(page, 'List a Service, Business, Tutor or Property')
+  await expectH1(page, 'List a Business, Tutor or Property')
   await expect(notice).toBeVisible()
   await fits(page, 'create page at the limit')
   const manage = notice.getByRole('link', { name: 'Manage my listings' })
@@ -230,6 +232,6 @@ test('375px (Phase 12S Step A): a Free owner at 3 of 3 sees the limit notice on 
   await manage.focus()
   await expect(manage).toBeFocused()
   // The kind choices below the notice are still reachable.
-  await tappable(page.getByRole('button', { name: /Service \/ Professional/ }), 'kind choice', 36)
+  await tappable(page.getByRole('button', { name: /^Tutor/ }), 'kind choice', 36)
   await context.close()
 })

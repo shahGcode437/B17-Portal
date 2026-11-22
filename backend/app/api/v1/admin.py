@@ -13,6 +13,12 @@ TWO routers share the ``/admin`` prefix, and the choice of router IS the authori
   (``app/services/moderation.py``). A Moderator sees and acts on only their assigned scopes; a
   listing outside their scope is indistinguishable from a missing one (``404``, never ``403``).
 
+A third surface lives in other modules and is classified in the same registry: ``admin_staff.py``
+(RBAC-C: Super Admin-only staff management, ``super_admin_only`` / ``super_admin_sensitive``) and
+``admin_providers.py`` and ``admin_requests.py`` (RBAC-D: staff Provider authoring and portal
+Service request handling, ``services_staff`` — ``require_staff``, with the live ``services`` scope
+proven by the service under lock).
+
 :data:`ADMIN_AUTHORITY` classifies every route in one place and ``test_staff_authority_api.py``
 fails when a route has no entry, sits on the wrong router, or its real dependency differs.
 
@@ -29,7 +35,6 @@ from fastapi import APIRouter, Depends, Query, Response
 from app.api.routing import ContractRoute
 from app.core.errors import ErrorResponse
 from app.dependencies.auth import (
-    ClockDep,
     StaffUser,
     require_staff,
     require_super_admin,
@@ -99,6 +104,14 @@ _MODERATION_ERRORS: dict[int | str, dict[str, Any]] = {
 #: ``scoped_staff`` — reachable by a Super Admin and by a Moderator whose live scope matches the
 #: resource (the service re-checks under the row lock). Router: ``admin.staff_router``.
 #:
+#: ``services_staff`` — RBAC-D, the staff Services surface: Provider authoring
+#: (``admin_providers.router``) and portal Service request handling (``admin_requests.router``). A
+#: Super Admin, or a Moderator whose LIVE ``services`` scope the service proves under lock (any
+#: other Moderator: ``403`` on a create or a collection, ``404`` for an existing id). The front door
+#: is ``require_services_staff`` (= ``require_staff``); Provider writes add the provider-write rate
+#: limit (``require_provider_authoring``) — never the Super Admin-only default, and never a
+#: Moderator without the ``services`` scope.
+#:
 #: ``super_admin_only`` — reachable by a Super Admin only (``require_super_admin``); a Moderator is
 #: refused with ``403 forbidden``. Router: ``admin.router`` / ``admin_staff.router`` (the
 #: fail-closed defaults).
@@ -114,6 +127,15 @@ ADMIN_AUTHORITY: dict[str, str] = {
     "GET /admin/listings/{listing_id}": "scoped_staff",
     "POST /admin/listings/{listing_id}/approve": "scoped_staff",
     "POST /admin/listings/{listing_id}/reject": "scoped_staff",
+    "POST /admin/providers": "services_staff",
+    "PATCH /admin/providers/{provider_id}": "services_staff",
+    "POST /admin/providers/{provider_id}/archive": "services_staff",
+    "GET /admin/requests": "services_staff",
+    "GET /admin/requests/{request_id}": "services_staff",
+    "POST /admin/requests/{request_id}/accept": "services_staff",
+    "POST /admin/requests/{request_id}/start": "services_staff",
+    "POST /admin/requests/{request_id}/complete": "services_staff",
+    "POST /admin/requests/{request_id}/cancel": "services_staff",
     "GET /admin/categories": "super_admin_only",
     "POST /admin/categories": "super_admin_only",
     "POST /admin/categories/reorder": "super_admin_only",
@@ -169,27 +191,18 @@ def moderation_detail(
 @staff_router.post(
     "/listings/{listing_id}/approve",
     response_model=AdminListingEnvelope,
-    summary="Approve a pending listing (own provider needs an override reason)",
+    summary="Approve a pending listing",
     responses=_MODERATION_ERRORS,
 )
 def approve_listing(
-    listing_id: str,
-    payload: ApproveRequest,
-    staff: StaffUser,
-    session: DbSession,
-    clock: ClockDep,
+    listing_id: str, payload: ApproveRequest, staff: StaffUser, session: DbSession
 ) -> AdminListingEnvelope:
     """``pending -> approved`` at the ``revision`` the actor reviewed. The revision is unchanged;
     a stale one is ``409 listing_conflict``, any other status ``409 invalid_state_transition``.
-    A Super Admin approving their OWN ``provider`` listing needs ``overrideReason`` (>= 10 chars,
-    normalised); the backend writes a ``staff_audit_events`` ``moderation_self_override`` row.
-    Any other own-listing approval is ``403 self_moderation_forbidden``."""
-    listing = ModerationService(session, clock).decide(
-        staff,
-        listing_id,
-        ModerationAction.APPROVE,
-        payload.revision,
-        override_reason=payload.override_reason,
+    Approving a listing the actor personally OWNS is ``403 self_moderation_forbidden`` — there is
+    no override. A Provider has no owner, so it is never refused for that reason."""
+    listing = ModerationService(session).decide(
+        staff, listing_id, ModerationAction.APPROVE, payload.revision
     )
     return AdminListingEnvelope(data=AdminListingReadService(session, staff).present(listing))
 
@@ -201,21 +214,13 @@ def approve_listing(
     responses=_MODERATION_ERRORS,
 )
 def reject_listing(
-    listing_id: str,
-    payload: RejectRequest,
-    staff: StaffUser,
-    session: DbSession,
-    clock: ClockDep,
+    listing_id: str, payload: RejectRequest, staff: StaffUser, session: DbSession
 ) -> AdminListingEnvelope:
     """``pending -> rejected`` and the takedown ``approved -> rejected``, with a ``reason`` of at
     least 10 characters shown to the owner. Reject or takedown of one's own listing is
-    ``403 self_moderation_forbidden`` — no override exists for these actions."""
-    listing = ModerationService(session, clock).decide(
-        staff,
-        listing_id,
-        ModerationAction.REJECT,
-        payload.revision,
-        reason=payload.reason,
+    ``403 self_moderation_forbidden`` — there is no override."""
+    listing = ModerationService(session).decide(
+        staff, listing_id, ModerationAction.REJECT, payload.revision, reason=payload.reason
     )
     return AdminListingEnvelope(data=AdminListingReadService(session, staff).present(listing))
 

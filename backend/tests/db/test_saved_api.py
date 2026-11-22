@@ -26,7 +26,14 @@ from tests.db.request_helpers import (
     saved_ids,
     saved_rows,
 )
-from tests.db.write_helpers import archive, created_id, patch, set_status, signed_in, stored_columns
+from tests.db.write_helpers import (
+    archive_provider,
+    created_id,
+    patch_provider,
+    set_status,
+    signed_in,
+    stored_columns,
+)
 from tests.write_payloads import business_body, exact, property_body, provider_body
 
 PRIVATE_FRAGMENTS = (
@@ -333,15 +340,18 @@ def test_a_saved_listing_that_is_taken_down_disappears_and_returns_when_re_appro
     assert saved_ids(resident) == [listing_id]
 
 
-def test_an_owner_edit_hides_the_saved_listing_until_it_is_approved_again(
+def test_a_staff_edit_hides_the_saved_provider_until_it_is_approved_again(
     auth_env: AuthEnv,
 ) -> None:
-    owner = provider_signed_in(auth_env)
-    listing_id = approved_provider(auth_env, owner)
+    # A Provider is portal-managed (RBAC-D): staff edit it through ``/admin/providers``.
+    author = provider_signed_in(auth_env)
+    listing_id = approved_provider(auth_env, author)
     resident = requester_signed_in(auth_env)
     put(resident, listing_id)
 
-    assert patch(owner, listing_id, 1, name="Renamed By Owner").status_code == 200  # -> pending
+    assert (
+        patch_provider(author, listing_id, 1, name="Renamed By Staff").status_code == 200
+    )  # -> pending
 
     assert saved_ids(resident) == []
     set_status(auth_env.session, listing_id, ListingStatus.APPROVED)
@@ -349,11 +359,11 @@ def test_an_owner_edit_hides_the_saved_listing_until_it_is_approved_again(
 
 
 def test_an_archived_saved_listing_is_hidden_but_can_still_be_unsaved(auth_env: AuthEnv) -> None:
-    owner = provider_signed_in(auth_env)
-    listing_id = approved_provider(auth_env, owner)
+    author = provider_signed_in(auth_env)
+    listing_id = approved_provider(auth_env, author)
     resident = requester_signed_in(auth_env)
     put(resident, listing_id)
-    assert archive(owner, listing_id, 1).status_code == 200
+    assert archive_provider(author, listing_id, 1).status_code == 200  # staff archive it (no owner)
 
     assert saved_ids(resident) == []
     assert delete(resident, listing_id).status_code == 204

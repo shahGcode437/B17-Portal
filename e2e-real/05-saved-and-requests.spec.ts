@@ -1,27 +1,31 @@
 import { expect, test, type Page } from '@playwright/test'
 import { ApiClient, createUser, expectH1, rows, scalar, signInAs, type TestUser } from './helpers/stack'
-import { approvedProvider, takedownInUi, unique } from './helpers/ui'
+import { approvedPortalProvider, createPortalProvider, staffAct, takedownInUi, unique } from './helpers/ui'
 
 /**
  * Journeys 16-21: Saved (server-backed, survives reload, hides unavailable listings), service requests
  * (create guards, the full lifecycle, the cancel matrix, stale actions, survival across takedown).
+ *
+ * A Service / Professional is PORTAL-MANAGED (RBAC-D): it has no owner, so a request for one is a PORTAL request. The
+ * requester creates, views and cancels it; STAFF (a Super Admin here, or a Moderator with the live `services` scope)
+ * accept, start, complete or cancel it through the staff request API (`/admin/requests`). There is no provider inbox
+ * and no staff screen yet, so the lane drives that real endpoint (`staffAct`); the Providers themselves are created
+ * through the real staff API (`createPortalProvider`) — never through the owner path, which refuses them.
  */
 test.describe.configure({ mode: 'serial' })
 
-let owner: TestUser
 let admin: TestUser
 let requester: TestUser
 let saver: TestUser
 let adminPage: Page
-let ownerPage: Page
 
 const tomorrow = () => new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
 const requestRow = (id: string) => rows(`SELECT status, preferred_contact_channel, provider_listing_id, requester_id FROM service_requests WHERE id = '${id}'`)[0]!
 const history = (id: string) => rows(`SELECT COALESCE(from_status,'-'), to_status, actor_role FROM service_request_status_history WHERE request_id = '${id}' ORDER BY created_at, id`).map((r) => r.join('>'))
 
-/** Owner and Admin share one session each (the per-user session cap would otherwise end the owner's browser session). */
+/** The Admin shares one session (the per-user session cap would otherwise end the admin's browser session). */
 async function login(user: TestUser): Promise<ApiClient> {
-  if (user.email === owner?.email || user.email === admin?.email) return ApiClient.shared(user.email)
+  if (user.email === admin?.email) return ApiClient.shared(user.email)
   const api = await ApiClient.create()
   await api.login(user.email)
   return api
@@ -39,23 +43,20 @@ async function apiCreate(who: ApiClient, listingId: string): Promise<string> {
 }
 
 test.beforeAll(async ({ browser }) => {
-  owner = await createUser('req-owner', { professional: 'premium' })
   admin = await createUser('req-admin', { admin: true })
   requester = await createUser('requester')
   saver = await createUser('saver')
   adminPage = await signInAs(browser, admin)
-  ownerPage = await signInAs(browser, owner)
 })
 
 test.afterAll(async () => {
   await adminPage?.context().close()
-  await ownerPage?.context().close()
 })
 
 // ---------------------------------------------------------------------------------------- Saved
 
 test('Saved: heart -> stored on the server -> Saved page -> reload -> duplicate save is idempotent -> unsave -> gone', async ({ browser }) => {
-  const listing = await approvedProvider(owner, admin, 'Saved Provider')
+  const listing = await approvedPortalProvider(admin, 'Saved Provider')
   const page = await signInAs(browser, saver)
   await page.goto(`/providers/${listing.id}`)
   await expectH1(page, listing.name)
@@ -89,7 +90,7 @@ test('Saved: heart -> stored on the server -> Saved page -> reload -> duplicate 
 })
 
 test('Saved + takedown: the Saved page omits the unavailable listing and leaks nothing; the relation survives; re-approval brings it back', async ({ browser }) => {
-  const listing = await approvedProvider(owner, admin, 'Saved Then Taken Down')
+  const listing = await approvedPortalProvider(admin, 'Saved Then Taken Down')
   const s = await login(saver)
   expect((await s.call('PUT', `/saved/${listing.id}`)).status).toBeLessThan(300)
 
@@ -103,21 +104,20 @@ test('Saved + takedown: the Saved page omits the unavailable listing and leaks n
   await expectH1(page, 'Saved')
   await expect(page.getByText(listing.name)).toHaveCount(0)
 
-  // The owner fixes and resubmits, the admin approves again: it reappears for the saver.
-  const o = await login(owner)
-  const fixed = await o.call('PATCH', `/listings/${listing.id}`, { revision: Number(scalar(`SELECT revision FROM listings WHERE id = '${listing.id}'`)), description: 'Licence verified - plumbing repairs and fittings across B-17.' })
-  expect(fixed.status).toBe(200)
+  // Staff fix and resubmit the Provider (it has no owner) and a Super Admin approves again: it reappears for the saver.
   const a = await login(admin)
+  const fixed = await a.call('PATCH', `/admin/providers/${listing.id}`, { revision: Number(scalar(`SELECT revision FROM listings WHERE id = '${listing.id}'`)), description: 'Licence verified - plumbing repairs and fittings across B-17.' })
+  expect(fixed.status, JSON.stringify(fixed.body)).toBe(200)
   expect((await a.call('POST', `/admin/listings/${listing.id}/approve`, { revision: fixed.body!.data.revision })).status).toBe(200)
   await page.reload()
   await expect(page.getByText(listing.name).first()).toBeVisible()
-  await Promise.all([s.dispose(), o.dispose(), a.dispose(), page.context().close()])
+  await Promise.all([s.dispose(), a.dispose(), page.context().close()])
 })
 
 // ----------------------------------------------------------------------------------- Requests
 
-test('a request is created through the real dialog: no client-controlled provider, stored as submitted with its contact preference; requester and provider both see it after reload', async ({ browser }) => {
-  const listing = await approvedProvider(owner, admin, 'Lifecycle Plumbing')
+test('a request for a portal Provider is created through the real dialog (no client-controlled recipient); staff accept, start and complete it; the requester sees every step', async ({ browser }) => {
+  const listing = await approvedPortalProvider(admin, 'Lifecycle Plumbing')
   const page = await signInAs(browser, requester)
   await page.goto(`/providers/${listing.id}`)
   await expectH1(page, listing.name)
@@ -147,24 +147,28 @@ test('a request is created through the real dialog: no client-controlled provide
   await page.reload()
   await expectH1(page, 'My Requests')
   await expect(page.getByRole('button').filter({ hasText: listing.name }).filter({ hasText: 'Submitted' }).first()).toBeVisible()
-
-  await ownerPage.goto('/provider/leads')
-  await expectH1(ownerPage, 'Leads')
-  await expect(ownerPage.getByRole('button').filter({ hasText: requester.name }).first()).toBeVisible()
   await page.context().close()
 
-  // ---- the full lifecycle in the provider's UI: accept -> start -> complete ----
-  for (const [action, badge] of [['Accept', /Accepted/], ['Start work', /In Progress/], ['Mark complete', /Completed/]] as const) {
-    await ownerPage.getByRole('button').filter({ hasText: requester.name }).first().click()
-    const lead = ownerPage.getByRole('dialog')
-    // Only the valid controls for this state are offered.
-    await expect(lead.getByRole('button', { name: action })).toBeVisible()
-    await lead.getByRole('button', { name: action }).click()
-    await expect(lead).toBeHidden({ timeout: 15_000 })
-    await expect(ownerPage.getByText(badge).first()).toBeVisible()
+  // ---- the PORTAL handles it: it is in the staff queue, nobody personal received it, and the legacy owner inbox is empty ----
+  const a = await login(admin)
+  const queue = await a.call('GET', '/admin/requests?limit=50')
+  expect(queue.status, JSON.stringify(queue.body)).toBe(200)
+  expect(JSON.stringify(queue.body)).toContain(id)
+  const bystander = await createUser('req-bystander', { professional: 'free' })
+  const b = await login(bystander)
+  expect((await b.call('GET', '/users/me/leads?limit=50')).body!.data).toEqual([])
+  expect((await b.call('POST', `/admin/requests/${id}/accept`, {})).status).toBe(403) // staff only
+  await b.dispose()
+
+  // ---- the full lifecycle by staff: accept -> start -> complete ----
+  for (const [action, expected] of [['accept', 'accepted'], ['start', 'in-progress'], ['complete', 'completed']] as const) {
+    expect(await staffAct(admin, id, action), action).toBe(200)
+    expect(requestRow(id)[0]).toBe(expected)
   }
-  expect(requestRow(id)[0]).toBe('completed')
   expect(history(id)).toEqual(['->submitted>requester', 'submitted>accepted>provider', 'accepted>in-progress>provider', 'in-progress>completed>provider'])
+  // The history records the ACTUAL staff actor (not a fabricated provider account, not the Provider's author by default).
+  const staffActors = rows(`SELECT DISTINCT actor_user_id FROM service_request_status_history WHERE request_id = '${id}' AND actor_role = 'provider'`)
+  expect(staffActors).toEqual([[scalar(`SELECT id FROM users WHERE email = '${admin.email}'`)]])
 
   // The requester logs in afresh: Completed, the story in order, and no actions left.
   const again = await signInAs(browser, requester, '/profile/requests')
@@ -184,36 +188,18 @@ test('a request is created through the real dialog: no client-controlled provide
   await again.context().close()
 })
 
-test('creation guards: own listing, an unavailable (pending) listing and a non-requestable kind are refused with the real error and create nothing', async ({ browser }) => {
-  const own = await approvedProvider(owner, admin, 'Own Listing')
+test('creation guards: an unavailable (pending) Provider and a non-requestable kind are refused with the real error and create nothing; nobody owns a Provider, so there is no own-listing refusal', async () => {
   const before = scalar(`SELECT count(*) FROM service_requests`)
 
-  // Own listing - through the UI dialog as the owner.
-  await ownerPage.goto(`/providers/${own.id}`)
-  await expectH1(ownerPage, own.name)
-  await ownerPage.getByRole('button', { name: 'Request Service' }).click()
-  const dialog = ownerPage.getByRole('dialog', { name: /Request / })
-  await dialog.getByLabel('What do you need?').fill('Trying to request my own listing, which must be refused.')
-  await dialog.getByLabel('Area / Location').fill('B-17')
-  await dialog.getByLabel('Preferred Date').fill(tomorrow())
-  const [own422] = await Promise.all([
-    ownerPage.waitForResponse((r) => r.request().method() === 'POST' && r.url().endsWith('/api/v1/requests')),
-    dialog.getByRole('button', { name: /Submit Request/ }).click(),
-  ])
-  expect(own422.status()).toBeGreaterThanOrEqual(400)
-  expect(JSON.stringify(await own422.json())).toContain('own_listing')
-  await expect(dialog.getByRole('alert').first()).toContainText('You cannot send a request to your own listing') // the real 422 shape, mapped to clear copy
-  await expect(dialog.getByText('Request sent')).toHaveCount(0)
-  await dialog.getByRole('button', { name: /Close|Cancel/ }).first().click().catch(() => ownerPage.keyboard.press('Escape'))
-
-  // Unavailable (pending) listing, and a non-requestable kind (a Business) - the API's real answers.
+  // Unavailable (pending) Provider, and a non-requestable kind (a Business) - the API's real answers.
   const r = await login(requester)
-  const o = await login(owner)
-  const pending = await o.call('POST', '/listings', { kind: 'provider', name: unique('Still Pending'), category: 'plumbing', description: 'A pending listing cannot receive requests yet.', area: 'B-17', tags: ['x'], location: { visibility: 'area_only' } })
-  expect(pending.status).toBe(201)
-  const notYet = await r.call('POST', '/requests', requestBody(pending.body!.data.id))
+  const pending = await createPortalProvider(admin, 'Still Pending') // authored by staff, NOT approved
+  const notYet = await r.call('POST', '/requests', requestBody(pending.id))
   expect(notYet.status).toBeGreaterThanOrEqual(400)
+  const shopOwner = await createUser('req-shop-owner', { professional: 'free' })
+  const o = await login(shopOwner)
   const business = await o.call('POST', '/listings', { kind: 'business', vertical: 'general', name: unique('A Shop'), category: 'pharmacy', description: 'A shop is not a requestable service provider.', area: 'B-17', tags: ['x'], location: { visibility: 'area_only' } })
+  expect(business.status).toBe(201)
   const a = await login(admin)
   expect((await a.call('POST', `/admin/listings/${business.body!.data.id}/approve`, { revision: business.body!.data.revision })).status).toBe(200)
   const wrongKind = await r.call('POST', '/requests', requestBody(business.body!.data.id))
@@ -221,18 +207,17 @@ test('creation guards: own listing, an unavailable (pending) listing and a non-r
   expect(wrongKind.status).toBe(422)
   expect(wrongKind.body!.error!.code).toBe('validation_error')
   expect(wrongKind.body!.error!.details!.map((d) => d.code)).toContain('not_requestable')
-  expect(scalar(`SELECT count(*) FROM service_requests`)).toBe(before) // nothing was created by any of the three
+  expect(scalar(`SELECT count(*) FROM service_requests`)).toBe(before) // nothing was created by either
   await Promise.all([r.dispose(), o.dispose(), a.dispose()])
-  void browser
 })
 
-test('cancel matrix: requester may cancel submitted / accepted but NOT in-progress; provider may cancel all three; terminal states are final', async ({ browser }) => {
+test('cancel matrix: requester may cancel submitted / accepted but NOT in-progress; staff may cancel all three; terminal states are final', async ({ browser }) => {
   // One shared listing, one requester per scenario (the real limits are per requester and per requester+listing).
-  const matrix = await approvedProvider(owner, admin, 'Cancel Matrix')
+  const matrix = await approvedPortalProvider(admin, 'Cancel Matrix')
   const users = await Promise.all(['a', 'b', 'c', 'd', 'e', 'f'].map((k) => createUser(`mx-${k}`)))
   const apis = await Promise.all(users.map((u) => login(u)))
-  const o = await login(owner)
   const act = async (who: ApiClient, id: string, action: string) => (await who.call('POST', `/requests/${id}/${action}`, {})).status
+  const staff = (id: string, action: 'accept' | 'start' | 'complete' | 'cancel') => staffAct(admin, id, action)
   const [a, b, c, d, e, f] = await Promise.all(apis.map((api) => apiCreate(api, matrix.id)))
 
   // A: the requester cancels a SUBMITTED request through the UI (confirm dialog).
@@ -246,46 +231,46 @@ test('cancel matrix: requester may cancel submitted / accepted but NOT in-progre
   await page.context().close()
 
   // B: accepted -> the requester may still cancel.
-  expect(await act(o, b!, 'accept')).toBe(200)
+  expect(await staff(b!, 'accept')).toBe(200)
   expect(await act(apis[1]!, b!, 'cancel')).toBe(200)
-  // C: in-progress -> the requester may NOT cancel (409), the provider may.
-  expect(await act(o, c!, 'accept')).toBe(200)
-  expect(await act(o, c!, 'start')).toBe(200)
+  // C: in-progress -> the requester may NOT cancel (409), staff may.
+  expect(await staff(c!, 'accept')).toBe(200)
+  expect(await staff(c!, 'start')).toBe(200)
   expect(await act(apis[2]!, c!, 'cancel')).toBe(409)
   expect(requestRow(c!)[0]).toBe('in-progress')
-  expect(await act(o, c!, 'cancel')).toBe(200)
-  // D / E: the provider cancels a submitted and an accepted request.
-  expect(await act(o, d!, 'cancel')).toBe(200)
-  expect(await act(o, e!, 'accept')).toBe(200)
-  expect(await act(o, e!, 'cancel')).toBe(200)
+  expect(await staff(c!, 'cancel')).toBe(200)
+  // D / E: staff cancel a submitted and an accepted request.
+  expect(await staff(d!, 'cancel')).toBe(200)
+  expect(await staff(e!, 'accept')).toBe(200)
+  expect(await staff(e!, 'cancel')).toBe(200)
   // F: a requester may not accept / start / complete at all.
   for (const action of ['accept', 'start', 'complete']) expect(await act(apis[5]!, f!, action), action).toBe(403) // role has no authority: forbidden
-  // ...and the provider cannot skip a step (submitted -> in-progress / completed): invalid_state_transition.
-  for (const action of ['start', 'complete']) expect(await act(o, f!, action), action).toBe(409)
+  // ...and staff cannot skip a step (submitted -> in-progress / completed): invalid_state_transition.
+  for (const action of ['start', 'complete'] as const) expect(await staff(f!, action), action).toBe(409)
   expect(requestRow(f!)[0]).toBe('submitted')
   // Terminal states cannot transition.
   const byRequester = [apis[0]!, apis[1]!, apis[2]!, apis[3]!, apis[4]!]
   for (const [index, id] of [a!, b!, c!, d!, e!].entries()) {
-    for (const [who, action] of [[o, 'accept'], [o, 'start'], [o, 'complete'], [o, 'cancel'], [byRequester[index]!, 'cancel']] as const) expect(await act(who, id, action), `${id} ${action}`).toBe(409)
+    for (const action of ['accept', 'start', 'complete', 'cancel'] as const) expect(await staff(id, action), `${id} staff ${action}`).toBe(409)
+    expect(await act(byRequester[index]!, id, 'cancel'), `${id} requester cancel`).toBe(409)
     expect(requestRow(id)[0]).toBe('cancelled')
   }
-  await Promise.all([o.dispose(), ...apis.map((api) => api.dispose())])
+  await Promise.all(apis.map((api) => api.dispose()))
 })
 
-test('stale UI actions: a stale Cancel / Accept is refused 409, the UI refreshes to the latest state and shows no false success; a concurrent complete-vs-cancel has one winner', async ({ browser }) => {
-  const shared = await approvedProvider(owner, admin, 'Stale Shared')
+test('stale actions: a stale requester Cancel and a stale staff Accept are refused 409, the UI refreshes to the latest state and shows no false success; a concurrent complete-vs-cancel has one winner', async ({ browser }) => {
+  const shared = await approvedPortalProvider(admin, 'Stale Shared')
   const [s1, s2, s3] = await Promise.all(['stale-1', 'stale-2', 'stale-3'].map((k) => createUser(k)))
   const [r1, r2, r3] = await Promise.all([s1!, s2!, s3!].map((u) => login(u)))
-  const o = await login(owner)
 
-  // The requester's page shows "submitted"; the provider cancels meanwhile; the requester clicks Cancel.
+  // The requester's page shows "submitted"; staff cancel meanwhile; the requester clicks Cancel.
   const id1 = await apiCreate(r1!, shared.id)
   const page = await signInAs(browser, s1!, '/profile/requests')
   page.on('dialog', (dlg) => void dlg.accept())
   await expectH1(page, 'My Requests')
   await page.getByRole('button').filter({ hasText: shared.name }).filter({ hasText: 'Submitted' }).first().click()
   const dialog = page.getByRole('dialog')
-  expect(await o.call('POST', `/requests/${id1}/cancel`, {}).then((x) => x.status)).toBe(200) // the provider got there first
+  expect(await staffAct(admin, id1, 'cancel')).toBe(200) // staff got there first
   const [stale] = await Promise.all([
     page.waitForResponse((x) => x.url().endsWith(`/requests/${id1}/cancel`)),
     dialog.getByRole('button', { name: 'Cancel request' }).click(),
@@ -298,38 +283,27 @@ test('stale UI actions: a stale Cancel / Accept is refused 409, the UI refreshes
   expect(requestRow(id1)[0]).toBe('cancelled')
   await page.context().close()
 
-  // The provider's page shows "submitted"; the requester cancels meanwhile; the provider clicks Accept.
+  // Staff hold a stale view of a request the requester then cancelled: their Accept is refused 409 and changes nothing.
   const id2 = await apiCreate(r2!, shared.id)
-  await ownerPage.goto('/provider/leads')
-  await expectH1(ownerPage, 'Leads')
-  await ownerPage.getByRole('button').filter({ hasText: s2!.name }).filter({ hasText: 'Submitted' }).first().click()
-  const lead = ownerPage.getByRole('dialog')
   expect(await r2!.call('POST', `/requests/${id2}/cancel`, {}).then((x) => x.status)).toBe(200)
-  const [staleAccept] = await Promise.all([
-    ownerPage.waitForResponse((x) => x.url().endsWith(`/requests/${id2}/accept`)),
-    lead.getByRole('button', { name: 'Accept' }).click(),
-  ])
-  expect(staleAccept.status()).toBe(409)
+  expect(await staffAct(admin, id2, 'accept')).toBe(409)
   expect(requestRow(id2)[0]).toBe('cancelled')
-  await ownerPage.keyboard.press('Escape')
-  await ownerPage.reload()
-  await expect(ownerPage.getByRole('button').filter({ hasText: s2!.name }).first()).toContainText('Cancelled')
 
   // Two incompatible actions at the same instant: exactly one wins and the result is consistent.
   const id3 = await apiCreate(r3!, shared.id)
-  expect(await o.call('POST', `/requests/${id3}/accept`, {}).then((x) => x.status)).toBe(200)
-  expect(await o.call('POST', `/requests/${id3}/start`, {}).then((x) => x.status)).toBe(200)
-  const [complete, cancel] = await Promise.all([o.call('POST', `/requests/${id3}/complete`, {}), o.call('POST', `/requests/${id3}/cancel`, {})])
-  expect([complete.status, cancel.status].sort()).toEqual([200, 409])
-  expect(requestRow(id3)[0]).toBe(complete.status === 200 ? 'completed' : 'cancelled')
+  expect(await staffAct(admin, id3, 'accept')).toBe(200)
+  expect(await staffAct(admin, id3, 'start')).toBe(200)
+  const [complete, cancel] = await Promise.all([staffAct(admin, id3, 'complete'), staffAct(admin, id3, 'cancel')])
+  expect([complete, cancel].sort()).toEqual([200, 409])
+  expect(requestRow(id3)[0]).toBe(complete === 200 ? 'completed' : 'cancelled')
   expect(history(id3).filter((h) => h.startsWith('in-progress>')).length).toBe(1) // one terminal transition, not two
-  await Promise.all([r1!.dispose(), r2!.dispose(), r3!.dispose(), o.dispose()])
+  await Promise.all([r1!.dispose(), r2!.dispose(), r3!.dispose()])
 })
 
 test('a request survives its listing being taken down: still readable and actionable by both parties; no NEW request can be made', async () => {
-  const listing = await approvedProvider(owner, admin, 'Takedown With Request')
+  const listing = await approvedPortalProvider(admin, 'Takedown With Request')
   const r = await login(requester)
-  const o = await login(owner)
+  const a = await login(admin)
   const id = await apiCreate(r, listing.id)
 
   await takedownInUi(adminPage, listing.name, 'Removed after a licence check, please contact support.')
@@ -338,9 +312,9 @@ test('a request survives its listing being taken down: still readable and action
   const mine = await r.call('GET', `/requests/${id}`)
   expect(mine.status).toBe(200)
   expect(mine.body!.data.providerName).toBe(listing.name) // the snapshot keeps the story readable
-  const leads = await o.call('GET', '/users/me/leads?limit=50')
-  expect(JSON.stringify(leads.body)).toContain(id)
-  expect((await o.call('POST', `/requests/${id}/accept`, {})).status).toBe(200) // still actionable
+  const queue = await a.call('GET', '/admin/requests?limit=50')
+  expect(JSON.stringify(queue.body)).toContain(id)
+  expect(await staffAct(admin, id, 'accept')).toBe(200) // still actionable
   expect((await r.call('POST', `/requests/${id}/cancel`, {})).status).toBe(200)
   expect(requestRow(id)[0]).toBe('cancelled')
 
@@ -349,7 +323,7 @@ test('a request survives its listing being taken down: still readable and action
   const refused = await late.call('POST', '/requests', requestBody(listing.id))
   expect(refused.status).toBeGreaterThanOrEqual(400)
   expect(scalar(`SELECT count(*) FROM service_requests WHERE provider_listing_id = '${listing.id}'`)).toBe('1')
-  await Promise.all([r.dispose(), o.dispose(), late.dispose()])
+  await Promise.all([r.dispose(), a.dispose(), late.dispose()])
 })
 
 async function publicGetStatus(id: string): Promise<number> {
@@ -359,8 +333,7 @@ async function publicGetStatus(id: string): Promise<number> {
 test('rate limits: the 6th request in an hour, and a 2nd request to the same provider in a day, are refused 429 with clear copy; nothing extra is created', async ({ browser }) => {
   const limited = await createUser('rate-requester')
   const api = await login(limited)
-  const rateOwner = await createUser('rate-owner', { professional: 'premium' }) // the listing-create limit is 10/hour per owner
-  const listings = await Promise.all(['Rate A', 'Rate B', 'Rate C', 'Rate D', 'Rate E', 'Rate F'].map((n) => approvedProvider(rateOwner, admin, n)))
+  const listings = await Promise.all(['Rate A', 'Rate B', 'Rate C', 'Rate D', 'Rate E', 'Rate F'].map((n) => approvedPortalProvider(admin, n)))
   for (const l of listings.slice(0, 5)) await apiCreate(api, l.id)
   expect(scalar(`SELECT count(*) FROM service_requests WHERE requester_id = (SELECT id FROM users WHERE email = '${limited.email}')`)).toBe('5')
 

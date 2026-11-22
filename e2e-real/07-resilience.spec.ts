@@ -1,10 +1,12 @@
 import { expect, test, type Page, type Route } from '@playwright/test'
 import { ApiClient, WEB_API, PASSWORD, createUser, expectH1, loginOn, ownerCard, psql, rows, scalar, signInAs, type TestUser, newContext } from './helpers/stack'
-import { approvedProvider, createProvider, openCreateForm, unique } from './helpers/ui'
+import { KIND, approvedPortalProvider, approvedTutor, createTutor, fillTutorForm, openCreateForm, unique } from './helpers/ui'
 
 /**
  * Journeys 26-31: CSRF / Origin, session expiry, the Free quota, auth rate limiting, network failure on every
- * kind of write, and stale reads after a write - all against the real API and database.
+ * kind of write, and stale reads after a write - all against the real API and database. The generic OWNED listing is
+ * a Tutor; a Service / Professional is portal-managed and ownerless (RBAC-D), created here only as the Saved / request
+ * target through the real staff API.
  */
 test.describe.configure({ mode: 'serial' })
 
@@ -22,7 +24,7 @@ test.afterAll(async () => {
 })
 
 const tomorrow = () => new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
-const listingBody = (name: string) => ({ kind: 'provider', name, category: 'plumbing', description: `${name} - plumbing repairs across B-17.`, area: 'B-17', tags: ['plumbing'], location: { visibility: 'area_only' } })
+const listingBody = (name: string) => ({ kind: 'tutor', name, category: 'physics', grade: 'Grade 9', description: `${name} - physics lessons across B-17.`, area: 'B-17', tags: ['physics'], location: { visibility: 'area_only' } })
 
 /** Aborts the next matching request (simulating an interrupted network), lets later ones through. */
 async function failOnce(page: Page, method: string, url: RegExp): Promise<{ restore: () => Promise<void>; hits: () => number }> {
@@ -48,7 +50,7 @@ test('CSRF and Origin: the app’s writes carry the token; a missing or tampered
     if (r.method() !== 'GET' && r.url().startsWith(WEB_API)) seen[`${r.method()} ${new URL(r.url()).pathname.replace('/api/v1', '').replace(/[0-9a-f-]{36}/g, ':id')}`] = r.headers()['x-csrf-token']
   })
   // Representative unsafe calls made BY THE APP: listing create (UI), Saved PUT and request POST via the UI below.
-  const id = await createProvider(page, { name: unique('Csrf Provider'), category: 'Plumbing' })
+  const id = await createTutor(page, { name: unique('Csrf Tutor'), subject: 'Physics' })
   expect(seen['POST /listings']).toBeTruthy()
   await page.context().close()
 
@@ -71,13 +73,9 @@ test('CSRF and Origin: the app’s writes carry the token; a missing or tampered
 test('session expiry: a write after the session was revoked gives no false success, ends the authenticated state, and creates nothing', async ({ browser }) => {
   const victim = await createUser('res-expiring', { professional: 'premium' })
   const page = await signInAs(browser, victim)
-  await openCreateForm(page, /Service \/ Professional/)
+  await openCreateForm(page, KIND.tutor)
   const name = unique('Expired Session Listing')
-  await page.getByLabel('Name', { exact: true }).fill(name)
-  await page.getByLabel('Service Category').selectOption({ label: 'Plumbing' })
-  await page.getByLabel('Description', { exact: true }).fill('A listing submitted after the session expired must not be created.')
-  await page.getByLabel('Area', { exact: true }).selectOption('B-17')
-  await page.getByLabel(/Services offered/).fill('plumbing, repairs')
+  await fillTutorForm(page, { name, subject: 'Physics', description: 'A listing submitted after the session expired must not be created.' })
 
   psql(`UPDATE auth_sessions SET revoked_at = now(), revoke_reason = 'admin_action' WHERE user_id = (SELECT id FROM users WHERE email = '${victim.email}')`) // the session "expires" server-side
   const [response] = await Promise.all([
@@ -130,13 +128,9 @@ test('Free plan quota: the 4th active listing is refused (plan_limit_reached), n
     ids.push(r.body!.data.id)
   }
   const page = await signInAs(browser, free)
-  await openCreateForm(page, /Service \/ Professional/)
+  await openCreateForm(page, KIND.tutor)
   const fourth = unique('Quota Four')
-  await page.getByLabel('Name', { exact: true }).fill(fourth)
-  await page.getByLabel('Service Category').selectOption({ label: 'Plumbing' })
-  await page.getByLabel('Description', { exact: true }).fill('The fourth active listing on the Free plan must be refused by the server.')
-  await page.getByLabel('Area', { exact: true }).selectOption('B-17')
-  await page.getByLabel(/Services offered/).fill('plumbing, repairs')
+  await fillTutorForm(page, { name: fourth, subject: 'Physics', description: 'The fourth active listing on the Free plan must be refused by the server.' })
   const [response] = await Promise.all([
     page.waitForResponse((r) => r.request().method() === 'POST' && r.url() === `${WEB_API}/listings`),
     page.getByRole('button', { name: 'Submit for Review' }).click(),
@@ -162,7 +156,7 @@ test('Free plan quota: the 4th active listing is refused (plan_limit_reached), n
 // ------------------------------------------------------------------------------------ network failure
 
 test('network failure: no fake success on listing create / edit, Saved, request create, request action or Admin moderation; the UI recovers and a retry works', async ({ browser }) => {
-  const approvedFor = await approvedProvider(owner, admin, 'Network Provider')
+  const approvedFor = await approvedTutor(owner, admin, 'Network Tutor')
   const requester = await createUser('res-net-requester')
   const saver = await createUser('res-net-saver')
   const pendingName = unique('Network Pending')
@@ -174,13 +168,9 @@ test('network failure: no fake success on listing create / edit, Saved, request 
 
   // 1. listing CREATE
   const ownerPage = await signInAs(browser, owner)
-  await openCreateForm(ownerPage, /Service \/ Professional/)
+  await openCreateForm(ownerPage, KIND.tutor)
   const name = unique('Network Create')
-  await ownerPage.getByLabel('Name', { exact: true }).fill(name)
-  await ownerPage.getByLabel('Service Category').selectOption({ label: 'Plumbing' })
-  await ownerPage.getByLabel('Description', { exact: true }).fill('This listing is submitted while the network is down, then retried.')
-  await ownerPage.getByLabel('Area', { exact: true }).selectOption('B-17')
-  await ownerPage.getByLabel(/Services offered/).fill('plumbing, repairs')
+  await fillTutorForm(ownerPage, { name, subject: 'Physics', description: 'This listing is submitted while the network is down, then retried.' })
   let net = await failOnce(ownerPage, 'POST', /\/api\/v1\/listings$/)
   await ownerPage.getByRole('button', { name: 'Submit for Review' }).click()
   await expect.poll(() => net.hits()).toBe(1)
@@ -211,7 +201,7 @@ test('network failure: no fake success on listing create / edit, Saved, request 
 
   // 3. SAVED
   const saverPage = await signInAs(browser, saver)
-  const savable = await approvedProvider(owner, admin, 'Network Savable')
+  const savable = await approvedPortalProvider(admin, 'Network Savable')
   await saverPage.goto(`/providers/${savable.id}`)
   await expectH1(saverPage, savable.name)
   net = await failOnce(saverPage, 'PUT', /\/api\/v1\/saved\//)
@@ -246,21 +236,22 @@ test('network failure: no fake success on listing create / edit, Saved, request 
   expect(scalar(`SELECT count(*) FROM service_requests WHERE provider_listing_id = '${savable.id}'`)).toBe('1')
   await reqPage.context().close()
 
-  // 5. REQUEST action (provider accepts)
-  const providerPage = await signInAs(browser, owner, '/provider/leads')
-  await expectH1(providerPage, 'Leads')
-  await providerPage.getByRole('button').filter({ hasText: requester.name }).first().click()
-  const lead = providerPage.getByRole('dialog')
-  net = await failOnce(providerPage, 'POST', /\/api\/v1\/requests\/[^/]+\/accept$/)
-  await lead.getByRole('button', { name: 'Accept' }).click()
+  // 5. REQUEST action (the requester cancels; the portal side is handled by staff through the staff API, which has no screen yet)
+  const actPage = await signInAs(browser, requester, '/profile/requests')
+  actPage.on('dialog', (d) => void d.accept())
+  await expectH1(actPage, 'My Requests')
+  await actPage.getByRole('button').filter({ hasText: savable.name }).filter({ hasText: 'Submitted' }).first().click()
+  const detail = actPage.getByRole('dialog')
+  net = await failOnce(actPage, 'POST', /\/api\/v1\/requests\/[^/]+\/cancel$/)
+  await detail.getByRole('button', { name: 'Cancel request' }).click()
   await expect.poll(() => net.hits()).toBe(1)
   expect(scalar(`SELECT status FROM service_requests WHERE provider_listing_id = '${savable.id}'`)).toBe('submitted')
-  await expect(lead.getByRole('button', { name: 'Accept' })).toBeEnabled() // the control recovered
+  await expect(detail.getByRole('button', { name: 'Cancel request' })).toBeEnabled() // the control recovered
   await net.restore()
-  await lead.getByRole('button', { name: 'Accept' }).click()
-  await expect(lead).toBeHidden({ timeout: 15_000 })
-  expect(scalar(`SELECT status FROM service_requests WHERE provider_listing_id = '${savable.id}'`)).toBe('accepted')
-  await providerPage.context().close()
+  await detail.getByRole('button', { name: 'Cancel request' }).click()
+  await expect(detail).toBeHidden({ timeout: 15_000 })
+  expect(scalar(`SELECT status FROM service_requests WHERE provider_listing_id = '${savable.id}'`)).toBe('cancelled')
+  await actPage.context().close()
 
   // 6. ADMIN moderation (approve)
   await adminPage.goto('/admin/moderation')
@@ -283,7 +274,7 @@ test('network failure: no fake success on listing create / edit, Saved, request 
 
 test('stale read after write: an OLDER in-flight Saved read that lands after the successful save cannot un-save it', async ({ browser }) => {
   const saver = await createUser('res-stale-saver')
-  const listing = await approvedProvider(owner, admin, 'Stale Read Provider')
+  const listing = await approvedPortalProvider(admin, 'Stale Read Provider')
   const context = await newContext(browser)
   const page = await context.newPage()
 

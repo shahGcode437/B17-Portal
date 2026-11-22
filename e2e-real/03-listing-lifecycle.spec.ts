@@ -1,10 +1,12 @@
 import { expect, test, type Page } from '@playwright/test'
 import { ApiClient, createUser, expectH1, ownerCard, rows, scalar, signInAs, type TestUser, newContext } from './helpers/stack'
-import { approveInUi, approvedProvider, createProvider, openReviewInUi, publicGet, rejectInUi, searchHits, takedownInUi, unique } from './helpers/ui'
+import { approveInUi, approvedTutor, createTutor, openReviewInUi, publicGet, rejectInUi, searchHits, takedownInUi, unique } from './helpers/ui'
 
 /**
  * Journeys 10-15: Admin moderation, the material edit, the reject / resubmit cycle, pure privacy narrowing,
  * stale revisions (owner AND admin), archive and takedown - the real UI against FastAPI and PostgreSQL.
+ * The subject is the lane's generic OWNED listing, a Tutor: a Service / Professional is portal-managed and ownerless
+ * (RBAC-D), so an owner never creates, edits or archives one (its staff lifecycle is covered by the backend tests).
  */
 test.describe.configure({ mode: 'serial' })
 
@@ -13,9 +15,9 @@ let admin: TestUser
 let ownerPage: Page
 let adminPage: Page
 
-const NAME = unique('Lifecycle Provider')
+const NAME = unique('Lifecycle Tutor')
 let id = ''
-const REASON = 'Please add before-and-after photos of your installations.'
+const REASON = 'Please add a short syllabus outline for each level you teach.'
 
 const dbListing = (listingId: string) => rows(`SELECT status, revision, description FROM listings WHERE id = '${listingId}'`)[0]!
 const historyActions = (listingId: string) => scalar(`SELECT string_agg(action, ',' ORDER BY created_at, revision) FROM listing_status_history WHERE listing_id = '${listingId}'`)
@@ -32,11 +34,12 @@ test.afterAll(async () => {
   await adminPage?.context().close()
 })
 
-test('1. owner creates an exact Provider listing; the owner sees it Pending; the Admin queue sees it Pending', async () => {
-  id = await createProvider(ownerPage, {
+test('1. owner creates an exact Tutor listing; the owner sees it Pending; the Admin queue sees it Pending', async () => {
+  id = await createTutor(ownerPage, {
     name: NAME,
-    category: 'Solar',
-    description: 'Rooftop solar design and installation for B-17 homes and shops.',
+    subject: 'Physics',
+    grade: 'Grade 9',
+    description: 'Physics lessons for matric and A-level students in B-17 homes and study centres.',
     location: { visibility: 'exact', lat: 33.7011, lng: 73.0511, address: 'Shop 4, Demo Plaza', landmark: 'Next to the park', block: 'C' },
   })
   await expect(ownerCard(ownerPage, NAME)).toContainText('Pending Review')
@@ -64,7 +67,7 @@ test('2. admin approves in the UI: approved, NO revision bump, a history row; ow
   expect((await searchHits(NAME)).some((h) => h.id === id)).toBe(true)
   const detail = await publicGet(`/listings/${id}`)
   expect(detail.status).toBe(200)
-  expect(detail.body.data.kind).toBe('provider')
+  expect(detail.body.data.kind).toBe('tutor')
   expect(detail.body.data.location).toMatchObject({ visibility: 'exact', address: 'Shop 4, Demo Plaza', landmark: 'Next to the park', block: 'C' })
 
   // A visitor's browser: the page renders, shows the address and offers directions.
@@ -74,7 +77,7 @@ test('2. admin approves in the UI: approved, NO revision bump, a history row; ow
   page.on('response', async (r) => {
     if (r.url().includes('/api/v1/') && r.ok()) payloads.push(await r.text().catch(() => ''))
   })
-  await page.goto(`http://127.0.0.1:5173/providers/${id}`)
+  await page.goto(`http://127.0.0.1:5173/tutors/${id}`)
   await expectH1(page, NAME)
   await expect(page.getByText('Shop 4, Demo Plaza').first()).toBeVisible()
   await expect(page.getByRole('link', { name: /Get Directions/i }).or(page.getByRole('button', { name: /Get Directions/i })).first()).toBeVisible()
@@ -92,7 +95,7 @@ test('3. material edit of an approved listing: PATCH with the current revision -
   await ownerCard(ownerPage, NAME).getByRole('button', { name: 'Edit' }).click()
   await expectH1(ownerPage, 'Edit Listing')
   await expect(ownerPage.getByLabel('Name', { exact: true })).toHaveValue(NAME) // prefilled from the owner read
-  await ownerPage.getByLabel('Description', { exact: true }).fill('Rooftop solar design and installation - now with inverter and battery storage options.')
+  await ownerPage.getByLabel('Description', { exact: true }).fill('Physics lessons for matric and A-level students - now with small-group past-paper sessions.')
   await ownerPage.getByRole('button', { name: 'Save Changes' }).click()
 
   await expect(ownerPage.getByText('Changes submitted for review')).toBeVisible()
@@ -142,7 +145,7 @@ test('5. rejected + submit unchanged -> no_changes: no false success, a useful m
 })
 
 test('6. rejected + a meaningful change -> pending, revision + 1, the stale reason is gone, the Admin queue sees it again; reload keeps it', async () => {
-  await ownerPage.getByLabel('Description', { exact: true }).fill('Rooftop solar design and installation. Photo gallery of past installs available on request.')
+  await ownerPage.getByLabel('Description', { exact: true }).fill('Physics lessons for matric and A-level students. Photo gallery of past classes available on request.')
   await ownerPage.getByRole('button', { name: 'Resubmit for Review' }).click()
   await expectH1(ownerPage, 'Listings')
   for (const reload of [false, true]) {
@@ -161,21 +164,21 @@ test('7. admin approves again; the public sees the UPDATED listing; history is c
   expect(dbListing(id).slice(0, 2)).toEqual(['approved', '3'])
   const detail = await publicGet(`/listings/${id}`)
   expect(detail.status).toBe(200)
-  expect(detail.body.data.description).toContain('Photo gallery')
+  expect(detail.body.data.bio).toContain('Photo gallery') // a Tutor's public text is `bio`
   // The 12D/12E timestamp fix, observed on the real database: time order IS the story.
   expect(historyActions(id)).toBe('submitted,approved,resubmitted,rejected,resubmitted,approved')
   const times = rows(`SELECT created_at FROM listing_status_history WHERE listing_id = '${id}' ORDER BY created_at`).map((r) => r[0])
   expect(new Set(times).size).toBe(times.length)
   const visitor = await newContext(browser)
   const page = await visitor.newPage()
-  await page.goto(`http://127.0.0.1:5173/providers/${id}`)
+  await page.goto(`http://127.0.0.1:5173/tutors/${id}`)
   await expectH1(page, NAME)
   await expect(page.getByText(/Photo gallery/)).toBeVisible()
   await visitor.close()
 })
 
 test('8. pure privacy narrowing (exact -> approximate, nothing else changed): stays approved, revision + 1, no history row, public narrows at once', async () => {
-  const narrow = await approvedProvider(owner, admin, 'Narrowing Provider', { location: { visibility: 'exact', block: 'C', address: 'Shop 7, Narrow Plaza', landmark: 'Behind the clinic', latitude: 33.7011, longitude: 73.0511 } })
+  const narrow = await approvedTutor(owner, admin, 'Narrowing Tutor', { location: { visibility: 'exact', block: 'C', address: 'Shop 7, Narrow Plaza', landmark: 'Behind the clinic', latitude: 33.7011, longitude: 73.0511 } })
   const before = await publicGet(`/listings/${narrow.id}`)
   expect(before.body.data.location.coordinates).toMatchObject({ latitude: 33.7011, longitude: 73.0511, precision: 'exact' })
   expect(before.body.data.location.address).toBe('Shop 7, Narrow Plaza')
@@ -217,7 +220,7 @@ test('8. pure privacy narrowing (exact -> approximate, nothing else changed): st
 })
 
 test('9. stale owner revision: another update lands after the form opened -> 409, no overwrite, the form reloads with the newest state', async () => {
-  const stale = await approvedProvider(owner, admin, 'Stale Owner Provider')
+  const stale = await approvedTutor(owner, admin, 'Stale Owner Tutor')
   await ownerPage.goto('/provider/listings')
   await ownerCard(ownerPage, stale.name).getByRole('button', { name: 'Edit' }).click()
   await expectH1(ownerPage, 'Edit Listing')
@@ -242,9 +245,9 @@ test('9. stale owner revision: another update lands after the form opened -> 409
 test('10. stale admin review: the owner edits after the admin opened the dialog -> 409, no stale decision is applied', async () => {
   const o = await ApiClient.create()
   await o.login(owner.email)
-  const name = unique('Stale Admin Provider')
+  const name = unique('Stale Admin Tutor')
   const created = await o.call('POST', '/listings', {
-    kind: 'provider', name, category: 'plumbing', description: `${name} - plumbing repairs across B-17.`, area: 'B-17', tags: ['plumbing'], location: { visibility: 'area_only' },
+    kind: 'tutor', name, category: 'physics', grade: 'Grade 9', description: `${name} - physics lessons across B-17.`, area: 'B-17', tags: ['physics'], location: { visibility: 'area_only' },
   })
   expect(created.status).toBe(201)
   const sid = created.body!.data.id as string
@@ -262,7 +265,7 @@ test('10. stale admin review: the owner edits after the admin opened the dialog 
 })
 
 test('11. archive: owner archives in the UI -> archived (row kept), gone from public search and detail, persists after reload', async () => {
-  const doomed = await approvedProvider(owner, admin, 'Archive Me Provider')
+  const doomed = await approvedTutor(owner, admin, 'Archive Me Tutor')
   expect((await publicGet(`/listings/${doomed.id}`)).status).toBe(200)
   ownerPage.once('dialog', (d) => void d.accept())
   await ownerPage.goto('/provider/listings')
@@ -278,7 +281,7 @@ test('11. archive: owner archives in the UI -> archived (row kept), gone from pu
 })
 
 test('12. takedown: admin takes an approved listing down with a reason -> public hidden, the owner sees Taken down (not Rejected) and the reason', async () => {
-  const taken = await approvedProvider(owner, admin, 'Takedown Provider')
+  const taken = await approvedTutor(owner, admin, 'Takedown Tutor')
   await takedownInUi(adminPage, taken.name, 'This listing no longer meets the community guidelines.')
   expect(dbListing(taken.id)[0]).toBe('rejected')
   expect((await publicGet(`/listings/${taken.id}`)).status).toBe(404)

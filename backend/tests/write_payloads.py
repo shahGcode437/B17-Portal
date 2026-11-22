@@ -57,6 +57,16 @@ def provider_body(**overrides: Any) -> dict[str, Any]:
     return body
 
 
+def staff_provider_body(**overrides: Any) -> dict[str, Any]:
+    """The body of the STAFF Provider API (``POST /admin/providers``): the same content as
+    ``provider_body`` but WITHOUT ``kind`` — the route fixes the kind, so ``kind`` is not a field.
+    Overrides are applied last, so a test can add a forged key on purpose."""
+    body = provider_body()
+    del body["kind"]
+    body.update(overrides)
+    return body
+
+
 def business_body(**overrides: Any) -> dict[str, Any]:
     body: dict[str, Any] = {
         "kind": "business",

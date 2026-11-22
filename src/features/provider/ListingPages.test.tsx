@@ -38,19 +38,21 @@ function backend(onWrite: (call: MockCall) => MockReply | undefined) {
 const created = (data: unknown): MockReply => ({ status: 201, body: { data } })
 const isCreate = (call: MockCall) => call.method === "POST" && call.path === "/listings"
 
-// The create tests below use the Service / Professional kind as the generic listing, so they sign
-// the tester in as an admin — the only role that may create a ``provider`` listing (the public
-// Services section is portal-managed). The dedicated non-admin filter test uses `testUser()`.
-const createPage = () => renderPage(<ListingFormPage />, { url: "/provider/listings/new", user: adminUser() })
-const createPageAsOrdinary = () => renderPage(<ListingFormPage />, { url: "/provider/listings/new", user: testUser() })
+// The create tests below use the Tutor kind as the generic listing (a name, one category, a grade, area-only
+// by default — no map pin needed). A Service / Professional listing is portal-managed and has no owner
+// (RBAC-D), so no one creates it on this page any more: the dedicated tests at the end of the create block
+// pin that, for an ordinary professional and for a Super Admin.
+const createPage = () => renderPage(<ListingFormPage />, { url: "/provider/listings/new", user: testUser() })
+const createPageAsAdmin = () => renderPage(<ListingFormPage />, { url: "/provider/listings/new", user: adminUser() })
 const editPage = (id: string) => renderPage(<EditListingPage />, { url: `/provider/listings/${id}/edit`, path: "/provider/listings/:id/edit", user: testUser() })
 
-async function fillProvider(user: ReturnType<typeof userEvent.setup>, tags = "solar, panels") {
-  await user.click(screen.getByRole("button", { name: /Service \/ Professional/ }))
-  await fill(user, screen.getByLabelText("Name"), "Sunrise Solar Co")
-  await user.selectOptions(await screen.findByRole("combobox", { name: "Service Category" }), "solar")
-  await fill(user, screen.getByLabelText("Description"), "Rooftop solar panels and net metering for homes.")
-  await fill(user, screen.getByLabelText(/Services offered/), tags)
+async function fillTutor(user: ReturnType<typeof userEvent.setup>, tags = "physics, lessons") {
+  await user.click(screen.getByRole("button", { name: /^Tutor/ }))
+  await fill(user, screen.getByLabelText("Name"), "Sunrise Physics Tutor")
+  await user.selectOptions(await screen.findByRole("combobox", { name: "Subject" }), "physics")
+  await fill(user, screen.getByLabelText("Description"), "Physics lessons for matric and A-level students.")
+  await fill(user, screen.getByLabelText("Grade / level you teach"), "Matric / A-Levels")
+  await fill(user, screen.getByLabelText(/Topics you teach/), tags)
 }
 
 describe("create a listing", () => {
@@ -58,13 +60,13 @@ describe("create a listing", () => {
     const { calls } = backend((call) => (isCreate(call) ? created(OWNER_LISTINGS[1]) : undefined))
     const user = userEvent.setup()
     const { show } = createPage()
-    await fillProvider(user, "Solar, panels, SOLAR")
+    await fillTutor(user, "Physics, lessons, PHYSICS")
     expect(screen.getByRole("combobox", { name: "Area" })).toHaveValue("B-17")
     await user.click(screen.getByRole("button", { name: "Submit for Review" }))
 
     await waitFor(() => expect(calls.some(isCreate)).toBe(true))
     const post = calls.find(isCreate)!
-    expect(post.body).toMatchObject({ kind: "provider", name: "Sunrise Solar Co", category: "solar", area: "B-17", tags: ["solar", "panels"], location: { visibility: "area_only" } })
+    expect(post.body).toMatchObject({ kind: "tutor", name: "Sunrise Physics Tutor", category: "physics", area: "B-17", tags: ["physics", "lessons"], location: { visibility: "area_only" } })
     expect(post.body).not.toHaveProperty("image")
     await waitFor(() => expect(show).toHaveBeenCalledWith("Listing submitted for review"))
     expect(screen.getByTestId("location")).toHaveTextContent("/provider/listings")
@@ -74,7 +76,7 @@ describe("create a listing", () => {
     const { calls } = backend(() => undefined)
     const user = userEvent.setup()
     createPage()
-    await fillProvider(user, Array.from({ length: 21 }, (_, i) => `t${i}`).join(", "))
+    await fillTutor(user, Array.from({ length: 21 }, (_, i) => `t${i}`).join(", "))
     await user.click(screen.getByRole("button", { name: "Submit for Review" }))
     expect((await screen.findAllByText("You can add up to 20 tags. Remove 1 to continue.")).length).toBeGreaterThan(0)
     expect(calls.some(isCreate)).toBe(false)
@@ -84,10 +86,11 @@ describe("create a listing", () => {
     const { calls } = backend(() => undefined)
     const user = userEvent.setup()
     createPage()
-    await user.click(screen.getByRole("button", { name: /Service \/ Professional/ }))
-    await fill(user, screen.getByLabelText("Name"), `Sunrise${NBSP}Solar Co`)
-    await user.selectOptions(await screen.findByRole("combobox", { name: "Service Category" }), "solar")
-    await fill(user, screen.getByLabelText("Description"), "Rooftop solar panels and net metering for homes.")
+    await user.click(screen.getByRole("button", { name: /^Tutor/ }))
+    await fill(user, screen.getByLabelText("Name"), `Sunrise${NBSP}Physics Tutor`)
+    await user.selectOptions(await screen.findByRole("combobox", { name: "Subject" }), "physics")
+    await fill(user, screen.getByLabelText("Description"), "Physics lessons for matric and A-level students.")
+    await fill(user, screen.getByLabelText("Grade / level you teach"), "Matric / A-Levels")
     await user.click(screen.getByRole("button", { name: "Submit for Review" }))
     expect(await screen.findByText(/Please use plain text only/)).toBeInTheDocument()
     expect(screen.getByLabelText("Name")).toHaveAttribute("aria-invalid", "true")
@@ -98,7 +101,7 @@ describe("create a listing", () => {
     const { calls } = backend(() => undefined)
     const user = userEvent.setup()
     createPage()
-    await fillProvider(user)
+    await fillTutor(user)
     await user.selectOptions(screen.getByLabelText("Visibility"), "exact")
     await fill(user, screen.getByLabelText("Street address"), "Shop 4\nMain Market")
     expect(await screen.findByText(/keep the address on one line/)).toBeInTheDocument()
@@ -112,7 +115,7 @@ describe("create a listing", () => {
     )
     const user = userEvent.setup()
     createPage()
-    await fillProvider(user)
+    await fillTutor(user)
     await user.click(screen.getByRole("button", { name: "Submit for Review" }))
     const banner = await screen.findByText(/Please check the form/)
     expect(banner).toHaveTextContent("You can add up to 20 tags.")
@@ -124,11 +127,11 @@ describe("create a listing", () => {
     backend((call) => (isCreate(call) ? fail(403, "plan_limit_reached") : undefined))
     const user = userEvent.setup()
     createPage()
-    await fillProvider(user)
+    await fillTutor(user)
     await user.click(screen.getByRole("button", { name: "Submit for Review" }))
     expect(await screen.findByText(/Active listing limit reached/)).toBeInTheDocument()
     expect(screen.getByRole("alert")).toHaveTextContent("Archive an active listing before creating another.")
-    expect(screen.getByLabelText("Name")).toHaveValue("Sunrise Solar Co")
+    expect(screen.getByLabelText("Name")).toHaveValue("Sunrise Physics Tutor")
     expect(screen.getByRole("button", { name: "Submit for Review" })).toBeEnabled()
   })
 
@@ -147,32 +150,39 @@ describe("create a listing", () => {
     expect(calls.some(isCreate)).toBe(false)
   })
 
-  describe("Service / Professional kind is portal-managed", () => {
+  describe("Service / Professional kind is portal-managed (RBAC-D): nobody lists one here", () => {
     it("an ordinary professional does not see the Service / Professional option, but Business, Tutor and Property stay", () => {
       backend(() => undefined)
-      createPageAsOrdinary()
+      createPage()
       // The provider option is absent in both the chooser list and the page title.
       expect(screen.queryByRole("button", { name: /Service \/ Professional/ })).toBeNull()
       expect(screen.getByRole("heading", { name: "List a Business, Tutor or Property" })).toBeInTheDocument()
-      // The other three kinds remain available.
+      // The other three kinds remain available, and no notice about Services is shown to someone who cannot manage them.
       expect(screen.getByRole("button", { name: /Business \/ Shop/ })).toBeInTheDocument()
       expect(screen.getByRole("button", { name: /^Tutor/ })).toBeInTheDocument()
       expect(screen.getByRole("button", { name: /^Property/ })).toBeInTheDocument()
+      expect(screen.queryByText(/managed by portal staff/)).not.toBeInTheDocument()
     })
 
-    it("an admin still sees Service / Professional alongside the other kinds", () => {
+    it("a Super Admin gets no Service form either - the page says Services are managed by portal staff, and the other kinds stay", () => {
+      // The owner API refuses a Provider create for everyone, so a Super Admin must not be offered a form that always
+      // fails: one plain sentence, no button, nothing to submit. (The backend is the authority; this is the honest UX.)
       backend(() => undefined)
-      createPage()
-      expect(screen.getByRole("button", { name: /Service \/ Professional/ })).toBeInTheDocument()
+      createPageAsAdmin()
+      expect(screen.queryByRole("button", { name: /Service \/ Professional/ })).toBeNull()
+      expect(screen.getByRole("heading", { name: "List a Business, Tutor or Property" })).toBeInTheDocument()
+      const notice = screen.getByText(/Service \/ Professional listings are managed by portal staff/).closest("[role=status]") as HTMLElement
+      expect(notice).toBeInTheDocument()
+      expect(notice).toHaveTextContent("Service / Professional listings are managed by portal staff")
+      expect(notice).toHaveTextContent("Managing Services is moving to the staff admin area.")
       expect(screen.getByRole("button", { name: /Business \/ Shop/ })).toBeInTheDocument()
       expect(screen.getByRole("button", { name: /^Tutor/ })).toBeInTheDocument()
       expect(screen.getByRole("button", { name: /^Property/ })).toBeInTheDocument()
-      expect(screen.getByRole("heading", { name: "List a Service, Business, Tutor or Property" })).toBeInTheDocument()
     })
 
-    it("if the server refuses a provider create with provider_admin_only, the page says to pick a different kind", async () => {
-      // Belt-and-braces: even if a direct call somehow reaches the server, the mapped copy guides the user,
-      // and no generic "You cannot do that" text appears.
+    it("if the server still refuses a create with provider_admin_only (a stale client), the page says to pick a different kind", async () => {
+      // Belt-and-braces: the form never sends kind "provider" now, but the mapped copy stays so a refusal from an
+      // older bundle or a direct call is explained in plain words, with no generic "You cannot do that" text.
       backend((call) =>
         isCreate(call)
           ? fail(403, "forbidden", [
@@ -182,7 +192,7 @@ describe("create a listing", () => {
       )
       const user = userEvent.setup()
       createPage()
-      await fillProvider(user)
+      await fillTutor(user)
       await user.click(screen.getByRole("button", { name: "Submit for Review" }))
       const banner = await screen.findByText(/Service listings are managed by portal staff/)
       expect(banner).toHaveAttribute("role", "alert")
@@ -217,10 +227,10 @@ describe("edit a listing", () => {
     editPage(IDS.ownerApproved)
     await screen.findByRole("button", { name: "Save Changes" })
     expect(screen.getByRole("combobox", { name: "Area" })).toHaveValue("B-17")
-    await screen.findByRole("option", { name: "Plumbing" })
+    await screen.findByRole("option", { name: "Physics" })
     await user.click(screen.getByRole("button", { name: "Save Changes" }))
     await waitFor(() => expect(calls.some((c) => c.method === "PATCH")).toBe(true))
-    expect(calls.find((c) => c.method === "PATCH")!.body).toMatchObject({ revision: 3, area: "B-17", category: "plumbing" })
+    expect(calls.find((c) => c.method === "PATCH")!.body).toMatchObject({ revision: 3, area: "B-17", category: "physics" })
   })
 
   it("a tutor's grade is checked on the edit page too (it used to take any text)", async () => {

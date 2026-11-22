@@ -13,12 +13,13 @@ from httpx import Response
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.models.enums import ListingStatus, PlanCode
-from tests.db.auth_helpers import AuthApi, AuthEnv
+from app.models.enums import CategoryModule, ListingStatus, PlanCode
+from tests.db.auth_helpers import AuthApi, AuthEnv, make_account
 from tests.db.write_helpers import created_id, set_status, signed_in
 from tests.write_payloads import business_body, provider_body, tutor_body
 
 REQUESTS = "/requests"
+PORTAL_REQUESTS = "/admin/requests"
 SAVED = "/saved"
 LEADS = "/users/me/leads"
 
@@ -54,11 +55,22 @@ def requester_signed_in(
 def provider_signed_in(
     env: AuthEnv, email: str = "provider@example.org", *, plan: PlanCode = PlanCode.PREMIUM
 ) -> AuthApi:
-    """An admin-authorized professional. Service requests target ``kind=provider`` listings only
-    (``service_requests.py`` — a non-provider target is a 422), and only admins may author
-    ``provider`` listings, so the service-request test family's listing owner needs the admin role
-    to seed the required fixture. The admin status is incidental to what each request test probes."""
+    """The STAFF AUTHOR of the portal's Providers in the service-request tests: a Super Admin (who
+    is also a professional, which no request rule cares about). Service requests target
+    ``kind=provider`` listings only (``service_requests.py`` — a non-provider target is a 422) and
+    only staff author those (``POST /admin/providers``). A Provider has no owner (RBAC-D), so this
+    account has NO special role on the requests made to it beyond being a Super Admin like any
+    other: the provider side of a request is PORTAL STAFF work (``/admin/requests``)."""
     return signed_in(env, email, professional=plan, display_name="Pro Vider", admin=True)
+
+
+def moderator_signed_in(env: AuthEnv, name: str, *scopes: CategoryModule) -> AuthApi:
+    """A Moderator holding exactly ``scopes`` (none = the role with no scope), signed in."""
+    email = f"{name}@example.org"
+    make_account(env.session, email, moderator_scopes=list(scopes), display_name=name)
+    api = env.client()
+    assert api.login(email).status_code == 200
+    return api
 
 
 def approved(env: AuthEnv, owner: AuthApi, body: dict[str, Any] | None = None) -> str:
@@ -69,8 +81,12 @@ def approved(env: AuthEnv, owner: AuthApi, body: dict[str, Any] | None = None) -
     return listing_id
 
 
-def approved_provider(env: AuthEnv, owner: AuthApi, name: str = "Bright Spark Electricians") -> str:
-    return approved(env, owner, provider_body(name=name))
+def approved_provider(
+    env: AuthEnv, author: AuthApi, name: str = "Bright Spark Electricians"
+) -> str:
+    """An APPROVED Provider exactly as production holds it: portal-managed, NO owner. Authored
+    through the real staff API by ``author``, approved directly in the database."""
+    return approved(env, author, provider_body(name=name))
 
 
 def approved_business(env: AuthEnv, owner: AuthApi) -> str:
@@ -92,7 +108,20 @@ def sent_id(api: AuthApi, listing_id: str, **overrides: Any) -> str:
 
 
 def act(api: AuthApi, request_id: str, action: str, **kwargs: Any) -> Response:
+    """The REQUESTER's API (``/requests``): cancel (and the refusals of the other actions)."""
     return api.request("POST", f"{REQUESTS}/{request_id}/{action}", **kwargs)
+
+
+def staff_act(api: AuthApi, request_id: str, action: str, **kwargs: Any) -> Response:
+    """The PORTAL's API (``/admin/requests``): the provider side, handled by staff."""
+    return api.request("POST", f"{PORTAL_REQUESTS}/{request_id}/{action}", **kwargs)
+
+
+def staff_detail(api: AuthApi, request_id: str) -> dict[str, Any]:
+    response = api.get(f"{PORTAL_REQUESTS}/{request_id}")
+    assert response.status_code == 200, response.text
+    data: dict[str, Any] = response.json()["data"]
+    return data
 
 
 def detail(api: AuthApi, request_id: str) -> dict[str, Any]:
@@ -167,18 +196,19 @@ def detail_codes(response: Response) -> list[tuple[str, str]]:
 
 @dataclass
 class World:
-    """One approved provider listing, its owner, and one resident."""
+    """One approved (portal-managed, ownerless) provider listing, the Super Admin who authored it
+    (``author``: just a Super Admin — they have no special role on its requests) and one resident."""
 
     env: AuthEnv
-    owner: AuthApi
+    author: AuthApi
     resident: AuthApi
     listing_id: str
 
 
 def world(env: AuthEnv) -> World:
-    owner = provider_signed_in(env)
+    author = provider_signed_in(env)
     resident = requester_signed_in(env)
-    return World(env, owner, resident, approved_provider(env, owner))
+    return World(env, author, resident, approved_provider(env, author))
 
 
 def new_id() -> str:

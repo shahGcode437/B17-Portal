@@ -22,6 +22,12 @@ Lock order (frozen): ``professional_profiles`` row -> ``listings`` row. An edit 
 lock only when the quota applies (the listing is ``rejected``); if that is only discovered after the
 listing row was locked, the attempt is rolled back and repeated profile-first, so the order is never
 inverted.
+
+This service writes OWNED listings only (Business, Food, Tutor, Property). A Service / Professional
+("provider") listing is portal-managed and has no owner (RBAC-D; ``AUTH_RBAC.md`` §31): it is
+authored through the staff API by ``ProviderAuthoringService`` and is refused here for EVERY
+caller - a create is ``403 provider_admin_only``, and an edit or archive finds nothing to edit
+(``404``: the lookup is owner-bound and a provider never has an owner).
 """
 
 import uuid
@@ -116,10 +122,11 @@ def invalid_transition() -> AppError:
 
 
 def provider_admin_only() -> AppError:
-    """Service / Professional ("provider") listings are portal-managed: only an admin may create,
-    edit or archive them. The envelope stays the standard ``403 forbidden`` with a specific detail
-    code (``provider_admin_only``) so the frontend can swap in the right copy without a new
-    top-level error code (docs/backend/API_CONTRACT.md §3)."""
+    """Service / Professional ("provider") listings are portal-managed: they are authored by portal
+    staff through the staff API, never through this owner API - by anyone, a Super Admin included.
+    The envelope stays the standard ``403 forbidden`` with a specific detail code
+    (``provider_admin_only``, kept for the frontend that already maps it) so the SPA can swap in
+    the right copy without a new top-level error code (docs/backend/API_CONTRACT.md §3)."""
     return AppError(
         ErrorCode.FORBIDDEN,
         status_code=403,
@@ -219,7 +226,7 @@ def state_of(listing: Listing) -> ListingState:
     return ListingState(kind=listing.kind, category=category, **common)
 
 
-def _base_values(state: ListingState) -> dict[str, Any]:
+def base_values(state: ListingState) -> dict[str, Any]:
     """The ``listings`` columns a state defines (everything but status / revision / timestamps)."""
     location = state.location
     return {
@@ -276,6 +283,29 @@ def category_structure_problems(
     return problems
 
 
+def resolve_category_ids(
+    categories: CategoryRepository, state: ListingState, retained: set[str]
+) -> tuple[list[uuid.UUID], list[ErrorDetail]]:
+    """Slugs -> category ids, in order, against the AUTHORITATIVE taxonomy (the ``categories``
+    table, never a copy in code). A slug must exist in the listing's module and be active - except
+    one the listing already carries (deactivating a category never breaks the listings in it,
+    DATA_MODEL §8). Shared by the owner write service and the staff Provider authoring service so
+    both validate a category the same way."""
+    module = module_for(state)
+    slugs = state.category_slugs()
+    field = _category_field(state)
+    found = categories.list_by_slugs(module, slugs) if slugs else {}
+    ids: list[uuid.UUID] = []
+    problems: list[ErrorDetail] = []
+    for slug in slugs:
+        category = found.get(slug)
+        if category is None or (not category.is_active and slug not in retained):
+            problems.append(problem(field, "unknown_category", f"Unknown category '{slug}'."))
+        else:
+            ids.append(category.id)
+    return ids, problems
+
+
 # ------------------------------------------------------------------------------ the service
 
 
@@ -299,15 +329,13 @@ class ListingWriteService:
 
     # -- create ----------------------------------------------------------------------------------
 
-    def create(
-        self, owner_id: uuid.UUID, payload: ListingCreate, *, is_admin: bool = False
-    ) -> Listing:
+    def create(self, owner_id: uuid.UUID, payload: ListingCreate) -> Listing:
         """A new ``pending`` listing owned by ``owner_id`` (the session's user — never the body).
 
-        ``kind == "provider"`` is portal-managed: a non-admin caller is rejected before anything is
+        ``kind == "provider"`` is portal-managed and is refused for EVERY caller before anything is
         touched (rate limiter not consumed), so the rule is cheap and cannot leak state.
         """
-        if payload.kind == "provider" and not is_admin:
+        if payload.kind == "provider":
             raise provider_admin_only()
         decision = self._limiter.blocked(str(owner_id), LISTING_CREATE)
         if not decision.allowed:
@@ -328,7 +356,7 @@ class ListingWriteService:
             plan = self._profiles.lock(owner_id)  # then the profile
             if plan is None:
                 raise AppError(ErrorCode.PROFESSIONAL_PROFILE_REQUIRED, status_code=403)
-            self._check_quota(owner_id, plan, kind=state.kind)
+            self._check_quota(owner_id, plan)
             category_ids, category_problems = self._resolve_categories(state, retained=set())
             if category_problems:
                 raise validation_error(category_problems)
@@ -347,7 +375,7 @@ class ListingWriteService:
             status=ListingStatus.PENDING,
             revision=1,
             submitted_at=self._clock(),
-            **_base_values(state),
+            **base_values(state),
         )
         if state.kind is ListingKind.BUSINESS:
             assert state.vertical is not None
@@ -397,14 +425,12 @@ class ListingWriteService:
 
     # -- edit / resubmit -------------------------------------------------------------------------
 
-    def edit(
-        self, owner_id: uuid.UUID, raw_id: str, patch: ListingPatch, *, is_admin: bool = False
-    ) -> Listing:
+    def edit(self, owner_id: uuid.UUID, raw_id: str, patch: ListingPatch) -> Listing:
         listing_id = parse_listing_id(raw_id)
         try:
-            return self._edit(owner_id, listing_id, patch, lock_profile=False, is_admin=is_admin)
+            return self._edit(owner_id, listing_id, patch, lock_profile=False)
         except _NeedsProfileLock:
-            return self._edit(owner_id, listing_id, patch, lock_profile=True, is_admin=is_admin)
+            return self._edit(owner_id, listing_id, patch, lock_profile=True)
 
     def _edit(
         self,
@@ -413,7 +439,6 @@ class ListingWriteService:
         patch: ListingPatch,
         *,
         lock_profile: bool,
-        is_admin: bool,
     ) -> Listing:
         with transaction(self._session):
             self._categories.lock_taxonomy_shared()  # first: see taxonomy_admin.py
@@ -423,8 +448,6 @@ class ListingWriteService:
             listing = self._listings.get_owned(listing_id, owner_id, lock=True)
             if listing is None:
                 raise not_found()
-            if listing.kind is ListingKind.PROVIDER and not is_admin:
-                raise provider_admin_only()
             if listing.status is ListingStatus.ARCHIVED:
                 raise invalid_transition()
             if listing.revision != patch.revision:
@@ -459,20 +482,15 @@ class ListingWriteService:
                 raise validation_error(new_problems)
 
             previous_status = listing.status
-            values = _base_values(new)
+            values = base_values(new)
             material = change is Change.MATERIAL
             if material:
-                if (
-                    previous_status is ListingStatus.REJECTED
-                    and new.kind is not ListingKind.PROVIDER
-                ):
+                if previous_status is ListingStatus.REJECTED:
                     # A rejected listing re-enters the quota (API_CONTRACT §10.9); the profile
-                    # must have been locked BEFORE the listing row. Provider listings are portal-
-                    # managed and never consume the owner's quota, so the profile lock would be
-                    # pure overhead for them — skip the re-check and the retry.
+                    # must have been locked BEFORE the listing row.
                     if plan is None:
                         raise _NeedsProfileLock
-                    self._check_quota(owner_id, plan, kind=new.kind, excluding=listing.id)
+                    self._check_quota(owner_id, plan, excluding=listing.id)
                 values["status"] = ListingStatus.PENDING
                 values["submitted_at"] = self._clock()
 
@@ -552,16 +570,12 @@ class ListingWriteService:
 
     # -- archive ---------------------------------------------------------------------------------
 
-    def archive(
-        self, owner_id: uuid.UUID, raw_id: str, revision: int, *, is_admin: bool = False
-    ) -> Listing:
+    def archive(self, owner_id: uuid.UUID, raw_id: str, revision: int) -> Listing:
         listing_id = parse_listing_id(raw_id)
         with transaction(self._session):
             listing = self._listings.get_owned(listing_id, owner_id, lock=True)
             if listing is None:
                 raise not_found()
-            if listing.kind is ListingKind.PROVIDER and not is_admin:
-                raise provider_admin_only()
             if listing.status is ListingStatus.ARCHIVED:
                 raise invalid_transition()
             if listing.revision != revision:
@@ -594,23 +608,11 @@ class ListingWriteService:
         return listing
 
     def _check_quota(
-        self,
-        owner_id: uuid.UUID,
-        plan: PlanCode,
-        *,
-        kind: ListingKind,
-        excluding: uuid.UUID | None = None,
+        self, owner_id: uuid.UUID, plan: PlanCode, *, excluding: uuid.UUID | None = None
     ) -> None:
         """Enforce the plan's active-listing quota — pending + approved — before a create or a
-        rejected-listing resubmission.
-
-        Service / Professional (``provider``) listings are portal-managed by admins and never run
-        against the quota: the write is only reachable by an admin (see ``provider_admin_only``),
-        and ``count_active`` already excludes ``provider`` from the counted slots, so other kinds
-        remain unaffected by whatever providers an admin creates.
-        """
-        if kind is ListingKind.PROVIDER:
-            return
+        rejected-listing resubmission. Only OWNED listings exist here: a Provider has no owner, so
+        it can never occupy a slot (RBAC-D)."""
         limit = max_active_listings(plan)
         if (
             limit is not None
@@ -621,22 +623,7 @@ class ListingWriteService:
     def _resolve_categories(
         self, state: ListingState, retained: set[str]
     ) -> tuple[list[uuid.UUID], list[ErrorDetail]]:
-        """Slugs -> category ids, in order. A slug must exist in the listing's module and be
-        active — except one the listing already carries (deactivating a category never breaks the
-        listings in it, DATA_MODEL §8)."""
-        module = module_for(state)
-        slugs = state.category_slugs()
-        field = _category_field(state)
-        found = self._categories.list_by_slugs(module, slugs) if slugs else {}
-        ids: list[uuid.UUID] = []
-        problems: list[ErrorDetail] = []
-        for slug in slugs:
-            category = found.get(slug)
-            if category is None or (not category.is_active and slug not in retained):
-                problems.append(problem(field, "unknown_category", f"Unknown category '{slug}'."))
-            else:
-                ids.append(category.id)
-        return ids, problems
+        return resolve_category_ids(self._categories, state, retained)
 
     def _verify_category_structure(self, listing_id: uuid.UUID, state: ListingState) -> None:
         """Read the stored category rows back, INSIDE the transaction, and enforce the cross-row

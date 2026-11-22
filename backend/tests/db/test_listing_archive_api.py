@@ -26,10 +26,10 @@ from tests.db.write_helpers import (
     history,
     mine,
     patch,
-    provider_body,
     set_status,
     signed_in,
     stored,
+    tutor_body,
 )
 
 STATUSES = [ListingStatus.PENDING, ListingStatus.APPROVED, ListingStatus.REJECTED]
@@ -39,7 +39,7 @@ STATUSES = [ListingStatus.PENDING, ListingStatus.APPROVED, ListingStatus.REJECTE
 def test_the_owner_archives_a_listing_in_any_live_status(
     auth_env: AuthEnv, status: ListingStatus
 ) -> None:
-    api = signed_in(auth_env, admin=True)
+    api = signed_in(auth_env)
     listing_id = created_id(api, food_body())
     set_status(auth_env.session, listing_id, status)
     submitted_at = snapshot(auth_env, listing_id)["submitted_at"]
@@ -64,7 +64,7 @@ def test_the_owner_archives_a_listing_in_any_live_status(
 
 
 def test_archiving_never_deletes_the_row_or_its_children(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env, admin=True)
+    api = signed_in(auth_env)
     listing_id = created_id(api, food_body())
 
     archive(api, listing_id, 1)
@@ -78,7 +78,7 @@ def test_archiving_never_deletes_the_row_or_its_children(auth_env: AuthEnv) -> N
 
 
 def test_an_archived_listing_leaves_public_discovery(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env, admin=True)
+    api = signed_in(auth_env)
     anonymous = auth_env.client()
     listing_id = created_id(api, business_body(name="Soon Archived Stationers"))
     set_status(auth_env.session, listing_id, ListingStatus.APPROVED)
@@ -93,8 +93,8 @@ def test_an_archived_listing_leaves_public_discovery(auth_env: AuthEnv) -> None:
 
 
 def test_a_stale_revision_conflicts_and_changes_nothing(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env, admin=True)
-    listing_id = created_id(api, provider_body())
+    api = signed_in(auth_env)
+    listing_id = created_id(api, tutor_body())
     patch(api, listing_id, 1, name="Edited Meanwhile")
     before = snapshot(auth_env, listing_id)
 
@@ -107,8 +107,8 @@ def test_a_stale_revision_conflicts_and_changes_nothing(auth_env: AuthEnv) -> No
 
 
 def test_an_archived_listing_cannot_be_archived_again_or_edited(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env, admin=True)
-    listing_id = created_id(api, provider_body())
+    api = signed_in(auth_env)
+    listing_id = created_id(api, tutor_body())
     archive(api, listing_id, 1)
     before = snapshot(auth_env, listing_id)
 
@@ -122,8 +122,8 @@ def test_an_archived_listing_cannot_be_archived_again_or_edited(auth_env: AuthEn
 
 
 def test_there_is_no_unarchive_and_status_is_not_writable(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env, admin=True)
-    listing_id = created_id(api, provider_body())
+    api = signed_in(auth_env)
+    listing_id = created_id(api, tutor_body())
     archive(api, listing_id, 1)
 
     for path in ("unarchive", "restore", "reopen", "approve", "reject", "resubmit", "submit"):
@@ -134,9 +134,9 @@ def test_there_is_no_unarchive_and_status_is_not_writable(auth_env: AuthEnv) -> 
 
 
 def test_a_non_owner_cannot_archive_and_learns_nothing(auth_env: AuthEnv) -> None:
-    owner = signed_in(auth_env, "owner@example.org", display_name="Own Er", admin=True)
-    other = signed_in(auth_env, "other@example.org", display_name="Oth Er", admin=True)
-    listing_id = created_id(owner, provider_body())
+    owner = signed_in(auth_env, "owner@example.org", display_name="Own Er")
+    other = signed_in(auth_env, "other@example.org", display_name="Oth Er")
+    listing_id = created_id(owner, tutor_body())
     before = snapshot(auth_env, listing_id)
 
     foreign = archive(other, listing_id, 1)
@@ -164,7 +164,7 @@ def test_archiving_frees_the_quota_slot(auth_env: AuthEnv) -> None:
 
 
 def test_a_legacy_listing_can_always_be_retired(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env, admin=True)
+    api = signed_in(auth_env)
     listing_id = legacy_listing(auth_env, api, kind="property")  # no point: invalid for edits
 
     response = archive(api, listing_id, 1)
@@ -173,8 +173,8 @@ def test_a_legacy_listing_can_always_be_retired(auth_env: AuthEnv) -> None:
 
 
 def test_the_archive_guards(auth_env: AuthEnv) -> None:
-    owner = signed_in(auth_env, "owner@example.org", display_name="Own Er", admin=True)
-    listing_id = created_id(owner, provider_body())
+    owner = signed_in(auth_env, "owner@example.org", display_name="Own Er")
+    listing_id = created_id(owner, tutor_body())
     anonymous = auth_env.client()
     resident = signed_in(auth_env, "res@example.org", professional=None, display_name="Res Ident")
     unverified = signed_in(auth_env, "unv@example.org", verified=False, display_name="Unv Erified")
@@ -198,8 +198,8 @@ def test_the_archive_guards(auth_env: AuthEnv) -> None:
 def test_the_archive_body_is_exactly_the_revision(
     auth_env: AuthEnv, body: dict[str, Any], expected: list[tuple[str, str]]
 ) -> None:
-    api = signed_in(auth_env, admin=True)
-    listing_id = created_id(api, provider_body())
+    api = signed_in(auth_env)
+    listing_id = created_id(api, tutor_body())
 
     response = api.request("POST", f"{LISTINGS}/{listing_id}/archive", json=body)
 
@@ -209,8 +209,8 @@ def test_the_archive_body_is_exactly_the_revision(
 
 
 def test_archive_needs_origin_and_csrf(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env, admin=True)
-    listing_id = created_id(api, provider_body())
+    api = signed_in(auth_env)
+    listing_id = created_id(api, tutor_body())
     url = f"{LISTINGS}/{listing_id}/archive"
 
     for kwargs in (
@@ -228,8 +228,8 @@ def test_archive_needs_origin_and_csrf(auth_env: AuthEnv) -> None:
 def test_archive_timestamps_use_the_app_clock_for_nothing_but_the_history_row(
     auth_env: AuthEnv,
 ) -> None:
-    api = signed_in(auth_env, admin=True)
-    listing_id = created_id(api, provider_body())
+    api = signed_in(auth_env)
+    listing_id = created_id(api, tutor_body())
     auth_env.clock.advance(days=3)
 
     archive(api, listing_id, 1)

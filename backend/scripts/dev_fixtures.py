@@ -326,15 +326,20 @@ def _listing(
     featured: bool = False,
     status: ListingStatus = ListingStatus.APPROVED,
 ) -> Listing | None:
-    """Create a listing owned by the fixture professional, with categories and the history that
-    leads to ``status``. Returns ``None`` if it already exists."""
+    """Create a listing with categories and the history that leads to ``status``. Returns ``None``
+    if it already exists.
+
+    Business / Tutor / Property fixtures are owned by the fixture professional. A PROVIDER is
+    portal-managed (RBAC-D, ``AUTH_RBAC.md`` §31): it has NO owner (the database refuses one) and
+    its history records the fixture admin — a staff member — as its author, not an ``owner``."""
     if session.get(Listing, listing_id) is not None:
         return None
     categories = CategoryRepository(session).list_by_slugs(module, category_slugs)
+    portal_managed = kind is ListingKind.PROVIDER
     listing = Listing(
         id=listing_id,
         kind=kind,
-        owner_id=PROFESSIONAL_ID,
+        owner_id=None if portal_managed else PROFESSIONAL_ID,
         status=status,
         title=title,
         description=description,
@@ -348,12 +353,13 @@ def _listing(
         ListingCategory(position=position, category_id=categories[slug].id)
         for position, slug in enumerate(category_slugs, start=1)
     ]
-    listing.status_history = _history(status)
+    listing.status_history = _history(status, staff_authored=portal_managed)
     return listing
 
 
-def _history(status: ListingStatus) -> list[ListingStatusHistory]:
-    """submitted, then the moderation steps that end in ``status``."""
+def _history(status: ListingStatus, *, staff_authored: bool = False) -> list[ListingStatusHistory]:
+    """submitted, then the moderation steps that end in ``status``. ``staff_authored`` (a portal-
+    managed Provider) makes the fixture admin the author of every step instead of the owner."""
 
     def step(
         from_status: ListingStatus | None,
@@ -374,7 +380,7 @@ def _history(status: ListingStatus) -> list[ListingStatusHistory]:
         )
 
     pending = ListingStatus.PENDING
-    history = [step(None, pending, HistoryAction.SUBMITTED, admin=False)]
+    history = [step(None, pending, HistoryAction.SUBMITTED, admin=staff_authored)]
     if status is ListingStatus.REJECTED:
         history.append(
             step(
@@ -389,7 +395,7 @@ def _history(status: ListingStatus) -> list[ListingStatusHistory]:
         history.append(step(pending, ListingStatus.APPROVED, HistoryAction.APPROVED, admin=True))
         if status is ListingStatus.ARCHIVED:
             history.append(
-                step(ListingStatus.APPROVED, status, HistoryAction.ARCHIVED, admin=False)
+                step(ListingStatus.APPROVED, status, HistoryAction.ARCHIVED, admin=staff_authored)
             )
     return history
 

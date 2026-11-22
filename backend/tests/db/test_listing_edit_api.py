@@ -29,7 +29,6 @@ from tests.db.write_helpers import (
     mine,
     patch,
     property_body,
-    provider_body,
     set_status,
     signed_in,
     stored,
@@ -64,8 +63,8 @@ def resubmitted_rows(env: AuthEnv, listing_id: str) -> list[Any]:
 def test_the_owner_edits_a_pending_listing_which_stays_pending_and_is_resubmitted(
     auth_env: AuthEnv,
 ) -> None:
-    api = signed_in(auth_env, admin=True)
-    listing_id = created_id(api, provider_body())
+    api = signed_in(auth_env)
+    listing_id = created_id(api, tutor_body())
     auth_env.clock.advance(hours=3)
 
     response = patch(api, listing_id, 1, name="Brighter Spark Electricians")
@@ -90,8 +89,8 @@ def test_the_owner_edits_a_pending_listing_which_stays_pending_and_is_resubmitte
 
 
 def test_a_stale_revision_is_a_conflict_and_changes_nothing(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env, admin=True)
-    listing_id = created_id(api, provider_body())
+    api = signed_in(auth_env)
+    listing_id = created_id(api, tutor_body())
     assert patch(api, listing_id, 1, name="First Edit Name").status_code == 200
     before = snapshot(auth_env, listing_id)
 
@@ -106,8 +105,8 @@ def test_a_stale_revision_is_a_conflict_and_changes_nothing(auth_env: AuthEnv) -
 
 @pytest.mark.parametrize("ahead", [2, 99])
 def test_a_revision_from_the_future_is_also_a_conflict(auth_env: AuthEnv, ahead: int) -> None:
-    api = signed_in(auth_env, admin=True)
-    listing_id = created_id(api, provider_body())
+    api = signed_in(auth_env)
+    listing_id = created_id(api, tutor_body())
 
     response = patch(api, listing_id, 1 + ahead, name="Future Edit Name")
 
@@ -115,8 +114,8 @@ def test_a_revision_from_the_future_is_also_a_conflict(auth_env: AuthEnv, ahead:
 
 
 def test_a_stale_revision_conflicts_even_when_the_edit_would_be_a_no_op(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env, admin=True)
-    listing_id = created_id(api, provider_body())
+    api = signed_in(auth_env)
+    listing_id = created_id(api, tutor_body())
     patch(api, listing_id, 1, name="A New Name")
 
     response = patch(api, listing_id, 1)
@@ -125,9 +124,9 @@ def test_a_stale_revision_conflicts_even_when_the_edit_would_be_a_no_op(auth_env
 
 
 def test_a_non_owner_gets_404_and_nothing_changes(auth_env: AuthEnv) -> None:
-    owner = signed_in(auth_env, "owner@example.org", display_name="Own Er", admin=True)
-    other = signed_in(auth_env, "other@example.org", display_name="Oth Er", admin=True)
-    listing_id = created_id(owner, provider_body())
+    owner = signed_in(auth_env, "owner@example.org", display_name="Own Er")
+    other = signed_in(auth_env, "other@example.org", display_name="Oth Er")
+    listing_id = created_id(owner, tutor_body())
     before = snapshot(auth_env, listing_id)
 
     response = patch(other, listing_id, 1, name="Hijacked Name")
@@ -137,9 +136,9 @@ def test_a_non_owner_gets_404_and_nothing_changes(auth_env: AuthEnv) -> None:
 
 
 def test_missing_malformed_and_foreign_ids_are_indistinguishable(auth_env: AuthEnv) -> None:
-    owner = signed_in(auth_env, "owner@example.org", display_name="Own Er", admin=True)
-    other = signed_in(auth_env, "other@example.org", display_name="Oth Er", admin=True)
-    listing_id = created_id(owner, provider_body())
+    owner = signed_in(auth_env, "owner@example.org", display_name="Own Er")
+    other = signed_in(auth_env, "other@example.org", display_name="Oth Er")
+    listing_id = created_id(owner, tutor_body())
 
     foreign = patch(other, listing_id, 1, name="Hijacked Name")
     missing = patch(other, "00000000-0000-4000-8000-000000000000", 1, name="Hijacked Name")
@@ -152,8 +151,8 @@ def test_missing_malformed_and_foreign_ids_are_indistinguishable(auth_env: AuthE
 
 
 def test_an_archived_listing_cannot_be_edited(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env, admin=True)
-    listing_id = created_id(api, provider_body())
+    api = signed_in(auth_env)
+    listing_id = created_id(api, tutor_body())
     set_status(auth_env.session, listing_id, ListingStatus.ARCHIVED)
 
     response = patch(api, listing_id, 1, name="Back From The Dead")
@@ -166,7 +165,7 @@ def test_an_archived_listing_cannot_be_edited(auth_env: AuthEnv) -> None:
 
 @pytest.mark.parametrize("status", [ListingStatus.PENDING, ListingStatus.APPROVED])
 def test_an_empty_patch_changes_nothing(auth_env: AuthEnv, status: ListingStatus) -> None:
-    api = signed_in(auth_env, admin=True)
+    api = signed_in(auth_env)
     listing_id = created_id(api, food_body())
     set_status(auth_env.session, listing_id, status)
     before = snapshot(auth_env, listing_id)
@@ -182,7 +181,7 @@ def test_an_empty_patch_changes_nothing(auth_env: AuthEnv, status: ListingStatus
 def test_whitespace_and_case_differences_that_normalise_away_are_a_no_op(
     auth_env: AuthEnv,
 ) -> None:
-    api = signed_in(auth_env, admin=True)
+    api = signed_in(auth_env)
     listing_id = created_id(api, food_body())
     set_status(auth_env.session, listing_id, ListingStatus.APPROVED)
     before = snapshot(auth_env, listing_id)
@@ -204,12 +203,12 @@ def test_whitespace_and_case_differences_that_normalise_away_are_a_no_op(
 
 
 def test_a_no_op_does_not_resubmit_a_rejected_listing(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env, admin=True)
-    listing_id = created_id(api, provider_body())
+    api = signed_in(auth_env)
+    listing_id = created_id(api, tutor_body())
     set_status(auth_env.session, listing_id, ListingStatus.REJECTED)
     before = snapshot(auth_env, listing_id)
 
-    for body in ({}, {"name": "Bright Spark Electricians"}, {"tags": ["wiring", "repairs"]}):
+    for body in ({}, {"name": "Maryam Physics Tutor"}, {"tags": ["physics"]}):
         response = patch(api, listing_id, 1, **body)
         assert response.status_code == 422, body
         assert codes(response) == [("request", "no_changes")]
@@ -220,8 +219,8 @@ def test_a_no_op_does_not_resubmit_a_rejected_listing(auth_env: AuthEnv) -> None
 
 
 def test_a_null_on_a_non_clearable_field_is_not_nullable(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env, admin=True)
-    listing_id = created_id(api, provider_body())
+    api = signed_in(auth_env)
+    listing_id = created_id(api, tutor_body())
     before = snapshot(auth_env, listing_id)
 
     for field in ("name", "description", "area", "tags", "location", "category"):
@@ -232,7 +231,7 @@ def test_a_null_on_a_non_clearable_field_is_not_nullable(auth_env: AuthEnv) -> N
 
 
 def test_null_clears_only_the_declared_clearable_fields(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env, admin=True)
+    api = signed_in(auth_env)
     listing_id = created_id(api, property_body(image="/assets/house.png"))
 
     response = patch(api, listing_id, 1, image=None, bedrooms=None, furnished=None)
@@ -247,7 +246,7 @@ def test_null_clears_only_the_declared_clearable_fields(auth_env: AuthEnv) -> No
 
 
 def test_food_hours_and_menu_image_clear_with_null_but_the_arrays_do_not(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env, admin=True)
+    api = signed_in(auth_env)
     body = food_body()
     body["food"]["menuImage"] = "/assets/menu.png"
     listing_id = created_id(api, body)
@@ -265,7 +264,7 @@ def test_food_hours_and_menu_image_clear_with_null_but_the_arrays_do_not(auth_en
 
 
 def test_arrays_replace_whole_and_omitted_arrays_are_unchanged(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env, admin=True)
+    api = signed_in(auth_env)
     listing_id = created_id(api, food_body())
 
     response = patch(
@@ -286,7 +285,7 @@ def test_arrays_replace_whole_and_omitted_arrays_are_unchanged(auth_env: AuthEnv
 
 
 def test_the_menu_can_be_emptied_but_categories_cannot(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env, admin=True)
+    api = signed_in(auth_env)
     listing_id = created_id(api, food_body())
 
     emptied = patch(api, listing_id, 1, food={"menuHighlights": []})
@@ -297,8 +296,8 @@ def test_the_menu_can_be_emptied_but_categories_cannot(auth_env: AuthEnv) -> Non
 
 
 def test_server_owned_fields_and_kind_are_rejected_on_patch(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env, admin=True)
-    listing_id = created_id(api, provider_body())
+    api = signed_in(auth_env)
+    listing_id = created_id(api, tutor_body())
     before = snapshot(auth_env, listing_id)
 
     for field in (
@@ -320,8 +319,8 @@ def test_server_owned_fields_and_kind_are_rejected_on_patch(auth_env: AuthEnv) -
 
 
 def test_a_field_the_listing_s_kind_does_not_have_is_not_allowed(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env, admin=True)
-    provider = created_id(api, provider_body())
+    api = signed_in(auth_env)
+    provider = created_id(api, tutor_body())
     prop = created_id(api, property_body())
 
     assert codes(patch(api, provider, 1, title="Not A Property")) == [("title", "not_allowed")]
@@ -332,7 +331,7 @@ def test_a_field_the_listing_s_kind_does_not_have_is_not_allowed(auth_env: AuthE
 
 
 def test_the_patch_result_must_be_a_complete_valid_listing(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env, admin=True)
+    api = signed_in(auth_env)
     prop = created_id(api, property_body())
     business = created_id(api, business_body())
     before = snapshot(auth_env, prop)
@@ -358,7 +357,7 @@ def test_the_patch_result_must_be_a_complete_valid_listing(auth_env: AuthEnv) ->
 
 
 def test_a_location_block_without_a_visibility_on_a_business_is_rejected(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env, admin=True)
+    api = signed_in(auth_env)
     listing_id = created_id(api, business_body())
 
     response = patch(api, listing_id, 1, location={"block": "C"})
@@ -367,7 +366,7 @@ def test_a_location_block_without_a_visibility_on_a_business_is_rejected(auth_en
 
 
 def test_the_location_block_replaces_the_stored_one_wholesale(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env, admin=True)
+    api = signed_in(auth_env)
     listing_id = created_id(api, business_body(location=exact(landmark="Near the park")))
 
     response = patch(
@@ -390,7 +389,7 @@ def test_the_location_block_replaces_the_stored_one_wholesale(auth_env: AuthEnv)
 
 
 def test_a_rejected_listing_is_resubmitted_by_an_effective_edit(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env, admin=True)
+    api = signed_in(auth_env)
     listing_id = created_id(api, food_body())
     set_status(
         auth_env.session, listing_id, ListingStatus.REJECTED, "Add your opening hours please."
@@ -417,7 +416,7 @@ def test_a_rejected_listing_is_resubmitted_by_an_effective_edit(auth_env: AuthEn
 
 
 def test_a_narrowing_does_not_resubmit_a_rejected_listing(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env, admin=True)
+    api = signed_in(auth_env)
     listing_id = created_id(api, business_body())
     set_status(auth_env.session, listing_id, ListingStatus.REJECTED)
     rows_before = len(history(auth_env.session, listing_id))
@@ -478,7 +477,7 @@ def test_pending_and_approved_edits_at_the_quota_limit_are_not_blocked(auth_env:
 def test_any_effective_edit_of_an_approved_listing_returns_it_to_pending(
     auth_env: AuthEnv, fields: dict[str, Any]
 ) -> None:
-    api = signed_in(auth_env, admin=True)
+    api = signed_in(auth_env)
     listing_id = approved(auth_env, api, business_body())
     auth_env.clock.advance(hours=2)
 
@@ -498,7 +497,7 @@ def test_any_effective_edit_of_an_approved_listing_returns_it_to_pending(
 
 
 def test_an_approved_food_listing_returns_to_pending_for_any_food_field(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env, admin=True)
+    api = signed_in(auth_env)
     for fields in (
         {"food": {"hoursNote": "Mon-Fri"}},
         {"food": {"menuHighlights": [{"name": "Eclair"}]}},
@@ -529,7 +528,7 @@ def test_an_approved_property_returns_to_pending_for_any_subtype_field(auth_env:
 
 
 def test_a_tutor_grade_change_is_material(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env, admin=True)
+    api = signed_in(auth_env)
     listing_id = approved(auth_env, api, tutor_body())
 
     response = patch(api, listing_id, 1, grade="O-Levels")
@@ -571,7 +570,7 @@ def resend(mode: str, **overrides: Any) -> dict[str, Any]:
 def test_a_pure_narrowing_keeps_an_approved_listing_approved(
     auth_env: AuthEnv, start: str, end: str
 ) -> None:
-    api = signed_in(auth_env, admin=True)
+    api = signed_in(auth_env)
     listing_id = listing_with(auth_env.session, api, start, ListingStatus.APPROVED)
     before = snapshot(auth_env, listing_id)
     auth_env.clock.advance(days=1)
@@ -604,7 +603,7 @@ def test_a_pure_narrowing_keeps_an_approved_listing_approved(
 def test_a_narrowing_never_changes_the_status_of_a_pending_or_rejected_listing(
     auth_env: AuthEnv, start: str, end: str, status: ListingStatus
 ) -> None:
-    api = signed_in(auth_env, admin=True)
+    api = signed_in(auth_env)
     listing_id = listing_with(auth_env.session, api, start, status)
     before = snapshot(auth_env, listing_id)
 
@@ -624,7 +623,7 @@ def test_a_narrowing_never_changes_the_status_of_a_pending_or_rejected_listing(
 def test_a_widening_alone_returns_an_approved_listing_to_pending(
     auth_env: AuthEnv, start: str, end: str
 ) -> None:
-    api = signed_in(auth_env, admin=True)
+    api = signed_in(auth_env)
     listing_id = listing_with(auth_env.session, api, start, ListingStatus.APPROVED)
     location = exact(visibility=end)
 
@@ -658,7 +657,7 @@ NARROWING_PLUS_LOCATION_CHANGE = [
 def test_a_narrowing_combined_with_a_location_change_goes_back_to_moderation(
     auth_env: AuthEnv, end: str, change: dict[str, Any]
 ) -> None:
-    api = signed_in(auth_env, admin=True)
+    api = signed_in(auth_env)
     listing_id = listing_with(auth_env.session, api, "exact", ListingStatus.APPROVED)
     if end == "area_only":
         location = resend("area_only", **change)
@@ -689,7 +688,7 @@ def test_a_narrowing_combined_with_a_location_change_goes_back_to_moderation(
 def test_a_narrowing_combined_with_a_content_change_goes_back_to_moderation(
     auth_env: AuthEnv, extra: dict[str, Any]
 ) -> None:
-    api = signed_in(auth_env, admin=True)
+    api = signed_in(auth_env)
     listing_id = listing_with(auth_env.session, api, "exact", ListingStatus.APPROVED)
 
     response = patch(api, listing_id, 1, location=resend("approximate"), **extra)
@@ -716,7 +715,7 @@ def test_a_narrowing_combined_with_a_changed_area_goes_back_to_moderation(
 def test_a_narrowing_combined_with_a_food_or_menu_change_goes_back_to_moderation(
     auth_env: AuthEnv,
 ) -> None:
-    api = signed_in(auth_env, admin=True)
+    api = signed_in(auth_env)
     listing_id = approved(auth_env, api, food_body())
 
     response = patch(
@@ -733,7 +732,7 @@ def test_a_narrowing_combined_with_a_food_or_menu_change_goes_back_to_moderation
 def test_a_narrowing_combined_with_a_property_change_goes_back_to_moderation(
     auth_env: AuthEnv,
 ) -> None:
-    api = signed_in(auth_env, admin=True)
+    api = signed_in(auth_env)
     listing_id = approved(auth_env, api, property_body())
 
     response = patch(
@@ -744,7 +743,7 @@ def test_a_narrowing_combined_with_a_property_change_goes_back_to_moderation(
 
 
 def test_a_property_narrowing_to_approximate_stays_approved(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env, admin=True)
+    api = signed_in(auth_env)
     listing_id = approved(auth_env, api, property_body())
 
     response = patch(api, listing_id, 1, location=exact(visibility="approximate"))
@@ -753,7 +752,7 @@ def test_a_property_narrowing_to_approximate_stays_approved(auth_env: AuthEnv) -
 
 
 def test_same_visibility_location_edits_are_ordinary_edits(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env, admin=True)
+    api = signed_in(auth_env)
     pin_moved = listing_with(auth_env.session, api, "exact", ListingStatus.APPROVED)
     other = signed_in(auth_env, "other@example.org", display_name="Oth Er")
     address_changed = listing_with(auth_env.session, other, "exact", ListingStatus.APPROVED)
@@ -774,7 +773,7 @@ def test_same_visibility_location_edits_are_ordinary_edits(auth_env: AuthEnv) ->
 def test_a_stale_revision_conflicts_for_a_narrowing_too(
     auth_env: AuthEnv, status: ListingStatus
 ) -> None:
-    api = signed_in(auth_env, admin=True)
+    api = signed_in(auth_env)
     listing_id = listing_with(auth_env.session, api, "exact", status)
     before = snapshot(auth_env, listing_id)
 
@@ -785,7 +784,7 @@ def test_a_stale_revision_conflicts_for_a_narrowing_too(
 
 
 def test_a_narrowing_by_a_non_owner_is_a_404_and_changes_nothing(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env, admin=True)
+    api = signed_in(auth_env)
     other = signed_in(auth_env, "other@example.org", display_name="Oth Er")
     listing_id = listing_with(auth_env.session, api, "exact", ListingStatus.APPROVED)
     before = snapshot(auth_env, listing_id)
@@ -802,7 +801,7 @@ def test_a_narrowing_by_a_non_owner_is_a_404_and_changes_nothing(auth_env: AuthE
 def test_narrowing_removes_the_address_from_search_immediately_and_widening_does_not_publish(
     auth_env: AuthEnv,
 ) -> None:
-    api = signed_in(auth_env, admin=True)
+    api = signed_in(auth_env)
     anonymous = auth_env.client()
     listing_id = listing_with(
         auth_env.session, api, "exact", ListingStatus.APPROVED, name="Findable Stationers"
@@ -825,7 +824,7 @@ def test_narrowing_removes_the_address_from_search_immediately_and_widening_does
 
 
 def test_every_edit_leaves_the_search_document_consistent(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env, admin=True)
+    api = signed_in(auth_env)
     listing_id = created_id(api, food_body())
     revision = 1
     for fields in (
@@ -852,7 +851,7 @@ def count_rows(env: AuthEnv, model: Any) -> int:
 def test_switching_a_food_business_to_general_removes_every_trace_of_food(
     auth_env: AuthEnv,
 ) -> None:
-    api = signed_in(auth_env, admin=True)
+    api = signed_in(auth_env)
     listing_id = created_id(api, food_body())
 
     response = patch(api, listing_id, 1, vertical="general", category="grocery")
@@ -872,7 +871,7 @@ def test_switching_a_food_business_to_general_removes_every_trace_of_food(
 def test_switching_a_general_business_to_food_needs_and_stores_the_food_data(
     auth_env: AuthEnv,
 ) -> None:
-    api = signed_in(auth_env, admin=True)
+    api = signed_in(auth_env)
     listing_id = created_id(api, business_body())
     food = {
         "categories": ["cafes", "bakeries"],
@@ -897,7 +896,7 @@ def test_switching_a_general_business_to_food_needs_and_stores_the_food_data(
 def test_food_data_cannot_be_sent_to_a_general_business_or_a_category_to_a_food_one(
     auth_env: AuthEnv,
 ) -> None:
-    api = signed_in(auth_env, admin=True)
+    api = signed_in(auth_env)
     general = created_id(api, business_body())
     food = created_id(api, food_body())
 
@@ -906,13 +905,13 @@ def test_food_data_cannot_be_sent_to_a_general_business_or_a_category_to_a_food_
 
 
 def test_changing_the_category_replaces_the_single_stored_link(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env, admin=True)
-    listing_id = created_id(api, provider_body())
+    api = signed_in(auth_env)
+    listing_id = created_id(api, tutor_body())
 
-    response = patch(api, listing_id, 1, category="plumbing")
+    response = patch(api, listing_id, 1, category="chemistry")
 
-    assert response.json()["data"]["category"] == "plumbing"
-    assert response.json()["data"]["categoryLabel"] == "Plumbing"
+    assert response.json()["data"]["category"] == "chemistry"
+    assert response.json()["data"]["categoryLabel"] == "Chemistry"
     links = auth_env.session.scalars(select(ListingCategory)).all()
     assert len(links) == 1 and links[0].position == 1
 
@@ -920,18 +919,18 @@ def test_changing_the_category_replaces_the_single_stored_link(auth_env: AuthEnv
 def test_a_category_that_was_deactivated_later_does_not_block_unrelated_edits(
     auth_env: AuthEnv,
 ) -> None:
-    api = signed_in(auth_env, admin=True)
-    listing_id = created_id(api, provider_body(category="plumbing"))
+    api = signed_in(auth_env)
+    listing_id = created_id(api, tutor_body(category="chemistry"))
     auth_env.session.execute(
-        text("UPDATE categories SET is_active = false WHERE slug = 'plumbing'")
+        text("UPDATE categories SET is_active = false WHERE slug = 'chemistry'")
     )
-    auth_env.session.execute(text("UPDATE categories SET is_active = false WHERE slug = 'solar'"))
+    auth_env.session.execute(text("UPDATE categories SET is_active = false WHERE slug = 'english'"))
     auth_env.session.commit()
 
-    kept = patch(api, listing_id, 1, name="Renamed Plumbers", category="plumbing")
-    switched = patch(api, listing_id, 2, category="solar")
+    kept = patch(api, listing_id, 1, name="Renamed Chemists", category="chemistry")
+    switched = patch(api, listing_id, 2, category="english")
 
-    assert kept.status_code == 200 and kept.json()["data"]["category"] == "plumbing"
+    assert kept.status_code == 200 and kept.json()["data"]["category"] == "chemistry"
     assert codes(switched) == [("category", "unknown_category")]  # newly choosing an inactive one
 
 
@@ -942,13 +941,13 @@ def legacy_listing(env: AuthEnv, api: AuthApi, *, kind: str) -> str:
     """A pre-0005-style row: free-text area, area-only, no point, no block."""
     from sqlalchemy import insert
 
-    from app.models import Listing, PropertyProfile
+    from app.models import Listing, PropertyProfile, TutorProfile
     from app.models.enums import ListingKind
     from app.models.users import User
 
     user = env.session.scalar(select(User).where(User.email == "sana@example.org"))
     assert user is not None
-    category_slug = "house" if kind == "property" else "electrical"
+    category_slug = {"property": "house", "tutor": "physics"}[kind]
     listing = Listing(
         kind=ListingKind(kind),
         owner_id=user.id,
@@ -966,6 +965,10 @@ def legacy_listing(env: AuthEnv, api: AuthApi, *, kind: str) -> str:
                 listing_id=listing.id, kind="property", listing_type="sale", price_text="PKR 1 Cr"
             )
         )
+    elif kind == "tutor":
+        env.session.execute(
+            insert(TutorProfile).values(listing_id=listing.id, kind="tutor", grade="Matric")
+        )
     category_id = env.session.scalar(
         text("SELECT id FROM categories WHERE slug = :s"), {"s": category_slug}
     )
@@ -979,7 +982,7 @@ def legacy_listing(env: AuthEnv, api: AuthApi, *, kind: str) -> str:
 def test_a_legacy_property_cannot_be_edited_without_gaining_a_valid_location(
     auth_env: AuthEnv,
 ) -> None:
-    api = signed_in(auth_env, admin=True)
+    api = signed_in(auth_env)
     listing_id = legacy_listing(auth_env, api, kind="property")
 
     typo_fix = patch(api, listing_id, 1, title="Legacy Listing, fixed")
@@ -997,7 +1000,7 @@ def test_a_legacy_property_cannot_be_edited_without_gaining_a_valid_location(
 def test_a_legacy_property_can_be_read_archived_and_no_op_patched_without_a_location(
     auth_env: AuthEnv,
 ) -> None:
-    api = signed_in(auth_env, admin=True)
+    api = signed_in(auth_env)
     listing_id = legacy_listing(auth_env, api, kind="property")
 
     assert mine(api, listing_id)["location"] == {"visibility": "area_only"}
@@ -1007,8 +1010,8 @@ def test_a_legacy_property_can_be_read_archived_and_no_op_patched_without_a_loca
 def test_legacy_non_property_rows_edit_freely_and_keep_their_legacy_area_unless_it_is_supplied(
     auth_env: AuthEnv,
 ) -> None:
-    api = signed_in(auth_env, admin=True)
-    listing_id = legacy_listing(auth_env, api, kind="provider")
+    api = signed_in(auth_env)
+    listing_id = legacy_listing(auth_env, api, kind="tutor")
 
     renamed = patch(api, listing_id, 1, name="Legacy Listing, renamed")
     area_legacy = patch(api, listing_id, 2, area="B-17, Block C (Demo Area)")
@@ -1023,7 +1026,7 @@ def test_legacy_non_property_rows_edit_freely_and_keep_their_legacy_area_unless_
 def test_the_stored_point_is_never_loaded_by_the_public_path_after_an_edit(
     auth_env: AuthEnv,
 ) -> None:
-    api = signed_in(auth_env, admin=True)
+    api = signed_in(auth_env)
     listing_id = listing_with(auth_env.session, api, "approximate", ListingStatus.APPROVED)
     patch(api, listing_id, 1, location=resend("area_only"))
 

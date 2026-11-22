@@ -1,10 +1,12 @@
 import { expect, test, type Page } from '@playwright/test'
 import { ApiClient, createUser, expectH1, rows, scalar, signInAs, type TestUser, newContext } from './helpers/stack'
-import { approvedProvider, createProperty, createProvider, publicGet, searchHits, unique } from './helpers/ui'
+import { approvedTutor, createProperty, createTutor, publicGet, searchHits, unique } from './helpers/ui'
 
 /**
  * Journeys 24-25: the location privacy audit across the real DOM and the real network, and the map picker
- * round trip through the real write form and PostgreSQL.
+ * round trip through the real write form and PostgreSQL. The subject is a Tutor (an OWNED listing with the same
+ * three visibility modes): a Service / Professional is portal-managed and ownerless (RBAC-D), so it has no owner to
+ * type a private location or to read it back, and is not part of the owner map-picker flow.
  */
 test.describe.configure({ mode: 'serial' })
 
@@ -18,9 +20,9 @@ const PRIVATE_LNG = '73.061235'
 test.beforeAll(async () => {
   owner = await createUser('location-owner', { professional: 'premium' })
   admin = await createUser('location-admin', { admin: true })
-  L.exact = await approvedProvider(owner, admin, 'Exact Place', { location: { visibility: 'exact', block: 'C', address: 'Shop 4, Demo Plaza', landmark: 'Next to the park', latitude: 33.7011, longitude: 73.0511 } })
-  L.approximate = await approvedProvider(owner, admin, 'Approximate Place', { location: { visibility: 'approximate', block: 'D', address: 'House 12, Street 3', landmark: 'Opposite the mosque', latitude: Number(PRIVATE_LAT), longitude: Number(PRIVATE_LNG) } })
-  L.area_only = await approvedProvider(owner, admin, 'Area Only Place', { location: { visibility: 'area_only', block: 'E' } })
+  L.exact = await approvedTutor(owner, admin, 'Exact Place', { location: { visibility: 'exact', block: 'C', address: 'Shop 4, Demo Plaza', landmark: 'Next to the park', latitude: 33.7011, longitude: 73.0511 } })
+  L.approximate = await approvedTutor(owner, admin, 'Approximate Place', { location: { visibility: 'approximate', block: 'D', address: 'House 12, Street 3', landmark: 'Opposite the mosque', latitude: Number(PRIVATE_LAT), longitude: Number(PRIVATE_LNG) } })
+  L.area_only = await approvedTutor(owner, admin, 'Area Only Place', { location: { visibility: 'area_only', block: 'E' } })
 })
 
 /** Opens the public page as an anonymous visitor and records every API payload the browser received. */
@@ -31,7 +33,7 @@ async function visit(browser: import('@playwright/test').Browser, id: string, na
   page.on('response', async (r) => {
     if (r.url().includes('/api/v1/') && r.ok()) payloads.push(await r.text().catch(() => ''))
   })
-  await page.goto(`http://127.0.0.1:5173/providers/${id}`)
+  await page.goto(`http://127.0.0.1:5173/tutors/${id}`)
   await expectH1(page, name)
   await page.waitForTimeout(800) // let the (lazy) map settle
   return { page, payloads, close: () => context.close() }
@@ -105,7 +107,7 @@ test('map picker round trip: a real map click sets the point, area_only clears i
 
   // A real click on the live Leaflet map (the picker engine in the real browser).
   await page.goto('/provider/listings/new')
-  await page.getByRole('button', { name: /Service \/ Professional/ }).click()
+  await page.getByRole('button', { name: /^Tutor/ }).click()
   await page.getByLabel('Visibility').selectOption('exact')
   const map = page.locator('.leaflet-container').first()
   await expect(map).toBeVisible()
@@ -115,16 +117,17 @@ test('map picker round trip: a real map click sets the point, area_only clears i
   const lng = Number(await page.getByLabel('Longitude').inputValue())
   expect(lat).toBeGreaterThan(33.5)
   expect(lat).toBeLessThan(33.9)
-  expect(lng).toBeGreaterThan(72.9)
-  expect(lng).toBeLessThan(73.2)
+  // B-17's own geography (the picker centres on 33.685, 72.826 since the location fix, dba65f9): these bounds predate it.
+  expect(lng).toBeGreaterThan(72.7)
+  expect(lng).toBeLessThan(72.95)
   // ...then switching to area_only clears the coordinates and removes the map.
   await page.getByLabel('Visibility').selectOption('area_only')
   await expect(page.locator('.leaflet-container')).toHaveCount(0)
   await expect(page.getByLabel('Latitude')).toHaveCount(0)
 
-  // Create an exact Provider through the numeric fallback and round-trip it through the edit form.
-  const name = unique('Picker Provider')
-  const id = await createProvider(page, { name, category: 'Electrical', location: { visibility: 'exact', lat: 33.70123, lng: 73.05123, address: 'Shop 1, Plaza', block: 'B' } })
+  // Create an exact Tutor through the numeric fallback and round-trip it through the edit form.
+  const name = unique('Picker Tutor')
+  const id = await createTutor(page, { name, subject: 'Physics', location: { visibility: 'exact', lat: 33.70123, lng: 73.05123, address: 'Shop 1, Plaza', block: 'B' } })
   expect(rows(`SELECT latitude, longitude, address FROM listings WHERE id = '${id}'`)[0]).toEqual(['33.701230', '73.051230', 'Shop 1, Plaza'])
   await page.goto(`/provider/listings/${id}/edit`)
   await expectH1(page, 'Edit Listing')

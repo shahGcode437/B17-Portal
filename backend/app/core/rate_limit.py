@@ -51,6 +51,15 @@ REQUEST_PER_PROVIDER = RatePolicy("request_per_provider", limit=1, window_second
 #: for accounts through the appointment endpoint is throttled too.
 STAFF_MUTATION = RatePolicy("staff_mutation", limit=20, window_seconds=15 * 60)
 
+#: Staff Provider authoring — create, edit, archive — per acting staff member (RBAC-D;
+#: AUTH_RBAC.md §31). Deliberately NOT ``STAFF_MUTATION``: that one throttles the rare, dangerous
+#: staff-management changes (20 / 15 min), while authoring Providers is routine content work that
+#: can legitimately be a burst (a first catalogue load, a round of corrections), so it has its own
+#: more generous bucket and cannot be exhausted by — nor exhaust — staff management. An operational
+#: tripwire for a runaway script or a stuck client, not an authorization boundary (the live staff
+#: role and scope the service locks are). Every attempt that passes the front door counts.
+PROVIDER_WRITE = RatePolicy("provider_write", limit=60, window_seconds=15 * 60)
+
 
 class RateLimiter(Protocol):
     def blocked(self, identifier: str, policy: RatePolicy) -> RateDecision:

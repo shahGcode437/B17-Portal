@@ -1,8 +1,6 @@
 import { expect, test } from './helpers/test'
-import { expectPage, signIn, type AccountKind } from './helpers/app'
+import { expectPage, signIn } from './helpers/app'
 import type { Page } from '@playwright/test'
-import { writeState } from '../src/test/fixtures/writeRouter'
-import { OWNER_LISTINGS } from '../src/test/fixtures/apiFixtures'
 
 /**
  * Phase 12S, S4: the listing form tells the truth (merged into main from the parallel S4 worktree, adapted). The Area
@@ -12,30 +10,25 @@ import { OWNER_LISTINGS } from '../src/test/fixtures/apiFixtures'
  * rules mirror the real API's (`src/test/fixtures/listingRules.ts`): a form that sent a value the API refuses fails here.
  */
 /**
- * Opens the create form as the right account for a given kind. Service / Professional is portal-
- * managed (admin-only) since Task 2, so provider-kind tests sign in as an admin and see the
- * four-kind chooser heading; every other kind is still a plain professional and sees the
- * three-kind heading ("List a Business, Tutor or Property").
+ * Opens the create form as a plain professional for a given kind. A Service / Professional listing is portal-managed
+ * and has no owner (RBAC-D): nobody lists one on this page, so the chooser is always the three-kind one
+ * ("List a Business, Tutor or Property"). The Tutor is the generic fixture of these form-truth tests: a name, one
+ * category, a grade, area-only by default (so no map point is needed).
  */
 async function openCreateForm(page: Page, name: string, kind: RegExp) {
-  const isProvider = kind.test('Service / Professional')
-  // ``adminProfessional`` has the admin role AND a professional profile — needed because the
-  // ``/provider/*`` workspace is guarded on ``user.professional``, and Service / Professional
-  // authoring is admin-only (Task 2, AUTH_RBAC §22.6).
-  const accountKind: AccountKind = isProvider ? 'adminProfessional' : 'professional'
-  const heading = isProvider ? 'List a Service, Business, Tutor or Property' : 'List a Business, Tutor or Property'
   await page.goto('/provider/listings/new')
   await expectPage(page, 'Log In')
-  await signIn(page, name, accountKind)
-  await expectPage(page, heading)
+  await signIn(page, name, 'professional')
+  await expectPage(page, 'List a Business, Tutor or Property')
   await page.getByRole('button', { name: kind }).click()
 }
 
-async function fillProvider(page: Page, name: string, tags = 'wiring, repairs') {
+async function fillTutor(page: Page, name: string, tags = 'physics, lessons') {
   await page.getByLabel('Name', { exact: true }).fill(name)
-  await page.getByLabel('Service Category').selectOption({ label: 'Electrical' })
-  await page.getByLabel('Description', { exact: true }).fill('Wiring, repairs and fittings across B-17.')
-  await page.getByLabel(/Services offered/).fill(tags)
+  await page.getByLabel('Subject', { exact: true }).selectOption({ label: 'Physics' })
+  await page.getByLabel('Description', { exact: true }).fill('Physics lessons for matric and A-level students across B-17.')
+  await page.getByLabel('Grade / level you teach').fill('Matric / A-Levels')
+  await page.getByLabel(/Topics you teach/).fill(tags)
 }
 
 function recordWrites(page: Page) {
@@ -50,7 +43,7 @@ function recordWrites(page: Page) {
 const listingPosts = (sent: ReturnType<typeof recordWrites>) => sent.filter((s) => s.method === 'POST' && s.path === '/listings')
 
 test('the Area is B-17 from a list of one, never free text; the block goes in the location section', async ({ page }) => {
-  await openCreateForm(page, 'Area Owner', /Service \/ Professional/)
+  await openCreateForm(page, 'Area Owner', /^Tutor/)
   const area = page.getByRole('combobox', { name: 'Area', exact: true })
   await expect(area).toHaveValue('B-17')
   expect(await area.locator('option').allTextContents()).toEqual(['B-17'])
@@ -60,25 +53,25 @@ test('the Area is B-17 from a list of one, never free text; the block goes in th
 })
 
 test('the submit button says what it does: "Submit for Review" - and there is no Preview Listing', async ({ page }) => {
-  await openCreateForm(page, 'Label Owner', /Service \/ Professional/)
+  await openCreateForm(page, 'Label Owner', /^Tutor/)
   await expect(page.getByRole('button', { name: 'Submit for Review' })).toBeVisible()
   await expect(page.getByRole('button', { name: /preview/i })).toHaveCount(0)
 })
 
 test('tags: 20 are accepted, a 21st is stopped with a plain message and nothing is sent; the count is live', async ({ page }) => {
   const sent = recordWrites(page)
-  await openCreateForm(page, 'Tag Owner', /Service \/ Professional/)
+  await openCreateForm(page, 'Tag Owner', /^Tutor/)
   const tags = (n: number) => Array.from({ length: n }, (_, i) => `tag${i + 1}`).join(', ')
-  await fillProvider(page, 'Twenty One Tags', tags(3))
+  await fillTutor(page, 'Twenty One Tags', tags(3))
   await expect(page.getByText(/\(3 of 20 so far\)/)).toBeVisible() // the live count, while the field is within its limit
-  await page.getByLabel(/Services offered/).fill(tags(21)) // past it, the error replaces the hint and says how many to remove
+  await page.getByLabel(/Topics you teach/).fill(tags(21)) // past it, the error replaces the hint and says how many to remove
   await page.getByRole('button', { name: 'Submit for Review' }).click()
   const message = page.getByRole('alert').filter({ hasText: 'You can add up to 20 tags. Remove 1 to continue.' })
   await expect(message).toBeVisible()
-  await expect(page.getByLabel(/Services offered/)).toHaveAttribute('aria-invalid', 'true')
+  await expect(page.getByLabel(/Topics you teach/)).toHaveAttribute('aria-invalid', 'true')
   expect(listingPosts(sent)).toHaveLength(0)
 
-  await page.getByLabel(/Services offered/).fill(tags(20))
+  await page.getByLabel(/Topics you teach/).fill(tags(20))
   await expect(page.getByText(/20 of 20/)).toBeVisible()
   await page.getByRole('button', { name: 'Submit for Review' }).click()
   await expectPage(page, 'Listings')
@@ -89,8 +82,8 @@ test('tags: 20 are accepted, a 21st is stopped with a plain message and nothing 
 
 test('a hidden character (a pasted non-breaking space) in the name is stopped on the page, nothing is sent', async ({ page }) => {
   const sent = recordWrites(page)
-  await openCreateForm(page, 'Hidden Owner', /Service \/ Professional/)
-  await fillProvider(page, 'Wiring Works')
+  await openCreateForm(page, 'Hidden Owner', /^Tutor/)
+  await fillTutor(page, 'Wiring Works')
   await page.getByRole('button', { name: 'Submit for Review' }).click()
   await expect(page.getByText(/Please use plain text only/)).toBeVisible()
   await expect(page.getByLabel('Name', { exact: true })).toHaveAttribute('aria-invalid', 'true')
@@ -99,13 +92,13 @@ test('a hidden character (a pasted non-breaking space) in the name is stopped on
 
 test('the image field promises no upload: no file picker, a disabled button and a notice, and nothing is sent for it', async ({ page }) => {
   const sent = recordWrites(page)
-  await openCreateForm(page, 'Image Owner', /Service \/ Professional/)
+  await openCreateForm(page, 'Image Owner', /^Tutor/)
   await expect(page.locator('input[type=file]')).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Choose Image' })).toBeDisabled()
   await expect(page.getByText(/Image upload isn't available yet/)).toBeVisible()
   await expect(page.getByText(/prototype/i)).toHaveCount(0)
 
-  await fillProvider(page, 'No Picture Works')
+  await fillTutor(page, 'No Picture Works')
   await page.getByRole('button', { name: 'Submit for Review' }).click()
   await expectPage(page, 'Listings')
   expect(listingPosts(sent)[0]!.body).not.toHaveProperty('image')
@@ -125,9 +118,9 @@ test('the owner dashboard shows the category NAME of a business, never a slug', 
 })
 
 async function fillBusiness(page: Page, name: string, tags = 'books, copies') {
-  // Business form labels differ from provider's: "Business Name" vs "Name", "Category" vs
-  // "Service Category", "Tags" vs "Services offered". A Business can be area_only, which keeps
-  // the fixture submittable without a map point.
+  // Business form labels differ from the Tutor's: "Business Name" vs "Name", "Category" vs "Subject",
+  // "Tags" vs "Topics you teach". A Business can be area_only, which keeps the fixture submittable
+  // without a map point.
   await page.getByLabel('Business Name').fill(name)
   await page.getByLabel('Category', { exact: true }).selectOption({ label: 'Stationery' })
   await page.getByLabel('Description', { exact: true }).fill('A friendly neighbourhood shop in B-17.')
@@ -136,13 +129,9 @@ async function fillBusiness(page: Page, name: string, tags = 'books, copies') {
 }
 
 test('the Free plan limit is explained in plain words, and the form keeps what was typed', async ({ page }) => {
-  // Preseed state with one additional pending Business so the owner's quota-countable active count
-  // (``activeQuota``) starts at 2 — the fixtures hold 1 pending business + 1 approved provider, and
-  // providers are portal-managed and never consume the owner's quota (AUTH_RBAC §22.6). Creating a
-  // third non-provider trips the Free plan's 3-of-3 limit.
-  const seed = { ...OWNER_LISTINGS[0], id: '11111111-1111-4111-8111-000000000900', name: 'Second Shop', revision: 1 }
-  writeState().listings.push(seed)
-
+  // The fixtures already hold two ACTIVE listings of this owner (1 pending business + 1 approved tutor; the
+  // rejected property and the archived tutor do not count), so one more fills the Free plan's 3 slots and the
+  // next is refused. (A Service / Professional is portal-managed and ownerless, so it is never one of them.)
   await openCreateForm(page, 'Quota Owner', /Business \/ Shop/)
   await fillBusiness(page, 'Third Listing Works')
   await page.getByRole('button', { name: 'Submit for Review' }).click()
@@ -155,8 +144,7 @@ test('the Free plan limit is explained in plain words, and the form keeps what w
   await expect(page.getByRole('link', { name: /upgrade|subscribe|buy/i })).toHaveCount(0)
 
   await page.getByRole('link', { name: 'New listing' }).click()
-  // A professional (non-admin) sees the three-kind chooser; the Service / Professional kind is
-  // portal-managed and does not appear here.
+  // The chooser offers the three owned kinds; the Service / Professional kind is portal-managed and never appears.
   await expectPage(page, 'List a Business, Tutor or Property')
   await expect(limitNotice).toBeVisible()
   await expect(limitNotice.getByRole('link', { name: 'Manage my listings' })).toHaveAttribute('href', '/provider/listings')
@@ -177,7 +165,7 @@ test('editing: the button says Save Changes and the page says what saving does',
   await expectPage(page, 'Log In')
   await signIn(page, 'Edit Owner')
   await expectPage(page, 'Listings')
-  const approved = page.locator('[data-slot="card"]').filter({ hasText: 'Approved Plumbing Co' }).filter({ has: page.getByRole('button', { name: 'View' }) })
+  const approved = page.locator('[data-slot="card"]').filter({ hasText: 'Approved Physics Tutor' }).filter({ has: page.getByRole('button', { name: 'View' }) })
   await approved.getByRole('button', { name: 'Edit' }).click()
   await expectPage(page, 'Edit Listing')
   await expect(page.getByRole('button', { name: 'Save Changes' })).toBeVisible()

@@ -17,6 +17,8 @@ from fastapi.routing import APIRoute
 from sqlalchemy import select, text
 
 from app.api.v1 import admin as admin_routes
+from app.api.v1 import admin_providers as admin_provider_routes
+from app.api.v1 import admin_requests as admin_request_routes
 from app.api.v1 import admin_staff as admin_staff_routes
 from app.api.v1 import auth as auth_routes
 from app.api.v1 import (
@@ -40,6 +42,7 @@ from app.dependencies.auth import (
     require_staff,
     require_super_admin,
 )
+from app.dependencies.providers import require_services_staff
 from app.models import StaffScopeAssignment, UserRole
 from app.models.enums import CategoryModule, PlanCode
 from tests.db.auth_helpers import OTHER_PASSWORD, PASSWORD, AuthApi, AuthEnv, make_account
@@ -402,6 +405,8 @@ ROUTER_MODULES = [
     requests,
     admin_routes,
     admin_staff_routes,
+    admin_provider_routes,
+    admin_request_routes,
     news,
 ]
 
@@ -420,16 +425,24 @@ def _routes(module: Any) -> list[APIRoute]:
 def test_every_current_admin_route_has_an_explicit_authority_classification() -> None:
     """RBAC-B: ``ADMIN_AUTHORITY`` is the source of truth; every ``/admin/*`` route must have an
     entry, and its runtime dependency must match (``scoped_staff`` → ``require_staff``;
-    ``super_admin_only`` → ``require_super_admin``). A new route added without an entry fails."""
+    ``services_staff`` → ``require_services_staff`` (RBAC-D); ``super_admin_only`` →
+    ``require_super_admin``). A new route added without an entry fails."""
     from app.api.v1.admin import ADMIN_AUTHORITY
 
     expected_by_key: dict[str, str] = ADMIN_AUTHORITY
     found: dict[str, str] = {}
-    for route in [*_routes(admin_routes), *_routes(admin_staff_routes)]:
+    for route in [
+        *_routes(admin_routes),
+        *_routes(admin_staff_routes),
+        *_routes(admin_provider_routes),
+        *_routes(admin_request_routes),
+    ]:
         calls = _calls(route.dependant)
         for method in route.methods or set():
             key = f"{method} {route.path}"
-            if require_sensitive_super_admin in calls and require_staff not in calls:
+            if require_services_staff in calls and require_super_admin not in calls:
+                found[key] = "services_staff"
+            elif require_sensitive_super_admin in calls and require_staff not in calls:
                 found[key] = "super_admin_sensitive"
             elif require_super_admin in calls and require_staff not in calls:
                 found[key] = "super_admin_only"
@@ -446,8 +459,22 @@ def test_every_current_admin_route_has_an_explicit_authority_classification() ->
         "POST /admin/listings/{listing_id}/approve",
         "POST /admin/listings/{listing_id}/reject",
     }
+    # ...plus, since RBAC-D, exactly the three Provider authoring routes and the six portal Service
+    # request routes, whose own services prove the live ``services`` scope (under lock for a write):
+    assert {k for k, v in expected_by_key.items() if v == "services_staff"} == {
+        "POST /admin/providers",
+        "PATCH /admin/providers/{provider_id}",
+        "POST /admin/providers/{provider_id}/archive",
+        "GET /admin/requests",
+        "GET /admin/requests/{request_id}",
+        "POST /admin/requests/{request_id}/accept",
+        "POST /admin/requests/{request_id}/start",
+        "POST /admin/requests/{request_id}/complete",
+        "POST /admin/requests/{request_id}/cancel",
+    }
     assert set(expected_by_key.values()) == {
         "scoped_staff",
+        "services_staff",
         "super_admin_only",
         "super_admin_sensitive",
     }
@@ -569,7 +596,11 @@ def test_require_staff_is_only_attached_to_the_classified_scoped_moderation_rout
     )
 
     expected = sorted(
-        {key.split(" ", 1)[1] for key, value in ADMIN_AUTHORITY.items() if value == "scoped_staff"}
+        {
+            key.split(" ", 1)[1]
+            for key, value in ADMIN_AUTHORITY.items()
+            if value in ("scoped_staff", "services_staff")
+        }
     )
     attached_paths = sorted({row.split(" ", 1)[1] for row in attached})
     assert attached_paths == expected

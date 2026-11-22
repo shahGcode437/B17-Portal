@@ -10,17 +10,15 @@ import type { Page } from '@playwright/test'
  */
 test.use({ viewport: { width: 375, height: 812 } })
 
-// The mobile form tests exercise the Service / Professional kind as the generic fixture — a
-// provider's shorter form (no required location, no grade) keeps the mobile viewport assertions
-// focused. Service / Professional is portal-managed (Task 2, AUTH_RBAC §22.6), so the sign-in is
-// as ``adminProfessional`` (admin role + professional profile): the profile satisfies the
-// /provider/* workspace guard, the admin role unlocks the provider chooser button.
+// The mobile form tests exercise the Tutor kind as the generic fixture — a name, one category, a grade
+// and an area-only default (no map point) keep the mobile viewport assertions focused. A Service /
+// Professional listing is portal-managed and ownerless (RBAC-D), so nobody lists one on this page.
 async function openCreateForm(page: Page, name: string) {
   await page.goto('/provider/listings/new')
   await expectPage(page, 'Log In')
-  await signIn(page, name, 'adminProfessional')
-  await expectPage(page, 'List a Service, Business, Tutor or Property')
-  await page.getByRole('button', { name: /Service \/ Professional/ }).click()
+  await signIn(page, name, 'professional')
+  await expectPage(page, 'List a Business, Tutor or Property')
+  await page.getByRole('button', { name: /^Tutor/ }).click()
 }
 
 const overflow = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
@@ -53,9 +51,10 @@ test('phone: the create form has no horizontal scroll and its controls are reach
 test('phone: the 21-tag message and the Block message wrap inside the screen', async ({ page }) => {
   await openCreateForm(page, 'Phone Errors')
   await page.getByLabel('Name', { exact: true }).fill('Twenty One Tags')
-  await page.getByLabel('Service Category').selectOption({ label: 'Electrical' })
-  await page.getByLabel('Description', { exact: true }).fill('Wiring, repairs and fittings across B-17.')
-  await page.getByLabel(/Services offered/).fill(Array.from({ length: 21 }, (_, i) => `tag${i + 1}`).join(', '))
+  await page.getByLabel('Subject', { exact: true }).selectOption({ label: 'Physics' })
+  await page.getByLabel('Description', { exact: true }).fill('Physics lessons for matric and A-level students across B-17.')
+  await page.getByLabel('Grade / level you teach').fill('Matric / A-Levels')
+  await page.getByLabel(/Topics you teach/).fill(Array.from({ length: 21 }, (_, i) => `tag${i + 1}`).join(', '))
   await page.getByLabel('Visibility').selectOption('area_only')
   await page.getByLabel('Block (optional)').fill('C <b>')
   await page.getByRole('button', { name: 'Submit for Review' }).tap()

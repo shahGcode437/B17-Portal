@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { ApiClient, createUser, expectH1, ownerCard, scalar, signInAs, type TestUser } from './helpers/stack'
-import { KIND, createProvider, openCreateForm, publicGet, unique } from './helpers/ui'
+import { KIND, createTutor, fillTutorForm, openCreateForm, publicGet, unique } from './helpers/ui'
 
 /**
  * Phase 12S Step A - quota-aware listing UX, the owner preview and the dead-route cleanup, proven against the REAL
@@ -10,13 +10,16 @@ import { KIND, createProvider, openCreateForm, publicGet, unique } from './helpe
 test.describe.configure({ mode: 'serial' })
 test.setTimeout(180_000)
 
-const provider = (name: string) => ({
-  kind: 'provider',
+// The generic OWNED listing is a Tutor: a Service / Professional is portal-managed and ownerless (RBAC-D), so it can
+// never occupy an owner's plan slot and is not what this quota story is about.
+const listing = (name: string) => ({
+  kind: 'tutor',
   name,
-  category: 'plumbing',
-  description: `${name} - plumbing repairs across B-17.`,
+  category: 'physics',
+  grade: 'Grade 9',
+  description: `${name} - physics lessons across B-17.`,
   area: 'B-17',
-  tags: ['plumbing'],
+  tags: ['physics'],
   location: { visibility: 'area_only' },
 })
 const activeCount = (email: string) =>
@@ -29,7 +32,7 @@ test('a Free owner with room: no warning, New listing works, and the third listi
   free = await createUser('stepa-free', { professional: 'free' })
   const api = await ApiClient.shared(free.email)
   for (const n of ['One', 'Two']) {
-    const r = await api.call('POST', '/listings', provider(unique(`StepA ${n}`)))
+    const r = await api.call('POST', '/listings', listing(unique(`StepA ${n}`)))
     expect(r.status).toBe(201)
   }
   const page = await signInAs(browser, free, '/provider/listings')
@@ -39,9 +42,9 @@ test('a Free owner with room: no warning, New listing works, and the third listi
 
   // New listing works normally, and the create page has no warning either.
   await page.getByRole('link', { name: 'New listing' }).click()
-  await expectH1(page, 'List a Service, Business, Tutor or Property')
+  await expectH1(page, 'List a Business, Tutor or Property')
   await expect(noticeOf(page)).toHaveCount(0)
-  await createProvider(page, { name: unique('StepA Three'), category: 'Plumbing' })
+  await createTutor(page, { name: unique('StepA Three'), subject: 'Physics' })
 
   // Now 3 of 3: the dashboard says so next to "New listing" and offers no upgrade.
   expect(activeCount(free.email)).toBe(3)
@@ -61,7 +64,7 @@ test('at 3 of 3 the create page warns before any field, the server still refuses
   const newListing = page.getByRole('link', { name: 'New listing' })
   await expect(newListing).toHaveAttribute('aria-describedby', 'listing-limit-notice')
   await newListing.click()
-  await expectH1(page, 'List a Service, Business, Tutor or Property')
+  await expectH1(page, 'List a Business, Tutor or Property')
 
   // Before a kind is chosen or a field touched.
   const notice = noticeOf(page)
@@ -71,14 +74,10 @@ test('at 3 of 3 the create page warns before any field, the server still refuses
   await expect(notice).not.toContainText(/upgrade|premium/i)
 
   // The form is not blocked: submitting anyway reaches the server, which refuses (the server is the authority).
-  await page.getByRole('button', { name: KIND.provider }).click()
+  await page.getByRole('button', { name: KIND.tutor }).click()
   await expect(notice).toBeVisible()
   const name = unique('StepA Four')
-  await page.getByLabel('Name', { exact: true }).fill(name)
-  await page.getByLabel('Service Category').selectOption({ label: 'Plumbing' })
-  await page.getByLabel('Description', { exact: true }).fill('A fourth active listing on the Free plan must be refused by the server.')
-  await page.getByLabel('Area', { exact: true }).selectOption('B-17')
-  await page.getByLabel(/Services offered/).fill('plumbing, repairs')
+  await fillTutorForm(page, { name, subject: 'Physics', description: 'A fourth active listing on the Free plan must be refused by the server.' })
   const [response] = await Promise.all([
     page.waitForResponse((r) => r.request().method() === 'POST' && new URL(r.url()).pathname === '/api/v1/listings'),
     page.getByRole('button', { name: 'Submit for Review' }).click(),
@@ -101,7 +100,7 @@ test('at 3 of 3 the create page warns before any field, the server still refuses
   await expect(noticeOf(page)).toHaveCount(0)
   expect(activeCount(free.email)).toBe(2)
   await page.getByRole('link', { name: 'New listing' }).click()
-  await expectH1(page, 'List a Service, Business, Tutor or Property')
+  await expectH1(page, 'List a Business, Tutor or Property')
   await expect(noticeOf(page)).toHaveCount(0)
   await page.context().close()
 })
@@ -109,19 +108,15 @@ test('at 3 of 3 the create page warns before any field, the server still refuses
 test('stale counts: the page sees room, the server is already full, and the refusal is still explained', async ({ browser }) => {
   const stale = await createUser('stepa-stale', { professional: 'free' })
   const api = await ApiClient.shared(stale.email)
-  for (const n of ['A', 'B']) expect((await api.call('POST', '/listings', provider(unique(`StepA Stale ${n}`)))).status).toBe(201)
+  for (const n of ['A', 'B']) expect((await api.call('POST', '/listings', listing(unique(`StepA Stale ${n}`)))).status).toBe(201)
   const page = await signInAs(browser, stale)
-  await openCreateForm(page, KIND.provider)
+  await openCreateForm(page, KIND.tutor)
   await expect(noticeOf(page)).toHaveCount(0) // the browser knows of 2 active listings
 
   // Another tab (here: the API) fills the third slot.
-  expect((await api.call('POST', '/listings', provider(unique('StepA Stale C')))).status).toBe(201)
+  expect((await api.call('POST', '/listings', listing(unique('StepA Stale C')))).status).toBe(201)
 
-  await page.getByLabel('Name', { exact: true }).fill(unique('StepA Stale D'))
-  await page.getByLabel('Service Category').selectOption({ label: 'Plumbing' })
-  await page.getByLabel('Description', { exact: true }).fill('The page believed there was room; the server knows better and says so.')
-  await page.getByLabel('Area', { exact: true }).selectOption('B-17')
-  await page.getByLabel(/Services offered/).fill('plumbing, repairs')
+  await fillTutorForm(page, { name: unique('StepA Stale D'), subject: 'Physics', description: 'The page believed there was room; the server knows better and says so.' })
   const [response] = await Promise.all([
     page.waitForResponse((r) => r.request().method() === 'POST' && new URL(r.url()).pathname === '/api/v1/listings'),
     page.getByRole('button', { name: 'Submit for Review' }).click(),
@@ -135,14 +130,14 @@ test('stale counts: the page sees room, the server is already full, and the refu
 test('a Premium owner is never warned', async ({ browser }) => {
   const premium = await createUser('stepa-premium', { professional: 'premium' })
   const api = await ApiClient.shared(premium.email)
-  for (const n of ['A', 'B', 'C', 'D']) expect((await api.call('POST', '/listings', provider(unique(`StepA Premium ${n}`)))).status).toBe(201)
+  for (const n of ['A', 'B', 'C', 'D']) expect((await api.call('POST', '/listings', listing(unique(`StepA Premium ${n}`)))).status).toBe(201)
   const page = await signInAs(browser, premium, '/provider/listings')
   await expectH1(page, 'Listings')
   await expect(ownerCard(page, unique('StepA Premium A'))).toBeVisible()
   await expect(noticeOf(page)).toHaveCount(0)
   await expect(page.getByText(/active listings used/)).toHaveCount(0)
   await page.getByRole('link', { name: 'New listing' }).click()
-  await expectH1(page, 'List a Service, Business, Tutor or Property')
+  await expectH1(page, 'List a Business, Tutor or Property')
   await expect(noticeOf(page)).toHaveCount(0)
   await page.context().close()
 })

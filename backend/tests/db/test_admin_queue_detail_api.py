@@ -331,10 +331,10 @@ def test_the_queue_row_itself_says_taken_down_for_a_takedown_and_not_for_a_rejec
     review shape, so the queue and the review dialog cannot disagree."""
     owner = owner_signed_in(auth_env, admin=True)
     admin = admin_signed_in(auth_env)
-    taken_down = pending(owner, provider_body(name="Row Takedown"))
-    refused = pending(owner, provider_body(name="Row Rejection"))
-    still_pending = pending(owner, provider_body(name="Row Pending"))
-    live = pending(owner, provider_body(name="Row Live"))
+    taken_down = pending(owner, tutor_body(name="Row Takedown"))
+    refused = pending(owner, tutor_body(name="Row Rejection"))
+    still_pending = pending(owner, tutor_body(name="Row Pending"))
+    live = pending(owner, tutor_body(name="Row Live"))
     for listing_id in (taken_down, live):
         assert approve(admin, listing_id, 1).status_code == 200
     age_history(auth_env.session, taken_down, 5)
@@ -365,7 +365,7 @@ def test_the_queue_row_itself_says_taken_down_for_a_takedown_and_not_for_a_rejec
 def test_the_queue_marker_follows_the_latest_rejection_only(auth_env: AuthEnv) -> None:
     owner = owner_signed_in(auth_env, admin=True)
     admin = admin_signed_in(auth_env)
-    listing_id = pending(owner, provider_body(name="Row Lifecycle"))
+    listing_id = pending(owner, tutor_body(name="Row Lifecycle"))
     assert approve(admin, listing_id, 1).status_code == 200
     age_history(auth_env.session, listing_id, 20)
     assert reject(admin, listing_id, 1, "Reported as closed; please confirm.").status_code == 200
@@ -452,21 +452,12 @@ def test_the_detail_is_the_full_review_shape_of_every_kind(
     assert data["id"] == listing_id and (data["status"], data["revision"]) == ("pending", 1)
     for key, value in extra.items():
         assert data[key] == value, key
-    for key in (
-        "description",
-        "tags",
-        "categories",
-        "categoryLabel",
-        "area",
-        "location",
-        "publicLocation",
-        "submittedAt",
-        "createdAt",
-        "updatedAt",
-        "history",
-        "submitter",
-    ):
+    # A Provider is portal-managed: nobody owns it, so there is no ``submitter`` to show.
+    shape = ["description", "tags", "categories", "categoryLabel", "area", "location"]
+    shape += ["publicLocation", "submittedAt", "createdAt", "updatedAt", "history"]
+    for key in shape if data["kind"] == "provider" else [*shape, "submitter"]:
         assert key in data, key  # fmt: skip
+    assert ("submitter" in data) is (data["kind"] != "provider")
 
 
 def test_the_detail_of_a_food_business_carries_the_whole_food_profile(auth_env: AuthEnv) -> None:
@@ -536,7 +527,7 @@ def test_the_detail_carries_the_submitter_the_history_and_the_current_reason(
     auth_env: AuthEnv,
 ) -> None:
     owner = owner_signed_in(auth_env, admin=True)
-    listing_id = pending(owner, provider_body())
+    listing_id = pending(owner, tutor_body())
     admin = admin_signed_in(auth_env)
     fresh = detail(admin, listing_id)
     assert fresh["submitter"] == {"displayName": "Sana Baker"}

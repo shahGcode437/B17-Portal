@@ -1,14 +1,17 @@
 """Creating a service request against real PostgreSQL (Phase 12F; API_CONTRACT.md §13).
 
-The requester is the session user, the provider is derived from the target listing's owner, the
-status starts ``submitted``, and only an approved *provider* listing that is not the requester's
-own can be the target. The contact channel is a preference: it sends and stores nothing else.
+The requester is the session user, the status starts ``submitted``, and only an approved
+*provider* listing can be the target. A Provider is portal-managed and has no owner (RBAC-D), so a
+request is addressed to the PORTAL: there is no personal recipient, no "own listing" and nothing
+about the request depends on whoever authored the Provider. The contact channel is a preference:
+it sends and stores nothing else.
 """
 
 from typing import Any
 from unittest.mock import patch
 
 import pytest
+from sqlalchemy import text
 
 from app.models.enums import ListingStatus
 from app.repositories.service_requests import ServiceRequestRepository
@@ -34,8 +37,7 @@ from tests.db.request_helpers import (
     stored_request,
     world,
 )
-from tests.db.write_helpers import created_id, set_status, signed_in
-from tests.db.write_helpers import patch as patch_listing
+from tests.db.write_helpers import created_id, patch_provider, set_status, signed_in
 from tests.write_payloads import food_body, property_body, provider_body
 
 # -- the happy path ----------------------------------------------------------------------------------
@@ -186,22 +188,50 @@ def test_a_requester_needs_no_professional_profile(auth_env: AuthEnv) -> None:
 # -- own listing, eligible kinds, eligible status ---------------------------------------------------
 
 
-def test_an_owner_cannot_request_their_own_listing(auth_env: AuthEnv) -> None:
+def test_the_staff_author_of_a_provider_may_request_it_like_any_resident(
+    auth_env: AuthEnv,
+) -> None:
+    """There is no owner, so there is nobody to be "requesting their own listing": the old
+    ``own_listing`` refusal cannot apply and no longer exists. The request is the author's as a
+    REQUESTER, and the author gains no handling authority from having written the Provider."""
     w = world(auth_env)
 
-    response = send(w.owner, w.listing_id)
+    response = send(w.author, w.listing_id)
 
-    assert response.status_code == 422
-    assert detail_codes(response) == [("providerListingId", "own_listing")]
-    assert request_count(auth_env.session) == 0
+    assert response.status_code == 201, response.text
+    assert response.json()["data"]["viewerRole"] == "requester"
+    assert request_count(auth_env.session) == 1
 
 
-def test_an_owner_may_request_another_providers_listing(auth_env: AuthEnv) -> None:
+def test_staff_may_request_another_providers_listing(auth_env: AuthEnv) -> None:
     w = world(auth_env)
-    other_owner = provider_signed_in(auth_env, "other@example.org")
-    other_listing = approved_provider(auth_env, other_owner, name="Other Provider Co")
+    other_author = provider_signed_in(auth_env, "other@example.org")
+    other_listing = approved_provider(auth_env, other_author, name="Other Provider Co")
 
-    assert send(w.owner, other_listing).status_code == 201
+    assert send(w.author, other_listing).status_code == 201
+
+
+def test_a_request_records_no_personal_provider_recipient(auth_env: AuthEnv) -> None:
+    """The request row carries the requester and the target listing — never a provider account —
+    and its only history row is the requester's: nothing names the Provider's author."""
+    w = world(auth_env)
+    request_id = sent_id(w.resident, w.listing_id)
+
+    columns = {
+        row[0]
+        for row in auth_env.session.execute(
+            text(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_name = 'service_requests'"
+            )
+        )
+    }
+    assert not {"provider_id", "provider_user_id", "provider_owner_id", "recipient_id"} & columns
+    assert history_rows(auth_env.session, request_id) == [(None, "submitted", "requester")]
+    owner = auth_env.session.scalar(
+        text("SELECT owner_id FROM listings WHERE id = :i"), {"i": w.listing_id}
+    )
+    assert owner is None  # and creating the request did not give the Provider an owner
 
 
 @pytest.mark.parametrize(
@@ -561,7 +591,7 @@ def test_the_provider_name_is_a_snapshot_that_survives_a_rename(auth_env: AuthEn
     w = world(auth_env)
     request_id = sent_id(w.resident, w.listing_id)
 
-    assert patch_listing(w.owner, w.listing_id, 1, name="Totally Renamed Co").status_code == 200
+    assert patch_provider(w.author, w.listing_id, 1, name="Totally Renamed Co").status_code == 200
 
     data = w.resident.get(f"{REQUESTS}/{request_id}").json()["data"]
     assert data["providerName"] == "Bright Spark Electricians"
@@ -598,7 +628,7 @@ def test_the_same_provider_can_be_asked_once_a_day(auth_env: AuthEnv) -> None:
     # another requester is not affected, and neither is another provider
     other = requester_signed_in(auth_env, "other@example.org")
     assert send(other, w.listing_id).status_code == 201
-    elsewhere = approved_provider(auth_env, w.owner, name="Second Provider Co")
+    elsewhere = approved_provider(auth_env, w.author, name="Second Provider Co")
     assert send(w.resident, elsewhere).status_code == 201
 
 
@@ -630,7 +660,6 @@ def test_a_rejected_request_does_not_use_up_the_allowance(auth_env: AuthEnv) -> 
     for _ in range(3):
         assert send(w.resident, w.listing_id, details="short").status_code == 422
         assert send(w.resident, new_id()).status_code == 404
-        assert send(w.owner, w.listing_id).status_code == 422  # own listing
 
     assert send(w.resident, w.listing_id).status_code == 201
 

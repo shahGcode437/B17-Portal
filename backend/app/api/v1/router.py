@@ -5,6 +5,8 @@ from fastapi import APIRouter
 from app.api.routing import ContractRoute
 from app.api.v1 import (
     admin,
+    admin_providers,
+    admin_requests,
     admin_staff,
     auth,
     categories,
@@ -37,4 +39,6 @@ api_router.include_router(admin.staff_router)
 api_router.include_router(admin.router)
 api_router.include_router(admin_staff.router)
 api_router.include_router(admin_staff.sensitive_router)
+api_router.include_router(admin_providers.router)
+api_router.include_router(admin_requests.router)
 api_router.include_router(news.router)

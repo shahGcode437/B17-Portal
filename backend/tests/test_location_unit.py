@@ -287,6 +287,9 @@ def test_only_owner_shapes_and_write_bodies_reference_the_private_location() -> 
         "TutorCreate",
         "PropertyCreate",
         "ListingPatch",
+        # RBAC-D: the staff Provider authoring bodies (admin routes only) carry the same block
+        "ProviderCreateRequest",
+        "ProviderPatchRequest",
     }
     for public in ("ProviderRead", "BusinessRead", "TutorRead", "PropertyRead"):
         assert "OwnerLocation" not in str(schemas[public]) and "LocationInput" not in str(

@@ -139,7 +139,7 @@ describe("Professional: listings", () => {
   it("shows every listing with its REAL status, revision and the admin's rejection reason", async () => {
     renderPage(<ProfessionalListingsPage />, { url: "/provider/listings", user: resident() })
     expect(await screen.findByText("Pending Stationers")).toBeInTheDocument()
-    expect(screen.getByText("Approved Plumbing Co")).toBeInTheDocument()
+    expect(screen.getByText("Approved Physics Tutor")).toBeInTheDocument()
     expect(screen.getByText("Rejected Plot")).toBeInTheDocument()
     expect(screen.getByText("Archived Tutor")).toBeInTheDocument()
     expect(screen.getByText(/revision 2/)).toBeInTheDocument()
@@ -151,7 +151,7 @@ describe("Professional: listings", () => {
     await screen.findByText("Pending Stationers")
     // The whole category line, exactly: the kind, then the category's NAME (`Stationery`, not `stationery`).
     expect(screen.getByText("Business / Shop · Stationery")).toBeInTheDocument()
-    expect(screen.getByText("Service / Professional · Plumbing")).toBeInTheDocument()
+    expect(screen.getByText("Tutor · Physics · Matric / A-Levels")).toBeInTheDocument()
     expect(screen.getByText("Property · Plot · For Sale")).toBeInTheDocument()
     expect(screen.getByText("Tutor · English · Grade 8")).toBeInTheDocument()
   })

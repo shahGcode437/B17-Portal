@@ -46,8 +46,9 @@ export async function pushInApp(page: Page, path: string) {
 /**
  * ``admin`` holds only the ``admin`` role (used by the admin-workspace tests and the pure role-
  * authority guards). ``adminProfessional`` holds BOTH the ``admin`` role AND a professional
- * profile — needed to author Service / Professional listings (Task 2, AUTH_RBAC §22.6), since the
- * ``/provider/*`` workspace also guards on ``user.professional``.
+ * profile — a Super Admin who can also open the ``/provider/*`` workspace (which guards on
+ * ``user.professional``), e.g. to show that the owner form offers no Service / Professional kind
+ * even to them (RBAC-D: a Service is portal-managed and authored by staff, never an owner's listing).
  */
 export type AccountKind = 'resident' | 'professional' | 'admin' | 'adminProfessional'
 
@@ -64,8 +65,8 @@ export function emailFor(name: string) {
  *   - `admin`: the `admin` role, NO professional profile (used by the admin-workspace and
  *     role-authority tests; these admins are blocked from the Professional workspace exactly
  *     because they have no profile).
- *   - `adminProfessional`: BOTH `admin` role AND a professional profile — portal staff who
- *     also author Service / Professional listings (Task 2).
+ *   - `adminProfessional`: BOTH `admin` role AND a professional profile — a Super Admin who
+ *     can also open the Professional workspace (RBAC-D: still not offered a Service form there).
  */
 export async function signIn(page: Page, name: string, kind: AccountKind = 'professional') {
   const email = emailFor(name)

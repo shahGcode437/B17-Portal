@@ -7,7 +7,7 @@ import { resetCategoryCache } from "@/hooks/useCategories"
 import { fail, installFetchMock, meBody, okPage, type MockCall, type MockReply } from "@/test/apiMock"
 import { fakeBackend } from "@/test/fixtures/fakeBackend"
 import { OWNER_LISTINGS } from "@/test/fixtures/apiFixtures"
-import { adminUser } from "@/test/authFixtures"
+import { testUser } from "@/test/authFixtures"
 import { renderPage } from "@/test/renderPage"
 
 /**
@@ -15,12 +15,25 @@ import { renderPage } from "@/test/renderPage"
  * action (there is no billing). The count is the browser's best knowledge: it only warns, the server still decides
  * (`plan_limit_reached`), and a count that is missing or stale removes nothing.
  */
-// The create-page tests below exercise the Service / Professional kind as the generic listing (the
-// shortest form, no required location, no grade), so the tester is signed in as an admin — the only
-// role that may create a ``provider`` listing. The plan constraint (Free / Premium) is what the test
-// is actually about; the admin role is incidental.
-const FREE = () => adminUser({ professional: { planCode: "free" } })
-const PREMIUM = () => adminUser({ professional: { planCode: "premium" } })
+// The create-page tests below use the Tutor kind as the generic listing (a name, one category, a grade, area-only
+// by default, so no map pin is needed). A Service / Professional listing is portal-managed and never created on
+// this page (RBAC-D), so the plan constraint (Free / Premium) is what these tests are about, on an owned kind.
+const FREE = () => testUser({ professional: { planCode: "free" } })
+const PREMIUM = () => testUser({ professional: { planCode: "premium" } })
+
+/** Choose Tutor and fill every required field (the same input on every create-page test below). */
+async function fillTutor(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(await screen.findByRole("button", { name: /^Tutor/ }))
+  await user.click(screen.getByLabelText("Name"))
+  await user.paste("Sunrise Physics Tutor")
+  await user.selectOptions(await screen.findByRole("combobox", { name: "Subject" }), "physics")
+  await user.click(screen.getByLabelText("Description"))
+  await user.paste("Physics lessons for matric and A-level students.")
+  await user.click(screen.getByLabelText("Grade / level you teach"))
+  await user.paste("Matric / A-Levels")
+  await user.click(screen.getByLabelText(/Topics you teach/))
+  await user.paste("physics, lessons")
+}
 
 /** `GET /users/me/listings` with these per-status counts (the rows are the standard fixtures; the counts are what the quota reads). */
 const ownerListings = (counts: {
@@ -117,7 +130,7 @@ describe("creating a listing at the limit", () => {
     expect(region).toHaveTextContent("rejected and archived ones don't") // there is no usage card here, so the notice says what counts
     expect(within(region).getByRole("link", { name: "Manage my listings" })).toHaveAttribute("href", "/provider/listings")
     // The kind choices are still there (the warning blocks nothing).
-    expect(screen.getByRole("button", { name: /Service \/ Professional/ })).toBeEnabled()
+    expect(screen.getByRole("button", { name: /^Tutor/ })).toBeEnabled()
     expect(region.textContent).not.toMatch(/upgrade|premium/i)
     expect(screen.queryByRole("link", { name: /upgrade|premium/i })).not.toBeInTheDocument()
   })
@@ -127,16 +140,9 @@ describe("creating a listing at the limit", () => {
     const user = userEvent.setup()
     createPage()
     await screen.findByRole("heading", { name: "Active listing limit reached" })
-    await user.click(screen.getByRole("button", { name: /Service \/ Professional/ }))
+    await fillTutor(user)
+    // still warning once the kind is chosen and the form is filled in
     expect(screen.getByRole("heading", { name: "Active listing limit reached" })).toBeInTheDocument()
-
-    await user.click(screen.getByLabelText("Name"))
-    await user.paste("Sunrise Solar Co")
-    await user.selectOptions(await screen.findByRole("combobox", { name: "Service Category" }), "solar")
-    await user.click(screen.getByLabelText("Description"))
-    await user.paste("Rooftop solar panels and net metering for homes.")
-    await user.click(screen.getByLabelText(/Services offered/))
-    await user.paste("solar, panels")
     await user.click(screen.getByRole("button", { name: "Submit for Review" }))
 
     // The request WAS sent (the form was not blocked) and the server's refusal is what the person reads.
@@ -145,13 +151,13 @@ describe("creating a listing at the limit", () => {
     expect(alert).toHaveTextContent("Active listing limit reached")
     expect(alert).toHaveTextContent("You've reached the active listing limit for your current plan. Archive an active listing before creating another.")
     expect(alert.textContent).not.toMatch(/upgrade|premium|plan_limit_reached|server text/i)
-    expect(screen.getByLabelText("Name")).toHaveValue("Sunrise Solar Co")
+    expect(screen.getByLabelText("Name")).toHaveValue("Sunrise Physics Tutor")
   })
 
   it("with room left there is no warning", async () => {
     backend(ROOM)
     createPage()
-    await screen.findByRole("heading", { name: "List a Service, Business, Tutor or Property" })
+    await screen.findByRole("heading", { name: "List a Business, Tutor or Property" })
     await new Promise((resolve) => setTimeout(resolve, 60))
     expect(screen.queryByRole("heading", { name: "Active listing limit reached" })).not.toBeInTheDocument()
   })
@@ -159,7 +165,7 @@ describe("creating a listing at the limit", () => {
   it("a Premium owner is never warned", async () => {
     backend(ownerListings({ pending: 20, approved: 20, rejected: 0, archived: 0 }))
     createPage(PREMIUM())
-    await screen.findByRole("heading", { name: "List a Service, Business, Tutor or Property" })
+    await screen.findByRole("heading", { name: "List a Business, Tutor or Property" })
     await new Promise((resolve) => setTimeout(resolve, 60))
     expect(screen.queryByRole("heading", { name: "Active listing limit reached" })).not.toBeInTheDocument()
   })
@@ -168,18 +174,11 @@ describe("creating a listing at the limit", () => {
     const { calls } = backend(fail(500, "internal_error"), (call) => (isCreate(call) ? fail(403, "plan_limit_reached") : undefined))
     const user = userEvent.setup()
     createPage()
-    await screen.findByRole("heading", { name: "List a Service, Business, Tutor or Property" })
+    await screen.findByRole("heading", { name: "List a Business, Tutor or Property" })
     await new Promise((resolve) => setTimeout(resolve, 60))
     expect(screen.queryByRole("heading", { name: "Active listing limit reached" })).not.toBeInTheDocument()
 
-    await user.click(screen.getByRole("button", { name: /Service \/ Professional/ }))
-    await user.click(screen.getByLabelText("Name"))
-    await user.paste("Sunrise Solar Co")
-    await user.selectOptions(await screen.findByRole("combobox", { name: "Service Category" }), "solar")
-    await user.click(screen.getByLabelText("Description"))
-    await user.paste("Rooftop solar panels and net metering for homes.")
-    await user.click(screen.getByLabelText(/Services offered/))
-    await user.paste("solar, panels")
+    await fillTutor(user)
     await user.click(screen.getByRole("button", { name: "Submit for Review" }))
     expect(await screen.findByText(/Archive an active listing before creating another/)).toBeInTheDocument()
     expect(calls.some(isCreate)).toBe(true)
@@ -189,14 +188,7 @@ describe("creating a listing at the limit", () => {
     backend(ROOM, (call) => (isCreate(call) ? fail(403, "plan_limit_reached") : undefined))
     const user = userEvent.setup()
     createPage()
-    await user.click(await screen.findByRole("button", { name: /Service \/ Professional/ }))
-    await user.click(screen.getByLabelText("Name"))
-    await user.paste("Sunrise Solar Co")
-    await user.selectOptions(await screen.findByRole("combobox", { name: "Service Category" }), "solar")
-    await user.click(screen.getByLabelText("Description"))
-    await user.paste("Rooftop solar panels and net metering for homes.")
-    await user.click(screen.getByLabelText(/Services offered/))
-    await user.paste("solar, panels")
+    await fillTutor(user)
     await user.click(screen.getByRole("button", { name: "Submit for Review" }))
     expect(await screen.findByRole("alert")).toHaveTextContent("Active listing limit reached")
   })

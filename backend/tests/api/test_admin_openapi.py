@@ -58,10 +58,30 @@ RBAC_C_OPERATIONS = {
     ("POST", "/admin/staff/moderators/{user_id}/resume"),
     ("DELETE", "/admin/staff/moderators/{user_id}"),
 }
+#: RBAC-D: staff Provider authoring. No DELETE / restore / ownership route: a Provider is
+#: portal-managed, archived terminally, and never assigned to anyone.
+RBAC_D_PROVIDER_OPERATIONS = {
+    ("POST", "/admin/providers"),
+    ("PATCH", "/admin/providers/{provider_id}"),
+    ("POST", "/admin/providers/{provider_id}/archive"),
+}
+#: RBAC-D: the portal's Service request handling (the provider side of a request, by staff). The
+#: lifecycle is the existing one: there is no reject / assign / reassign / delete route.
+RBAC_D_REQUEST_OPERATIONS = {
+    ("GET", "/admin/requests"),
+    ("GET", "/admin/requests/{request_id}"),
+    ("POST", "/admin/requests/{request_id}/accept"),
+    ("POST", "/admin/requests/{request_id}/start"),
+    ("POST", "/admin/requests/{request_id}/complete"),
+    ("POST", "/admin/requests/{request_id}/cancel"),
+}
+RBAC_D_OPERATIONS = RBAC_D_PROVIDER_OPERATIONS | RBAC_D_REQUEST_OPERATIONS
 
 
 def test_exactly_the_frozen_admin_operations_exist(document: dict[str, Any]) -> None:
-    assert admin_operations(document) == PHASE_12E_OPERATIONS | RBAC_C_OPERATIONS
+    assert (
+        admin_operations(document) == PHASE_12E_OPERATIONS | RBAC_C_OPERATIONS | RBAC_D_OPERATIONS
+    )
 
 
 def test_the_phase_12e_surface_has_no_delete_no_module_endpoint_and_no_later_slice(
@@ -70,7 +90,9 @@ def test_the_phase_12e_surface_has_no_delete_no_module_endpoint_and_no_later_sli
     """The moderation + taxonomy routes are unchanged: no DELETE / PUT, no module / role / user
     endpoint, nothing from a later slice. (RBAC-C's staff routes are checked separately below.)"""
     operations = {
-        (method, path) for method, path in admin_operations(document) if path not in _staff_paths()
+        (method, path)
+        for method, path in admin_operations(document)
+        if path not in _staff_paths() and (method, path) not in RBAC_D_OPERATIONS
     }
     paths = [path for _, path in operations]
 
@@ -165,9 +187,8 @@ def test_the_moderation_request_bodies(document: dict[str, Any]) -> None:
     approve = schemas(document)["ApproveRequest"]
     reject = schemas(document)["RejectRequest"]
 
-    # ``overrideReason`` is RBAC-B's temporary Super Admin self-approval override: optional, used
-    # only when a Super Admin approves their own Service / Professional listing.
-    assert set(approve["properties"]) == {"revision", "overrideReason"}
+    # RBAC-D removed RBAC-B's temporary ``overrideReason``: an approval carries the revision only.
+    assert set(approve["properties"]) == {"revision"}
     assert approve["required"] == ["revision"]
     assert set(reject["properties"]) == {"revision", "reason"}
     assert set(reject["required"]) == {"revision", "reason"}
@@ -255,3 +276,150 @@ def test_the_documented_status_codes(document: dict[str, Any]) -> None:
     assert {"201", "409", "422"} <= codes("post", "/admin/categories")
     assert {"200", "404", "409", "422"} <= codes("patch", "/admin/categories/{category_id}")
     assert {"200", "422"} <= codes("post", "/admin/categories/reorder")
+
+
+# -- RBAC-D: staff Provider authoring ---------------------------------------------------------------
+
+PROVIDER_FORBIDDEN_FIELDS = {
+    "kind",
+    "vertical",
+    "ownerId",
+    "owner",
+    "status",
+    "role",
+    "roles",
+    "scope",
+    "scopes",
+    "staffScopes",
+    "actorUserId",
+    "managedBy",
+    "createdBy",
+    "featured",
+    "food",
+    "grade",
+    "price",
+    "propertyType",
+    "listingType",
+}
+
+
+def test_the_provider_request_bodies_are_exactly_the_declared_content_fields(
+    document: dict[str, Any],
+) -> None:
+    create = schemas(document)["ProviderCreateRequest"]
+    patch = schemas(document)["ProviderPatchRequest"]
+    archive = schemas(document)["ProviderArchiveRequest"]
+
+    content = {"name", "category", "area", "description", "tags", "image", "location"}
+    assert set(create["properties"]) == content
+    assert set(create["required"]) == {"name", "category", "area", "description"}
+    assert set(patch["properties"]) == content | {"revision"}
+    assert patch["required"] == ["revision"]
+    assert set(archive["properties"]) == {"revision"} and archive["required"] == ["revision"]
+    for name, schema in (("create", create), ("patch", patch), ("archive", archive)):
+        assert not PROVIDER_FORBIDDEN_FIELDS & set(schema["properties"]), name
+
+
+def test_the_provider_routes_return_the_staff_listing_detail_and_document_every_failure(
+    document: dict[str, Any],
+) -> None:
+    def operation(method: str, path: str) -> dict[str, Any]:
+        found: dict[str, Any] = document["paths"][f"{PREFIX}{path}"][method]
+        return found
+
+    create = operation("post", "/admin/providers")
+    edit = operation("patch", "/admin/providers/{provider_id}")
+    archive = operation("post", "/admin/providers/{provider_id}/archive")
+
+    assert {"201", "401", "403", "422", "429"} <= set(create["responses"])
+    for existing in (edit, archive):
+        assert {"200", "401", "403", "404", "409", "422", "429"} <= set(existing["responses"])
+    for op, status in ((create, "201"), (edit, "200"), (archive, "200")):
+        reference = op["responses"][status]["content"]["application/json"]["schema"]["$ref"]
+        assert reference.endswith("/AdminListingEnvelope")
+
+
+def test_there_is_no_provider_delete_restore_or_ownership_operation(
+    document: dict[str, Any],
+) -> None:
+    provider_paths = [path for path in document["paths"] if "/admin/providers" in path]
+
+    assert sorted(provider_paths) == [
+        f"{PREFIX}/admin/providers",
+        f"{PREFIX}/admin/providers/{{provider_id}}",
+        f"{PREFIX}/admin/providers/{{provider_id}}/archive",
+    ]
+    methods = {
+        (method, path.removeprefix(PREFIX))
+        for path in provider_paths
+        for method in document["paths"][path]
+    }
+    assert methods == {(m.lower(), p) for m, p in RBAC_D_PROVIDER_OPERATIONS}
+    for forbidden in ("owner", "assign", "claim", "restore", "transfer", "delete"):
+        assert not any(forbidden in path for path in provider_paths), forbidden
+
+
+def test_the_owner_listing_api_still_documents_the_provider_refusal(
+    document: dict[str, Any],
+) -> None:
+    create = document["paths"][f"{PREFIX}/listings"]["post"]
+
+    assert "provider_admin_only" in create["responses"]["403"]["description"]
+    assert "staff" in create["responses"]["403"]["description"]
+
+
+def test_the_portal_request_routes_document_every_failure_and_carry_no_body_fields(
+    document: dict[str, Any],
+) -> None:
+    def operation(method: str, path: str) -> dict[str, Any]:
+        found: dict[str, Any] = document["paths"][f"{PREFIX}{path}"][method]
+        return found
+
+    queue = operation("get", "/admin/requests")
+    one = operation("get", "/admin/requests/{request_id}")
+    actions = [
+        operation("post", f"/admin/requests/{{request_id}}/{name}")
+        for name in ("accept", "start", "complete", "cancel")
+    ]
+
+    assert {"200", "401", "403", "422"} <= set(queue["responses"])
+    assert {"200", "401", "403", "404"} <= set(one["responses"])
+    for action in actions:
+        assert {"200", "401", "403", "404", "409", "422"} <= set(action["responses"])
+        reference = action["responses"]["200"]["content"]["application/json"]["schema"]["$ref"]
+        assert reference.endswith("/ServiceRequestEnvelope")
+        body = action.get("requestBody", {}).get("content", {}).get("application/json", {})
+        assert "ActionRequest" in str(body)  # the empty body of the requester's API: nothing to set
+    reference = queue["responses"]["200"]["content"]["application/json"]["schema"]["$ref"]
+    assert reference.endswith("/LeadsEnvelope")
+
+
+def test_there_is_no_portal_request_reject_assign_or_delete_operation(
+    document: dict[str, Any],
+) -> None:
+    request_paths = [path for path in document["paths"] if "/admin/requests" in path]
+
+    methods = {
+        (method.upper(), path.removeprefix(PREFIX))
+        for path in request_paths
+        for method in document["paths"][path]
+    }
+    assert methods == RBAC_D_REQUEST_OPERATIONS
+    for forbidden in ("reject", "assign", "claim", "reassign", "transfer", "delete", "owner"):
+        assert not any(forbidden in path for path in request_paths), forbidden
+
+
+def test_the_requesters_api_has_no_provider_recipient_in_its_schemas(
+    document: dict[str, Any],
+) -> None:
+    """The requester's responses and create body never carry a personal provider account: the
+    provider side is the portal."""
+    for name in (
+        "ServiceRequestCreate",
+        "ServiceRequestSummary",
+        "ServiceRequestDetail",
+        "LeadSummary",
+    ):
+        properties = set(schemas(document)[name]["properties"])
+        forbidden = {"providerId", "providerUserId", "providerOwnerId", "ownerId", "recipientId"}
+        assert not forbidden & properties, name

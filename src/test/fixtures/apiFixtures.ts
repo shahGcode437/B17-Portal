@@ -401,18 +401,22 @@ export const OWNER_LISTINGS: OwnerListingDto[] = [
     categories: [ref("stationery", "Stationery")],
   },
   {
+    // An OWNED listing that is not a Service / Professional: a Provider is portal-managed and has no
+    // owner (RBAC-D), so it can never appear in an owner's own listings. A Tutor is the closest owned
+    // analogue (name, one category, area-only by default), so it is the generic "approved, mine" row.
     ...ownerBase,
-    kind: "provider",
+    kind: "tutor",
     id: IDS.ownerApproved,
     status: "approved",
     revision: 3,
-    name: "Approved Plumbing Co",
-    category: "plumbing",
-    categoryLabel: "Plumbing",
-    description: "Plumbing repairs and fittings for homes across B-17.",
+    name: "Approved Physics Tutor",
+    category: "physics",
+    categoryLabel: "Physics",
+    grade: "Matric / A-Levels",
+    description: "Physics lessons for matric and A-level students across B-17.",
     location: { visibility: "area_only", block: "A" },
     publicLocation: { visibility: "area_only", block: "A" },
-    categories: [ref("plumbing", "Plumbing")],
+    categories: [ref("physics", "Physics")],
   },
   {
     ...ownerBase,

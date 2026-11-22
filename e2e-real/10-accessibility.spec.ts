@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { WEB_API, createUser, expectH1, loginOn, scalar, signInAs, type TestUser, newContext } from './helpers/stack'
-import { approvedProvider, openCreateForm, unique } from './helpers/ui'
+import { KIND, approvedPortalProvider, fillTutorForm, openCreateForm, unique } from './helpers/ui'
 
 /**
  * Accessibility closeout (Phase 12I) on the REAL pages: every visible control has an accessible name, errors
@@ -17,7 +17,7 @@ test.beforeAll(async () => {
   owner = await createUser('a11y-owner', { professional: 'premium' })
   admin = await createUser('a11y-admin', { admin: true })
   requester = await createUser('a11y-requester')
-  listing = await approvedProvider(owner, admin, 'A11y Provider')
+  listing = await approvedPortalProvider(admin, 'A11y Provider') // portal-managed (RBAC-D): staff-authored, no owner
 })
 
 /** Visible controls with no accessible name (label, aria-label / -labelledby, title, text). */
@@ -56,7 +56,7 @@ test('every critical page: no visible control without an accessible name; exactl
   const requesterPage = await signInAs(browser, requester)
   const targets: [Page, string, string | RegExp][] = [
     [ownerPage, '/provider/listings', 'Listings'],
-    [ownerPage, '/provider/listings/new', 'List a Service, Business, Tutor or Property'],
+    [ownerPage, '/provider/listings/new', 'List a Business, Tutor or Property'],
     [ownerPage, '/provider/leads', 'Leads'],
     [adminPage, '/admin/moderation', 'Listing Review'],
     [adminPage, '/admin/categories', 'Categories'],
@@ -85,10 +85,10 @@ test('every critical page: no visible control without an accessible name; exactl
 
 test('the create forms: every field of every kind is labelled, including the location block and the map fallback', async ({ browser }) => {
   const page = await signInAs(browser, owner)
-  for (const kind of [/Service \/ Professional/, /Business \/ Shop/, /Tutor/, /Property/]) {
+  for (const kind of [KIND.business, KIND.tutor, KIND.property]) {
     await openCreateForm(page, kind)
     for (const visibility of ['exact', 'approximate', 'area_only']) {
-      if (kind.source === 'Property' && visibility === 'area_only') continue
+      if (kind === KIND.property && visibility === 'area_only') continue
       await page.getByLabel('Visibility').selectOption(visibility)
       expect(await unnamedControls(page, 'main'), `${kind} / ${visibility}`).toEqual([])
     }
@@ -98,7 +98,7 @@ test('the create forms: every field of every kind is labelled, including the loc
 
 test('errors are announced and tied to their field; a failed submit keeps focus recoverable', async ({ browser }) => {
   const page = await signInAs(browser, owner)
-  await openCreateForm(page, /Service \/ Professional/)
+  await openCreateForm(page, KIND.tutor)
   await page.getByRole('button', { name: 'Submit for Review' }).click() // empty required fields
   const alerts = page.getByRole('alert')
   await expect(alerts.first()).toBeVisible()
@@ -162,7 +162,7 @@ test('dialogs take focus, keep Tab inside, close on Escape and give focus back t
 
 test('keyboard only: the whole Property form incl. the map numeric fallback is reachable by Tab without a trap, and submits with Enter on the button', async ({ browser }) => {
   const page = await signInAs(browser, owner)
-  await openCreateForm(page, /Property/)
+  await openCreateForm(page, KIND.property)
   await page.getByLabel('Visibility').focus()
   const seen = new Set<string>()
   for (let i = 0; i < 40; i += 1) {
@@ -196,13 +196,9 @@ test('keyboard only: the whole Property form incl. the map numeric fallback is r
 
 test('a slow submit disables the control and cannot be double-sent; the form re-enables after', async ({ browser }) => {
   const page = await signInAs(browser, owner)
-  await openCreateForm(page, /Service \/ Professional/)
+  await openCreateForm(page, KIND.tutor)
   const name = unique('Slow Submit')
-  await page.getByLabel('Name', { exact: true }).fill(name)
-  await page.getByLabel('Service Category').selectOption({ label: 'Plumbing' })
-  await page.getByLabel('Description', { exact: true }).fill('A slow submission must not be sent twice by an impatient double click.')
-  await page.getByLabel('Area', { exact: true }).selectOption('B-17')
-  await page.getByLabel(/Services offered/).fill('plumbing, repairs')
+  await fillTutorForm(page, { name, subject: 'Physics', description: 'A slow submission must not be sent twice by an impatient double click.' })
   let posts = 0
   await page.route(`${WEB_API}/listings`, async (route) => {
     if (route.request().method() === 'POST') {

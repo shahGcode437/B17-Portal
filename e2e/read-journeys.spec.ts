@@ -243,8 +243,8 @@ test.describe('authenticated read journey', () => {
   })
 
   test('create a listing opens a real form with a kind picker and the location fieldset (Phase 12H)', async ({ page }) => {
-    // Service / Professional is portal-managed (Task 2, AUTH_RBAC §22.6): a plain professional
-    // sees the three non-provider kinds and the three-kind heading.
+    // A Service / Professional listing is portal-managed and ownerless (RBAC-D), so nobody lists one
+    // here: a professional sees the three owned kinds and the three-kind heading.
     await page.goto('/provider/listings/new')
     await signIn(page, 'Sana Baker', 'professional')
     await expectPage(page, 'List a Business, Tutor or Property')
@@ -254,16 +254,18 @@ test.describe('authenticated read journey', () => {
     await expect(page.getByRole('button', { name: /Service \/ Professional/ })).toHaveCount(0)
   })
 
-  test('admin sees the Service / Professional kind in the create chooser', async ({ page }) => {
-    // The complement of the test above: portal staff (admin, with a professional profile so the
-    // /provider/* workspace guard is satisfied) see all four kinds, including the portal-managed
-    // Service / Professional option.
+  test('a Super Admin gets no Service / Professional option either: the page says portal staff manage them', async ({ page }) => {
+    // The complement of the test above: a Super Admin (with a professional profile so the /provider/*
+    // workspace guard is satisfied) is not offered a form the owner API would always refuse. They see the
+    // same three owned kinds plus one plain sentence; managing Services moves to the staff admin area.
     await page.goto('/provider/listings/new')
     await signIn(page, 'Portal Admin', 'adminProfessional')
-    await expectPage(page, 'List a Service, Business, Tutor or Property')
-    for (const name of ['Service / Professional', 'Business / Shop', 'Tutor', 'Property']) {
+    await expectPage(page, 'List a Business, Tutor or Property')
+    for (const name of ['Business / Shop', 'Tutor', 'Property']) {
       await expect(page.getByRole('button', { name: new RegExp(name) })).toBeVisible()
     }
+    await expect(page.getByRole('button', { name: /Service \/ Professional/ })).toHaveCount(0)
+    await expect(page.getByText(/Service \/ Professional listings are managed by portal staff/)).toBeVisible()
   })
 })
 

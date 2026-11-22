@@ -79,7 +79,10 @@ class Listing(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "listings"
 
     kind: Mapped[ListingKind] = mapped_column(str_enum(ListingKind), nullable=False)
-    #: NULL = admin-curated / unclaimed content. RESTRICT: ownership history must survive.
+    #: NULL = admin-curated / unclaimed / portal-managed content. A ``provider`` listing is ALWAYS
+    #: NULL here (CHECK ``provider_has_no_owner``): Service / Professional listings are managed by
+    #: portal staff, who are identified in ``staff_audit_events`` and ``listing_status_history``,
+    #: never by this column. RESTRICT: ownership history must survive.
     owner_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("users.id", ondelete="RESTRICT")
     )
@@ -188,6 +191,10 @@ class Listing(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         CheckConstraint(
             "NOT is_featured OR kind IN ('provider', 'business')", name="featured_kinds"
         ),
+        # RBAC-D (docs/backend/AUTH_RBAC.md §27.9): a Service / Professional listing is PORTAL-
+        # managed, never personally owned, so no write path can ever bind one to an individual
+        # again. One-directional on purpose: ``owner_id IS NULL`` stays legal for every other kind.
+        CheckConstraint("kind <> 'provider' OR owner_id IS NULL", name="provider_has_no_owner"),
         # -- location (docs/backend/LOCATION_MAP.md §3): row-local rules only. Per-kind
         # requiredness (e.g. a Property needs a point) is a WRITE-SERVICE rule, because legacy
         # rows legitimately have none (§3.1).

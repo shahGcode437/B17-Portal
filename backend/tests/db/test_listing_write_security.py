@@ -18,18 +18,22 @@ from tests.db.write_helpers import (
     MINE,
     PROFILE,
     archive,
+    archive_provider,
     business_body,
     codes,
     create,
+    create_provider,
     created_id,
     error_code,
     food_body,
     mine,
     patch,
+    patch_provider,
     property_body,
     provider_body,
     set_status,
     signed_in,
+    staff_provider_body,
     tutor_body,
 )
 
@@ -288,12 +292,13 @@ def test_no_write_endpoint_leaks_the_listing_existence_through_timing_free_diffe
     assert bodies(alices) == bodies("00000000-0000-4000-8000-000000000000")
 
 
-# -- Service / Professional listings are portal-managed (admin-only) --------------------------------
+# -- Service / Professional listings are portal-managed (RBAC-D) ------------------------------------
 #
-# Product rule: the public "Services" section is NOT a marketplace — only an admin may create, edit
-# or archive a listing with ``kind="provider"``. The endpoint's dependency is still
-# ``ProfessionalUser`` (verified + a professional profile), so an admin needs a professional profile
-# to OWN what they create; the extra admin check is a service-level gate on provider kind only.
+# Product rule: the public "Services" section is NOT a marketplace and a Provider is not owned by
+# anyone. Portal staff author it through ``/admin/providers`` (``test_provider_authoring_api.py``);
+# this owner API refuses the ``provider`` kind for EVERY caller, a Super Admin included, and finds
+# nothing to edit or archive (a Provider has no owner). The tests below pin that refusal and the
+# fact that providers take no part in a professional's quota.
 
 
 def test_a_non_admin_professional_cannot_create_a_provider_listing(auth_env: AuthEnv) -> None:
@@ -322,28 +327,30 @@ def test_a_non_admin_professional_can_still_create_the_other_kinds(
     assert response.status_code == 201, response.text
 
 
-def test_an_admin_professional_can_create_a_provider_listing(auth_env: AuthEnv) -> None:
+def test_a_super_admin_cannot_create_a_provider_through_the_owner_api_either(
+    auth_env: AuthEnv,
+) -> None:
+    """RBAC-D: the owner API refuses a Provider for EVERYONE. A Super Admin authors one through
+    ``POST /admin/providers`` instead."""
     api = signed_in(auth_env, "service-manager@example.org", admin=True)
 
-    response = api.request("POST", LISTINGS, json=provider_body(name="Portal Managed Service"))
+    refused = api.request("POST", LISTINGS, json=provider_body(name="Portal Managed Service"))
+    staff = create_provider(api, staff_provider_body(name="Portal Managed Service"))
 
-    assert response.status_code == 201, response.text
-    data = response.json()["data"]
+    assert refused.status_code == 403 and ("kind", "provider_admin_only") in codes(refused)
+    assert api.get(MINE).json()["meta"]["total"] == 0
+    assert staff.status_code == 201, staff.text
+    data = staff.json()["data"]
     assert data["kind"] == "provider" and data["name"] == "Portal Managed Service"
 
 
-def test_a_non_admin_cannot_edit_or_archive_a_legacy_provider_listing_they_own(
-    auth_env: AuthEnv,
-) -> None:
-    """Pre-existing (legacy) non-admin-owned provider rows remain in the database — ownership is
-    never silently transferred. The owner can still READ the row through the usual owner endpoints,
-    but every WRITE on it (edit, visibility narrow, archive) returns ``403 provider_admin_only``.
-
-    Setup: the owner created the row while an admin, then the admin role was later revoked (sessions
-    are rotated on role change — ``AUTH_RBAC.md §9``, so the account logs in fresh and keeps the row)."""
-    # Create as admin, then drop the admin role on the user so they are a plain professional owner.
-    owner = signed_in(auth_env, "legacy@example.org", admin=True, display_name="Lega Cy")
-    legacy_id = created_id(owner, provider_body(name="Legacy Provider"))
+def test_nobody_can_edit_or_archive_a_provider_through_the_owner_api(auth_env: AuthEnv) -> None:
+    """A Provider has no owner (and the database forbids giving it one), so the owner-bound edit
+    and archive find nothing — for a plain professional, for an ex-admin who used to own such a row
+    before migration ``0008``, and for the staff member who authored it today. The row is untouched
+    and is not readable through the owner endpoints either."""
+    author = signed_in(auth_env, "legacy@example.org", admin=True, display_name="Lega Cy")
+    legacy_id = created_id(author, provider_body(name="Legacy Provider"))
     auth_env.session.execute(
         text(
             "DELETE FROM user_roles ur USING users u"
@@ -351,71 +358,74 @@ def test_a_non_admin_cannot_edit_or_archive_a_legacy_provider_listing_they_own(
         )
     )
     auth_env.session.commit()
-    # Fresh browser, same account — a role change rotates the session, so the next request must log
-    # in again to pick up the (now-empty) role set.
-    owner = auth_env.client()
-    assert owner.login("legacy@example.org").status_code == 200
+    ex_admin = auth_env.client()
+    assert ex_admin.login("legacy@example.org").status_code == 200
+    others = [author, ex_admin, signed_in(auth_env, "ordinary@example.org", admin=False)]
 
-    # The row is still readable through the owner endpoints (no silent takedown or transfer).
-    assert mine(owner, legacy_id)["name"] == "Legacy Provider"
+    for api in others:
+        for response in (
+            patch(api, legacy_id, 1, name="Try to rename"),
+            patch(api, legacy_id, 1, location={"visibility": "area_only"}),
+            archive(api, legacy_id, 1),
+            api.get(f"{MINE}/{legacy_id}"),
+        ):
+            assert response.status_code in (401, 404), response.text
+        assert error_code(patch(api, legacy_id, 1, name="Try to rename")) in (
+            "not_found",
+            "session_expired",
+        )
+    row = auth_env.session.execute(
+        text("SELECT title, owner_id, revision FROM listings WHERE id = :i"), {"i": legacy_id}
+    ).one()
+    assert (row.title, row.owner_id, row.revision) == ("Legacy Provider", None, 1)
 
-    # Every WRITE on it fails with the dedicated 403.
-    for response in (
-        patch(owner, legacy_id, 1, name="Try to rename"),
-        patch(owner, legacy_id, 1, location={"visibility": "area_only"}),
-        archive(owner, legacy_id, 1),
-    ):
-        assert response.status_code == 403
-        assert error_code(response) == "forbidden"
-        assert ("kind", "provider_admin_only") in codes(response)
-    # The row was not touched.
-    assert mine(owner, legacy_id)["name"] == "Legacy Provider"
 
-
-def test_an_admin_can_edit_and_archive_a_provider_listing(auth_env: AuthEnv) -> None:
+def test_staff_edit_and_archive_a_provider_through_the_staff_api(auth_env: AuthEnv) -> None:
     admin = signed_in(auth_env, "service-manager@example.org", admin=True)
     listing_id = created_id(admin, provider_body(name="Managed Service"))
 
-    assert patch(admin, listing_id, 1, name="Managed Service — V2").status_code == 200
-    assert archive(admin, listing_id, 2).status_code == 200
+    assert patch_provider(admin, listing_id, 1, name="Managed Service — V2").status_code == 200
+    assert archive_provider(admin, listing_id, 2).status_code == 200
 
 
-# -- Quota behaviour for provider listings ----------------------------------------------------------
+# -- Quota behaviour: a Provider has no owner, so it can never occupy a plan slot -------------------
 #
-# Product rule (Task 2 follow-up #1): there are ~10 owned service categories, so an admin running
+# Product rule (Task 2 follow-up #1, hardened by RBAC-D): there are ~10 owned service categories, so
 # the portal's internal Service / Professional listings cannot be constrained by the ordinary Free
-# professional quota (3 active). The exemption is narrow:
-#   - providers never consume the owner's quota (``count_active`` filters them out);
-#   - creating / resubmitting a provider skips the quota check entirely;
+# professional quota (3 active). Since RBAC-D that is structural rather than an exemption:
+#   - a Provider has no owner, so no owner's quota can ever count it;
+#   - creating / editing / resubmitting a Provider never touches ``professional_profiles``;
 #   - business / tutor / property still count and still enforce.
 
 
-def test_an_admin_can_create_more_provider_listings_than_the_free_quota_allows(
+def test_staff_can_create_more_provider_listings_than_the_free_quota_allows(
     auth_env: AuthEnv,
 ) -> None:
-    """Portal manages ~10 services; the Free-plan ceiling of 3 must not block an admin from doing
-    their job. Create many providers in a row on a Free plan and prove they all land as pending."""
+    """Portal manages ~10 services; the Free-plan ceiling of 3 must not block a Super Admin from
+    doing their job. Create many Providers in a row from a Free-plan account: all land as pending
+    and none is an owned listing of that account."""
     admin = signed_in(
         auth_env, "service-manager@example.org", admin=True, professional=PlanCode.FREE
     )
 
-    responses = [create(admin, provider_body(name=f"Managed Service {n}")) for n in range(6)]
+    responses = [
+        create_provider(admin, staff_provider_body(name=f"Managed Service {n}")) for n in range(6)
+    ]
 
     assert [r.status_code for r in responses] == [201] * 6
-    assert admin.get(MINE).json()["meta"]["total"] == 6
+    assert admin.get(MINE).json()["meta"]["total"] == 0
 
 
 def test_provider_listings_do_not_consume_the_owner_s_ordinary_quota(auth_env: AuthEnv) -> None:
-    """Admin has 3 provider listings active (pending + approved). The quota for Business /
-    Tutor / Property is still 3 for the Free plan — those 3 providers must not have taken the
-    slots away."""
+    """Three Providers authored by a Free-plan staff account. The quota for Business / Tutor /
+    Property is still 3 — those Providers never took a slot, because they are nobody's."""
     admin = signed_in(
         auth_env, "service-manager@example.org", admin=True, professional=PlanCode.FREE
     )
     provider_ids = [created_id(admin, provider_body(name=f"Service {n}")) for n in range(3)]
     set_status(auth_env.session, provider_ids[0], ListingStatus.APPROVED)
 
-    # All three ordinary slots are available despite the three active providers.
+    # All three ordinary slots are available despite the three Providers.
     for n in range(3):
         assert create(admin, business_body(name=f"Business {n}")).status_code == 201, n
 
@@ -423,16 +433,18 @@ def test_provider_listings_do_not_consume_the_owner_s_ordinary_quota(auth_env: A
     fourth = create(admin, business_body(name="Business Four"))
     assert (fourth.status_code, error_code(fourth)) == (403, "plan_limit_reached")
 
-    # The providers are untouched by the plan_limit_reached flow.
-    assert admin.get(f"{MINE}?kind=provider").json()["meta"]["total"] == 3
+    # The Providers are not the account's listings at all, and the quota counter says so.
+    mine_all = admin.get(MINE).json()
+    assert admin.get(f"{MINE}?kind=provider").json()["meta"]["total"] == 0
+    assert mine_all["meta"]["counts"]["activeQuota"] == 3
+    assert mine_all["meta"]["total"] == 3  # only the three businesses
 
 
 def test_an_ordinary_business_listing_still_consumes_and_enforces_the_quota(
     auth_env: AuthEnv,
 ) -> None:
     """Belt-and-braces for the inverse: Free professional with 3 business listings cannot create
-    a fourth one. The admin status of the signer is irrelevant to this rule — the exemption is
-    kind-specific (provider only)."""
+    a fourth one. The admin status of the signer is irrelevant to this rule."""
     admin = signed_in(
         auth_env, "service-manager@example.org", admin=True, professional=PlanCode.FREE
     )
@@ -462,24 +474,64 @@ def test_ordinary_kinds_still_enforce_quota_for_a_non_admin(
     assert (fourth.status_code, error_code(fourth)) == (403, "plan_limit_reached")
 
 
-def test_an_admin_resubmitting_a_rejected_provider_is_not_blocked_by_the_quota(
+def test_staff_resubmitting_a_rejected_provider_is_never_blocked_by_a_quota(
     auth_env: AuthEnv,
 ) -> None:
-    """A rejected listing is re-checked against the quota when resubmitted (API_CONTRACT §10.9);
-    for providers that re-check is a no-op, so an admin can edit a rejected provider freely even
-    if their other active listings are at the plan cap."""
+    """A rejected OWNED listing is re-checked against the quota when resubmitted (API_CONTRACT
+    §10.9). A Provider has no owner and no plan, so staff can edit a rejected Provider freely even
+    when the editing account's own active listings are at the plan cap."""
     admin = signed_in(
         auth_env, "service-manager@example.org", admin=True, professional=PlanCode.FREE
     )
-    # Fill the non-provider quota.
+    # Fill the account's own quota.
     for n in range(3):
         assert create(admin, business_body(name=f"Business {n}")).status_code == 201, n
-    # One provider, taken through rejected.
+    # One Provider, taken through rejected.
     provider_id = created_id(admin, provider_body(name="Rejected Service"))
     set_status(auth_env.session, provider_id, ListingStatus.REJECTED)
 
-    # Resubmission with a material change must not hit plan_limit_reached — provider skips quota.
-    response = patch(admin, provider_id, 1, name="Rejected Service — Revised")
+    # Resubmission with a material change must not hit plan_limit_reached: no owner, no quota.
+    response = patch_provider(admin, provider_id, 1, name="Rejected Service — Revised")
 
     assert response.status_code == 200
     assert response.json()["data"]["status"] == "pending"
+
+
+# -- ownerless CURATED content of the other kinds is intentional (RBAC-D, migration 0008) -----------
+#
+# ``ck_listings_provider_has_no_owner`` is deliberately one-directional. ``owner_id IS NULL`` is a
+# documented state for admin-curated / unclaimed content (``DATA_MODEL.md`` §4 and §12: seed data is
+# loaded with ``owner_id NULL``, and databases loaded by earlier fixture versions hold such rows), and
+# a migration cannot fabricate an owner for them. This test pins WHY that is safe: nothing in the
+# application creates such a row, and once it exists nobody can manage it through the owner API.
+
+
+def test_ownerless_curated_listings_are_inert_through_the_owner_api(auth_env: AuthEnv) -> None:
+    from sqlalchemy import text
+
+    from tests.db.admin_helpers import admin_signed_in, approve, detail
+
+    owner = signed_in(auth_env, "former-owner@example.org")
+    created = created_id(owner, tutor_body(name="Curated Tutor"))
+    stored_owner = auth_env.session.execute(
+        text("SELECT owner_id IS NOT NULL FROM listings WHERE id = :i"), {"i": created}
+    ).scalar_one()
+    assert stored_owner is True  # every owner-API create sets the owner from the session
+    # the curated state, as a seed or an older fixture load leaves it (the constraint allows it)
+    auth_env.session.execute(
+        text("UPDATE listings SET owner_id = NULL WHERE id = :i"), {"i": created}
+    )
+    auth_env.session.commit()
+
+    # nobody can edit, archive or even read it through the owner API (404, like any foreign id)...
+    for api in (owner, signed_in(auth_env, "other-pro@example.org")):
+        assert patch(api, created, 1, name="Taken Over").status_code == 404
+        assert archive(api, created, 1).status_code == 404
+        assert api.get(f"{MINE}/{created}").status_code == 404
+    assert owner.get(MINE).json()["data"] == []
+    # ...so it can only ever be moderated by staff, who see it with no submitter and meet no
+    # self-moderation conflict (there is no owner to conflict with)
+    admin = admin_signed_in(auth_env)
+    assert "submitter" not in detail(admin, created)
+    assert approve(admin, created, 1).status_code == 200
+    assert auth_env.client().get(f"/listings/{created}").status_code == 200

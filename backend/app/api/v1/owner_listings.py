@@ -1,6 +1,10 @@
 """Listing writes by their owner: create, edit / resubmit, archive (Phase 12D;
 docs/backend/API_CONTRACT.md §10.2-§10.4). Guard: a verified user with a professional profile
 (``ProfessionalUser``); ownership is enforced in the service (non-owner = ``404``).
+
+OWNED listings only (Business, Food, Tutor, Property). A Service / Professional ("provider")
+listing is portal-managed and is authored through ``/admin/providers`` (RBAC-D): it is refused here
+for everyone.
 """
 
 from fastapi import APIRouter, Response
@@ -28,7 +32,8 @@ router = APIRouter(
             "model": ErrorResponse,
             "description": (
                 "email_not_verified | professional_profile_required | plan_limit_reached"
-                " | csrf_failed | forbidden (provider_admin_only)"
+                " | csrf_failed | forbidden (provider_admin_only: Service / Professional"
+                " listings are authored by portal staff only)"
             ),
         },
         422: {"model": ErrorResponse, "description": "validation_error"},
@@ -54,9 +59,10 @@ def create_listing(
     property). The owner is the signed-in user; the listing starts ``pending`` at ``revision 1``.
     ``Location`` points at the owner detail (the public page stays 404 until approval).
 
-    ``provider`` listings are portal-managed: only an admin may create / edit / archive them, else
-    ``403 forbidden`` with detail code ``provider_admin_only``."""
-    listing = service.create(principal.user_id, payload, is_admin=principal.is_admin)
+    ``provider`` listings are portal-managed: portal staff author them through ``/admin/providers``
+    and this endpoint refuses them for EVERYONE, a Super Admin included, with ``403 forbidden`` and
+    detail code ``provider_admin_only``."""
+    listing = service.create(principal.user_id, payload)
     response.headers["Location"] = f"/api/v1/users/me/listings/{listing.id}"
     return OwnerListingEnvelope(data=OwnerListingService(session).present(listing))
 
@@ -80,7 +86,7 @@ def edit_listing(
     """Send the ``revision`` you read. Omitted = unchanged, ``null`` clears only declared-clearable
     fields, arrays and ``location`` replace whole. A no-op changes nothing; a pure visibility
     narrowing keeps the status; any other effective change returns the listing to ``pending``."""
-    listing = service.edit(principal.user_id, listing_id, payload, is_admin=principal.is_admin)
+    listing = service.edit(principal.user_id, listing_id, payload)
     return OwnerListingEnvelope(data=OwnerListingService(session).present(listing))
 
 
@@ -102,7 +108,5 @@ def archive_listing(
 ) -> OwnerListingEnvelope:
     """Terminal in V1 (no unarchive). The row is kept; it leaves public discovery and frees the
     plan's quota slot."""
-    listing = service.archive(
-        principal.user_id, listing_id, payload.revision, is_admin=principal.is_admin
-    )
+    listing = service.archive(principal.user_id, listing_id, payload.revision)
     return OwnerListingEnvelope(data=OwnerListingService(session).present(listing))

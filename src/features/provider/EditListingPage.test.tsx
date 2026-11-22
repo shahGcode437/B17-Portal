@@ -60,12 +60,12 @@ describe("EditListingPage: the button and the message say what the save does", (
     const { show } = open(IDS.ownerApproved)
     expect(await screen.findByRole("button", { name: "Save Changes" })).toBeInTheDocument()
     expect(screen.getByText(/This listing is live/i)).toBeInTheDocument()
-    await changeDescription(user, "Plumbing repairs and bathroom fittings across B-17, same-day call-outs.")
+    await changeDescription(user, "Physics lessons for matric and A-level students across B-17, small groups and past papers.")
     await user.click(screen.getByRole("button", { name: "Save Changes" }))
 
     await waitFor(() => expect(show).toHaveBeenCalledWith("Changes submitted for review"))
     expect(patches).toHaveLength(1)
-    expect(patches[0]).toMatchObject({ revision: 3, area: "B-17", category: "plumbing" })
+    expect(patches[0]).toMatchObject({ revision: 3, area: "B-17", category: "physics" })
     expect(screen.getByTestId("location")).toHaveTextContent("/provider/listings")
   })
 

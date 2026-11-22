@@ -40,8 +40,8 @@ from tests.db.write_helpers import (
     food_body,
     mine,
     patch,
-    provider_body,
     set_status,
+    staff_provider_body,
 )
 
 FOOD_SLUGS = [
@@ -763,15 +763,17 @@ def test_the_public_category_api_shows_only_active_categories_in_display_order(
 
 
 def test_listing_writes_still_work_after_every_kind_of_taxonomy_change(auth_env: AuthEnv) -> None:
-    # The owner creates a ``provider`` listing here (the Fresh Trade category is in the services
-    # module), so this fixture owner opts into admin — provider authorship is admin-only.
+    # A STAFF member authors a ``provider`` listing here (the Fresh Trade category is in the
+    # services module) through the staff API: a Provider has no owner (RBAC-D).
     owner = owner_signed_in(auth_env, admin=True)
     admin = admin_signed_in(auth_env)
     created = created_category(admin, "services", "Fresh Trade")
     patch_category(admin, created["id"], name="Fresh Trades")
     reorder(admin, "services", None, [r["id"] for r in admin_categories(admin, "services")][::-1])
 
-    response = owner.request("POST", "/listings", json=provider_body(category="fresh-trade"))
+    response = owner.request(
+        "POST", "/admin/providers", json=staff_provider_body(category="fresh-trade")
+    )
 
     assert (
         response.status_code == 201 and response.json()["data"]["categoryLabel"] == "Fresh Trades"

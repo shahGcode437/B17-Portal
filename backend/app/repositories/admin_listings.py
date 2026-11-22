@@ -82,6 +82,25 @@ class AdminListingRepository:
             .with_for_update(of=Listing)
         ).one_or_none()
 
+    def lock_provider_for_write(self, listing_id: uuid.UUID) -> Listing | None:
+        """``SELECT ... FOR UPDATE OF listings`` of ONE PROVIDER listing, for staff authoring
+        (``ProviderAuthoringService``, RBAC-D); ``None`` when there is no PROVIDER with that id.
+
+        Unscoped like :meth:`lock_for_decision` (the actor's authority is not known yet, and the
+        service reads and locks it right after), but restricted to ``kind = 'provider'`` IN the
+        locking query: a Business / Tutor / Property id is "not found" here WITHOUT its row being
+        locked, so probing a non-provider id through a provider route can neither confirm it exists
+        nor stall a moderation decision on it. The caller MUST authorise against the returned row
+        before it lets any part of it leave the transaction."""
+        return self._session.scalars(
+            select(Listing)
+            .select_from(_scoped_from())
+            .where(Listing.id == listing_id, Listing.kind == ListingKind.PROVIDER)
+            .options(*owner_options())
+            .execution_options(populate_existing=True)
+            .with_for_update(of=Listing)
+        ).one_or_none()
+
     def submitter_name(self, owner_id: uuid.UUID | None) -> str | None:
         if owner_id is None:
             return None
@@ -194,6 +213,28 @@ class AdminListingRepository:
                 Listing.status == from_status,
             )
             .values(status=to_status)
+            .execution_options(synchronize_session=False)
+        )
+        matched: int = result.rowcount  # type: ignore[attr-defined]
+        return matched == 1
+
+    def guarded_provider_update(
+        self, listing_id: uuid.UUID, expected_revision: int, values: dict[str, Any]
+    ) -> bool:
+        """``UPDATE listings SET …, revision = revision + 1 WHERE id AND kind = 'provider' AND
+        revision = :expected AND status <> 'archived'`` — the staff counterpart of the owner
+        write's guarded update, with NO ownership predicate (a Provider has no owner) and the kind
+        pinned so this statement can never touch any other listing. ``False`` = zero rows
+        matched."""
+        result = self._session.execute(
+            update(Listing)
+            .where(
+                Listing.id == listing_id,
+                Listing.kind == ListingKind.PROVIDER,
+                Listing.revision == expected_revision,
+                Listing.status != ListingStatus.ARCHIVED,
+            )
+            .values(**values, revision=Listing.revision + 1)
             .execution_options(synchronize_session=False)
         )
         matched: int = result.rowcount  # type: ignore[attr-defined]

@@ -1,18 +1,23 @@
-"""Service-request writes: create and the four lifecycle actions (Phase 12F;
-docs/backend/API_CONTRACT.md §10.8, §13).
+"""Service-request writes by the REQUESTER: create and cancel (Phase 12F;
+docs/backend/API_CONTRACT.md §10.8, §13). The provider side — accept, start, complete, cancel — is
+PORTAL STAFF work: see ``portal_requests.py`` (RBAC-D; ``AUTH_RBAC.md`` §31).
+
+A Service / Professional listing is portal-managed and has no owner, so a request is addressed to
+the portal, never to whoever created the Provider: this service knows no personal provider
+recipient, and a caller who is not the requester is a non-party (``404``), staff included.
 
 Layering: the service owns the transaction; the repository only queries / adds / flushes.
 
 Create: ONE transaction: the requester's advisory lock -> rate-limit checks -> date check -> the
 target listing locked ``FOR SHARE`` -> eligibility -> request + history ``submitted`` -> the
-rate limits counted (``record``: no separate commit). The requester is the session user and the
-provider is the listing's owner; neither is ever read from the body.
+rate limits counted (``record``: no separate commit). The requester is the session user; the
+target must be an approved Provider; nothing about the requester is read from the body.
 
-Transition (accept / start / complete / cancel): one transaction that locks the REQUEST row only
-(``FOR UPDATE``), then, in this order: ``404`` for anyone who is not a party (concealment) ->
-``403`` when the caller's role has no authority over the action at all ->
-``409 invalid_state_transition`` when the current status does not allow it -> a guarded
-``UPDATE … WHERE status = :from`` and one history row. The lock plus the guard mean two
+Transition (this module: the requester's cancel; ``portal_requests.py``: the staff side): one
+transaction that locks the REQUEST row only (``FOR UPDATE``), then, in this order: ``404`` for
+anyone who is not a party (concealment) -> ``403`` when the caller's role has no authority over the
+action at all -> ``409 invalid_state_transition`` when the current status does not allow it -> a
+guarded ``UPDATE … WHERE status = :from`` and one history row. The lock plus the guard mean two
 incompatible concurrent actions cannot both win.
 
 Lock order (BACKEND_ARCHITECTURE.md §5.1): create takes the requester's advisory lock, then the
@@ -107,14 +112,6 @@ class ServiceRequestService:
                         message="Service requests can only be sent to service providers.",
                     )
                 )
-            if target.owner_id == requester_id:
-                raise _validation(
-                    ErrorDetail(
-                        field="providerListingId",
-                        code="own_listing",
-                        message="You cannot send a request to your own listing.",
-                    )
-                )
             request = self._requests.add(
                 ServiceRequest(
                     requester_id=requester_id,
@@ -177,10 +174,9 @@ class ServiceRequestService:
 
 
 def party_role(row: RequestRow, user_id: uuid.UUID) -> RequestActorRole | None:
-    """Which side of this request ``user_id`` is, or ``None`` for anyone else. The provider is
-    whoever owns the target listing right now (``None`` if the listing was hard-deleted)."""
+    """Which side of this request ``user_id`` is on THIS (the requester's) API: the requester, or
+    ``None`` for anyone else. A Provider has no owner, so there is no personal provider party; the
+    provider side is portal staff and acts through ``PortalRequestService`` with live authority."""
     if row.request.requester_id == user_id:
         return RequestActorRole.REQUESTER
-    if row.provider_owner_id is not None and row.provider_owner_id == user_id:
-        return RequestActorRole.PROVIDER
     return None

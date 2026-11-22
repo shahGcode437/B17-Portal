@@ -15,6 +15,8 @@ from tests.db.write_helpers import (
     approximate,
     area_only,
     business_body,
+    create,
+    create_provider,
     created_id,
     error_code,
     exact,
@@ -24,35 +26,38 @@ from tests.db.write_helpers import (
     provider_body,
     set_status,
     signed_in,
+    staff_provider_body,
     tutor_body,
 )
 
 ZERO = {"pending": 0, "approved": 0, "rejected": 0, "archived": 0, "activeQuota": 0}
 
 
-def test_meta_counts_active_quota_excludes_provider_listings(auth_env: AuthEnv) -> None:
-    """``counts.activeQuota`` is the quota UI's "used" number — pending + approved, EXCLUDING
-    ``provider`` (portal-managed, never consumes a plan slot). The per-status buckets above it stay
-    factual: they still count every kind."""
+def test_staff_authored_providers_appear_in_no_owner_count_and_never_move_active_quota(
+    auth_env: AuthEnv,
+) -> None:
+    """A Provider has no owner (RBAC-D), so the staff member who authored three of them sees none
+    of them in ``counts`` — neither in a per-status bucket nor in ``activeQuota`` — and only their
+    own OWNED listings are counted."""
     api = signed_in(auth_env, admin=True, professional=PlanCode.FREE)
-    # Three provider listings (one approved, two pending): they MUST not move activeQuota.
     created_id(api, provider_body(name="Service 1"))
     created_id(api, provider_body(name="Service 2"))
     approved_provider = created_id(api, provider_body(name="Service 3"))
     set_status(auth_env.session, approved_provider, ListingStatus.APPROVED)
-    # One pending business (counts) and one pending tutor (counts) — activeQuota should be 2.
     created_id(api, business_body(name="Shop One"))
     created_id(api, tutor_body(name="Tutor One"))
 
-    counts = api.get(MINE).json()["meta"]["counts"]
+    response = api.get(MINE).json()
 
-    assert counts == {
-        "pending": 4,  # 2 pending providers + 1 business + 1 tutor (factual)
-        "approved": 1,  # 1 approved provider (factual)
+    assert response["meta"]["counts"] == {
+        "pending": 2,  # the business and the tutor — the three Providers are nobody's
+        "approved": 0,
         "rejected": 0,
         "archived": 0,
-        "activeQuota": 2,  # business + tutor; providers excluded
+        "activeQuota": 2,
     }
+    assert response["meta"]["total"] == 2
+    assert {item["name"] for item in response["data"]} == {"Shop One", "Tutor One"}
 
 
 def test_active_quota_matches_the_write_paths_count_active(auth_env: AuthEnv) -> None:
@@ -60,10 +65,10 @@ def test_active_quota_matches_the_write_paths_count_active(auth_env: AuthEnv) ->
     activeQuota == plan limit is refused with ``plan_limit_reached`` — proven here against a Free
     plan admin who has already filled the quota with businesses."""
     api = signed_in(auth_env, admin=True, professional=PlanCode.FREE)
-    # Fill the 3-slot quota with non-provider listings.
+    # Fill the 3-slot quota with owned listings.
     for n in range(3):
         created_id(api, business_body(name=f"Shop {n}"))
-    # Five providers that must not affect the quota display.
+    # Five Providers that must not affect the quota display (they are nobody's).
     for n in range(5):
         created_id(api, provider_body(name=f"Service {n}"))
 
@@ -71,12 +76,11 @@ def test_active_quota_matches_the_write_paths_count_active(auth_env: AuthEnv) ->
 
     assert counts["activeQuota"] == 3
     # And the write path agrees: a non-provider create is refused with plan_limit_reached.
-    from tests.db.write_helpers import create
-
     response = create(api, business_body(name="Shop Four"))
     assert (response.status_code, error_code(response)) == (403, "plan_limit_reached")
-    # ... while providers keep going through (admin may author them and they skip quota).
-    assert create(api, provider_body(name="Service 6")).status_code == 201
+    # ... while staff can still author Providers (they have no owner, so no quota applies).
+    assert create_provider(api, staff_provider_body(name="Service 6")).status_code == 201
+    assert api.get(MINE).json()["meta"]["counts"]["activeQuota"] == 3
 
 
 def listing_names(response: Any) -> list[str]:
@@ -113,8 +117,8 @@ def test_anonymous_cannot_list_or_read(auth_env: AuthEnv) -> None:
 def test_the_list_holds_only_my_listings_newest_first(auth_env: AuthEnv) -> None:
     api = signed_in(auth_env, professional=PlanCode.PREMIUM, admin=True)
     other = signed_in(auth_env, "other@example.org", display_name="Oth Er", admin=True)
-    ids = [created_id(api, provider_body(name=f"Provider {n}")) for n in "ABC"]
-    created_id(other, provider_body(name="Not Mine"))
+    ids = [created_id(api, tutor_body(name=f"Tutor {n}")) for n in "ABC"]
+    created_id(other, tutor_body(name="Not Mine"))
     for age, listing_id in enumerate(ids):  # A oldest ... C newest
         auth_env.session.execute(
             text(
@@ -126,15 +130,15 @@ def test_the_list_holds_only_my_listings_newest_first(auth_env: AuthEnv) -> None
 
     response = api.get(MINE)
 
-    assert listing_names(response) == ["Provider C", "Provider B", "Provider A"]
+    assert listing_names(response) == ["Tutor C", "Tutor B", "Tutor A"]
     assert response.json()["meta"]["total"] == 3
 
 
 def test_pagination_filters_and_counts(auth_env: AuthEnv) -> None:
     api = signed_in(auth_env, professional=PlanCode.PREMIUM, admin=True)
     ids = {
-        "p1": created_id(api, provider_body(name="Provider One")),
-        "p2": created_id(api, provider_body(name="Provider Two")),
+        "p1": created_id(api, tutor_body(name="Tutor One")),
+        "p2": created_id(api, tutor_body(name="Tutor Two")),
         "b1": created_id(api, business_body(name="Business One")),
         "h1": created_id(api, property_body(title="House One")),
         "f1": created_id(api, food_body(name="Food One")),
@@ -147,25 +151,25 @@ def test_pagination_filters_and_counts(auth_env: AuthEnv) -> None:
     approved = api.get(MINE, params={"status": "approved"}).json()
     businesses = api.get(MINE, params={"kind": "business"}).json()
     page = api.get(MINE, params={"limit": 2, "offset": 2}).json()
-    combined = api.get(MINE, params={"kind": "provider", "status": "rejected"}).json()
+    combined = api.get(MINE, params={"kind": "tutor", "status": "rejected"}).json()
 
     assert everything["meta"]["counts"] == {
         "pending": 2,
         "approved": 1,
         "rejected": 1,
         "archived": 1,
-        # Quota-countable active = pending + approved, EXCLUDING provider. The owner has
-        # one approved provider (p1) that the quota ignores plus one pending business (b1) and
-        # one pending food (f1) that count — the pending property (h1 archived) does not.
-        "activeQuota": 2,
+        # Quota-countable active = pending + approved: the approved tutor (t1), the pending
+        # business (b1) and the pending food (f1) — the rejected tutor and the archived property
+        # do not count.
+        "activeQuota": 3,
     }
     assert everything["meta"]["total"] == 5
-    assert [item["name"] for item in approved["data"]] == ["Provider One"]
+    assert [item["name"] for item in approved["data"]] == ["Tutor One"]
     assert approved["meta"]["total"] == 1
     assert approved["meta"]["counts"] == everything["meta"]["counts"]  # counts ignore filters
     assert {item["name"] for item in businesses["data"]} == {"Business One", "Food One"}
     assert (len(page["data"]), page["meta"]["total"], page["meta"]["offset"]) == (2, 5, 2)
-    assert [item["name"] for item in combined["data"]] == ["Provider Two"]
+    assert [item["name"] for item in combined["data"]] == ["Tutor Two"]
 
 
 @pytest.mark.parametrize(
@@ -179,8 +183,8 @@ def test_bad_query_values_are_validation_errors(auth_env: AuthEnv, params: dict[
 
 
 def test_a_blank_filter_is_no_filter(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env, admin=True)
-    created_id(api, provider_body())
+    api = signed_in(auth_env)
+    created_id(api, tutor_body())
 
     assert api.get(MINE, params={"status": "", "kind": ""}).json()["meta"]["total"] == 1
 
@@ -221,7 +225,6 @@ def test_the_owner_shape_carries_everything_an_edit_form_needs(auth_env: AuthEnv
 @pytest.mark.parametrize(
     ("make", "extra"),
     [
-        (provider_body, {"category": "electrical", "name": "Bright Spark Electricians"}),
         (business_body, {"category": "grocery", "vertical": "general"}),
         (tutor_body, {"category": "physics", "grade": "Matric / A-Levels"}),
         (
@@ -325,8 +328,8 @@ def test_the_public_api_never_carries_the_private_point_of_a_listing_the_owner_c
 def test_the_rejection_reason_is_shown_only_while_rejected_and_is_the_latest(
     auth_env: AuthEnv,
 ) -> None:
-    api = signed_in(auth_env, admin=True)
-    listing_id = created_id(api, provider_body())
+    api = signed_in(auth_env)
+    listing_id = created_id(api, tutor_body())
 
     assert "rejectionReason" not in mine(api, listing_id)
     set_status(auth_env.session, listing_id, ListingStatus.REJECTED, "First reason: add a photo.")
@@ -363,8 +366,8 @@ def test_another_user_s_listing_is_a_404_exactly_like_a_missing_one(auth_env: Au
 
 
 def test_a_suspended_user_s_session_is_dead_so_nothing_is_readable(auth_env: AuthEnv) -> None:
-    api = signed_in(auth_env, admin=True)
-    listing_id = created_id(api, provider_body())
+    api = signed_in(auth_env)
+    listing_id = created_id(api, tutor_body())
     auth_env.session.execute(text("UPDATE users SET status = 'suspended'"))
     auth_env.session.commit()
 
@@ -374,9 +377,9 @@ def test_a_suspended_user_s_session_is_dead_so_nothing_is_readable(auth_env: Aut
 
 def test_listing_many_does_not_issue_a_query_per_listing(auth_env: AuthEnv) -> None:
     api = signed_in(auth_env, professional=PlanCode.PREMIUM, admin=True)
-    bodies = [provider_body(), business_body(), food_body(), tutor_body(), property_body()]
+    bodies = [business_body(), food_body(), tutor_body(), property_body()]
     for index in range(10):
-        created_id(api, bodies[index % 5])
+        created_id(api, bodies[index % 4])
     engine: Engine = auth_env.session.get_bind().engine
     counted: list[str] = []
 
