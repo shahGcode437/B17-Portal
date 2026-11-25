@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { ApiClient, ownerCard, createUser, expectH1, rows, scalar, signInAs, type TestUser, WEB_API } from './helpers/stack'
-import { createFood, createGeneralBusiness, createPortalProvider, createProperty, createTutor, publicGet, searchHits, unique } from './helpers/ui'
+import { CONTACT_PHONE_E164, WHATSAPP_PHONE_E164, createFood, createGeneralBusiness, createPortalProvider, createProperty, createTutor, publicGet, searchHits, unique } from './helpers/ui'
 import type { Page } from '@playwright/test'
 
 /**
@@ -78,6 +78,14 @@ test('the four owned kinds are created through the real forms, and a Provider by
   expect(scalar(`SELECT count(*) FROM food_profiles WHERE listing_id = '${created.food!.id}'`)).toBe('1')
   expect(scalar(`SELECT service_options::text FROM food_profiles WHERE listing_id = '${created.food!.id}'`)).toContain('takeaway')
   expect(scalar(`SELECT grade FROM tutor_profiles WHERE listing_id = '${created.tutor!.id}'`)).toBe('Grade 9')
+  // Listing Contact v1: every owner-created kind stored the number the form typed in the national
+  // form, normalised by the API to one canonical E.164 value; the Food one also has its WhatsApp
+  // number, and the portal-managed Provider has neither.
+  for (const [label, { id }] of Object.entries(created)) {
+    expect(rows(`SELECT contact_phone FROM listings WHERE id = '${id}'`)[0], label).toEqual([CONTACT_PHONE_E164])
+  }
+  expect(scalar(`SELECT whatsapp_phone FROM listings WHERE id = '${created.food!.id}'`)).toBe(WHATSAPP_PHONE_E164)
+  expect(rows(`SELECT contact_phone IS NULL, whatsapp_phone IS NULL FROM listings WHERE id = '${portal.id}'`)[0]).toEqual(['t', 't'])
   expect(rows(`SELECT listing_type, price_text FROM property_profiles WHERE listing_id = '${created.property!.id}'`)[0]).toEqual(['rent', 'PKR 65,000 / month'])
   const cat = (id: string) => rows(`SELECT c.module, c.slug FROM listing_categories lc JOIN categories c ON c.id = lc.category_id WHERE lc.listing_id = '${id}'`).map((r) => r.join('/'))
   expect(cat(portal.id)).toEqual(['services/solar'])

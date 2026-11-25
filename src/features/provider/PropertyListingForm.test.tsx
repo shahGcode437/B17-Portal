@@ -26,6 +26,8 @@ async function fillValid(user: ReturnType<typeof userEvent.setup>) {
   await user.selectOptions(await screen.findByLabelText("Property Type"), "house")
   await fill(user, screen.getByLabelText("Price"), "PKR 65,000 / month")
   await fill(user, screen.getByLabelText("Description"), "A bright, well-kept home in a quiet B-17 block.")
+  // Listing Contact v1: the listing's own contact number is required on every owner form.
+  await fill(user, screen.getByLabelText("Contact Number"), "03001234567")
 }
 
 describe("PropertyListingForm (S4)", () => {
@@ -69,6 +71,7 @@ describe("PropertyListingForm (S4)", () => {
           price: "PKR 1 Cr",
           area: "B-17, Block D (Demo Area)",
           description: "An old listing with a free-text area on file.",
+          contactPhone: "03001234567",
         }}
       />
     )

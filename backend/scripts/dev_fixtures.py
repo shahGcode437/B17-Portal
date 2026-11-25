@@ -25,6 +25,7 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
+from app.core.phone import normalize_phone
 from app.db.reference_data import REFERENCE_CATEGORIES
 from app.db.session import create_db_engine, transaction
 from app.models import (
@@ -93,6 +94,25 @@ PENDING_FOOD_ID = fixture_id("listing:pending-kebab-house")
 UPDATE_ID = fixture_id("news:water-schedule")
 DRAFT_NEWS_ID = fixture_id("news:draft-announcement")
 
+#: Demo CONTACT numbers per owner-managed fixture (Listing Contact v1), in the national form a
+#: person types; the loader normalises them through the one shared parser, so a fixture database
+#: holds exactly what the API would have stored. Fictional, like every other value in this file. A
+#: PROVIDER is absent on purpose: it is portal-managed (RBAC-D) and has no contact field, so its
+#: columns stay NULL — and so do those of the two legacy-style rows below, which exist to keep the
+#: "no contact yet" state real.
+DEMO_CONTACTS: dict[uuid.UUID, tuple[str, str | None]] = {
+    PHARMACY_ID: ("051 2345678", None),
+    BAKERS_ID: ("0300 1112233", "0300 1112233"),
+    HOUSE_ID: ("0321 4455667", None),
+    TUTOR_ID: ("0333 7788990", "0333 7788990"),
+    BIRYANI_ID: ("0345 1234567", "0345 1234567"),
+    CAFE_ID: ("051 8765432", None),
+    SALON_ID: ("0302 2233445", "0302 2233445"),
+    FLAT_ID: ("0300 9988776", None),
+    MATH_TUTOR_ID: ("0313 5566778", None),
+    PENDING_FOOD_ID: ("0346 1122334", "0346 1122334"),
+}
+
 #: Every fixture listing, so a re-run refreshes their search documents (the loader is idempotent).
 FIXTURE_LISTING_IDS = (
     SOLAR_ID,
@@ -139,20 +159,18 @@ class DemoLocation:
 #: (``B17_DEFAULT_CENTER`` in ``src/config/map.ts``, ~33.685 N / 72.826 E — the same centre the
 #: frontend picker opens on). They remain SYNTHETIC: a placeholder scatter, not the location of any
 #: real business or person, whatever the fictional names suggest. Tests never depend on the exact
-#: values beyond the fixtures / assertions below.
-#:
-#: Previously the scatter sat around (33.70 N, 73.05 E) — about 20 km east of real B-17, in the
-#: Islamabad / E-11 area. The frontend picker still defaulted to that same wrong centre, so a new
-#: owner's click landed around E-11 while being labelled B-17. The frontend picker centre and these
-#: fixture coordinates were moved together so the dev database and the development map agree on
-#: where B-17 actually is. The approximate rounding in ``round(numeric, 2)`` now puts CAFE_ID and
-#: TUTOR_ID in the same (33.69, 72.83) grid cell — the pooling the privacy design (``LOCATION_MAP``
-#: §7.5) is meant to demonstrate.
+#: values beyond the fixtures / assertions below. Previously the scatter sat around (33.70 N, 73.05
+#: E) — about 20 km east of real B-17, in the Islamabad / E-11 area. The frontend picker still
+#: defaulted to that same wrong centre, so a new owner's click landed around E-11 while being
+#: labelled B-17. The frontend picker centre and these fixture coordinates were moved together so
+#: the dev database and the development map agree on where B-17 actually is. The approximate
+#: rounding in ``round(numeric, 2)`` now puts CAFE_ID and TUTOR_ID in the same (33.69, 72.83) grid
+#: cell — the pooling the privacy design (``LOCATION_MAP`` §7.5) is meant to demonstrate.
 _N = Decimal
 
 
-#: Keyed by fixed fixture id: the ONLY rows the location step touches. Nothing is derived by
-#: parsing other data. The migration never does any of this (it is DDL-only).
+#: Keyed by fixed fixture id: the ONLY rows the location step touches. Nothing is derived by parsing
+#: other data. The migration never does any of this (it is DDL-only).
 DEMO_LOCATIONS: dict[uuid.UUID, DemoLocation] = {
     # exact: businesses / food / property (map-ready)
     BAKERS_ID: DemoLocation(
@@ -336,6 +354,14 @@ def _listing(
         return None
     categories = CategoryRepository(session).list_by_slugs(module, category_slugs)
     portal_managed = kind is ListingKind.PROVIDER
+    # Listing Contact v1: the listing's own public contact numbers, through the real normaliser. A
+    # fixture without an entry keeps NULL columns (a Provider, or a deliberately legacy-shaped row).
+    raw_contact, raw_whatsapp = DEMO_CONTACTS.get(listing_id, (None, None))
+    contact_phone = normalize_phone(raw_contact) if raw_contact else None
+    whatsapp_phone = normalize_phone(raw_whatsapp) if raw_whatsapp else None
+    assert (raw_contact is None or contact_phone is not None) and (
+        raw_whatsapp is None or whatsapp_phone is not None
+    ), "a demo contact number must be one the API would accept"
     listing = Listing(
         id=listing_id,
         kind=kind,
@@ -346,6 +372,8 @@ def _listing(
         area=area,
         tags=tags,
         image_url=image_url,
+        contact_phone=contact_phone,
+        whatsapp_phone=whatsapp_phone,
         is_featured=featured,
         revision=1,
     )

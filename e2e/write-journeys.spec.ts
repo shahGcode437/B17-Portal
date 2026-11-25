@@ -182,12 +182,15 @@ test.describe("Listing create: the four owned variants hit the API with the righ
     // Area is a fixed choice (B-17), not free text.
     await expect(page.getByLabel("Area", { exact: true })).toHaveValue("B-17")
     await page.getByLabel("Tags (optional)").fill("books, copies")
+    await page.getByLabel("Contact Number").fill("03001234567")  // Listing Contact v1: required for a new owner listing
     await page.getByRole("button", { name: "Submit for Review" }).click()
     await expectPage(page, "Listings")
 
     const body = sent.find((s) => s.method === "POST" && s.path === "/listings")!.body as Record<string, unknown>
     expect(body.kind).toBe("business")
     expect(body.vertical).toBe("general")
+    // The API normalises what was typed; the body carries it as typed (API_CONTRACT §10.7).
+    expect(body.contactPhone).toBe("03001234567")
     expect(body.category).toBe("stationery")
     expect(body).not.toHaveProperty("food")
   })
@@ -203,6 +206,7 @@ test.describe("Listing create: the four owned variants hit the API with the righ
     await page.getByLabel(/Dishes \/ Search Tags/).fill("cakes, bread")
     await page.getByRole("checkbox", { name: "Bakeries" }).check()
     await page.getByRole("checkbox", { name: "Takeaway" }).check()
+    await page.getByLabel("Contact Number").fill("03001234567")  // Listing Contact v1: required for a new owner listing
     await page.getByRole("button", { name: "Submit for Review" }).click()
     await expectPage(page, "Listings")
 
@@ -225,6 +229,7 @@ test.describe("Listing create: the four owned variants hit the API with the righ
     // Area is a fixed choice (B-17), not free text.
     await expect(page.getByLabel("Area", { exact: true })).toHaveValue("B-17")
     await page.getByLabel(/Topics you teach/).fill("physics, chemistry")
+    await page.getByLabel("Contact Number").fill("03001234567")  // Listing Contact v1: required for a new owner listing
     await page.getByRole("button", { name: "Submit for Review" }).click()
     await expectPage(page, "Listings")
 
@@ -251,6 +256,7 @@ test.describe("Listing create: the four owned variants hit the API with the righ
     // Area is a fixed choice (B-17), not free text.
     await expect(page.getByLabel("Area", { exact: true })).toHaveValue("B-17")
     await page.getByLabel("Description").fill("Bright flat with a balcony in a well-kept block.")
+    await page.getByLabel("Contact Number").fill("03001234567")  // Listing Contact v1: required for a new owner listing
     await page.getByRole("button", { name: "Submit for Review" }).click()
     await expectPage(page, "Listings")
 
@@ -311,6 +317,7 @@ test.describe("Presentation regression (end-to-end round trip)", () => {
     // Area is a fixed choice (B-17), not free text.
     await expect(page.getByLabel("Area", { exact: true })).toHaveValue("B-17")
     await page.getByLabel(/Topics you teach/).fill("physics, past papers")
+    await page.getByLabel("Contact Number").fill("03001234567")  // Listing Contact v1: required for a new owner listing
     await page.getByRole("button", { name: "Submit for Review" }).click()
 
     // 2. The owner dashboard shows the new row as pending, revision 1 (both are the server's).
@@ -477,6 +484,8 @@ test.describe("Listing edit / resubmit through the real form", () => {
     const card = ownerCard(page, "Rejected Plot")
     await card.getByRole("button", { name: "Edit" }).click()
     await expectPage(page, "Edit Listing")
+    // The prefilled form is resubmitted untouched (contact numbers included), so this really is the
+    // no-op the server answers with `no_changes`.
     await page.getByRole("button", { name: "Resubmit for Review" }).click()
 
     await expect(page.getByText("Please change at least one field before resubmitting.")).toBeVisible()
@@ -549,6 +558,7 @@ test.describe("Professional capability: the server decides", () => {
     // Area is a fixed choice (B-17), not free text.
     await expect(page.getByLabel("Area", { exact: true })).toHaveValue("B-17")
     await page.getByLabel(/Tags \(optional\)/).fill("books, copies")
+    await page.getByLabel("Contact Number").fill("03001234567")  // Listing Contact v1: required for a new owner listing
     await page.getByLabel("Visibility").selectOption("area_only")
     await page.getByRole("button", { name: "Submit for Review" }).click()
     await expectPage(page, "Listings")
@@ -785,6 +795,7 @@ test.describe("Network failure: no fake success on any write", () => {
     // Area is a fixed choice (B-17), not free text.
     await expect(page.getByLabel("Area", { exact: true })).toHaveValue("B-17")
     await page.getByLabel(/Topics you teach/).fill("physics, revision")
+    await page.getByLabel("Contact Number").fill("03001234567")  // Listing Contact v1: required for a new owner listing
 
     // Simulate a server failure on POST /listings.
     await page.route("**/api/v1/listings", (route) => (route.request().method() === "POST" ? route.abort("failed") : route.continue()))

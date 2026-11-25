@@ -52,8 +52,68 @@ const common = {
   description: "Books, copies and office supplies for B-17.",
   area: "B-17",
   tagsInput: "books, copies",
+  // Listing Contact v1: the listing's own contact number is part of every owner form.
+  contactPhone: "03001234567",
 } as const
 const location = { visibility: "area_only" as const }
+
+describe("the contact numbers an owner form sends (Listing Contact v1)", () => {
+  it("a create carries the contact number, and the WhatsApp number only when there is one", () => {
+    const withBoth = businessCreate(
+      { ...common, vertical: "general", whatsappPhone: "0321 7654321" } as ListingFormValues,
+      location
+    )
+    const contactOnly = businessCreate({ ...common, vertical: "general" } as ListingFormValues, location)
+
+    expect(withBoth).toMatchObject({ contactPhone: "03001234567", whatsappPhone: "0321 7654321" })
+    expect(contactOnly.contactPhone).toBe("03001234567")
+    // Absent means absent: an empty optional field is omitted, never sent as "" or copied from the
+    // contact number (the API would refuse "" and must not be told the owner gave a second number).
+    expect(contactOnly).not.toHaveProperty("whatsappPhone")
+  })
+
+  it("every owner-created kind sends them (a Provider is portal-managed and has no such field)", () => {
+    const tutor = tutorCreate({ ...common, whatsappPhone: "0321 7654321" } as ListingFormValues, "Grade 9", location)
+    const property = propertyCreate(
+      { title: "Flat", listingType: "rent", propertyType: "flat", price: "PKR 80k", area: "B-17", description: "A bright flat near the market.", contactPhone: "03001234567" },
+      location
+    )
+    const food = businessCreate(
+      { ...common, vertical: "food", food: { categories: ["bakeries"], serviceOptions: ["takeaway"], hoursNote: "", menuHighlights: [], menuImage: undefined } } as ListingFormValues,
+      location
+    )
+
+    expect(tutor).toMatchObject({ contactPhone: "03001234567", whatsappPhone: "0321 7654321" })
+    expect(property.contactPhone).toBe("03001234567")
+    expect(food.contactPhone).toBe("03001234567")
+  })
+
+  it("a PATCH sends the contact number, and an EMPTIED WhatsApp field as an explicit clear (null)", () => {
+    // Omitted would mean "unchanged", so a number the owner deleted has to be sent as null — the
+    // same reason the Food block sends `hoursNote: null`. `whatsappPhone` is clearable; the
+    // required `contactPhone` is not.
+    const cleared = listingPatchFrom(3, "business", { ...common, vertical: "general" } as ListingFormValues, location)
+    const kept = listingPatchFrom(
+      3,
+      "business",
+      { ...common, vertical: "general", whatsappPhone: "0321 7654321" } as ListingFormValues,
+      location
+    )
+
+    expect(cleared).toMatchObject({ contactPhone: "03001234567", whatsappPhone: null })
+    expect(kept).toMatchObject({ contactPhone: "03001234567", whatsappPhone: "0321 7654321" })
+  })
+
+  it("a Property PATCH does the same", () => {
+    const patch = propertyPatchFrom(
+      2,
+      { title: "Flat", listingType: "rent", propertyType: "flat", price: "PKR 80k", area: "B-17", description: "A bright flat near the market.", contactPhone: "+923001234567" },
+      location
+    )
+
+    expect(patch).toMatchObject({ contactPhone: "+923001234567", whatsappPhone: null })
+  })
+})
 
 describe("listingPatchFrom (what an edit sends)", () => {
   it("a General business sends NO food block (food: null is not_nullable, a Food block is not_allowed on it)", () => {
@@ -85,10 +145,13 @@ describe("listingPatchFrom (what an edit sends)", () => {
     expect(kept.food).toMatchObject({ hoursNote: "10am-9pm", menuImage: "https://cdn.example.com/menu.jpg", menuHighlights: [{ name: "Cake", price: "PKR 900" }] })
   })
 
-  it("never sends null for anything the API cannot clear (only image is nullable on a non-property edit)", () => {
+  it("never sends null for anything the API cannot clear (image, whatsappPhone, bedrooms, furnished)", () => {
     const patch = listingPatchFrom(1, "provider", { ...common } as ListingFormValues, location)
     const nulls = Object.entries(patch).filter(([, value]) => value === null).map(([key]) => key)
-    expect(nulls.every((key) => ["image", "bedrooms", "furnished"].includes(key))).toBe(true)
+    // Listing Contact v1 added `whatsappPhone` to the API clearable set (an owner may remove it); the
+    // required `contactPhone` is NOT clearable, so it must never be sent as null.
+    expect(nulls.every((key) => ["image", "whatsappPhone", "bedrooms", "furnished"].includes(key))).toBe(true)
+    expect(patch.contactPhone).toBe("03001234567")
   })
 
   it("a stored image is sent back unchanged; with none the image is cleared (null), never dropped silently", () => {

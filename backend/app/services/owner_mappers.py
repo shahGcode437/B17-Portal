@@ -63,6 +63,9 @@ def map_owner_listing(
         "updated_at": listing.updated_at,
     }
     slug = primary.slug if primary else ""
+    # Public contact (Listing Contact v1): shown to the owner (and, through the admin shapes, to a
+    # moderator) exactly as the public sees it. A Provider has no contact field at all.
+    contact = {"contact_phone": listing.contact_phone, "whatsapp_phone": listing.whatsapp_phone}
 
     if listing.kind is ListingKind.PROVIDER:
         return OwnerProvider(kind="provider", name=listing.title, category=slug, **common)
@@ -73,6 +76,7 @@ def map_owner_listing(
         is_food = business.vertical is BusinessVertical.FOOD and business.food is not None
         return OwnerBusiness(
             kind="business",
+            **contact,
             name=listing.title,
             vertical=business.vertical,
             category=None if is_food else slug,
@@ -84,13 +88,19 @@ def map_owner_listing(
         tutor = listing.tutor_profile
         assert tutor is not None
         return OwnerTutor(
-            kind="tutor", name=listing.title, category=slug, grade=tutor.grade, **common
+            kind="tutor",
+            name=listing.title,
+            category=slug,
+            grade=tutor.grade,
+            **contact,
+            **common,
         )
 
     prop = listing.property_profile
     assert prop is not None
     return OwnerProperty(
         kind="property",
+        **contact,
         title=listing.title,
         listing_type=prop.listing_type,
         property_type=slug,

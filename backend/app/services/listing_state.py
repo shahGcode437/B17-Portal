@@ -97,6 +97,10 @@ class ListingState:
     tags: tuple[str, ...]
     image: str | None
     location: LocationState
+    #: Public contact numbers (Listing Contact v1), E.164 as ``app.core.phone`` normalises them.
+    #: ``None`` for a portal-managed Provider and for a legacy row that predates the field.
+    contact_phone: str | None = None
+    whatsapp_phone: str | None = None
     #: The single category slug of a provider / General business / tutor / property (its type).
     #: ``None`` for a Food business, whose categories live in ``food``.
     category: str | None = None
@@ -284,6 +288,8 @@ def state_from_create(
             vertical=payload.vertical,
             category=payload.category,
             food=food,
+            contact_phone=payload.contact_phone,
+            whatsapp_phone=payload.whatsapp_phone,
             **common,
         )
     elif payload.kind == "tutor":
@@ -292,6 +298,8 @@ def state_from_create(
             title=payload.name.strip(),
             category=payload.category,
             grade=payload.grade.strip(),
+            contact_phone=payload.contact_phone,
+            whatsapp_phone=payload.whatsapp_phone,
             **common,
         )
     else:
@@ -303,6 +311,8 @@ def state_from_create(
             price=payload.price.strip(),
             bedrooms=payload.bedrooms,
             furnished=payload.furnished,
+            contact_phone=payload.contact_phone,
+            whatsapp_phone=payload.whatsapp_phone,
             **common,
         )
     return state, problems
@@ -314,15 +324,21 @@ def _unknown_locality(localities: list[str]) -> ErrorDetail:
 
 #: Which PATCH fields each kind accepts (the camelCase names are derived from the schema).
 _COMMON_PATCH = frozenset({"description", "area", "tags", "image", "location"})
+#: The public contact block (Listing Contact v1). NOT common: a ``provider`` is portal-managed and
+#: has no owner, so it has no owner-PATCH path at all — this keeps the field set honest about that.
+_CONTACT_PATCH = frozenset({"contact_phone", "whatsapp_phone"})
 _PATCHABLE: dict[ListingKind, frozenset[str]] = {
     ListingKind.PROVIDER: _COMMON_PATCH | {"name", "category"},
-    ListingKind.BUSINESS: _COMMON_PATCH | {"name", "category", "vertical", "food"},
-    ListingKind.TUTOR: _COMMON_PATCH | {"name", "category", "grade"},
+    ListingKind.BUSINESS: _COMMON_PATCH | _CONTACT_PATCH | {"name", "category", "vertical", "food"},
+    ListingKind.TUTOR: _COMMON_PATCH | _CONTACT_PATCH | {"name", "category", "grade"},
     ListingKind.PROPERTY: _COMMON_PATCH
+    | _CONTACT_PATCH
     | {"title", "listing_type", "property_type", "price", "bedrooms", "furnished"},
 }
 #: Fields an explicit ``null`` may clear. Everything else answers ``not_nullable``.
-_CLEARABLE = frozenset({"image", "bedrooms", "furnished"})
+#: ``whatsappPhone`` is clearable (it is optional); ``contactPhone`` is not (``not_nullable``),
+#: because a listing that is required to have one may not be left without it.
+_CLEARABLE = frozenset({"image", "whatsapp_phone", "bedrooms", "furnished"})
 
 
 def _alias(name: str) -> str:
@@ -371,6 +387,10 @@ def apply_patch(
         problems.extend(location_problems)
         if location is not None:
             state = replace(state, location=location)
+    if "contact_phone" in usable and patch.contact_phone is not None:
+        state = replace(state, contact_phone=patch.contact_phone)
+    if "whatsapp_phone" in usable:
+        state = replace(state, whatsapp_phone=patch.whatsapp_phone)
     if "grade" in usable and patch.grade is not None:
         state = replace(state, grade=patch.grade.strip())
     if "listing_type" in usable:
@@ -530,6 +550,7 @@ def validate_state(state: ListingState, *, check_location: bool = True) -> list[
             problems.append(problem(_category_field(state), "required", "Choose a category."))
         if state.food is not None or state.vertical is not None:
             problems.append(problem("food", "not_allowed", "Only a business has these fields."))
+    problems.extend(_validate_contact(state))
     if state.kind is ListingKind.TUTOR and not state.grade:
         problems.append(problem("grade", "required", "Enter the grade level."))
     if state.kind is ListingKind.PROPERTY:
@@ -539,6 +560,35 @@ def validate_state(state: ListingState, *, check_location: bool = True) -> list[
             problems.append(problem("price", "required", "Enter a price."))
     elif state.listing_type or state.price or state.bedrooms is not None or state.furnished:
         problems.append(problem("price", "not_allowed", "Only a property has these fields."))
+    return problems
+
+
+#: Kinds whose listings an OWNER creates and must give customers a number for (Listing Contact v1).
+#: A ``provider`` is portal-managed (RBAC-D) and is deliberately absent: this phase does not give
+#: the portal a contact field, and nothing may put an owner-ish number on one.
+_CONTACT_REQUIRED_KINDS = frozenset({ListingKind.BUSINESS, ListingKind.TUTOR, ListingKind.PROPERTY})
+
+
+def _validate_contact(state: ListingState) -> list[ErrorDetail]:
+    """``DATA_MODEL.md §19``: an owner-managed listing must say how customers reach it.
+
+    This is a WRITE rule, not a database rule: rows created before Listing Contact v1 hold NULL and
+    stay valid, readable and moderatable — but an owner edit must supply the number, the same way a
+    legacy Property must gain a map pin at its first edit (``LOCATION_MAP.md §3.1``)."""
+    problems: list[ErrorDetail] = []
+    if state.kind in _CONTACT_REQUIRED_KINDS:
+        if not state.contact_phone:
+            problems.append(
+                problem("contactPhone", "required", "Enter the number customers should call.")
+            )
+    elif state.contact_phone or state.whatsapp_phone:
+        problems.append(
+            problem(
+                "contactPhone",
+                "not_allowed",
+                "A Service / Professional listing is managed by portal staff.",
+            )
+        )
     return problems
 
 

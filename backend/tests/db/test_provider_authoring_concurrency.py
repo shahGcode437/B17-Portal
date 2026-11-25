@@ -724,6 +724,8 @@ def test_probing_a_non_provider_id_through_a_provider_route_does_not_lock_it(
             "description": "A clean, friendly place that has served the neighbourhood for years.",
             "area": "B-17",
             "category": "grocery",
+            # Listing Contact v1: a new owner-created Business must say how customers reach it.
+            "contactPhone": "0300 1234567",
             "location": {
                 "visibility": "exact",
                 "address": "Shop 4, Main Market",

@@ -10,6 +10,7 @@ from alembic import command
 from alembic.script import ScriptDirectory
 from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.engine import URL
+from sqlalchemy.exc import IntegrityError
 
 from tests.db.conftest import alembic_config
 from tests.db.test_schema import EXPECTED_TABLES
@@ -65,7 +66,7 @@ def test_a_fresh_database_upgrades_to_head(scratch_url: str) -> None:
     command.upgrade(alembic_config(scratch_url), "head")
 
     assert tables(scratch_url) == EXPECTED_TABLES | {"alembic_version"}
-    assert version(scratch_url) == "0008"
+    assert version(scratch_url) == "0009"
 
 
 def test_it_downgrades_to_base_and_upgrades_again(scratch_url: str) -> None:
@@ -90,8 +91,9 @@ def test_the_models_and_the_migrations_have_not_drifted(scratch_url: str) -> Non
 def test_there_is_a_single_linear_migration_history(scratch_url: str) -> None:
     script = ScriptDirectory.from_config(alembic_config(scratch_url))
 
-    assert script.get_heads() == ["0008"]
+    assert script.get_heads() == ["0009"]
     assert [revision.revision for revision in script.walk_revisions()] == [
+        "0009",
         "0008",
         "0007",
         "0006",
@@ -167,7 +169,7 @@ def test_0002_downgrades_cleanly_to_0001_and_upgrades_again(scratch_url: str) ->
     assert "search_document" not in columns(scratch_url, "listings")
     assert "pg_trgm" not in extensions(scratch_url)
     command.upgrade(config, "head")
-    assert version(scratch_url) == "0008"
+    assert version(scratch_url) == "0009"
     command.check(config)
 
 
@@ -254,7 +256,7 @@ def test_0003_downgrades_to_0002_and_upgrades_again(scratch_url: str) -> None:
     assert tables(scratch_url).isdisjoint(AUTH_TABLES)
     assert "ck_users_email_normalized" not in user_checks(scratch_url)
     command.upgrade(config, "head")
-    assert version(scratch_url) == "0008"
+    assert version(scratch_url) == "0009"
     assert tables(scratch_url) >= AUTH_TABLES
 
 
@@ -360,7 +362,7 @@ def test_0004_downgrades_to_0003_and_upgrades_again(scratch_url: str) -> None:
         scratch_url, "auth_identities"
     )
     command.upgrade(config, "head")
-    assert version(scratch_url) == "0008" and "oauth_flows" in tables(scratch_url)
+    assert version(scratch_url) == "0009" and "oauth_flows" in tables(scratch_url)
 
 
 def test_0004_refuses_to_run_over_duplicate_provider_identities(scratch_url: str) -> None:
@@ -569,7 +571,7 @@ def test_0005_downgrades_to_0004_and_reupgrades_without_touching_listings(
     command.upgrade(config, "head")
 
     # Re-upgrading to head also applies 0008, which makes the legacy providers portal-managed.
-    assert version(scratch_url) == "0008"
+    assert version(scratch_url) == "0009"
     assert listing_snapshot(scratch_url) == portal_managed(before)
     command.check(config)
 
@@ -739,7 +741,7 @@ def test_0006_downgrades_to_0005_and_reupgrades_without_touching_existing_data(
     command.upgrade(config, "head")
 
     # Re-upgrading to head also applies 0008, which makes the legacy providers portal-managed.
-    assert version(scratch_url) == "0008"
+    assert version(scratch_url) == "0009"
     expected = {**before, "listings": portal_managed(before["listings"])}
     assert existing_data(scratch_url) == expected
     command.check(config)
@@ -924,7 +926,7 @@ def test_0007_downgrades_an_empty_staff_schema_and_reupgrades(scratch_url: str) 
 
     command.upgrade(config, "head")
 
-    assert version(scratch_url) == "0008" and tables(scratch_url) >= STAFF_TABLES
+    assert version(scratch_url) == "0009" and tables(scratch_url) >= STAFF_TABLES
     command.check(config)
 
 
@@ -1000,7 +1002,7 @@ def test_0007_refuses_to_downgrade_over_live_staff_data_and_changes_nothing(
         command.downgrade(config, "0006")
 
     assert expected in str(refused.value)  # it says exactly what it would have destroyed
-    assert version(scratch_url) == "0008"  # nothing was downgraded...
+    assert version(scratch_url) == "0009"  # nothing was downgraded...
     assert tables(scratch_url) == tables_before  # ...no table was dropped...
     assert trigger_names(scratch_url) == STAFF_TRIGGERS  # ...and the protection is still in place
     for statement in CLEAR_STAFF_DATA:  # the operator removes the data deliberately
@@ -1090,13 +1092,14 @@ def test_0008_adds_exactly_one_check_constraint_and_changes_no_column(scratch_ur
     before_columns = columns_except_staff(scratch_url)
     assert PROVIDER_CONSTRAINT not in before_constraints
 
-    command.upgrade(config, "head")
+    command.upgrade(config, "0008")
 
     assert version(scratch_url) == "0008"
     assert listing_check_constraints(scratch_url) == before_constraints | {PROVIDER_CONSTRAINT}
     assert columns_except_staff(scratch_url) == before_columns  # no column added, dropped, altered
     assert tables(scratch_url) >= STAFF_TABLES  # and no table appears or disappears
-    command.check(config)  # the model declares the very same constraint: no drift
+    command.upgrade(config, "head")  # `check` compares the models with HEAD, so finish the upgrade
+    command.check(config)
 
 
 def test_0008_backfills_every_owned_provider_and_changes_nothing_else(scratch_url: str) -> None:
@@ -1113,7 +1116,7 @@ def test_0008_backfills_every_owned_provider_and_changes_nothing_else(scratch_ur
     )
     assert owned_providers == [(2,)]
 
-    command.upgrade(config, "head")
+    command.upgrade(config, "0008")
 
     after = rows(scratch_url, LISTING_ROW_SQL)
     assert len(after) == len(before)  # nothing deleted, nothing added
@@ -1139,7 +1142,7 @@ def test_0008_backfills_every_owned_provider_and_changes_nothing_else(scratch_ur
 
 def test_0008_constraint_forbids_an_owned_provider_and_nothing_else(scratch_url: str) -> None:
     config = alembic_config(scratch_url)
-    command.upgrade(config, "head")
+    command.upgrade(config, "0008")
     execute(scratch_url, ADD_USER_A)
     owned = (
         "INSERT INTO listings (id, kind, owner_id, title, area) VALUES "
@@ -1193,7 +1196,7 @@ def test_0008_refuses_to_downgrade_over_a_live_provider_and_changes_nothing(
     pre-RBAC-D release can only edit an OWNED listing, so a downgrade would strand every live
     Provider. The repository's destructive-downgrade convention applies: refuse, change nothing."""
     config = alembic_config(scratch_url)
-    command.upgrade(config, "head")
+    command.upgrade(config, "0008")
     seed_post_0008_world(scratch_url, provider_status=status)
     before = rows(scratch_url, LISTING_ROW_SQL)
     tables_before = tables(scratch_url)
@@ -1215,7 +1218,7 @@ def test_0008_refusal_counts_every_live_provider_and_ignores_the_other_kinds(
     scratch_url: str,
 ) -> None:
     config = alembic_config(scratch_url)
-    command.upgrade(config, "head")
+    command.upgrade(config, "0008")
     seed_post_0008_world(scratch_url, provider_status="approved")
     execute(
         scratch_url,
@@ -1238,7 +1241,7 @@ def test_0008_downgrades_when_no_provider_is_live_without_touching_any_row(
     downgrades cleanly; no row changes; re-upgrading is idempotent and backfills any provider the
     pre-RBAC-D release wrote in between."""
     config = alembic_config(scratch_url)
-    command.upgrade(config, "head")
+    command.upgrade(config, "0008")
     seed_post_0008_world(scratch_url, provider_status="archived")
     before = rows(scratch_url, LISTING_ROW_SQL)
 
@@ -1254,7 +1257,7 @@ def test_0008_downgrades_when_no_provider_is_live_without_touching_any_row(
         "(gen_random_uuid(), 'provider', (SELECT id FROM users LIMIT 1), 'Stray owned', 'B-17')",
     )
 
-    command.upgrade(config, "head")  # ...and re-upgrading backfills it again before the constraint
+    command.upgrade(config, "0008")  # ...and re-upgrading backfills it again before the constraint
 
     assert version(scratch_url) == "0008"
     assert PROVIDER_CONSTRAINT in listing_check_constraints(scratch_url)
@@ -1264,6 +1267,7 @@ def test_0008_downgrades_when_no_provider_is_live_without_touching_any_row(
         scratch_url, "SELECT owner_id IS NOT NULL FROM listings WHERE kind = 'business'"
     )
     assert business == [(True,)]
+    command.upgrade(config, "head")  # `check` compares the models with HEAD, so finish the upgrade
     command.check(config)
 
 
@@ -1285,7 +1289,7 @@ def test_0008_keeps_ownerless_curated_listings_of_every_other_kind_legal(
         "(gen_random_uuid(), 'property', NULL, 'approved', 'Curated property', 'B-17')",
     )
 
-    command.upgrade(config, "head")  # the upgrade succeeds over ownerless curated rows...
+    command.upgrade(config, "0008")  # the upgrade succeeds over ownerless curated rows...
 
     kinds = rows(scratch_url, "SELECT kind, owner_id IS NULL FROM listings ORDER BY kind")
     assert kinds == [("business", True), ("property", True), ("tutor", True)]  # ...and keeps them
@@ -1294,14 +1298,143 @@ def test_0008_keeps_ownerless_curated_listings_of_every_other_kind_legal(
         "INSERT INTO listings (id, kind, owner_id, title, area) "
         "VALUES (gen_random_uuid(), 'business', NULL, 'Another curated one', 'B-17')",
     )  # ...and the constraint still allows them
+    command.upgrade(config, "head")  # `check` compares the models with HEAD, so finish the upgrade
     command.check(config)
 
 
 def test_0008_downgrades_all_the_way_to_base_and_upgrades_again(scratch_url: str) -> None:
     config = alembic_config(scratch_url)
-    command.upgrade(config, "head")
+    command.upgrade(config, "0008")
     command.downgrade(config, "base")
     assert tables(scratch_url) == {"alembic_version"}
-    command.upgrade(config, "head")
+    command.upgrade(config, "0008")
     assert version(scratch_url) == "0008"
+    command.upgrade(config, "head")  # `check` compares the models with HEAD, so finish the upgrade
+    command.check(config)
+
+
+# -- 0009: listing contact numbers (Listing Contact v1; docs/backend/DATA_MODEL.md §19) ---------------------
+
+CONTACT_COLUMNS = {"contact_phone", "whatsapp_phone"}
+CONTACT_CONSTRAINTS = {"ck_listings_contact_phone_e164", "ck_listings_whatsapp_phone_e164"}
+#: Everything about a listing that 0009 must leave byte-for-byte alone.
+UNTOUCHED_SQL = (
+    "SELECT title, kind, owner_id, status, revision, is_featured, area, submitted_at, created_at, "
+    "updated_at, search_document FROM listings ORDER BY title"
+)
+
+
+def test_0009_adds_exactly_the_two_contact_columns_and_their_two_checks(scratch_url: str) -> None:
+    config = alembic_config(scratch_url)
+    command.upgrade(config, "0008")
+    before_columns = columns(scratch_url, "listings")
+    before_constraints = listing_check_constraints(scratch_url)
+    before_tables = tables(scratch_url)
+    assert not (before_columns & CONTACT_COLUMNS)
+
+    command.upgrade(config, "head")
+
+    assert version(scratch_url) == "0009"
+    assert columns(scratch_url, "listings") == before_columns | CONTACT_COLUMNS
+    assert listing_check_constraints(scratch_url) == before_constraints | CONTACT_CONSTRAINTS
+    assert tables(scratch_url) == before_tables  # no table appears or disappears
+    command.check(config)  # the model declares the very same columns and checks: no drift
+
+
+def test_0009_leaves_every_existing_row_exactly_as_it_was(scratch_url: str) -> None:
+    """The additive upgrade guesses nothing: no number is invented, parsed out of a description or
+    copied from anywhere (there is no account phone number in this schema to copy)."""
+    config = alembic_config(scratch_url)
+    command.upgrade(config, "0008")
+    seed_post_0008_world(scratch_url, provider_status="approved")
+    before = rows(scratch_url, UNTOUCHED_SQL)
+    assert before  # the fixture really did seed listings
+
+    command.upgrade(config, "head")
+
+    assert rows(scratch_url, UNTOUCHED_SQL) == before
+    # ... and every pre-existing row holds the documented legacy state: no contact number.
+    assert rows(
+        scratch_url,
+        "SELECT count(*) FROM listings WHERE contact_phone IS NULL AND whatsapp_phone IS NULL",
+    ) == rows(scratch_url, "SELECT count(*) FROM listings")
+
+
+def test_0009_columns_accept_only_a_canonical_number(scratch_url: str) -> None:
+    """Row-local shape only, as a backstop under the one normaliser: the column can hold NULL (a
+    legacy row, a Provider) or E.164, and nothing else — not even on a later UPDATE."""
+    config = alembic_config(scratch_url)
+    command.upgrade(config, "head")
+    execute(
+        scratch_url,
+        "INSERT INTO listings (id, kind, title, area) "
+        "VALUES (gen_random_uuid(), 'business', 'Contact Shop', 'B-17')",
+    )
+
+    # NULL stays legal, and so does a canonical number.
+    execute(scratch_url, "UPDATE listings SET contact_phone = NULL, whatsapp_phone = NULL")
+    execute(
+        scratch_url,
+        "UPDATE listings SET contact_phone = '+923001234567', whatsapp_phone = '+92511234567'",
+    )
+    assert rows(scratch_url, "SELECT contact_phone FROM listings") == [("+923001234567",)]
+
+    for bad in ("0300 123 4567", "03001234567", "+92 300 1234567", "923001234567", "+0300123456"):
+        for column in ("contact_phone", "whatsapp_phone"):
+            with pytest.raises(IntegrityError, match=f"ck_listings_{column}_e164"):
+                execute(scratch_url, f"UPDATE listings SET {column} = :v", v=bad)  # noqa: S608
+    # The refused writes changed nothing.
+    assert rows(scratch_url, "SELECT contact_phone, whatsapp_phone FROM listings") == [
+        ("+923001234567", "+92511234567")
+    ]
+
+
+def test_0009_downgrades_to_0008_keeping_every_row_and_upgrades_again(scratch_url: str) -> None:
+    """A clean, complete reversal of an additive change (as ``0005`` does for the location block):
+    the older release has no contact concept, so every row stays valid and editable without the two
+    columns. Dropping them discards the numbers owners typed — that is what dropping the column
+    means, and it is why the migration says so out loud."""
+    config = alembic_config(scratch_url)
+    command.upgrade(config, "head")
+    seed_post_0008_world(scratch_url, provider_status="approved")
+    # Only an owner-managed listing ever has a number; a Provider is portal-managed (RBAC-D).
+    execute(
+        scratch_url, "UPDATE listings SET contact_phone = '+923001234567' WHERE kind <> 'provider'"
+    )
+    before = rows(scratch_url, UNTOUCHED_SQL)
+
+    command.downgrade(config, "0008")
+
+    assert version(scratch_url) == "0008"
+    assert not (columns(scratch_url, "listings") & CONTACT_COLUMNS)
+    assert not (listing_check_constraints(scratch_url) & CONTACT_CONSTRAINTS)
+    assert rows(scratch_url, UNTOUCHED_SQL) == before  # every row survives, unchanged
+
+    command.upgrade(config, "head")
+
+    assert version(scratch_url) == "0009"
+    assert columns(scratch_url, "listings") >= CONTACT_COLUMNS
+    assert rows(scratch_url, UNTOUCHED_SQL) == before
+    # Re-upgrading invents nothing either: the numbers are gone with the column that held them.
+    assert rows(scratch_url, "SELECT count(*) FROM listings WHERE contact_phone IS NOT NULL") == [
+        (0,)
+    ]
+    command.check(config)
+
+
+def test_0009_downgrades_all_the_way_to_base_and_upgrades_again(scratch_url: str) -> None:
+    config = alembic_config(scratch_url)
+    command.upgrade(config, "head")
+    # ARCHIVED: 0008 refuses to downgrade over a LIVE Provider, so the operator archives it first
+    # (its own tests cover that refusal) and the whole history can then be walked back.
+    seed_post_0008_world(scratch_url, provider_status="archived")
+
+    command.downgrade(config, "base")
+
+    assert tables(scratch_url) == {"alembic_version"}
+
+    command.upgrade(config, "head")
+
+    assert version(scratch_url) == "0009"
+    assert columns(scratch_url, "listings") >= CONTACT_COLUMNS
     command.check(config)

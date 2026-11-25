@@ -9,7 +9,7 @@
  *
  * Call `resetWriteState()` between tests to drop everything created by the previous run.
  */
-import { canonicalLocality, validateListingBody, validateRequestBody } from "./listingRules"
+import { canonicalLocality, normalizeListingPhone, validateListingBody, validateRequestBody } from "./listingRules"
 import { BUSINESSES, CATEGORIES, LEADS, MY_REQUESTS, OWNER_LISTINGS, PROPERTIES, PROVIDERS, REQUEST_HISTORY, TUTORS } from "./apiFixtures"
 import type {
   AdminCategoryDto,
@@ -21,6 +21,7 @@ import type {
   RequestSummaryDto,
   SavedHitDto,
 } from "../../lib/api/dto/private"
+import { asCard } from "./readRouter"
 import type { ListingDto } from "../../lib/api/dto/public"
 
 export interface WriteReply {
@@ -133,7 +134,7 @@ export function savedRows(): SavedHitDto[] {
   return [...state.savedIds]
     .map((id) => approved.find((l) => l.id === id))
     .filter((item): item is ListingDto => item !== undefined)
-    .map((item) => ({ kind: item.kind, item, savedAt: nowIso() }) as SavedHitDto)
+    .map((item) => ({ kind: item.kind, item: asCard(item), savedAt: nowIso() }) as SavedHitDto)
 }
 
 function toPrivateLocation(location: Record<string, unknown>): OwnerListingDto["location"] {
@@ -220,6 +221,8 @@ function editableView(l: OwnerListingDto): unknown {
     area: l.area,
     tags: l.tags,
     image: l.image ?? null,
+    contactPhone: "contactPhone" in l ? l.contactPhone : undefined,
+    whatsappPhone: "whatsappPhone" in l ? l.whatsappPhone : undefined,
     location: l.location,
     categories: l.categories.map((c) => c.slug),
     grade: "grade" in l ? l.grade : undefined,
@@ -242,6 +245,15 @@ function applyPatch(l: OwnerListingDto, body: Record<string, unknown>): void {
   if (body.location && typeof body.location === "object") {
     l.location = toPrivateLocation(body.location as Record<string, unknown>)
     l.publicLocation = toPublicLocation(l.location)
+  }
+  if (l.kind !== "provider") {
+    const contact = normalizeListingPhone(body.contactPhone)
+    if (contact) l.contactPhone = contact
+    if (body.whatsappPhone === null) delete l.whatsappPhone
+    else {
+      const whatsapp = normalizeListingPhone(body.whatsappPhone)
+      if (whatsapp) l.whatsappPhone = whatsapp
+    }
   }
   if (l.kind === "tutor" && typeof body.grade === "string") l.grade = body.grade
   if (l.kind === "property") {
@@ -465,6 +477,10 @@ export function routeWrite(
       location: privateLocation,
       publicLocation: toPublicLocation(privateLocation),
       description: typeof body.description === "string" ? body.description : "",
+      // Listing Contact v1: stored in the canonical E.164 form the real API normalises to, so a test reads
+      // back exactly what the backend would have saved.
+      ...(normalizeListingPhone(body.contactPhone) ? { contactPhone: normalizeListingPhone(body.contactPhone)! } : {}),
+      ...(normalizeListingPhone(body.whatsappPhone) ? { whatsappPhone: normalizeListingPhone(body.whatsappPhone)! } : {}),
       tags: Array.isArray(body.tags) ? (body.tags as string[]) : [],
       ...(typeof body.image === "string" ? { image: body.image } : {}),
       categories: categoryRefs(kind, body),

@@ -50,6 +50,12 @@ export interface Business {
   image?: string
   tags: string[]
   featured?: boolean
+  /**
+   * The number customers should use for THIS business (Listing Contact v1), E.164, and an optional
+   * WhatsApp number. Absent on a listing created before the field.
+   */
+  contactPhone?: string
+  whatsappPhone?: string
   /** Present only when `vertical === "food"`. */
   food?: FoodProfile
 }

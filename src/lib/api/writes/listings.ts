@@ -58,6 +58,13 @@ export interface ProviderCreate extends Base {
 export interface BusinessCreate extends Base {
   kind: "business"
   name: string
+  /**
+   * The number customers should use for THIS listing (Listing Contact v1), and an optional WhatsApp number.
+   * Sent as typed: the API normalises them to E.164 and refuses what it cannot read
+   * (`422 invalid_phone`). `ProviderCreate` has neither — a Provider is portal-managed (RBAC-D).
+   */
+  contactPhone: string
+  whatsappPhone?: string
   vertical: "general" | "food"
   category?: string
   food?: FoodWrite
@@ -66,6 +73,13 @@ export interface BusinessCreate extends Base {
 export interface TutorCreate extends Base {
   kind: "tutor"
   name: string
+  /**
+   * The number customers should use for THIS listing (Listing Contact v1), and an optional WhatsApp number.
+   * Sent as typed: the API normalises them to E.164 and refuses what it cannot read
+   * (`422 invalid_phone`). `ProviderCreate` has neither — a Provider is portal-managed (RBAC-D).
+   */
+  contactPhone: string
+  whatsappPhone?: string
   category: string
   grade: string
 }
@@ -73,6 +87,13 @@ export interface TutorCreate extends Base {
 export interface PropertyCreate extends Omit<Base, "name"> {
   kind: "property"
   title: string
+  /**
+   * The number customers should use for THIS listing (Listing Contact v1), and an optional WhatsApp number.
+   * Sent as typed: the API normalises them to E.164 and refuses what it cannot read
+   * (`422 invalid_phone`). `ProviderCreate` has neither — a Provider is portal-managed (RBAC-D).
+   */
+  contactPhone: string
+  whatsappPhone?: string
   listingType: "sale" | "rent"
   propertyType: string
   price: string
@@ -109,6 +130,9 @@ export interface ListingPatch {
   bedrooms?: number | null
   furnished?: "Furnished" | "Unfurnished" | "Semi-Furnished" | null
   location?: LocationWrite
+  /** Omitted = unchanged. `contactPhone` cannot be cleared (`not_nullable`); `whatsappPhone` can. */
+  contactPhone?: string
+  whatsappPhone?: string | null
 }
 
 export function patchListing(id: string, body: ListingPatch): Promise<OwnerListingDto> {

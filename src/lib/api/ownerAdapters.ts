@@ -122,6 +122,12 @@ export function toOwnerListing(dto: OwnerListingDto): OwnerListingView {
     if (dto.bedrooms !== undefined) view.bedrooms = dto.bedrooms
     if (dto.furnished) view.furnished = dto.furnished
   }
+  // Public contact numbers (Listing Contact v1). A Provider is portal-managed and has no contact field, so
+  // the DTO union only carries them for the other three kinds.
+  if (dto.kind !== "provider") {
+    if (dto.contactPhone) view.contactPhone = dto.contactPhone
+    if (dto.whatsappPhone) view.whatsappPhone = dto.whatsappPhone
+  }
   if (dto.description) view.description = dto.description
   if (dto.image) view.image = dto.image
   if (dto.rejectionReason) view.rejectionReason = dto.rejectionReason

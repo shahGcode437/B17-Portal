@@ -146,8 +146,36 @@ class PropertyRead(_ListingBase):
     furnished: Furnishing | None = None
 
 
-ListingDetail = Annotated[
+# ------------------------------------------------------------------------------ detail
+
+
+class BusinessDetailRead(BusinessRead):
+    #: Public contact numbers (Listing Contact v1), E.164. Detail only — omitted on summaries.
+    contact_phone: str | None = None
+    whatsapp_phone: str | None = None
+
+
+class TutorDetailRead(TutorRead):
+    #: Public contact numbers (Listing Contact v1), E.164. Detail only — omitted on summaries.
+    contact_phone: str | None = None
+    whatsapp_phone: str | None = None
+
+
+class PropertyDetailRead(PropertyRead):
+    #: Public contact numbers (Listing Contact v1), E.164. Detail only — omitted on summaries.
+    contact_phone: str | None = None
+    whatsapp_phone: str | None = None
+
+
+#: Public listing summary (search hits, saved items, public lists). Does NOT carry contact numbers.
+ListingSummary = Annotated[
     ProviderRead | BusinessRead | TutorRead | PropertyRead, Field(discriminator="kind")
+]
+
+#: Full public detail response (GET /listings/{id}). Only detail carries contact numbers.
+ListingDetail = Annotated[
+    ProviderRead | BusinessDetailRead | TutorDetailRead | PropertyDetailRead,
+    Field(discriminator="kind"),
 ]
 
 # ------------------------------------------------------------------------------ news

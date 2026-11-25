@@ -60,6 +60,9 @@ export interface OwnerListingView {
    * category SLUG (the form submits slugs, never labels), a tutor's grade and a property's own fields.
    */
   categorySlug?: string
+  /** The listing's own public contact numbers (Listing Contact v1), E.164 as stored. */
+  contactPhone?: string
+  whatsappPhone?: string
   /** A tutor's subject (the category's human name), so a review can show Subject and Grade apart. */
   subjectLabel?: string
   grade?: string

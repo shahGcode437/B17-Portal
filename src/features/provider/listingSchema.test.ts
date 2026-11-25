@@ -17,6 +17,8 @@ const validListing = {
   description: "Office and school stationery, printing and photocopying.",
   area: "B-17",
   tagsInput: "stationery, printing",
+  // Listing Contact v1: the listing contact number is part of a valid owner form.
+  contactPhone: "03001234567",
 }
 
 const validFood: FoodFormValues = {
@@ -164,6 +166,7 @@ describe("propertySchema", () => {
     price: "PKR 3 Cr",
     area: "B-17",
     description: "A well-kept family home with a garden and parking.",
+    contactPhone: "03001234567",
   }
 
   it("accepts a valid Property and keeps optional fields optional", () => {

@@ -1,6 +1,32 @@
 # B-17 Portal — Contact Model v1 (LOCKED)
 
-**Status:** product decision **LOCKED** by the product owner on 2026-10-31. **Implementation: NOT STARTED.** This file is the one detailed source for the decision; `DECISIONS.md` carries the compact record, and `ROADMAP.md`, `CURRENT_STATE.md`, `API_CONTRACT.md`, `DATA_MODEL.md`, `FOOD_DINING.md` and `DESIGN_SYSTEM.md` only point here.
+**Status:** product decision **LOCKED** by the product owner on 2026-10-31. **Implementation: the contact-number half shipped on 2026-11-24 in a DIFFERENT shape (listing-scoped, public by design) — see section 0 before reading anything below. The Inquiry half is NOT STARTED.** This file is the one detailed source for the decision; `DECISIONS.md` carries the compact record, and `ROADMAP.md`, `CURRENT_STATE.md`, `API_CONTRACT.md`, `DATA_MODEL.md`, `FOOD_DINING.md` and `DESIGN_SYSTEM.md` only point here.
+
+## 0. PARTLY SUPERSEDED (2026-11-24) — listing contact numbers shipped instead
+
+**A later product instruction changed the shape of the contact feature, and it is now implemented.** *Listing Contact v1* adds the public contact numbers to the **LISTING** (`listings.contact_phone`, `listings.whatsapp_phone`; migration `0009`), required for a new owner-created Business / Food / Tutor / Property, **public by design**, with Call / WhatsApp actions on the public detail pages. The full record is `DECISIONS.md` (Listing Contact v1), `API_CONTRACT.md` §10.11 and `DATA_MODEL.md` §19.
+
+**Clauses of this document that it supersedes:**
+
+| Clause | Said | Now |
+|---|---|---|
+| §2.2 Contact authority | public contact configuration belongs to the **ProfessionalProfile** | the contact numbers belong to the **listing**; `professional_profiles` still has no contact field |
+| §2.3 Privacy rules | phone and WhatsApp **private by default**, public only after an explicit per-owner opt-in | the listing contact number is **public by design** (it is the reason the owner types it); there is no opt-in flag, and no account number exists that could be exposed by accident |
+| §2.11 Listing-specific overrides | per-listing contact is **not part of v1** | per-listing contact **is** v1 |
+| §2.1 / §2.12 CTA hierarchy | Business **Contact Business**, Food **Order Inquiry**, Tutor **Contact Tutor**, Property **Contact Lister** (Inquiry), with Call / WhatsApp only as enabled secondary actions | the shipped primary actions on those four pages are **Call** and (when given) **WhatsApp**; no Inquiry exists |
+| §3 order | 13A media · 13B ProfessionalProfile contact · 13C Inquiry | the contact slot shipped first, listing-scoped. "13A" still means **media / storage**, so the implemented work is labelled *Listing Contact v1*, not 13A |
+
+**Clauses that still hold and were honoured:** §2.3's "never present a contact method the product cannot fulfil" (a listing with no number shows a plain note and no control, and a value that is not canonical produces no link at all); §2.10's server-normalised phone numbers and "no arbitrary user-provided WhatsApp URLs" (links are built only from a stored E.164 value); §2.9 (nothing promises a notification); §2.7's "no cart, checkout, payment, order lifecycle or visit-booking"; and the rule that the private account e-mail, a precise private location and a hidden address stay hidden.
+
+**How to read the REST of this file now.** Section 1 is pinned at `92769cc` and sections 4 and 5 were written then, so their "no contact action" / "no contact data" statements describe the state BEFORE migration `0009`. Three items of §4.10 ("existing code that assumes the current contact situation") are now done: `src/features/detail.pages.test.tsx` asserts the real Call / WhatsApp actions instead of their absence; `src/architecture.test.ts` carries a deliberate allowance for the one real implementation plus a NEW guard that a `tel:` or `wa.me` URL may be built only in `src/lib/phone.ts`; and §5.6 is half answered (the public Business / Tutor / Property detail shapes now carry the listing's two numbers, and they stay out of the search index and `search_document`). The sign-in intent, `RequestServiceDialog`'s single caller and the request dialog's "we do not pass on your number" copy are unchanged.
+
+**Final Product Decisions (LOCKED):**
+1. **Listing-specific contact supersedes the old ProfessionalProfile/private-contact plan** for owner-managed listing types (Business, Food, Tutor, Property). No `ProfessionalProfile` contact fields or prefill exist in this phase.
+2. **Inquiry is DEFERRED:** The Inquiry model (13C) is not implemented in this phase. The shipped interaction model for Business / Food / Tutor / Property is Call + optional WhatsApp directly on detail pages.
+3. **Provider remains Request Service-only:** Portal-managed (RBAC-D), zero contact fields, no Call/WhatsApp, and strictly preserves all RBAC-D invariants.
+4. **Privacy Contract (detail-only):** Public contact numbers are exposed strictly on public detail responses (`GET /listings/{id}`). Public search hits, suggestions, Saved collections, and all summary/bulk listings strictly omit `contactPhone` and `whatsappPhone`. Listing cards, search cards, and Saved cards do not depend on contact data. Owner private reads and Admin/Moderator review reads retain both numbers where appropriate. Form copy explicitly states that the contact phone is publicly visible on the detail page.
+
+---
 
 > **Read this first — CURRENT vs PLANNED.** Everything below the "Locked decision" heading describes what is **planned**, not what exists. Section 1 says exactly what exists today. A statement is only a description of the running product if it is in section 1.
 

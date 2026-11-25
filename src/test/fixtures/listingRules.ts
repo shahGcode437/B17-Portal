@@ -10,10 +10,15 @@
  * Deliberately written from the backend's rules, not imported from the app's own form code: a mock that
  * shared the form's validators would agree with the form by construction and prove nothing.
  *
- * Also enforced here (found against the real stack in Phase 12S S4): `null` clears ONLY `image`, `bedrooms`,
- * `furnished` and the Food `hoursNote` / `menuImage` (anything else is `not_nullable`), the location block's
- * format (`invalid_format`), and a field the stored kind does not have (`not_allowed`: a `food` block on a General
- * business, a `category` on a Food one).
+ * Also enforced here (found against the real stack in Phase 12S S4): `null` clears ONLY `image`, `whatsappPhone`,
+ * `bedrooms`, `furnished` and the Food `hoursNote` / `menuImage` (anything else is `not_nullable`), the location
+ * block's format (`invalid_format`), and a field the stored kind does not have (`not_allowed`: a `food` block on a
+ * General business, a `category` on a Food one).
+ *
+ * Listing Contact v1 adds the listing CONTACT numbers: `contactPhone` is required for a new Business / Tutor / Property and
+ * cannot be cleared, `whatsappPhone` is optional and clearable, and both are normalised to E.164 — the rules of
+ * `backend/app/core/phone.py` and `listing_state._validate_contact`, written out here from the server, not imported
+ * from `@/lib/phone` (a mock that shared the app's parser would agree with the form by construction).
  */
 export interface Problem {
   field: string
@@ -82,12 +87,60 @@ export function canonicalLocality(area: string): string | null {
   return LOCALITIES.find((locality) => locality.toLowerCase() === wanted) ?? null
 }
 
+/** `app.core.phone`: the separators a person may use, and E.164 as the only stored shape. */
+const PHONE_SEPARATORS = /[\s\-.()[\]/\u00a0\u2013\u2014]/g
+const PHONE_E164 = /^[1-9][0-9]{7,14}$/
+const PHONE_DEFAULT_COUNTRY = "92"
+const PHONE_NATIONAL_LENGTHS: Record<string, number[]> = { "92": [9, 10] }
+const MAX_PHONE_RAW = 24
+
+/** `normalize_phone`: the typed forms -> `+923001234567`, or null when it cannot be read. */
+export function normalizeListingPhone(raw: unknown): string | null {
+  if (typeof raw !== "string") return null
+  const trimmed = raw.trim()
+  if (!trimmed || trimmed.length > MAX_PHONE_RAW) return null
+  const compact = trimmed.replace(PHONE_SEPARATORS, "")
+  if (!compact) return null
+  let digits: string
+  if (compact.startsWith("+")) digits = compact.slice(1)
+  else if (compact.startsWith("00")) digits = compact.slice(2)
+  else if (compact.startsWith("0")) digits = PHONE_DEFAULT_COUNTRY + compact.slice(1)
+  else digits = compact
+  if (!/^[0-9]+$/.test(digits) || !PHONE_E164.test(digits)) return null
+  for (const [code, lengths] of Object.entries(PHONE_NATIONAL_LENGTHS)) {
+    if (digits.startsWith(code)) return lengths.includes(digits.length - code.length) ? `+${digits}` : null
+  }
+  return `+${digits}`
+}
+
+/** Kinds whose owner must give customers a number (`_CONTACT_REQUIRED_KINDS`); a Provider never does. */
+const CONTACT_KINDS = new Set(["business", "tutor", "property"])
+
+function checkPhone(problems: Problem[], field: string, value: unknown, { required }: { required: boolean }): void {
+  if (value === undefined || value === null) {
+    // `null` is handled by `checkNulls` (contactPhone: not_nullable, whatsappPhone: clearable).
+    if (required && value === undefined) problems.push({ field, code: "required", message: "Enter the number customers should call." })
+    return
+  }
+  if (typeof value !== "string") {
+    problems.push({ field, code: "string_type" })
+    return
+  }
+  const text = value.trim()
+  if (!text) problems.push({ field, code: "string_too_short" })
+  else if (text.length > MAX_PHONE_RAW) problems.push({ field, code: "string_too_long" })
+  else if (normalizeListingPhone(text) === null) {
+    problems.push({ field, code: "invalid_phone", message: "Enter a valid phone number, for example 03001234567 or +923001234567." })
+  }
+}
+
 const COMMON_KEYS = ["area", "description", "tags", "image", "location"]
+const CONTACT_KEYS = ["contactPhone", "whatsappPhone"]
 const KIND_KEYS: Record<string, string[]> = {
   provider: ["name", "category"],
-  business: ["name", "vertical", "category", "food"],
-  tutor: ["name", "category", "grade"],
-  property: ["title", "listingType", "propertyType", "price", "bedrooms", "furnished"],
+  business: ["name", "vertical", "category", "food", ...CONTACT_KEYS],
+  tutor: ["name", "category", "grade", ...CONTACT_KEYS],
+  property: ["title", "listingType", "propertyType", "price", "bedrooms", "furnished", ...CONTACT_KEYS],
 }
 
 /** A key the model does not declare is `not_allowed` - set, null or empty (API_CONTRACT §10.1). */
@@ -99,7 +152,7 @@ function checkKeys(problems: Problem[], kind: string, body: Record<string, unkno
 }
 
 /** `null` clears ONLY these top-level fields (API_CONTRACT §10.3); every other `null` is `not_nullable`. */
-const CLEARABLE = new Set(["image", "bedrooms", "furnished"])
+const CLEARABLE = new Set(["image", "whatsappPhone", "bedrooms", "furnished"])
 /** ... and, inside a Food patch, only these. */
 const FOOD_CLEARABLE = new Set(["hoursNote", "menuImage"])
 
@@ -195,6 +248,11 @@ export function validateListingBody(
   }
   if (kind === "tutor" && present("grade")) checkText(problems, "grade", body.grade, { min: 1, max: 60 })
 
+  if (CONTACT_KINDS.has(kind)) {
+    // Required on create and whenever the resulting listing would have none; optional alongside it.
+    if (need || body.contactPhone !== undefined) checkPhone(problems, "contactPhone", body.contactPhone, { required: need })
+    if (body.whatsappPhone !== undefined) checkPhone(problems, "whatsappPhone", body.whatsappPhone, { required: false })
+  }
   if (present("description")) checkText(problems, "description", body.description, { min: 20, max: 400, multiline: true })
   if (present("area")) {
     checkText(problems, "area", body.area, { min: 1, max: 100 })

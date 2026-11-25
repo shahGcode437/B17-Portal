@@ -7,6 +7,7 @@ import { DetailHero } from "@/components/detail/DetailHero"
 import { DetailSummary } from "@/components/detail/DetailSummary"
 import { DetailSection } from "@/components/detail/DetailSection"
 import { DetailActionRegion } from "@/components/detail/DetailActionRegion"
+import { ContactActions, hasContactActions } from "@/components/detail/ContactActions"
 import { DetailFactTiles } from "@/components/detail/DetailFactTiles"
 import { DetailTagList } from "@/components/detail/DetailTagList"
 import { DetailTypeChip } from "@/components/detail/DetailTypeChip"
@@ -26,8 +27,9 @@ import type { Business } from "@/types/business"
 /**
  * Public Business Profile (Master Spec Screen 11) - read from `GET /listings/{id}` (Phase 12G).
  * Guest-accessible, no auth gate (Master Spec §17). Food & Dining is the same page: it is a
- * vertical of Business (`vertical === "food"`), never a separate kind or route. There is no
- * contact action: no contact data, chat or delivery exists (DECISIONS.md, O-3), so the page says so.
+ * vertical of Business (`vertical === "food"`), never a separate kind or route. Since Listing Contact v1 a
+ * listing carries its OWN public contact numbers, so the page offers Call (and WhatsApp when the
+ * owner gave a number); a listing created before that has none and still says so plainly.
  */
 function BusinessProfilePage() {
   const { id } = useParams<{ id: string }>()
@@ -63,6 +65,9 @@ function BusinessProfile({ business }: { business: Business }) {
     .slice(1)
     .map((slug) => food.categoryLabels?.[slug] ?? foodCategoryLabel(slug))
     .join(", ")
+  // Contact Model v1 (Listing Contact v1): real actions when this listing has a number of its own, and the
+  // unchanged honest note when it does not. No chat, no ordering and no delivery exists.
+  const contactable = hasContactActions(business)
   const facts: DetailFact[] = []
   if (food?.hoursNote) facts.push({ icon: Clock, label: "Hours", value: food.hoursNote, wide: true })
   if (alsoServes) facts.push({ icon: UtensilsCrossed, label: "Also serves", value: alsoServes, wide: true })
@@ -92,8 +97,16 @@ function BusinessProfile({ business }: { business: Business }) {
           subtitle={business.category}
           area={business.area}
           facts={<DetailFactTiles facts={facts} />}
-          actions={<DetailActionRegion unavailableMessage="Contacting this business through B-17 Portal isn&apos;t available yet." />}
+          actions={contactable ? undefined : <DetailActionRegion unavailableMessage="This business hasn&apos;t added a contact number yet." />}
         />
+      }
+      action={
+        contactable ? (
+          <DetailActionRegion
+            caption="Calls and messages go straight to this listing."
+            action={<ContactActions name={business.name} contactPhone={business.contactPhone} whatsappPhone={business.whatsappPhone} />}
+          />
+        ) : undefined
       }
     >
       {business.description && (

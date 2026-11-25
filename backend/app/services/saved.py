@@ -18,7 +18,7 @@ from app.db.session import transaction
 from app.repositories.listing_reads import ListingReadRepository
 from app.repositories.saved import SavedRepository
 from app.schemas.envelope import PageMeta
-from app.schemas.read import BusinessRead, ListingDetail, ProviderRead, TutorRead
+from app.schemas.read import BusinessRead, ListingSummary, ProviderRead, TutorRead
 from app.schemas.saved import (
     SavedBusiness,
     SavedHit,
@@ -67,7 +67,7 @@ class SavedService:
         return hits, PageMeta(total=total, limit=query.limit, offset=query.offset)
 
 
-def _hit(item: ListingDetail, saved_at: datetime.datetime) -> SavedHit:
+def _hit(item: ListingSummary, saved_at: datetime.datetime) -> SavedHit:
     if isinstance(item, ProviderRead):
         return SavedProvider(kind="provider", item=item, saved_at=saved_at)
     if isinstance(item, BusinessRead):

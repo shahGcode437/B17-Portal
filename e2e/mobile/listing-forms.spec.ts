@@ -54,6 +54,7 @@ test('phone: the 21-tag message and the Block message wrap inside the screen', a
   await page.getByLabel('Subject', { exact: true }).selectOption({ label: 'Physics' })
   await page.getByLabel('Description', { exact: true }).fill('Physics lessons for matric and A-level students across B-17.')
   await page.getByLabel('Grade / level you teach').fill('Matric / A-Levels')
+  await page.getByLabel('Contact Number').fill('03001234567')  // Listing Contact v1: required
   await page.getByLabel(/Topics you teach/).fill(Array.from({ length: 21 }, (_, i) => `tag${i + 1}`).join(', '))
   await page.getByLabel('Visibility').selectOption('area_only')
   await page.getByLabel('Block (optional)').fill('C <b>')

@@ -231,6 +231,8 @@ function toFormDefaults(listing: OwnerListingView): Partial<ListingFormValues> |
       area: listing.area,
       bedrooms: listing.bedrooms !== undefined ? String(listing.bedrooms) : "",
       furnished: listing.furnished ?? "",
+      contactPhone: listing.contactPhone ?? "",
+      whatsappPhone: listing.whatsappPhone ?? "",
       tagsInput: listing.tags.join(", "),
       ...(listing.image ? { image: listing.image } : {}),
     }
@@ -240,6 +242,10 @@ function toFormDefaults(listing: OwnerListingView): Partial<ListingFormValues> |
     category: listing.categorySlug ?? "",
     description: listing.description ?? "",
     area: listing.area,
+    // The saved numbers, exactly as stored (E.164). A legacy listing has none, so the field starts
+    // empty and the owner must add one before the edit can be saved (the API requires it).
+    contactPhone: listing.contactPhone ?? "",
+    whatsappPhone: listing.whatsappPhone ?? "",
     tagsInput: listing.tags.join(", "),
     ...(listing.image ? { image: listing.image } : {}),
   }

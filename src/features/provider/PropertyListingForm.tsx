@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { FieldError } from "@/components/forms/FieldError"
 import { FormSection } from "@/components/forms/FormSection"
+import { ContactFields } from "@/features/provider/ContactFields"
 import { zodResolver } from "@/lib/zodResolver"
 import { propertySchema, type PropertyFormValues } from "@/features/provider/listingSchema"
 import { ListingImageInput } from "@/features/provider/ListingImageInput"
@@ -53,6 +54,8 @@ function PropertyListingForm({ defaultValues, onSubmit, submitLabel = "Submit fo
       description: "",
       bedrooms: "",
       furnished: "",
+      contactPhone: "",
+      whatsappPhone: "",
       tagsInput: "",
       ...defaultValues,
       // `area` is a choice from the configured localities: an old free-text value is shown as B-17 and says so.
@@ -173,6 +176,13 @@ function PropertyListingForm({ defaultValues, onSubmit, submitLabel = "Submit fo
             <FieldError id="property-description-error" message={errors.description?.message} />
           </Stack>
         </FormSection>
+
+        <ContactFields
+          contactProps={register("contactPhone")}
+          whatsappProps={register("whatsappPhone")}
+          contactError={errors.contactPhone?.message}
+          whatsappError={errors.whatsappPhone?.message}
+        />
 
         <FormSection
           icon={Home}

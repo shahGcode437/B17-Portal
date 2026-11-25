@@ -1,6 +1,7 @@
 import { isDevMail } from "@/config/devMail"
 import { ApiError, NETWORK_ERROR_CODE, isApiError, type ApiErrorDetail } from "@/lib/api/errors"
 import { LOCALITIES } from "@/config/localities"
+import { PHONE_EXAMPLE } from "@/lib/phone"
 import { MAX_BLOCK_LENGTH, MAX_TAGS, MAX_TAG_LENGTH } from "@/config/listingLimits"
 
 /**
@@ -177,6 +178,8 @@ const FIELD_NOUN: Record<string, string> = {
   grade: "The grade",
   price: "The price",
   bedrooms: "The number of bedrooms",
+  contactPhone: "The contact number",
+  whatsappPhone: "The WhatsApp number",
   reason: "The reason",
   "location.block": "The block",
   "location.address": "The address",
@@ -235,6 +238,10 @@ export function describeDetail(detail: ApiErrorDetail): string | null {
       return `${noun} repeats a choice. Each can be chosen once.`
     case "invalid_characters":
       return `${noun} contains characters that aren't allowed.`
+    // Listing Contact v1: the API could not read the number. The form checks the same rule before a submit,
+    // so this is the belt-and-braces message for a value that reached the server anyway.
+    case "invalid_phone":
+      return `${noun} isn't a number we can use. Try ${PHONE_EXAMPLE} or +92${PHONE_EXAMPLE.slice(1)}.`
     case "out_of_range":
       return "Choose a point on the map, or enter valid coordinates."
     case "in_the_past":

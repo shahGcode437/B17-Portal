@@ -198,7 +198,7 @@ test('creation guards: an unavailable (pending) Provider and a non-requestable k
   expect(notYet.status).toBeGreaterThanOrEqual(400)
   const shopOwner = await createUser('req-shop-owner', { professional: 'free' })
   const o = await login(shopOwner)
-  const business = await o.call('POST', '/listings', { kind: 'business', vertical: 'general', name: unique('A Shop'), category: 'pharmacy', description: 'A shop is not a requestable service provider.', area: 'B-17', tags: ['x'], location: { visibility: 'area_only' } })
+  const business = await o.call('POST', '/listings', { kind: 'business', vertical: 'general', name: unique('A Shop'), category: 'pharmacy', contactPhone: '0300 1234567', description: 'A shop is not a requestable service provider.', area: 'B-17', tags: ['x'], location: { visibility: 'area_only' } })
   expect(business.status).toBe(201)
   const a = await login(admin)
   expect((await a.call('POST', `/admin/listings/${business.body!.data.id}/approve`, { revision: business.body!.data.revision })).status).toBe(200)

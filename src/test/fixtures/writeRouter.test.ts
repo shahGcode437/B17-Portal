@@ -27,6 +27,8 @@ const tutorBody = (over: Record<string, unknown> = {}) => ({
   description: "Physics lessons for matric and A-level students across B-17.",
   area: "B-17",
   tags: ["physics", "lessons"],
+  // Listing Contact v1: a new owner listing must say how customers reach it.
+  contactPhone: "03001234567",
   location,
   ...over,
 })
@@ -40,6 +42,7 @@ const businessBody = (over: Record<string, unknown> = {}) => ({
   description: "Books, printing and school supplies for B-17 homes.",
   area: "B-17",
   tags: ["books", "copies"],
+  contactPhone: "03001234567",
   location,
   ...over,
 })

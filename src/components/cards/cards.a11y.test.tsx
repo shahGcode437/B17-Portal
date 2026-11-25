@@ -120,3 +120,20 @@ describe("a card without a preview action", () => {
     expect(screen.queryByRole("button", { name: `Preview ${business.name}` })).not.toBeInTheDocument()
   })
 })
+
+describe("listing cards contact data independence", () => {
+  it("renders business, tutor, and property cards cleanly when contact fields are completely absent", () => {
+    const { contactPhone: _bC, whatsappPhone: _bW, ...bNoContact } = business
+    const { contactPhone: _tC, whatsappPhone: _tW, ...tNoContact } = tutor
+    const { contactPhone: _pC, whatsappPhone: _pW, ...pNoContact } = property
+
+    renderCard(<BusinessCard business={bNoContact as Business} />)
+    expect(screen.getByText(business.name)).toBeInTheDocument()
+
+    renderCard(<TutorCard tutor={tNoContact as Tutor} />)
+    expect(screen.getByText(tutor.name)).toBeInTheDocument()
+
+    renderCard(<PropertyCard property={pNoContact as Property} />)
+    expect(screen.getByText(property.title)).toBeInTheDocument()
+  })
+})

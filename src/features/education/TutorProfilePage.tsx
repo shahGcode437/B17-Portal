@@ -7,6 +7,7 @@ import { DetailHero } from "@/components/detail/DetailHero"
 import { DetailSummary } from "@/components/detail/DetailSummary"
 import { DetailSection } from "@/components/detail/DetailSection"
 import { DetailActionRegion } from "@/components/detail/DetailActionRegion"
+import { ContactActions, hasContactActions } from "@/components/detail/ContactActions"
 import { DetailFactTiles } from "@/components/detail/DetailFactTiles"
 import { DetailTagList } from "@/components/detail/DetailTagList"
 import { DetailTypeChip } from "@/components/detail/DetailTypeChip"
@@ -68,8 +69,17 @@ function TutorProfile({ tutor }: { tutor: Tutor }) {
           subtitle={tutor.subject}
           area={tutor.area}
           facts={<DetailFactTiles facts={[{ icon: School, label: "Grade", value: tutor.grade }]} />}
-          actions={<DetailActionRegion unavailableMessage="Contacting this tutor through B-17 Portal isn&apos;t available yet." />}
+          actions={hasContactActions(tutor) ? undefined : <DetailActionRegion unavailableMessage="This tutor hasn&apos;t added a contact number yet." />}
         />
+      }
+      action={
+        // Contact Model v1 (Listing Contact v1): the tutor's OWN number, never an account number.
+        hasContactActions(tutor) ? (
+          <DetailActionRegion
+            caption="Calls and messages go straight to this listing."
+            action={<ContactActions name={tutor.name} contactPhone={tutor.contactPhone} whatsappPhone={tutor.whatsappPhone} />}
+          />
+        ) : undefined
       }
     >
       {tutor.bio && (

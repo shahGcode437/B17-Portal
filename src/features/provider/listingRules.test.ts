@@ -28,6 +28,8 @@ const base = {
   description: "Office and school stationery, printing and photocopying.",
   area: "B-17",
   tagsInput: "stationery, printing",
+  // Listing Contact v1: the listing contact number is part of a valid owner form.
+  contactPhone: "03001234567",
 }
 const property = {
   title: "5 Marla House",
@@ -36,6 +38,7 @@ const property = {
   price: "PKR 2.2 Cr",
   area: "B-17",
   description: "A corner house close to the park and the main road.",
+  contactPhone: "03001234567",
 }
 const food: FoodFormValues = { categories: ["bakeries"], serviceOptions: ["takeaway"], hoursNote: "", menuHighlights: [], menuImage: undefined }
 

@@ -252,30 +252,93 @@ describe("Property detail", () => {
   })
 })
 
-describe("no simulated contact action on any public detail page (Phase 12S)", () => {
-  const CONTACT = /whatsapp|contact|chat/i
-  const pages = [
-    { name: "Business", page: <BusinessProfilePage />, url: `/businesses/${IDS.generalExact}`, path: "/businesses/:id", heading: "Glow Salon", note: /contacting this business .* isn.t available yet/i },
-    { name: "Food", page: <BusinessProfilePage />, url: `/businesses/${IDS.foodExact}`, path: "/businesses/:id", heading: null, note: /contacting this business .* isn.t available yet/i },
-    { name: "Tutor", page: <TutorProfilePage />, url: `/tutors/${IDS.tutorApproximate}`, path: "/tutors/:id", heading: null, note: /contacting this tutor .* isn.t available yet/i },
-    { name: "Property", page: <PropertyDetailsPage />, url: `/properties/${IDS.propertyExact}`, path: "/properties/:id", heading: null, note: /contacting the lister .* isn.t available yet/i },
-  ]
+describe("public contact actions (Listing Contact v1: Contact Model v1)", () => {
+  /**
+   * Phase 12S asserted that NO contact control existed anywhere, because no contact data existed.
+   * Listing Contact v1 gives a listing its OWN public numbers, so the rule is now: a real Call (and WhatsApp
+   * when the owner gave a number) for a listing that has one, the same honest note for a listing
+   * that does not, and still nothing simulated anywhere — no chat, no ordering, no "message sent".
+   */
+  const SIMULATED = /simulated|future phase|coming soon|message sent/i
 
-  it.each(pages)("$name: no Contact / WhatsApp control, and the page says honestly that contact is not available", async ({ page, url, path, note }) => {
-    renderPage(page, { url, path, user: null })
-    expect(await screen.findByRole("heading", { level: 1 })).toBeInTheDocument()
-    expect(screen.queryByRole("button", { name: CONTACT })).not.toBeInTheDocument()
-    expect(screen.queryByRole("link", { name: CONTACT })).not.toBeInTheDocument()
-    expect(screen.getByText(note)).toBeInTheDocument()
-    expect(screen.queryByText(/simulated|future phase/i)).not.toBeInTheDocument()
+  it("Business: Call and WhatsApp, both pointing at this listing own numbers", async () => {
+    renderPage(<BusinessProfilePage />, { url: `/businesses/${IDS.generalExact}`, path: "/businesses/:id", user: null })
+    await screen.findByRole("heading", { level: 1, name: "Glow Salon" })
+
+    // The number is shown in its familiar national form, not as the stored +92... value.
+    const call = screen.getByRole("link", { name: /^Call 0300 1112233/ })
+    expect(call).toHaveAttribute("href", "tel:+923001112233")
+    const whatsapp = screen.getByRole("link", { name: /WhatsApp/ })
+    expect(whatsapp).toHaveAttribute("href", "https://wa.me/923001112233")
+    expect(whatsapp).toHaveAttribute("target", "_blank")
+    expect(whatsapp).toHaveAttribute("rel", "noopener noreferrer")
+    expect(screen.queryByText(SIMULATED)).not.toBeInTheDocument()
+    expect(screen.queryByText(/hasn.t added a contact number/i)).not.toBeInTheDocument()
   })
 
-  it("Provider: the real Request Service is the only call to action (no WhatsApp)", async () => {
+  it("Business with a landline and no WhatsApp number: Call only, no WhatsApp button", async () => {
+    renderPage(<BusinessProfilePage />, { url: `/businesses/${IDS.generalAreaOnly}`, path: "/businesses/:id", user: null })
+    await screen.findByRole("heading", { level: 1, name: "B-17 Family Pharmacy" })
+
+    expect(screen.getByRole("link", { name: /^Call 051 2345678/ })).toHaveAttribute("href", "tel:+92512345678")
+    expect(screen.queryByRole("link", { name: /WhatsApp/ })).not.toBeInTheDocument()
+  })
+
+  it("Food: the same contact actions (Food is a vertical of Business, not a separate page)", async () => {
+    renderPage(<BusinessProfilePage />, { url: `/businesses/${IDS.foodExact}`, path: "/businesses/:id", user: null })
+    await screen.findByRole("heading", { level: 1, name: "Capital Bakers" })
+
+    expect(screen.getByRole("link", { name: /^Call 0345 1234567/ })).toHaveAttribute("href", "tel:+923451234567")
+    expect(screen.getByRole("link", { name: /WhatsApp/ })).toHaveAttribute("href", "https://wa.me/923451234567")
+    // Still no ordering, cart or delivery anywhere on a Food page.
+    expect(screen.queryByRole("button", { name: /order|cart|checkout|deliver/i })).not.toBeInTheDocument()
+  })
+
+  it("Tutor: Call and WhatsApp for the tutor own number", async () => {
+    renderPage(<TutorProfilePage />, { url: `/tutors/${IDS.tutorApproximate}`, path: "/tutors/:id", user: null })
+    await screen.findByRole("heading", { level: 1 })
+
+    expect(screen.getByRole("link", { name: /^Call 0333 7788990/ })).toHaveAttribute("href", "tel:+923337788990")
+    expect(screen.getByRole("link", { name: /WhatsApp/ })).toHaveAttribute("href", "https://wa.me/923337788990")
+  })
+
+  it("Property: a WhatsApp number that differs from the contact number is used as given", async () => {
+    renderPage(<PropertyDetailsPage />, { url: `/properties/${IDS.propertyExact}`, path: "/properties/:id", user: null })
+    await screen.findByRole("heading", { level: 1 })
+
+    expect(screen.getByRole("link", { name: /^Call 0321 4455667/ })).toHaveAttribute("href", "tel:+923214455667")
+    expect(screen.getByRole("link", { name: /WhatsApp/ })).toHaveAttribute("href", "https://wa.me/923009988776")
+  })
+
+  it("a listing with no contact number says so plainly and offers no control", async () => {
+    // The area-only flat is a listing from before the field: both numbers absent.
+    renderPage(<PropertyDetailsPage />, { url: `/properties/${IDS.propertyAreaOnly}`, path: "/properties/:id", user: null })
+    await screen.findByRole("heading", { level: 1, name: "2 Bed Flat for Rent - B-17 Block D" })
+
+    expect(screen.getByText(/hasn.t added a contact number yet/i)).toBeInTheDocument()
+    expect(screen.queryByRole("link", { name: /^Call/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole("link", { name: /WhatsApp/ })).not.toBeInTheDocument()
+    expect(screen.queryByText(SIMULATED)).not.toBeInTheDocument()
+  })
+
+  it("Provider: still the real Request Service and nothing else (portal-managed, no contact number)", async () => {
     renderPage(<ProviderProfilePage />, { url: `/providers/${IDS.provider}`, path: "/providers/:id", user: null })
     await screen.findByRole("heading", { level: 1, name: "Sunrise Solar Solutions" })
+
     expect(screen.getByRole("button", { name: /request service/i })).toBeEnabled()
-    expect(screen.queryByRole("button", { name: CONTACT })).not.toBeInTheDocument()
-    expect(screen.queryByText(/simulated/i)).not.toBeInTheDocument()
+    expect(screen.queryByRole("link", { name: /^Call/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole("link", { name: /WhatsApp/ })).not.toBeInTheDocument()
+    expect(screen.queryByText(SIMULATED)).not.toBeInTheDocument()
+  })
+
+  it("no contact link is ever built from a value that is not a canonical number", async () => {
+    renderPage(<BusinessProfilePage />, { url: `/businesses/${IDS.generalExact}`, path: "/businesses/:id", user: null })
+    await screen.findByRole("heading", { level: 1, name: "Glow Salon" })
+
+    // Every tel: / wa.me href on the page is digits only, as the API stores them.
+    const hrefs = screen.getAllByRole("link").map((link) => link.getAttribute("href") ?? "")
+    for (const href of hrefs.filter((h) => h.startsWith("tel:"))) expect(href).toMatch(/^tel:\+[1-9][0-9]{7,14}$/)
+    for (const href of hrefs.filter((h) => h.includes("wa.me"))) expect(href).toMatch(/^https:\/\/wa\.me\/[1-9][0-9]{7,14}$/)
   })
 })
 

@@ -131,13 +131,29 @@ test('every detail kind opens from the real backend: Provider, Business, Tutor, 
     await expectH1(page, name)
     await page.waitForLoadState('networkidle')
     expect(problems, label).toEqual([])
-    // Phase 12S: no simulated contact action on any real page; Provider keeps its REAL Request Service.
+    // Contact Model v1 (Listing Contact v1): the contact actions on an owner-managed page are built
+    // from the LISTING's own stored numbers and from nothing else; a Provider is portal-managed, has
+    // no numbers at all and keeps its REAL Request Service. Nothing here is simulated.
     const main = page.getByRole('main')
+    const detail = (await publicGet(`/listings/${hit.id}`)).body.data as Record<string, any> // the envelope's `data`
+    const call = main.getByRole('link', { name: /^Call / })
+    if (detail.contactPhone) {
+      expect(String(detail.contactPhone), `${label}: canonical storage`).toMatch(/^\+[1-9][0-9]{7,14}$/)
+      await expect(call, `${label}: Call`).toHaveAttribute('href', `tel:${detail.contactPhone}`)
+    } else await expect(call, `${label}: no Call`).toHaveCount(0)
+    const whatsapp = main.getByRole('link', { name: /WhatsApp/ })
+    if (detail.whatsappPhone) {
+      await expect(whatsapp, `${label}: WhatsApp`).toHaveAttribute('href', `https://wa.me/${String(detail.whatsappPhone).slice(1)}`)
+    } else await expect(whatsapp, `${label}: no WhatsApp`).toHaveCount(0)
+    // Still nothing that only LOOKS like a contact action (the Phase 12S guard, less the two real links).
     await expect(main.getByRole('button', { name: /whatsapp|contact|chat/i }), `${label}: contact button`).toHaveCount(0)
-    await expect(main.getByRole('link', { name: /whatsapp|contact|chat/i }), `${label}: contact link`).toHaveCount(0)
+    await expect(main.getByRole('link', { name: /contact|chat/i }), `${label}: dead contact link`).toHaveCount(0)
     await expect(page.getByText(/simulated for this demo|future phase/i), `${label}: simulated copy`).toHaveCount(0)
-    if (label === 'provider') await expect(main.getByRole('button', { name: 'Request Service' })).toBeVisible()
-    else await expect(main.getByRole('button', { name: 'Request Service' })).toHaveCount(0)
+    if (label === 'provider') {
+      await expect(main.getByRole('button', { name: 'Request Service' })).toBeVisible()
+      expect(detail.contactPhone ?? null, 'a Provider has no listing contact number').toBeNull()
+      expect(detail.whatsappPhone ?? null, 'a Provider has no WhatsApp number').toBeNull()
+    } else await expect(main.getByRole('button', { name: 'Request Service' })).toHaveCount(0)
   }
 })
 

@@ -18,6 +18,7 @@ from app.models.enums import ActorRole, HistoryAction, ListingStatus, PlanCode
 from app.services.search_index import SearchIndexer
 from tests.db.auth_helpers import START, AuthApi, AuthEnv
 from tests.db.write_helpers import (
+    CONTACT_PHONE,
     area_only,
     business_body,
     codes,
@@ -938,7 +939,10 @@ def test_a_category_that_was_deactivated_later_does_not_block_unrelated_edits(
 
 
 def legacy_listing(env: AuthEnv, api: AuthApi, *, kind: str) -> str:
-    """A pre-0005-style row: free-text area, area-only, no point, no block."""
+    """A pre-0005-style row: free-text area, area-only, no point, no block — and, since Listing Contact v1,
+    no contact number either (both columns NULL, as the additive ``0009`` leaves every existing
+    row). So this is also the fixture for "a legacy listing gains a contact number at its first
+    edit"."""
     from sqlalchemy import insert
 
     from app.models import Listing, PropertyProfile, TutorProfile
@@ -987,11 +991,20 @@ def test_a_legacy_property_cannot_be_edited_without_gaining_a_valid_location(
 
     typo_fix = patch(api, listing_id, 1, title="Legacy Listing, fixed")
     with_location = patch(
-        api, listing_id, 1, title="Legacy Listing, fixed", area="B-17", location=exact()
+        api,
+        listing_id,
+        1,
+        title="Legacy Listing, fixed",
+        area="B-17",
+        location=exact(),
+        # Listing Contact v1: a legacy row has no contact number, and an owner edit validates the RESULTING
+        # state, so the first edit supplies it together with the location.
+        contactPhone=CONTACT_PHONE,
     )
 
     assert typo_fix.status_code == 422
     assert ("location.visibility", "not_allowed") in codes(typo_fix)
+    assert ("contactPhone", "required") in codes(typo_fix)
     assert with_location.status_code == 200, with_location.text
     assert with_location.json()["data"]["status"] == "pending"
     assert with_location.json()["data"]["area"] == "B-17"
@@ -1013,7 +1026,9 @@ def test_legacy_non_property_rows_edit_freely_and_keep_their_legacy_area_unless_
     api = signed_in(auth_env)
     listing_id = legacy_listing(auth_env, api, kind="tutor")
 
-    renamed = patch(api, listing_id, 1, name="Legacy Listing, renamed")
+    # No location is needed (an area-only tutor is already valid), but Listing Contact v1's contact number is
+    # part of the resulting state, so the first edit carries it.
+    renamed = patch(api, listing_id, 1, name="Legacy Listing, renamed", contactPhone=CONTACT_PHONE)
     area_legacy = patch(api, listing_id, 2, area="B-17, Block C (Demo Area)")
     area_canonical = patch(api, listing_id, 2, area="b-17")
 

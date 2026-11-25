@@ -1,14 +1,17 @@
 import type {
-  BusinessDto,
-  FoodDto,
-  ListingDto,
-  LocationDto,
-  NewsDto,
-  PropertyDto,
-  ProviderDto,
-  SearchHitDto,
-  SuggestionDto,
-  TutorDto,
+    BusinessDetailDto,
+    BusinessDto,
+    FoodDto,
+    ListingDto,
+    LocationDto,
+    NewsDto,
+    PropertyDetailDto,
+    PropertyDto,
+    ProviderDto,
+    SearchHitDto,
+    SuggestionDto,
+    TutorDetailDto,
+    TutorDto,
 } from "@/lib/api/dto/public"
 import type { Business, FoodProfile } from "@/types/business"
 import type { NewsArticle } from "@/types/news"
@@ -120,8 +123,10 @@ function toFood(dto: FoodDto, labels: Map<string, string>): FoodProfile {
   return food
 }
 
-export function toBusiness(dto: BusinessDto): Business {
+export function toBusiness(dto: BusinessDto | BusinessDetailDto): Business {
   const labels = new Map(dto.categories.map((ref) => [ref.slug, ref.name]))
+  const contact = "contactPhone" in dto && dto.contactPhone ? { contactPhone: dto.contactPhone } : {}
+  const whatsapp = "whatsappPhone" in dto && dto.whatsappPhone ? { whatsappPhone: dto.whatsappPhone } : {}
   return {
     id: dto.id,
     name: dto.name,
@@ -132,13 +137,17 @@ export function toBusiness(dto: BusinessDto): Business {
     location: toPublicLocation(dto.location),
     image: dto.image,
     tags: dto.tags,
+    ...contact,
+    ...whatsapp,
     ...(dto.featured ? { featured: true } : {}),
     // Food is a vertical of Business, never a kind: the profile exists only when vertical === "food".
     ...(dto.vertical === "food" && dto.food ? { food: toFood(dto.food, labels) } : {}),
   }
 }
 
-export function toTutor(dto: TutorDto): Tutor {
+export function toTutor(dto: TutorDto | TutorDetailDto): Tutor {
+  const contact = "contactPhone" in dto && dto.contactPhone ? { contactPhone: dto.contactPhone } : {}
+  const whatsapp = "whatsappPhone" in dto && dto.whatsappPhone ? { whatsappPhone: dto.whatsappPhone } : {}
   return {
     id: dto.id,
     name: dto.name,
@@ -147,12 +156,16 @@ export function toTutor(dto: TutorDto): Tutor {
     area: dto.area,
     location: toPublicLocation(dto.location),
     bio: dto.bio ?? "",
+    ...contact,
+    ...whatsapp,
     image: dto.image,
     tags: dto.tags,
   }
 }
 
-export function toProperty(dto: PropertyDto): Property {
+export function toProperty(dto: PropertyDto | PropertyDetailDto): Property {
+  const contact = "contactPhone" in dto && dto.contactPhone ? { contactPhone: dto.contactPhone } : {}
+  const whatsapp = "whatsappPhone" in dto && dto.whatsappPhone ? { whatsappPhone: dto.whatsappPhone } : {}
   return {
     id: dto.id,
     title: dto.title,
@@ -164,6 +177,8 @@ export function toProperty(dto: PropertyDto): Property {
     ...(dto.description ? { description: dto.description } : {}),
     ...(dto.bedrooms !== undefined ? { bedrooms: dto.bedrooms } : {}),
     ...(dto.furnished ? { furnished: dto.furnished } : {}),
+    ...contact,
+    ...whatsapp,
     image: dto.image,
     tags: dto.tags,
   }

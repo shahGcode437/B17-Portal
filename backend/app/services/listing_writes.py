@@ -176,6 +176,10 @@ def state_of(listing: Listing) -> ListingState:
         "area": listing.area,
         "tags": tuple(listing.tags),
         "image": listing.image_url,
+        # Public contact (Listing Contact v1), mirrored from the row: NULL on a legacy listing (so
+        # an owner edit must supply it) and on a Provider (which has no contact field at all).
+        "contact_phone": listing.contact_phone,
+        "whatsapp_phone": listing.whatsapp_phone,
         "location": location,
     }
     if listing.kind is ListingKind.BUSINESS:
@@ -235,6 +239,10 @@ def base_values(state: ListingState) -> dict[str, Any]:
         "area": state.area,
         "tags": list(state.tags),
         "image_url": state.image,
+        # Public contact (Listing Contact v1). Always written from the state, so an edit that clears
+        # the WhatsApp number clears the column; a Provider's state has neither and writes NULL.
+        "contact_phone": state.contact_phone,
+        "whatsapp_phone": state.whatsapp_phone,
         "block": location.block,
         "address": location.address,
         "landmark": location.landmark,
@@ -486,8 +494,8 @@ class ListingWriteService:
             material = change is Change.MATERIAL
             if material:
                 if previous_status is ListingStatus.REJECTED:
-                    # A rejected listing re-enters the quota (API_CONTRACT §10.9); the profile
-                    # must have been locked BEFORE the listing row.
+                    # A rejected listing re-enters the quota (API_CONTRACT §10.9); the profile must
+                    # have been locked BEFORE the listing row.
                     if plan is None:
                         raise _NeedsProfileLock
                     self._check_quota(owner_id, plan, excluding=listing.id)

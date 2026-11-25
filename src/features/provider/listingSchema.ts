@@ -18,6 +18,7 @@ import {
   MIN_DESCRIPTION_LENGTH,
 } from "@/config/listingLimits"
 import { NOT_PLAIN_TEXT, isOneLine, isPlainText } from "@/features/provider/textRules"
+import { MAX_PHONE_LENGTH, phoneProblem } from "@/lib/phone"
 
 /** The only localities `area` may name (`config/localities`); the block is its own field inside `location`. */
 export const AREA_MESSAGE = `Choose ${LOCALITIES.join(" or ")}. Put a block or street in the Block field.`
@@ -52,6 +53,32 @@ export function gradeProblem(grade: string): string | null {
   if (!isOneLine(trimmed)) return NOT_PLAIN_TEXT
   return null
 }
+
+/**
+ * The listing's own CONTACT number (Listing Contact v1) — what customers should use for THIS listing, never
+ * the person's account number (the portal has none). Required, because a listing nobody can reach is
+ * not a useful listing; checked with the ONE shared parser (`@/lib/phone`), which accepts the national
+ * and international forms people type and is the same rule the API applies.
+ */
+const contactPhoneField = z
+  .string()
+  .trim()
+  .max(MAX_PHONE_LENGTH, `Please keep the number under ${MAX_PHONE_LENGTH} characters.`)
+  .superRefine((value, ctx) => {
+    const problem = phoneProblem(value, { required: true })
+    if (problem) ctx.addIssue({ code: "custom", message: problem })
+  })
+
+/** The optional WhatsApp number: same rule, but an empty field is fine. */
+const whatsappPhoneField = z
+  .string()
+  .trim()
+  .max(MAX_PHONE_LENGTH, `Please keep the number under ${MAX_PHONE_LENGTH} characters.`)
+  .optional()
+  .superRefine((value, ctx) => {
+    const problem = phoneProblem(value, { required: false })
+    if (problem) ctx.addIssue({ code: "custom", message: problem })
+  })
 
 const tagsField = z
   .string()
@@ -92,6 +119,8 @@ export const listingSchema = z
       .max(MAX_DESCRIPTION_LENGTH, `Please keep this under ${MAX_DESCRIPTION_LENGTH} characters.`)
       .refine(isPlainText, NOT_PLAIN_TEXT),
     area: areaField,
+    contactPhone: contactPhoneField,
+    whatsappPhone: whatsappPhoneField,
     tagsInput: tagsField,
     vertical: z.enum(["general", "food"]).optional(),
     /** The listing's stored image reference (an `https://` URL or a site path) - never a File: uploads are not built yet. */
@@ -193,6 +222,8 @@ export const propertySchema = z.object({
     .min(MIN_DESCRIPTION_LENGTH, `Please add a bit more detail (at least ${MIN_DESCRIPTION_LENGTH} characters).`)
     .max(MAX_DESCRIPTION_LENGTH, `Please keep this under ${MAX_DESCRIPTION_LENGTH} characters.`)
     .refine(isPlainText, NOT_PLAIN_TEXT),
+  contactPhone: contactPhoneField,
+  whatsappPhone: whatsappPhoneField,
   bedrooms: z
     .string()
     .trim()

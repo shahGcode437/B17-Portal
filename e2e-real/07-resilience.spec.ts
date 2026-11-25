@@ -24,7 +24,7 @@ test.afterAll(async () => {
 })
 
 const tomorrow = () => new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
-const listingBody = (name: string) => ({ kind: 'tutor', name, category: 'physics', grade: 'Grade 9', description: `${name} - physics lessons across B-17.`, area: 'B-17', tags: ['physics'], location: { visibility: 'area_only' } })
+const listingBody = (name: string) => ({ kind: 'tutor', name, category: 'physics', grade: 'Grade 9', contactPhone: '0300 1234567', description: `${name} - physics lessons across B-17.`, area: 'B-17', tags: ['physics'], location: { visibility: 'area_only' } })
 
 /** Aborts the next matching request (simulating an interrupted network), lets later ones through. */
 async function failOnce(page: Page, method: string, url: RegExp): Promise<{ restore: () => Promise<void>; hits: () => number }> {

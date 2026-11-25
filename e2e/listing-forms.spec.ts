@@ -28,6 +28,8 @@ async function fillTutor(page: Page, name: string, tags = 'physics, lessons') {
   await page.getByLabel('Subject', { exact: true }).selectOption({ label: 'Physics' })
   await page.getByLabel('Description', { exact: true }).fill('Physics lessons for matric and A-level students across B-17.')
   await page.getByLabel('Grade / level you teach').fill('Matric / A-Levels')
+  // Listing Contact v1: the listing's own contact number is required on every owner form.
+  await page.getByLabel('Contact Number').fill('03001234567')
   await page.getByLabel(/Topics you teach/).fill(tags)
 }
 
@@ -110,6 +112,7 @@ test('the owner dashboard shows the category NAME of a business, never a slug', 
   await page.getByLabel('Category', { exact: true }).selectOption({ label: 'Stationery' })
   await page.getByLabel('Description', { exact: true }).fill('Books, copies and office supplies.')
   await page.getByLabel('Tags (optional)').fill('books, copies')
+  await page.getByLabel('Contact Number').fill('03001234567')  // Listing Contact v1: required
   await page.getByRole('button', { name: 'Submit for Review' }).click()
   await expectPage(page, 'Listings')
   const card = page.locator('[data-slot="card"]').filter({ hasText: 'Capital Stationers' }).filter({ has: page.getByRole('button', { name: 'View' }) })
@@ -125,6 +128,8 @@ async function fillBusiness(page: Page, name: string, tags = 'books, copies') {
   await page.getByLabel('Category', { exact: true }).selectOption({ label: 'Stationery' })
   await page.getByLabel('Description', { exact: true }).fill('A friendly neighbourhood shop in B-17.')
   await page.getByLabel(/Tags \(optional\)/).fill(tags)
+  // Listing Contact v1: the listing's own contact number is required on every owner form.
+  await page.getByLabel('Contact Number').fill('03001234567')
   await page.getByLabel('Visibility').selectOption('area_only')
 }
 

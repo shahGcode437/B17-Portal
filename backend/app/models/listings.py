@@ -122,6 +122,17 @@ class Listing(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         Text, nullable=False, default="", server_default=text("''")
     )
 
+    # -- public contact (Listing Contact v1; DATA_MODEL.md §19). Shared by every kind. -----------
+    #: The number CUSTOMERS should use for THIS listing, E.164 (``+923001234567``). Listing data,
+    #: never an account's number: no account phone exists and nothing copies one in. PUBLIC by
+    #: design (it is why an owner types it). NULL = a legacy row created before Listing Contact v1,
+    #: or a portal-managed Provider; per-kind requiredness is a WRITE-SERVICE rule, because legacy
+    #: rows legitimately have none (the same rule the location block follows, LOCATION_MAP.md §3.1).
+    contact_phone: Mapped[str | None] = mapped_column(String(20))
+    #: Optional second number, WhatsApp-capable. Same shape, same visibility, never inferred from
+    #: ``contact_phone``: an owner states it or there is none.
+    whatsapp_phone: Mapped[str | None] = mapped_column(String(20))
+
     # -- location (Phase 12B; docs/backend/LOCATION_MAP.md). Shared by every kind. ----------------
     #: Public in every mode. Free text (no block taxonomy is invented).
     block: Mapped[str | None] = mapped_column(String(40))
@@ -154,9 +165,9 @@ class Listing(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     public_longitude: Mapped[Decimal | None] = mapped_column(
         Numeric(9, 6), Computed(PUBLIC_LONGITUDE_SQL, persisted=True)
     )
-    #: Not a column: populated by public queries with ``with_expression`` as
-    #: ``CASE WHEN visibility = 'exact' THEN address END`` — so the address of a non-exact listing
-    #: is never even selected on a public path.
+    #: Not a column: populated by public queries with ``with_expression`` as ``CASE WHEN visibility
+    #: = 'exact' THEN address END`` — so the address of a non-exact listing is never even selected
+    #: on a public path.
     public_address: Mapped[str | None] = query_expression()
     public_landmark: Mapped[str | None] = query_expression()
 
@@ -195,9 +206,9 @@ class Listing(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         # managed, never personally owned, so no write path can ever bind one to an individual
         # again. One-directional on purpose: ``owner_id IS NULL`` stays legal for every other kind.
         CheckConstraint("kind <> 'provider' OR owner_id IS NULL", name="provider_has_no_owner"),
-        # -- location (docs/backend/LOCATION_MAP.md §3): row-local rules only. Per-kind
-        # requiredness (e.g. a Property needs a point) is a WRITE-SERVICE rule, because legacy
-        # rows legitimately have none (§3.1).
+        # -- location (docs/backend/LOCATION_MAP.md §3): row-local rules only. Per-kind requiredness
+        # (e.g. a Property needs a point) is a WRITE-SERVICE rule, because legacy rows legitimately
+        # have none (§3.1).
         in_values("location_visibility", LocationVisibility, name="location_visibility_valid"),
         CheckConstraint("(latitude IS NULL) = (longitude IS NULL)", name="coordinates_pair"),
         CheckConstraint("latitude IS NULL OR latitude BETWEEN -90 AND 90", name="latitude_range"),
@@ -208,6 +219,18 @@ class Listing(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         CheckConstraint(
             "(location_visibility = 'area_only') = (latitude IS NULL)",
             name="visibility_matches_point",
+        ),
+        # -- public contact (Listing Contact v1): row-local shape only. The application stores
+        # exactly what ``app.core.phone.normalize_phone`` returns, so the database refuses anything
+        # else (a raw "0300 123 4567" can never be written by a future path that forgets to
+        # normalise). Requiredness is NOT a database rule: legacy rows and Providers hold NULL.
+        CheckConstraint(
+            r"contact_phone IS NULL OR contact_phone ~ '^\+[1-9][0-9]{7,14}$'",
+            name="contact_phone_e164",
+        ),
+        CheckConstraint(
+            r"whatsapp_phone IS NULL OR whatsapp_phone ~ '^\+[1-9][0-9]{7,14}$'",
+            name="whatsapp_phone_e164",
         ),
         CheckConstraint("block IS NULL OR char_length(btrim(block)) > 0", name="block_not_blank"),
         CheckConstraint(
@@ -450,8 +473,8 @@ class ListingStatusHistory(UUIDPrimaryKeyMixin, Base):
         CheckConstraint(
             "(from_status IS NULL) = (action = 'submitted')", name="from_status_iff_submitted"
         ),
-        # The action determines where the listing ended up (row-local; the allowed *sources* of
-        # each transition are the service's state machine, not a trigger).
+        # The action determines where the listing ended up (row-local; the allowed *sources* of each
+        # transition are the service's state machine, not a trigger).
         CheckConstraint(
             "to_status = CASE action WHEN 'submitted' THEN 'pending' "
             "WHEN 'resubmitted' THEN 'pending' WHEN 'approved' THEN 'approved' "

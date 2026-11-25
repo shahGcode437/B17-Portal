@@ -108,6 +108,36 @@ test.describe('public read journey', () => {
   })
 })
 
+test.describe('public contact actions (Listing Contact v1)', () => {
+  test('a listing with its own numbers offers Call and WhatsApp, built from the stored values', async ({ page }) => {
+    await openApp(page, `/businesses/${IDS.generalExact}`, 'Glow Salon')
+
+    // The number is read in its familiar national form; the links carry the canonical one.
+    const call = page.getByRole('link', { name: /^Call 0300 1112233/ })
+    await expect(call).toHaveAttribute('href', 'tel:+923001112233')
+    const whatsapp = page.getByRole('link', { name: /WhatsApp/ })
+    await expect(whatsapp).toHaveAttribute('href', 'https://wa.me/923001112233')
+    await expect(whatsapp).toHaveAttribute('target', '_blank')
+    await expect(whatsapp).toHaveAttribute('rel', 'noopener noreferrer')
+    await expect(page.getByText(/hasn.t added a contact number/i)).toHaveCount(0)
+  })
+
+  test('a listing with a landline and no WhatsApp number offers Call only', async ({ page }) => {
+    await openApp(page, `/businesses/${IDS.generalAreaOnly}`, 'B-17 Family Pharmacy')
+
+    await expect(page.getByRole('link', { name: /^Call 051 2345678/ })).toHaveAttribute('href', 'tel:+92512345678')
+    await expect(page.getByRole('link', { name: /WhatsApp/ })).toHaveCount(0)
+  })
+
+  test('a listing with no contact number says so and offers no control', async ({ page }) => {
+    await openApp(page, `/properties/${IDS.propertyAreaOnly}`, '2 Bed Flat for Rent - B-17 Block D')
+
+    await expect(page.getByText(/hasn.t added a contact number yet/i)).toBeVisible()
+    await expect(page.getByRole('link', { name: /^Call/ })).toHaveCount(0)
+    await expect(page.getByRole('link', { name: /WhatsApp/ })).toHaveCount(0)
+  })
+})
+
 test.describe('map privacy journey', () => {
   const map = (page: import('@playwright/test').Page) => page.getByTestId('location-map')
 

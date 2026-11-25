@@ -164,6 +164,8 @@ def test_search_cards_do_not_carry_the_menu_but_keep_the_food_summary(
     assert food["serviceOptions"] == ["takeaway", "delivery"]
     assert food["categories"] == ["bakeries", "sweets-desserts"]
     assert "menuHighlights" not in food
+    assert "contactPhone" not in body["data"][0]["item"]
+    assert "whatsappPhone" not in body["data"][0]["item"]
 
 
 def test_a_property_card_has_its_typed_fields(read_client: TestClient) -> None:

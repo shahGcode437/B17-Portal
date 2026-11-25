@@ -77,6 +77,12 @@ export interface OwnerProviderDto extends OwnerFieldsDto {
 export interface OwnerBusinessDto extends OwnerFieldsDto {
   kind: "business"
   name: string
+  /**
+   * This listing's own public contact numbers (Listing Contact v1), E.164 (`+923001234567`). Listing data,
+   * never an account's number (none exists). Absent on a listing created before the field.
+   */
+  contactPhone?: string
+  whatsappPhone?: string
   vertical: "general" | "food"
   category?: string
   food?: FoodDto
@@ -85,6 +91,12 @@ export interface OwnerBusinessDto extends OwnerFieldsDto {
 export interface OwnerTutorDto extends OwnerFieldsDto {
   kind: "tutor"
   name: string
+  /**
+   * This listing's own public contact numbers (Listing Contact v1), E.164 (`+923001234567`). Listing data,
+   * never an account's number (none exists). Absent on a listing created before the field.
+   */
+  contactPhone?: string
+  whatsappPhone?: string
   category: string
   grade: string
 }
@@ -92,6 +104,12 @@ export interface OwnerTutorDto extends OwnerFieldsDto {
 export interface OwnerPropertyDto extends OwnerFieldsDto {
   kind: "property"
   title: string
+  /**
+   * This listing's own public contact numbers (Listing Contact v1), E.164 (`+923001234567`). Listing data,
+   * never an account's number (none exists). Absent on a listing created before the field.
+   */
+  contactPhone?: string
+  whatsappPhone?: string
   listingType: "sale" | "rent"
   propertyType: string
   price: string

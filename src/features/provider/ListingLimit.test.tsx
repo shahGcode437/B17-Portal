@@ -31,6 +31,9 @@ async function fillTutor(user: ReturnType<typeof userEvent.setup>) {
   await user.paste("Physics lessons for matric and A-level students.")
   await user.click(screen.getByLabelText("Grade / level you teach"))
   await user.paste("Matric / A-Levels")
+  // Listing Contact v1: the listing contact number is required.
+  await user.click(screen.getByLabelText("Contact Number"))
+  await user.paste("03001234567")
   await user.click(screen.getByLabelText(/Topics you teach/))
   await user.paste("physics, lessons")
 }

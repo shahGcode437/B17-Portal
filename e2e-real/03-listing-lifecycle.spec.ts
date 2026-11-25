@@ -247,7 +247,7 @@ test('10. stale admin review: the owner edits after the admin opened the dialog 
   await o.login(owner.email)
   const name = unique('Stale Admin Tutor')
   const created = await o.call('POST', '/listings', {
-    kind: 'tutor', name, category: 'physics', grade: 'Grade 9', description: `${name} - physics lessons across B-17.`, area: 'B-17', tags: ['physics'], location: { visibility: 'area_only' },
+    kind: 'tutor', name, category: 'physics', grade: 'Grade 9', contactPhone: '0300 1234567', description: `${name} - physics lessons across B-17.`, area: 'B-17', tags: ['physics'], location: { visibility: 'area_only' },
   })
   expect(created.status).toBe(201)
   const sid = created.body!.data.id as string

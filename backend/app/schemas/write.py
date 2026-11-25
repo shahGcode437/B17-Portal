@@ -26,6 +26,7 @@ from pydantic import (
 from pydantic_core import InitErrorDetails, PydanticCustomError
 from pydantic_core.core_schema import ErrorType
 
+from app.core.phone import MAX_RAW_LENGTH, normalize_phone
 from app.models.enums import (
     BusinessVertical,
     FoodServiceOption,
@@ -76,6 +77,28 @@ Grade = Annotated[
 ]
 PriceText = Annotated[
     str, StringConstraints(strip_whitespace=True, min_length=1, max_length=40), _one_line
+]
+
+
+def _phone(value: str) -> str:
+    """A contact number as stored: E.164, through the one shared parser (``app.core.phone``)."""
+    normalized = normalize_phone(value)
+    if normalized is None:
+        raise PydanticCustomError(
+            "invalid_phone",
+            "Enter a valid phone number, for example 03001234567 or +923001234567.",
+        )
+    return normalized
+
+
+#: A LISTING CONTACT number (Listing Contact v1). Accepted in the national or international forms
+#: people type and normalised to E.164 right here, so every layer below only ever sees the canonical
+#: shape; anything unreadable is ``422 invalid_phone`` and nothing is guessed.
+PhoneText = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, min_length=1, max_length=MAX_RAW_LENGTH),
+    _one_line,
+    AfterValidator(_phone),
 ]
 MediaReference = Annotated[str, Field(max_length=2048)]  # validated as a reference by the service
 Revision = Annotated[int, Field(strict=True, ge=1, le=MAX_REVISION)]
@@ -217,6 +240,11 @@ class BusinessCreate(_CommonCreate):
     kind: Literal["business"]
     name: Name
     vertical: BusinessVertical
+    #: The number customers should use for THIS listing (Listing Contact v1). Required for a new
+    #: listing: the service reports ``contactPhone`` ``required`` when the resulting state has none.
+    contact_phone: PhoneText | None = None
+    #: Optional, and never derived from ``contact_phone``.
+    whatsapp_phone: PhoneText | None = None
     #: General: a ``directory`` slug (a Food business never sends one — it is derived).
     category: Slug | None = None
     #: Food: the Food block (a General business never sends one).
@@ -226,6 +254,11 @@ class BusinessCreate(_CommonCreate):
 class TutorCreate(_CommonCreate):
     kind: Literal["tutor"]
     name: Name
+    #: The number customers should use for THIS listing (Listing Contact v1). Required for a new
+    #: listing: the service reports ``contactPhone`` ``required`` when the resulting state has none.
+    contact_phone: PhoneText | None = None
+    #: Optional, and never derived from ``contact_phone``.
+    whatsapp_phone: PhoneText | None = None
     #: An ``education`` slug (the subject).
     category: Slug
     grade: Grade
@@ -234,6 +267,11 @@ class TutorCreate(_CommonCreate):
 class PropertyCreate(_CommonCreate):
     kind: Literal["property"]
     title: Title
+    #: The number customers should use for THIS listing (Listing Contact v1). Required for a new
+    #: listing: the service reports ``contactPhone`` ``required`` when the resulting state has none.
+    contact_phone: PhoneText | None = None
+    #: Optional, and never derived from ``contact_phone``.
+    whatsapp_phone: PhoneText | None = None
     listing_type: PropertyListingType
     #: A ``property`` category slug (house / flat / plot ...).
     property_type: Slug
@@ -250,8 +288,9 @@ ListingCreate = Annotated[
 
 class ListingPatch(StrictRequest):
     """``revision`` is the expected concurrency token. Every other field: omitted = unchanged,
-    ``null`` = clear (only ``image``, ``bedrooms``, ``furnished`` and the Food ``hoursNote`` /
-    ``menuImage`` are clearable — anything else is ``not_nullable``), arrays are replaced whole,
+    ``null`` = clear (only ``image``, ``whatsappPhone``, ``bedrooms``, ``furnished`` and the Food
+    ``hoursNote`` / ``menuImage`` are clearable — anything else is ``not_nullable``), arrays are
+    replaced whole,
     ``location`` replaces the whole block. ``kind`` is immutable (and not accepted)."""
 
     revision: Revision
@@ -262,6 +301,8 @@ class ListingPatch(StrictRequest):
     tags: list[Tag] | None = Field(default=None, max_length=MAX_TAGS)
     image: MediaReference | None = None
     location: LocationInput | None = None
+    contact_phone: PhoneText | None = None
+    whatsapp_phone: PhoneText | None = None
     category: Slug | None = None
     vertical: BusinessVertical | None = None
     food: FoodPatch | None = None
@@ -345,6 +386,10 @@ class OwnerProvider(_OwnerBase):
 class OwnerBusiness(_OwnerBase):
     kind: Literal["business"]
     name: str
+    #: Public contact numbers (Listing Contact v1), E.164. This listing's own numbers — never an
+    #: account's (none exists). Absent on a legacy row created before the field.
+    contact_phone: str | None = None
+    whatsapp_phone: str | None = None
     vertical: BusinessVertical
     #: The General business category slug; absent for Food (its categories are in ``food``).
     category: str | None = None
@@ -354,6 +399,10 @@ class OwnerBusiness(_OwnerBase):
 class OwnerTutor(_OwnerBase):
     kind: Literal["tutor"]
     name: str
+    #: Public contact numbers (Listing Contact v1), E.164. This listing's own numbers — never an
+    #: account's (none exists). Absent on a legacy row created before the field.
+    contact_phone: str | None = None
+    whatsapp_phone: str | None = None
     category: str
     grade: str
 
@@ -361,6 +410,10 @@ class OwnerTutor(_OwnerBase):
 class OwnerProperty(_OwnerBase):
     kind: Literal["property"]
     title: str
+    #: Public contact numbers (Listing Contact v1), E.164. This listing's own numbers — never an
+    #: account's (none exists). Absent on a legacy row created before the field.
+    contact_phone: str | None = None
+    whatsapp_phone: str | None = None
     listing_type: PropertyListingType
     property_type: str
     price: str
@@ -380,9 +433,9 @@ class StatusCounts(ApiModel):
     archived: int
     #: Quota-countable active listings for THIS owner (pending + approved, EXCLUDING ``provider``).
     #: Service / Professional listings are portal-managed and never consume the owner's plan slots
-    #: (``docs/backend/AUTH_RBAC.md §22.6``), so this is what a quota UI must display as "used".
-    #: The per-status totals above remain factual (they count every kind). The admin moderation
-    #: surface is not per-owner so it leaves this at ``0`` — only the owner reads surface sets it.
+    #: (``docs/backend/AUTH_RBAC.md §22.6``), so this is what a quota UI must display as "used". The
+    #: per-status totals above remain factual (they count every kind). The admin moderation surface
+    #: is not per-owner so it leaves this at ``0`` — only the owner reads surface sets it.
     active_quota: int = 0
 
 

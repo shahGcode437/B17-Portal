@@ -20,6 +20,15 @@ FOOD_SLUGS = ("bakeries", "cafes", "desi-food")
 
 DESCRIPTION = "A clean, friendly place that has served the neighbourhood for years."
 
+#: Listing CONTACT numbers (Listing Contact v1). A new owner-created Business / Tutor / Property must carry
+#: one, so every builder below has it; ``provider_body`` does NOT (a Provider is portal-managed and
+#: its API has no contact field). The numbers are fictional and are written in the national form a
+#: person would type, so the builders also prove the API normalises them to E.164.
+CONTACT_PHONE = "0300 1234567"
+CONTACT_PHONE_E164 = "+923001234567"
+WHATSAPP_PHONE = "0321 7654321"
+WHATSAPP_PHONE_E164 = "+923217654321"
+
 
 def exact(**overrides: Any) -> dict[str, Any]:
     location: dict[str, Any] = {
@@ -76,6 +85,7 @@ def business_body(**overrides: Any) -> dict[str, Any]:
         "area": "B-17",
         "category": DIRECTORY_SLUG,
         "tags": ["books", "copies"],
+        "contactPhone": CONTACT_PHONE,
         "location": exact(),
     }
     body.update(overrides)
@@ -90,6 +100,8 @@ def food_body(**overrides: Any) -> dict[str, Any]:
         "description": "Fresh cakes and bread baked every morning in B-17.",
         "area": "B-17",
         "tags": ["cakes", "bread"],
+        "contactPhone": CONTACT_PHONE,
+        "whatsappPhone": WHATSAPP_PHONE,
         "location": exact(),
         "food": {
             "categories": ["bakeries", "cafes"],
@@ -114,6 +126,7 @@ def tutor_body(**overrides: Any) -> dict[str, Any]:
         "category": EDUCATION_SLUG,
         "grade": "Matric / A-Levels",
         "tags": ["physics"],
+        "contactPhone": CONTACT_PHONE,
     }
     body.update(overrides)
     return body
@@ -128,6 +141,7 @@ def property_body(**overrides: Any) -> dict[str, Any]:
         "listingType": "sale",
         "propertyType": PROPERTY_SLUG,
         "price": "PKR 2.2 Cr",
+        "contactPhone": CONTACT_PHONE,
         "bedrooms": 3,
         "furnished": "Unfurnished",
         "location": exact(),

@@ -7,6 +7,7 @@ import { DetailHero } from "@/components/detail/DetailHero"
 import { DetailSummary } from "@/components/detail/DetailSummary"
 import { DetailSection } from "@/components/detail/DetailSection"
 import { DetailActionRegion } from "@/components/detail/DetailActionRegion"
+import { ContactActions, hasContactActions } from "@/components/detail/ContactActions"
 import { DetailFactTiles } from "@/components/detail/DetailFactTiles"
 import { type DetailFact } from "@/components/detail/DetailFacts"
 import { DetailTagList } from "@/components/detail/DetailTagList"
@@ -75,8 +76,17 @@ function PropertyDetails({ property }: { property: Property }) {
           highlight={property.price}
           area={property.area}
           facts={<DetailFactTiles facts={facts} />}
-          actions={<DetailActionRegion unavailableMessage="Contacting the lister through B-17 Portal isn&apos;t available yet." />}
+          actions={hasContactActions(property) ? undefined : <DetailActionRegion unavailableMessage="This listing hasn&apos;t added a contact number yet." />}
         />
+      }
+      action={
+        // Contact Model v1 (Listing Contact v1): the number the LISTING gave, never an account number.
+        hasContactActions(property) ? (
+          <DetailActionRegion
+            caption="Calls and messages go straight to this listing."
+            action={<ContactActions name={property.title} contactPhone={property.contactPhone} whatsappPhone={property.whatsappPhone} />}
+          />
+        ) : undefined
       }
     >
       {property.description && (

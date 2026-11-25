@@ -160,8 +160,23 @@ describe("search hits and suggestions", () => {
     expect(toSearchHit(dtos[0]).kind).toBe("provider")
   })
 
-  it("maps a bare listing to a hit", () => {
-    expect(toListingHit(BUSINESSES[0]).kind).toBe("business")
+  it("maps a bare listing detail to a hit with contact numbers", () => {
+    const hit = toListingHit(BUSINESSES[0])
+    expect(hit.kind).toBe("business")
+    if (hit.kind === "business") {
+      expect(hit.item.contactPhone).toBe("+923001112233")
+      expect(hit.item.whatsappPhone).toBe("+923001112233")
+    }
+  })
+
+  it("maps search hit DTOs (which omit contact numbers) without contact fields", () => {
+    const { contactPhone: _c, whatsappPhone: _w, ...summaryBusiness } = BUSINESSES[0]
+    const hit = toSearchHit({ kind: "business", item: summaryBusiness })
+    expect(hit.kind).toBe("business")
+    if (hit.kind === "business") {
+      expect(hit.item.contactPhone).toBeUndefined()
+      expect(hit.item.whatsappPhone).toBeUndefined()
+    }
   })
 
   it("maps a suggestion without losing any field", () => {

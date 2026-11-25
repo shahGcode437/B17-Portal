@@ -191,6 +191,7 @@ test('375px (Phase 12S Step A): a Free owner at 3 of 3 sees the limit notice on 
       name: unique(`Mobile Limit ${n}`),
       category: 'physics',
       grade: 'Grade 9',
+      contactPhone: '0300 1234567',
       description: 'An active listing that fills the Free plan quota on a phone.',
       area: 'B-17',
       location: { visibility: 'area_only' },

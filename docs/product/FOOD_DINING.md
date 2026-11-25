@@ -18,7 +18,7 @@ Core V1 journey:
 Discover → Search / Filter → View Food Business → Inspect profile / menu preview → Save → (planned) Order Inquiry
 ```
 
-The current phase is **free and discovery-first**. A useful basic Food profile never requires Premium. **Contact:** the simulated Call / WhatsApp actions this spec once relied on were removed in Phase 12S S2, and no real contact data exists, so today a Food business page says contacting it through B-17 Portal isn't available yet. **Planned (Contact Model v1, LOCKED 2026-10-31, not built; `docs/product/CONTACT_MODEL.md`):** the primary Food CTA will be **Order Inquiry**, a lightweight `new → read → closed` inquiry to the owner; Contact Model v1 does **not** include a cart, checkout, payment or order lifecycle.
+The current phase is **free and discovery-first**. A useful basic Food profile never requires Premium. **Contact:** the simulated Call / WhatsApp actions this spec once relied on were removed in Phase 12S S2. Since **Listing Contact v1** (2026-11-24) a Food business carries its OWN public numbers — `contactPhone` (required for a new listing) and an optional `whatsappPhone` — so its page offers **Call** and, when the owner gave a WhatsApp number, **WhatsApp**, both built only from the stored canonical value; a Food listing created before that field says plainly that it has not added a contact number yet. These are real actions on real data, not the simulated ones S2 removed (`DECISIONS.md` → Listing Contact v1, `API_CONTRACT.md` §10.11). **Still planned and NOT built (Contact Model v1, LOCKED 2026-10-31; `docs/product/CONTACT_MODEL.md`, whose contact half is superseded — see its section 0):** the **Order Inquiry** CTA, a lightweight `new → read → closed` inquiry to the owner. Neither Listing Contact v1 nor Contact Model v1 includes a cart, checkout, payment or order lifecycle.
 
 ## 2. What Food reuses
 
@@ -178,7 +178,7 @@ The API may still embed `business.food` for convenience; the filters above map o
 
 ## 14. Free-first scope
 
-The current release supports: business identity, Food categories, description, area, cover image, tags, service options, hours note, menu highlights, optional menu image and Save (no contact action today; see Contact above). Nothing here is gated behind Premium.
+The current release supports: business identity, Food categories, description, area, cover image, tags, service options, hours note, menu highlights, optional menu image, Save, and the listing's own Call / WhatsApp contact actions (see Contact above). Nothing here is gated behind Premium.
 
 ## 15. Future directions — reserved, NOT implemented
 

@@ -5,6 +5,8 @@ Mapping never triggers a lazy load: callers load exactly the relations used here
 asked for (detail), so a search page never pays for them.
 """
 
+from typing import Literal, overload
+
 from app.models import Category, Listing, NewsArticle
 from app.models.enums import (
     BusinessVertical,
@@ -13,17 +15,21 @@ from app.models.enums import (
     LocationVisibility,
 )
 from app.schemas.read import (
+    BusinessDetailRead,
     BusinessRead,
     CategoryRead,
     CategoryRef,
     CoordinatesRead,
     FoodRead,
     ListingDetail,
+    ListingSummary,
     LocationRead,
     MenuHighlightRead,
     NewsRead,
+    PropertyDetailRead,
     PropertyRead,
     ProviderRead,
+    TutorDetailRead,
     TutorRead,
 )
 
@@ -87,9 +93,22 @@ def map_location(listing: Listing, *, detail: bool) -> LocationRead:
     )
 
 
-def map_listing(listing: Listing, *, include_menu: bool) -> ListingDetail:
-    """One approved listing -> its kind-specific public shape (``include_menu``: the detail view,
-    which also carries the Food menu and the permitted address / landmark)."""
+@overload
+def map_listing(listing: Listing, *, include_menu: Literal[True]) -> ListingDetail: ...
+
+
+@overload
+def map_listing(listing: Listing, *, include_menu: Literal[False]) -> ListingSummary: ...
+
+
+@overload
+def map_listing(listing: Listing, *, include_menu: bool) -> ListingDetail | ListingSummary: ...
+
+
+def map_listing(listing: Listing, *, include_menu: bool) -> ListingDetail | ListingSummary:
+    """One approved listing -> its kind-specific public shape (``include_menu=True``: detail view,
+    which carries public contact numbers, Food menu and permitted address / landmark;
+    ``include_menu=False``: summary / card shape for search and saved, which omits them)."""
     refs = [
         CategoryRef(slug=link.category.slug, name=link.category.name, is_primary=link.position == 1)
         for link in listing.categories
@@ -105,6 +124,9 @@ def map_listing(listing: Listing, *, include_menu: bool) -> ListingDetail:
         "categories": refs,
     }
     featured = True if listing.is_featured else None
+    # Public contact (Listing Contact v1): the listing's OWN numbers. Detail only: search and saved
+    # summary reads omit them. A Provider is portal-managed and has none.
+    contact = {"contact_phone": listing.contact_phone, "whatsapp_phone": listing.whatsapp_phone}
 
     if listing.kind is ListingKind.PROVIDER:
         return ProviderRead(
@@ -125,6 +147,18 @@ def map_listing(listing: Listing, *, include_menu: bool) -> ListingDetail:
             if business.vertical is BusinessVertical.FOOD and business.food is not None
             else None
         )
+        if include_menu:
+            return BusinessDetailRead(
+                kind="business",
+                **contact,
+                name=listing.title,
+                vertical=business.vertical,
+                category=primary_name,
+                description=listing.description,
+                featured=featured,
+                food=food,
+                **common,
+            )
         return BusinessRead(
             kind="business",
             name=listing.title,
@@ -139,6 +173,16 @@ def map_listing(listing: Listing, *, include_menu: bool) -> ListingDetail:
     if listing.kind is ListingKind.TUTOR:
         tutor = listing.tutor_profile
         assert tutor is not None
+        if include_menu:
+            return TutorDetailRead(
+                kind="tutor",
+                **contact,
+                name=listing.title,
+                subject=primary_name,
+                grade=tutor.grade,
+                bio=listing.description,
+                **common,
+            )
         return TutorRead(
             kind="tutor",
             name=listing.title,
@@ -150,6 +194,19 @@ def map_listing(listing: Listing, *, include_menu: bool) -> ListingDetail:
 
     prop = listing.property_profile
     assert prop is not None
+    if include_menu:
+        return PropertyDetailRead(
+            kind="property",
+            **contact,
+            title=listing.title,
+            listing_type=prop.listing_type,
+            property_type=primary_name,
+            price=prop.price_text,
+            description=listing.description,
+            bedrooms=prop.bedrooms,
+            furnished=prop.furnished,
+            **common,
+        )
     return PropertyRead(
         kind="property",
         title=listing.title,

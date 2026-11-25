@@ -111,7 +111,33 @@ export interface PropertyDto extends ListingBaseDto {
   furnished?: "Furnished" | "Unfurnished" | "Semi-Furnished"
 }
 
-export type ListingDto = ProviderDto | BusinessDto | TutorDto | PropertyDto
+export interface BusinessDetailDto extends BusinessDto {
+  /**
+   * This listing's own public contact numbers (Listing Contact v1), E.164 (`+923001234567`). Listing data,
+   * never an account's number (none exists). Absent on a listing created before the field.
+   * Public detail only — omitted on search and saved summaries.
+   */
+  contactPhone?: string
+  whatsappPhone?: string
+}
+
+export interface TutorDetailDto extends TutorDto {
+  contactPhone?: string
+  whatsappPhone?: string
+}
+
+export interface PropertyDetailDto extends PropertyDto {
+  contactPhone?: string
+  whatsappPhone?: string
+}
+
+export type ProviderDetailDto = ProviderDto
+
+export type ListingSummaryDto = ProviderDto | BusinessDto | TutorDto | PropertyDto
+
+export type ListingDetailDto = ProviderDetailDto | BusinessDetailDto | TutorDetailDto | PropertyDetailDto
+
+export type ListingDto = ListingDetailDto
 
 export type NewsKindDto = "news" | "update"
 

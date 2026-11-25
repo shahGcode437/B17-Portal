@@ -15,6 +15,12 @@ export interface Property {
   location?: PublicLocation
   /** Optional free-text detail — static seed listings don't have one, user-submitted listings do. */
   description?: string
+  /**
+   * The number customers should use for THIS listing (Listing Contact v1), E.164, and an optional WhatsApp
+   * number. Absent on a listing created before the field.
+   */
+  contactPhone?: string
+  whatsappPhone?: string
   bedrooms?: number
   furnished?: FurnishingStatus
   image?: string

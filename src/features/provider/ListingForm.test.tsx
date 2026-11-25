@@ -28,6 +28,8 @@ async function fill(user: ReturnType<typeof userEvent.setup>, field: HTMLElement
 async function fillBase(user: ReturnType<typeof userEvent.setup>, name = "Sweet Crumbs Bakery") {
   await fill(user, screen.getByLabelText("Business Name"), name)
   await fill(user, screen.getByLabelText("Description"), "Fresh cakes and bread baked every morning.")
+  // Listing Contact v1: the listing's own contact number is required on every owner form.
+  await fill(user, screen.getByLabelText("Contact Number"), "03001234567")
   await fill(user, screen.getByLabelText(/Tags/), "cakes, bread")
 }
 
@@ -80,6 +82,7 @@ describe("ListingForm — Area (S4)", () => {
     render(<ListingForm kind="provider" onSubmit={onSubmit} onBack={vi.fn()} />)
     await fill(user, screen.getByLabelText("Name"), "Sunrise Solar")
     await fill(user, screen.getByLabelText("Description"), "Solar installation and maintenance across B-17.")
+    await fill(user, screen.getByLabelText("Contact Number"), "03001234567")
     await user.selectOptions(await screen.findByRole("combobox", { name: "Service Category" }), "solar")
     await user.click(screen.getByRole("button", { name: "Submit for Review" }))
     await vi.waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1))
@@ -94,7 +97,7 @@ describe("ListingForm — Area (S4)", () => {
         kind="provider"
         onSubmit={onSubmit}
         onBack={vi.fn()}
-        defaultValues={{ name: "Old Listing", category: "solar", description: "A description that is long enough.", area: "B-17, Block C (Demo Area)", tagsInput: "" }}
+        defaultValues={{ name: "Old Listing", category: "solar", description: "A description that is long enough.", area: "B-17, Block C (Demo Area)", contactPhone: "03001234567", tagsInput: "" }}
       />
     )
     expect(screen.getByRole("combobox", { name: "Area" })).toHaveValue("B-17")
@@ -132,6 +135,7 @@ describe("ListingForm — Tags (S4)", () => {
     render(<ListingForm kind="business" onSubmit={onSubmit} onBack={vi.fn()} />)
     await fill(user, screen.getByLabelText("Business Name"), "Capital Stationers")
     await fill(user, screen.getByLabelText("Description"), "Office and school stationery, printing and photocopying.")
+    await fill(user, screen.getByLabelText("Contact Number"), "03001234567")
     await user.selectOptions(await screen.findByRole("combobox", { name: "Category" }), "pharmacy")
     await user.click(screen.getByRole("button", { name: "Submit for Review" }))
     await vi.waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1))

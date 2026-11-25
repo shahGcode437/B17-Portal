@@ -52,6 +52,8 @@ async function fillTutor(user: ReturnType<typeof userEvent.setup>, tags = "physi
   await user.selectOptions(await screen.findByRole("combobox", { name: "Subject" }), "physics")
   await fill(user, screen.getByLabelText("Description"), "Physics lessons for matric and A-level students.")
   await fill(user, screen.getByLabelText("Grade / level you teach"), "Matric / A-Levels")
+  // Listing Contact v1: the listing contact number is required.
+  await fill(user, screen.getByLabelText("Contact Number"), "03001234567")
   await fill(user, screen.getByLabelText(/Topics you teach/), tags)
 }
 
@@ -143,6 +145,7 @@ describe("create a listing", () => {
     await fill(user, screen.getByLabelText("Name"), "Hina Tutor")
     await user.selectOptions(await screen.findByRole("combobox", { name: "Subject" }), "physics")
     await fill(user, screen.getByLabelText("Description"), "Physics for O-Level students, small groups.")
+    await fill(user, screen.getByLabelText("Contact Number"), "03001234567")
     await fill(user, screen.getByLabelText("Grade / level you teach"), "g".repeat(61))
     await user.click(screen.getByRole("button", { name: "Submit for Review" }))
     expect(await screen.findByText("Please keep the grade under 60 characters.")).toBeInTheDocument()

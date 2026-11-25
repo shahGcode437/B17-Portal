@@ -16,9 +16,13 @@ from app.models import Listing, ListingStatusHistory
 from app.models.enums import ActorRole, CategoryModule, HistoryAction, ListingStatus, PlanCode
 from tests.db.auth_helpers import AuthApi, AuthEnv, make_account
 from tests.write_payloads import (
+    CONTACT_PHONE,
+    CONTACT_PHONE_E164,
     LISTINGS,
     MINE,
     PROFILE,
+    WHATSAPP_PHONE,
+    WHATSAPP_PHONE_E164,
     approximate,
     area_only,
     business_body,
@@ -33,7 +37,11 @@ from tests.write_payloads import (
 PROVIDERS = "/admin/providers"
 
 __all__ = [
+    "CONTACT_PHONE",
+    "CONTACT_PHONE_E164",
     "LISTINGS",
+    "WHATSAPP_PHONE",
+    "WHATSAPP_PHONE_E164",
     "MINE",
     "PROFILE",
     "PROVIDERS",
@@ -174,6 +182,7 @@ def stored_columns(session: Session, listing_id: str) -> dict[str, Any]:
             text(
                 "SELECT status, revision, submitted_at, title, description, area, block, address, "
                 "landmark, latitude, longitude, location_visibility, public_latitude, "
+                "contact_phone, whatsapp_phone, "
                 "public_longitude, search_document, tags, image_url, updated_at FROM listings "
                 "WHERE id = :id"
             ),

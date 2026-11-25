@@ -113,13 +113,29 @@ describe("architecture guards", () => {
     expect(consumers.sort()).toEqual(["/src/hooks/useListings.ts", "/src/hooks/useSearchResults.ts"])
   })
 
-  it("no simulated contact action exists: no helper, no 'simulated' toast copy, no WhatsApp / Contact CTA", () => {
+  it("no simulated contact action exists: no helper, no 'simulated' toast copy, no invented contact CTA", () => {
     expect(production.find(([path]) => path === "/src/lib/simulatedActions.ts")).toBeUndefined()
     expect(offenders((_, s) => /simulatedActions|SIMULATED_MESSAGES/.test(s))).toEqual([])
     expect(offenders((_, s) => /simulated for this demo|Full request\/contact flow is available/i.test(s))).toEqual([])
-    // A button whose text is a WhatsApp / contact CTA would be a fake action: the only contact feature is the
-    // request form's stored preference (an <option>), never a button.
-    expect(offenders((_, s) => />\s*(Chat on WhatsApp|Contact on WhatsApp|WhatsApp|Contact Business|Contact Agent|Contact)\s*</.test(s))).toEqual([])
+    // A control whose text is a WhatsApp / contact CTA is a FAKE action anywhere except the one real
+    // implementation: `ContactActions` renders Call / WhatsApp for a listing's OWN stored numbers
+    // (Listing Contact v1), and only when `@/lib/phone` could build a link from them.
+    const REAL_CONTACT_ACTION = "/src/components/detail/ContactActions.tsx"
+    expect(
+      offenders(
+        (path, s) =>
+          path !== REAL_CONTACT_ACTION &&
+          />\s*(Chat on WhatsApp|Contact on WhatsApp|WhatsApp|Contact Business|Contact Agent|Contact)\s*</.test(s)
+      )
+    ).toEqual([])
+    expect(production.find(([path]) => path === REAL_CONTACT_ACTION)).toBeDefined()
+  })
+
+  it("a tel: or wa.me link is built from a stored number in one place only", () => {
+    // The same rule the Google directions link follows: one builder, so no caller can put raw user
+    // input into a dialable or messageable URL (`@/lib/phone` returns null for anything that is not
+    // canonical E.164, which makes a dead button unrenderable rather than wrong).
+    expect(offenders((path, s) => path !== "/src/lib/phone.ts" && /["'`]tel:|wa\.me/.test(s))).toEqual([])
   })
 
   it("the browser API base is relative (same-origin): nothing in src names the API's own port", () => {

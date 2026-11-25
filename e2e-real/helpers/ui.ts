@@ -3,6 +3,21 @@ import { API, ApiClient, TAG, expectH1, type TestUser } from './stack'
 
 /** UI drivers shared by the real-stack specs. Semantic locators only (role / label / text). */
 
+/**
+ * The listing's own contact number (Listing Contact v1): required on every owner create form, typed
+ * in the national form a person would use so the lane also proves the API normalises it to E.164.
+ */
+export const CONTACT_PHONE = '0300 1234567'
+export const CONTACT_PHONE_E164 = '+923001234567'
+export const WHATSAPP_PHONE = '0321 7654321'
+export const WHATSAPP_PHONE_E164 = '+923217654321'
+
+/** Fills the shared contact section; `whatsapp` adds the optional second number. */
+export async function fillContact(page: Page, whatsapp?: string) {
+  await page.getByLabel('Contact Number').fill(CONTACT_PHONE)
+  if (whatsapp) await page.getByLabel('WhatsApp Number (optional)').fill(whatsapp)
+}
+
 export type KindButton = RegExp
 /**
  * The kinds an owner lists on the create page. A Service / Professional ("provider") listing is portal-managed and has
@@ -61,6 +76,8 @@ export interface TutorFields {
   grade?: string
   description?: string
   tags?: string
+  /** The optional WhatsApp number (the contact number is always filled). */
+  whatsapp?: string
   location?: LocationInput
 }
 
@@ -72,6 +89,7 @@ export async function fillTutorForm(page: Page, f: TutorFields) {
   await page.getByLabel('Description', { exact: true }).fill(f.description ?? `${f.name} - physics and chemistry for matric and O-level.`)
   await page.getByLabel('Area', { exact: true }).selectOption('B-17')
   await page.getByLabel(/Topics you teach/).fill(f.tags ?? 'physics, chemistry')
+  await fillContact(page, f.whatsapp)
   if (f.location) await setLocation(page, f.location)
 }
 
@@ -82,6 +100,7 @@ export async function createGeneralBusiness(page: Page, f: { name: string; categ
   await page.getByLabel('Description', { exact: true }).fill(`${f.name} - books, copies and office supplies for B-17.`)
   await page.getByLabel('Area', { exact: true }).selectOption('B-17')
   await page.getByLabel('Tags (optional)').fill('books, copies')
+  await fillContact(page)
   if (f.location) await setLocation(page, f.location)
   return submitCreate(page)
 }
@@ -93,6 +112,7 @@ export async function createFood(page: Page, f: { name: string; location?: Locat
   await page.getByLabel('Description', { exact: true }).fill(`${f.name} - fresh bread, cakes and savouries baked daily in B-17.`)
   await page.getByLabel('Area', { exact: true }).selectOption('B-17')
   await page.getByLabel(/Dishes \/ Search Tags/).fill('cakes, bread')
+  await fillContact(page, WHATSAPP_PHONE)  // a restaurant is the WhatsApp case
   await page.getByRole('checkbox', { name: 'Bakeries' }).check()
   await page.getByRole('checkbox', { name: 'Takeaway' }).check()
   if (f.location) await setLocation(page, f.location)
@@ -117,6 +137,7 @@ export async function createProperty(
   await page.getByLabel('Price').fill(f.price ?? 'PKR 65,000 / month')
   await page.getByLabel('Area', { exact: true }).selectOption('B-17')
   await page.getByLabel('Description').fill(`${f.title} - a bright, well-kept home in a quiet B-17 block.`)
+  await fillContact(page)
   return submitCreate(page)
 }
 
@@ -135,6 +156,7 @@ export async function approvedTutor(owner: TestUser, admin: TestUser, what: stri
       name,
       category: 'physics',
       grade: 'Grade 9',
+      contactPhone: CONTACT_PHONE,
       description: `${name} - physics lessons and past papers across B-17.`,
       area: 'B-17',
       tags: ['physics', 'lessons'],

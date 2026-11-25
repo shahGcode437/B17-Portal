@@ -8,6 +8,12 @@ export interface Tutor {
   area: string
   /** Where it is, as the PUBLIC may know it (Phase 12B/12G). Absent on legacy demo records. */
   location?: PublicLocation
+  /**
+   * The number customers should use for THIS listing (Listing Contact v1), E.164, and an optional WhatsApp
+   * number. Absent on a listing created before the field.
+   */
+  contactPhone?: string
+  whatsappPhone?: string
   bio: string
   image?: string
   tags: string[]

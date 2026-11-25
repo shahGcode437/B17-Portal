@@ -31,6 +31,7 @@ const general: ListingFormValues = {
   description: "Office and school stationery, printing and photocopying.",
   area: "B-17",
   tagsInput: "stationery, printing",
+  contactPhone: "03001234567",
 }
 const foodBlock: FoodFormValues = { categories: ["bakeries"], serviceOptions: ["takeaway"], hoursNote: "", menuHighlights: [], menuImage: undefined }
 const foodValues: ListingFormValues = { ...general, category: "", vertical: "food", food: foodBlock }
@@ -41,6 +42,7 @@ const propertyValues: PropertyFormValues = {
   price: "PKR 2.2 Cr",
   area: "B-17",
   description: "A corner house close to the park and the main road.",
+  contactPhone: "03001234567",
 }
 
 const repeat = (char: string, n: number) => char.repeat(n)

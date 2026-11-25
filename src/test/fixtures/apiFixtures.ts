@@ -11,12 +11,12 @@
  * pending / archived owner listings and requests in several statuses.
  */
 import type {
-  BusinessDto,
+  BusinessDetailDto,
   CategoryDto,
   NewsDto,
-  PropertyDto,
+  PropertyDetailDto,
   ProviderDto,
-  TutorDto,
+  TutorDetailDto,
 } from "../../lib/api/dto/public"
 import type {
   AdminCategoryDto,
@@ -139,7 +139,7 @@ export const PROVIDERS: ProviderDto[] = [
   },
 ]
 
-export const BUSINESSES: BusinessDto[] = [
+export const BUSINESSES: BusinessDetailDto[] = [
   {
     kind: "business",
     id: IDS.generalExact,
@@ -156,6 +156,9 @@ export const BUSINESSES: BusinessDto[] = [
       coordinates: { latitude: 33.69289, longitude: 72.828109, precision: "exact" },
     },
     tags: ["salon", "haircut"],
+    // Listing Contact v1: this listing's own numbers, E.164 as the API returns them.
+    contactPhone: "+923001112233",
+    whatsappPhone: "+923001112233",
     categories: [ref("hairdressing", "Hairdressing")],
   },
   {
@@ -168,6 +171,7 @@ export const BUSINESSES: BusinessDto[] = [
     area: "B-17, Block C (Demo Area)",
     location: { visibility: "area_only" },
     tags: ["pharmacy", "medicine"],
+    contactPhone: "+92512345678", // an Islamabad landline: Call only, no WhatsApp button
     categories: [ref("pharmacy", "Pharmacy")],
     featured: true,
   },
@@ -187,6 +191,8 @@ export const BUSINESSES: BusinessDto[] = [
       coordinates: { latitude: 33.686234, longitude: 72.827234, precision: "exact" },
     },
     tags: ["bakery", "cakes"],
+    contactPhone: "+923451234567",
+    whatsappPhone: "+923451234567",
     categories: [ref("bakeries", "Bakeries"), ref("sweets-desserts", "Sweets / Desserts", false)],
     food: {
       categories: ["bakeries", "sweets-desserts"],
@@ -230,7 +236,7 @@ export const BUSINESSES: BusinessDto[] = [
   },
 ]
 
-export const TUTORS: TutorDto[] = [
+export const TUTORS: TutorDetailDto[] = [
   {
     kind: "tutor",
     id: IDS.tutorApproximate,
@@ -245,6 +251,8 @@ export const TUTORS: TutorDto[] = [
       coordinates: { latitude: 33.69, longitude: 72.83, precision: "approximate" },
     },
     tags: ["physics", "tutor"],
+    contactPhone: "+923337788990",
+    whatsappPhone: "+923337788990",
     categories: [ref("physics", "Physics")],
   },
   {
@@ -257,11 +265,12 @@ export const TUTORS: TutorDto[] = [
     area: "B-17",
     location: { visibility: "area_only", block: "D" },
     tags: ["mathematics", "tutor"],
+    contactPhone: "+923135566778", // Call only
     categories: [ref("mathematics", "Mathematics")],
   },
 ]
 
-export const PROPERTIES: PropertyDto[] = [
+export const PROPERTIES: PropertyDetailDto[] = [
   {
     kind: "property",
     id: IDS.propertyExact,
@@ -281,6 +290,8 @@ export const PROPERTIES: PropertyDto[] = [
       coordinates: { latitude: 33.688456, longitude: 72.830321, precision: "exact" },
     },
     tags: ["house", "sale"],
+    contactPhone: "+923214455667",
+    whatsappPhone: "+923009988776",  // a DIFFERENT WhatsApp number from the contact number
     categories: [ref("house", "House")],
   },
   {
@@ -328,9 +339,10 @@ export const NEWS: NewsDto[] = [
 
 // -- the signed-in resident's data --------------------------------------------------------------------
 
+const { contactPhone: _savedC, whatsappPhone: _savedW, ...savedBusinessItem } = BUSINESSES[2]
 export const SAVED: SavedHitDto[] = [
   { kind: "provider", item: PROVIDERS[0], savedAt: "2026-10-10T09:00:00Z" },
-  { kind: "business", item: BUSINESSES[2], savedAt: "2026-10-09T09:00:00Z" },
+  { kind: "business", item: savedBusinessItem, savedAt: "2026-10-09T09:00:00Z" },
 ]
 
 const base = (id: string, over: Partial<RequestSummaryDto>): RequestSummaryDto => ({
@@ -396,6 +408,8 @@ export const OWNER_LISTINGS: OwnerListingDto[] = [
     category: "stationery",
     categoryLabel: "Stationery",
     description: "A stationery shop waiting for review.",
+    contactPhone: "+923001112233",
+    whatsappPhone: "+923217654321",
     location: { visibility: "exact", block: "B", address: PRIVATE_ADDRESS, ...PRIVATE_POINT },
     publicLocation: { visibility: "exact", block: "B", coordinates: { ...PRIVATE_POINT, precision: "exact" } },
     categories: [ref("stationery", "Stationery")],
@@ -414,6 +428,7 @@ export const OWNER_LISTINGS: OwnerListingDto[] = [
     categoryLabel: "Physics",
     grade: "Matric / A-Levels",
     description: "Physics lessons for matric and A-level students across B-17.",
+    contactPhone: "+923337788990", // the contact number only: no WhatsApp on file
     location: { visibility: "area_only", block: "A" },
     publicLocation: { visibility: "area_only", block: "A" },
     categories: [ref("physics", "Physics")],
@@ -431,6 +446,7 @@ export const OWNER_LISTINGS: OwnerListingDto[] = [
     categoryLabel: "Plot",
     description: "A residential plot in B-17 Block C, available for sale.",
     rejectionReason: "Please add the plot size and a clearer description.",
+    contactPhone: "+923214455667",
     // An approximate listing's point is private; an address, when one is on file, is private too (never public).
     location: { visibility: "approximate", block: "C", ...PRIVATE_POINT },
     publicLocation: { visibility: "approximate", block: "C", coordinates: { latitude: 33.69, longitude: 72.88, precision: "approximate" } },
@@ -446,6 +462,7 @@ export const OWNER_LISTINGS: OwnerListingDto[] = [
     category: "english",
     categoryLabel: "English",
     grade: "Grade 8",
+    contactPhone: "+923135566778",
     location: { visibility: "area_only" },
     publicLocation: { visibility: "area_only" },
     categories: [ref("english", "English")],

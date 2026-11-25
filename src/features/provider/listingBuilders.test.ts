@@ -15,6 +15,7 @@ const base = {
   description: "Fresh cakes and bread baked every morning.",
   area: "B-17, Block B",
   tagsInput: "Cakes, Bread",
+  contactPhone: "03001234567",
   image: undefined,
 }
 
@@ -109,11 +110,11 @@ describe("buildProvider / buildProperty", () => {
 
   it("builds a Property with numeric bedrooms and parsed tags, omitting blanks", () => {
     const property = buildProperty(
-      { title: "Flat", listingType: "rent", propertyType: "Flat", price: "PKR 80k", area: "B-17", description: "Nice flat.", bedrooms: "2", furnished: "Furnished", tagsInput: "Balcony, Lift", image: undefined },
+      { title: "Flat", listingType: "rent", propertyType: "Flat", price: "PKR 80k", area: "B-17", description: "Nice flat.", contactPhone: "03001234567", bedrooms: "2", furnished: "Furnished", tagsInput: "Balcony, Lift", image: undefined },
       "pr-1"
     )
     expect(property).toMatchObject({ listingType: "rent", bedrooms: 2, furnished: "Furnished", tags: ["balcony", "lift"] })
-    const bare = buildProperty({ title: "Plot", listingType: "sale", propertyType: "Plot", price: "PKR 1 Cr", area: "B-17", description: "Corner plot.", bedrooms: "", furnished: "", tagsInput: "" }, "pr-2")
+    const bare = buildProperty({ title: "Plot", listingType: "sale", propertyType: "Plot", price: "PKR 1 Cr", area: "B-17", description: "Corner plot.", contactPhone: "03001234567", bedrooms: "", furnished: "", tagsInput: "" }, "pr-2")
     expect(bare.bedrooms).toBeUndefined()
     expect(bare.furnished).toBeUndefined()
     expect(bare.tags).toEqual([])

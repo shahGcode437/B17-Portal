@@ -47,7 +47,7 @@ describe("validateListingBody: shape and lengths", () => {
   })
 
   it("property: price 1-40, bedrooms 0-30 (an integer), title 2-100", () => {
-    const property = { kind: "property", title: "5 Marla House", listingType: "sale", propertyType: "house", price: "PKR 2.2 Cr", description: "A corner house close to the park.", area: "B-17", location: { visibility: "exact" } }
+    const property = { kind: "property", title: "5 Marla House", listingType: "sale", propertyType: "house", price: "PKR 2.2 Cr", description: "A corner house close to the park.", area: "B-17", contactPhone: "03001234567", location: { visibility: "exact" } }
     expect(codes("property", property)).toEqual([])
     expect(codes("property", { ...property, price: "p".repeat(41) })).toContain("price:string_too_long")
     expect(codes("property", { ...property, bedrooms: 31 })).toContain("bedrooms:less_than_equal")

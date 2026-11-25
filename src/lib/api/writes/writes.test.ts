@@ -73,6 +73,7 @@ describe("write API modules", () => {
       title: "Flat for rent",
       listingType: "rent",
       propertyType: "flat",
+      contactPhone: "03001234567",
       price: "PKR 50,000 / month",
       description: "A nice flat with two bedrooms and a balcony.",
       area: "B-17",

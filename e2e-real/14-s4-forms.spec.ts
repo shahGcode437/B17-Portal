@@ -151,6 +151,7 @@ test('4b. a Food edit CLEARS what the owner emptied (hours, menu), and a General
     kind: 'business',
     vertical: 'food',
     name,
+    contactPhone: '0300 1234567',
     description: `${name} - fresh bread and cakes baked daily in B-17.`,
     area: 'B-17',
     tags: ['bread'],
@@ -299,7 +300,7 @@ test('8. a block with characters the backend refuses is flagged at once and neve
 
 test('9. the backend still refuses what the form no longer lets a person type (authority untouched)', async () => {
   const api = await ApiClient.shared(owner.email)
-  const body = { kind: 'tutor', name: unique('S4 Direct'), category: 'physics', grade: 'Grade 9', description: 'Sent straight to the API to prove it still validates.', location: { visibility: 'area_only' } }
+  const body = { kind: 'tutor', name: unique('S4 Direct'), category: 'physics', grade: 'Grade 9', contactPhone: '0300 1234567', description: 'Sent straight to the API to prove it still validates.', location: { visibility: 'area_only' } }
   const unknown = await api.call('POST', '/listings', { ...body, area: 'Islamabad' })
   expect(unknown.status).toBe(422)
   expect(unknown.body?.error?.details?.map((d) => `${d.field}:${d.code}`)).toContain('area:unknown_locality')
@@ -319,8 +320,8 @@ test('9b. the mock server enforces the REAL API\'s rules: each value is sent str
   const owned = await ApiClient.shared(owner.email)
   const NBSP = '\u00a0'
   const point = { latitude: 33.7099, longitude: 73.0699 }
-  const tutor = { kind: 'tutor', name: unique('S4 Parity'), category: 'physics', grade: 'Grade 9', description: 'Sent straight to the API to prove the rule.', area: 'B-17', location: { visibility: 'area_only' } }
-  const property = { kind: 'property', title: unique('S4 Parity'), listingType: 'rent', propertyType: 'house', price: 'PKR 65,000 / month', description: 'Sent straight to the API to prove the rule.', area: 'B-17', location: { visibility: 'approximate', ...point } }
+  const tutor = { kind: 'tutor', name: unique('S4 Parity'), category: 'physics', grade: 'Grade 9', contactPhone: '0300 1234567', description: 'Sent straight to the API to prove the rule.', area: 'B-17', location: { visibility: 'area_only' } }
+  const property = { kind: 'property', title: unique('S4 Parity'), listingType: 'rent', propertyType: 'house', price: 'PKR 65,000 / month', contactPhone: '0300 1234567', description: 'Sent straight to the API to prove the rule.', area: 'B-17', location: { visibility: 'approximate', ...point } }
   const creates: [string, Record<string, unknown>, string][] = [
     ['name with a non-breaking space', { ...tutor, name: `Parity${NBSP}Works` }, 'name:invalid_characters'],
     ['name on two lines', { ...tutor, name: 'Parity\nWorks' }, 'name:invalid_characters'],
@@ -451,7 +452,7 @@ test('12. errors are explained in plain words: plan limit, unverified e-mail, a 
   // plan_limit_reached: a Free professional with 3 active listings tries a 4th through the form.
   const freeApi = await ApiClient.shared(free.email)
   for (let i = 0; i < 3; i += 1) {
-    const r = await freeApi.call('POST', '/listings', { kind: 'tutor', name: unique(`S4 Free ${i}`), category: 'physics', grade: 'Grade 9', description: 'An active listing that fills the Free plan quota.', area: 'B-17', location: { visibility: 'area_only' } })
+    const r = await freeApi.call('POST', '/listings', { kind: 'tutor', name: unique(`S4 Free ${i}`), category: 'physics', grade: 'Grade 9', contactPhone: '0300 1234567', description: 'An active listing that fills the Free plan quota.', area: 'B-17', location: { visibility: 'area_only' } })
     expect(r.status, JSON.stringify(r.body)).toBe(201)
   }
   const freePage = await signInAs(browser, free)

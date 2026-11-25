@@ -396,6 +396,7 @@ def test_the_saved_card_carries_only_public_data(auth_env: AuthEnv) -> None:
     entry = resident.get(SAVED).json()["data"][0]
     assert set(entry) == {"kind", "item", "savedAt"}
     assert "status" not in entry["item"] and "rejectionReason" not in entry["item"]
+    assert "contactPhone" not in entry["item"] and "whatsappPhone" not in entry["item"]
 
 
 def test_the_saved_card_is_the_same_as_the_public_card(auth_env: AuthEnv) -> None:

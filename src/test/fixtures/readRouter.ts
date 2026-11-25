@@ -40,14 +40,16 @@ const okPage = (items: unknown[], meta: Record<string, unknown>): ReadReply => (
 
 export const ALL_LISTINGS: ListingDto[] = [...PROVIDERS, ...BUSINESSES, ...TUTORS, ...PROPERTIES]
 
-/** What a search card carries: the public location minus address and landmark (detail-only fields). */
-function asCard(listing: ListingDto): ListingDto {
+/** What a search card carries: the public location minus address and landmark, and NO contact numbers (detail-only fields). */
+export function asCard(listing: ListingDto): ListingDto {
   const copy = JSON.parse(JSON.stringify(listing)) as ListingDto
   if (copy.location) {
     delete copy.location.address
     delete copy.location.landmark
   }
   if (copy.kind === "business" && copy.food) delete copy.food.menuHighlights
+  delete (copy as { contactPhone?: string }).contactPhone
+  delete (copy as { whatsappPhone?: string }).whatsappPhone
   return copy
 }
 
