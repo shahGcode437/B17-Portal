@@ -45,9 +45,8 @@ from app.services.email import (
     MemoryEmailSender,
     create_email_sender,
     deliver,
-    password_reset_email,
-    verification_email,
 )
+from app.services.email_templates import password_reset_email, verification_email
 
 ORIGIN = "https://app.example.org"
 HOSTED = {"frontend_origins": [ORIGIN], "frontend_base_url": ORIGIN}

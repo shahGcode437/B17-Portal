@@ -155,6 +155,7 @@ def test_resend_is_a_silent_noop_for_a_verified_account(auth_env: AuthEnv) -> No
     make_account(auth_env.session)
     api = auth_env.client()
     api.login()
+    auth_env.outbox.outbox.clear()  # the sign-in's own notice (EMAIL-1)
 
     assert api.post("/auth/resend-verification").status_code == 204
 
@@ -189,7 +190,7 @@ def test_forgot_password_answers_identically_for_known_and_unknown_accounts(
 
     for response in (known, unknown, malformed):
         assert response.status_code == 202
-        assert response.json() == {"data": {"status": "accepted"}}
+        assert response.json() == {"data": {"status": "accepted", "emailDelivery": "off"}}
         assert response.headers["cache-control"] == "no-store"
     assert [m.to for m in auth_env.outbox.outbox] == [EMAIL]  # only the real account got mail
 

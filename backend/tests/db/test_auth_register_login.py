@@ -56,6 +56,7 @@ def test_register_creates_a_resident_signs_in_and_sets_a_safe_cookie(auth_env: A
         "authMethods",
         "session",
         "csrfToken",
+        "emailDelivery",  # EMAIL-1, additive: configuration, never account data
     }
     assert data["email"] == EMAIL and data["displayName"] == "Ayesha Khan"
     assert data["emailVerified"] is False

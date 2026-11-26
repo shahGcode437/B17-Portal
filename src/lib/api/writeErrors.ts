@@ -1,4 +1,4 @@
-import { isDevMail } from "@/config/devMail"
+import { mailMode, type MailMode } from "@/config/devMail"
 import { ApiError, NETWORK_ERROR_CODE, isApiError, type ApiErrorDetail } from "@/lib/api/errors"
 import { LOCALITIES } from "@/config/localities"
 import { PHONE_EXAMPLE } from "@/lib/phone"
@@ -50,11 +50,18 @@ const PROFESSIONAL_REQUIRED: Copy = {
   title: "A professional profile is needed",
   description: "Create a professional profile from your workspace, then try again.",
 }
+const VERIFY_IN_DEVELOPMENT =
+  "In development no e-mail is sent: your Profile page shows the command that prints your verification link. Open it, then try again."
+const HOW_TO_VERIFY: Record<MailMode, string> = {
+  inbox:
+    "Check your inbox and spam folder for the verification email, or request a new one from your Profile page. Open its link, then try again.",
+  console: VERIFY_IN_DEVELOPMENT,
+  off: VERIFY_IN_DEVELOPMENT,
+  neutral: "Verify your email address from your Profile page, then try again.",
+}
 const emailNotVerified = (): Copy => ({
   title: "Please verify your email first",
-  description: isDevMail()
-    ? "In development no e-mail is sent: your Profile page shows the command that prints your verification link. Open it, then try again."
-    : "Verify your email address from your Profile page, then try again.",
+  description: HOW_TO_VERIFY[mailMode()],
 })
 const SESSION_EXPIRED: Copy = {
   title: "Your session has expired",

@@ -48,12 +48,13 @@ from app.repositories.auth import TokenRepository, UserAuthRepository
 from app.services.auth_audit import AuthAuditService
 from app.services.auth_sessions import Principal, SessionService
 from app.services.auth_tokens import issue_token
-from app.services.email import (
-    EmailMessage,
+from app.services.email import EmailMessage
+from app.services.email_templates import (
     password_changed_notice,
     password_reset_email,
     verification_email,
 )
+from app.services.login_notices import login_notices
 
 VERIFICATION_TTL = timedelta(hours=24)
 PASSWORD_RESET_TTL = timedelta(minutes=60)
@@ -206,7 +207,17 @@ class AuthService:
             raw_session, auth_session = self._sessions.create(user.id, user_agent)
             self._audit.record(AuthEventType.LOGIN_SUCCESS, user_id=user.id)
             principal = self._sessions.principal_for_new(auth_session, user)
-        return IssuedSession(principal, raw_session)
+        notices = login_notices(  # after the commit; never raises
+            self._settings,
+            self._limiter,
+            user_id=principal.user_id,
+            session_id=principal.session_id,
+            email=principal.email,
+            email_verified=principal.email_verified,
+            method="password",
+            occurred_at=now,
+        )
+        return IssuedSession(principal, raw_session, notices)
 
     def _record_login_failure(self, key: str, user: User | None) -> None:
         self._limiter.hit(key, LOGIN_FAILURES)  # its own transaction: failures always count
@@ -299,7 +310,8 @@ class AuthService:
             self._sessions.revoke_all(user.id, SessionRevokeReason.PASSWORD_RESET)
             self._audit.record(AuthEventType.PASSWORD_RESET_COMPLETED, user_id=user.id)
             to = user.email
-        return (password_changed_notice(to),)  # no session is created: the user logs in afresh
+        # No session is created: the user logs in afresh.
+        return (password_changed_notice(self._settings, to, now),)
 
     # -- change password ---------------------------------------------------------------------
 
@@ -346,7 +358,8 @@ class AuthService:
             session_expires_at=expires_at,
             staff_scopes=principal.staff_scopes,
         )
-        return IssuedSession(rotated, raw_session, (password_changed_notice(user.email),))
+        notice = password_changed_notice(self._settings, user.email, self._clock())
+        return IssuedSession(rotated, raw_session, (notice,))
 
     # -- token redemption internals ----------------------------------------------------------
 

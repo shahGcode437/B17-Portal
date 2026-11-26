@@ -21,6 +21,7 @@ from app.middleware.auth_security import AuthSecurityMiddleware
 from app.middleware.request_id import REQUEST_ID_HEADER, RequestIdMiddleware
 from app.middleware.request_log import RequestLogMiddleware
 from app.services.email import create_email_sender
+from app.services.email_dispatch import BackgroundEmailDispatcher, InlineEmailDispatcher
 from app.services.oauth import create_oauth_providers
 
 # The request headers the API contract uses (docs/backend/API_CONTRACT.md); others are refused.
@@ -44,8 +45,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     engine = create_db_engine(settings) if settings.database_url is not None else None
 
     @asynccontextmanager
-    async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         yield
+        application.state.email_dispatcher.close()  # a time-limited drain of queued mail
         if engine is not None:
             engine.dispose()
 
@@ -67,6 +69,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.clock = utcnow
     app.state.password_service = PasswordService.from_settings(settings)
     app.state.email_sender = create_email_sender(settings)
+    # The in-memory backend (tests) is sent inline; everything that does I/O is handed off.
+    app.state.email_dispatcher = (
+        InlineEmailDispatcher()
+        if settings.email_backend == "memory"
+        else BackgroundEmailDispatcher()
+    )
     app.state.oauth_providers = create_oauth_providers(settings)
 
     register_exception_handlers(app)

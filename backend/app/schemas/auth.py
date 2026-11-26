@@ -13,6 +13,7 @@ from uuid import UUID
 from pydantic import ConfigDict, Field, SecretStr, StringConstraints, field_validator
 from pydantic_core import PydanticCustomError
 
+from app.core.config import EmailDelivery
 from app.core.security.identity import normalize_email
 from app.core.security.redirects import InvalidReturnTo, resolve_return_to
 from app.models.enums import CategoryModule, OAuthPurpose, PlanCode, RoleName
@@ -112,10 +113,15 @@ class AuthUser(ApiModel):
     auth_methods: AuthMethods
     session: SessionInfo
     csrf_token: str
+    #: How this server handles e-mail (EMAIL-1), so a screen can say what is true. Configuration,
+    #: not account data, and never a statement that any message was delivered.
+    email_delivery: EmailDelivery
 
 
 class AcceptedStatus(ApiModel):
     status: str = "accepted"
+    #: The same for every address (it comes from configuration), so it reveals no account.
+    email_delivery: EmailDelivery
 
 
 class OAuthStartRequest(ApiModel):

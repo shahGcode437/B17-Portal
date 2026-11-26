@@ -6,6 +6,8 @@ One settings source for the whole backend. Nothing here has a secret default, an
 
 import json
 import logging
+import re
+from email.utils import parseaddr
 from functools import lru_cache
 from typing import Annotated, Literal, Self
 from urllib.parse import urlsplit
@@ -28,11 +30,25 @@ DEVELOPMENT_FRONTEND_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"
 DEVELOPMENT_FRONTEND_BASE_URL = "http://127.0.0.1:5173"
 DEVELOPMENT_API_BASE_URL = "http://127.0.0.1:8000"
 
+#: Visible ASCII only: no space, control character or non-ASCII letter.
+_HEADER_TOKEN = re.compile(r"^[!-~]+$")
+_MAILBOX = re.compile(r"^[^@\s<>,;]+@[^@\s<>,;]+\.[A-Za-z]{2,}$")
+
+
+def _is_mailbox(value: str) -> bool:
+    return bool(_MAILBOX.fullmatch(value))
+
+
 #: The names one machine answers to. Cookies treat each as a different host (AUTH_RBAC.md §5.1).
 LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
 
 #: Environments served over HTTPS behind a real hostname.
 HOSTED_ENVIRONMENTS = frozenset({"staging", "production"})
+
+#: What a screen may truthfully say about e-mail (``Settings.email_delivery``): ``email`` - a real
+#: provider is configured (never a promise that a message arrived); ``console`` - printed in the
+#: developer's API terminal, nothing is sent; ``off`` - nothing is sent or shown anywhere.
+EmailDelivery = Literal["email", "console", "off"]
 
 #: The recent-authentication window for staff management (AUTH_RBAC.md §27.7). A hosted
 #: environment may shorten it but never weaken it.
@@ -57,7 +73,11 @@ def _normalize_origin(raw: str) -> str:
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    # ``hide_input_in_errors``: a failed startup check would otherwise quote the raw input - API
+    # keys, the OAuth client secret and the database password included - into a deployment log.
+    model_config = SettingsConfigDict(
+        env_file=".env", env_file_encoding="utf-8", extra="ignore", hide_input_in_errors=True
+    )
 
     app_name: str = "B-17 Portal API"
     app_version: str = __version__
@@ -108,10 +128,17 @@ class Settings(BaseSettings):
     google_oauth_provider: Literal["disabled", "google", "fake"] = "disabled"
     google_oauth_client_id: str | None = None
     google_oauth_client_secret: SecretStr | None = None
-    #: ``memory`` (tests), ``console`` (development) or ``disabled`` (no provider chosen yet).
-    #: Staging/production can only be ``disabled`` until a provider exists.
-    email_backend: Literal["memory", "console", "disabled"] | None = None
+    #: ``memory`` (tests), ``console`` (development), ``resend`` (the real provider; needs
+    #: ``RESEND_API_KEY`` and a real ``EMAIL_FROM``) or ``disabled``. Staging/production allow only
+    #: ``resend`` or ``disabled`` (the default there).
+    email_backend: Literal["memory", "console", "disabled", "resend"] | None = None
     email_from: str = "B-17 Portal <no-reply@localhost>"
+    #: A monitored support mailbox: used as ``Reply-To`` and named in the footer. Unset by default,
+    #: so no message points a person at a mailbox that may not exist.
+    email_support_address: str | None = None
+    resend_api_key: SecretStr | None = None
+    #: Timeout of each network operation of one send attempt (connect, write, read).
+    email_timeout_seconds: float = Field(default=10.0, ge=1, le=30)
     #: Argon2id parameters (one place: ``app.core.security.passwords``). Staging/production
     #: refuse values below the OWASP floor (m >= 19 MiB, t >= 2, p >= 1).
     password_hash_time_cost: int = Field(default=3, ge=1, le=10)
@@ -200,6 +227,29 @@ class Settings(BaseSettings):
     def _empty_google_credential_is_unset(cls, value: object) -> object:
         return None if isinstance(value, str) and not value.strip() else value
 
+    @field_validator("resend_api_key", "email_support_address", mode="before")
+    @classmethod
+    def _empty_email_setting_is_unset(cls, value: object) -> object:
+        """Blank means unset; the spaces or newline a paste often adds are not part of a value."""
+        return (value.strip() or None) if isinstance(value, str) else value
+
+    @field_validator("resend_api_key")
+    @classmethod
+    def _key_is_a_single_token(cls, value: SecretStr | None) -> SecretStr | None:
+        """Anything else cannot be an HTTP header: refuse it at startup, without quoting it."""
+        if value is not None and not _HEADER_TOKEN.fullmatch(value.get_secret_value()):
+            raise ValueError("RESEND_API_KEY must be one word of printable ASCII characters")
+        return value
+
+    @field_validator("email_from", "email_support_address")
+    @classmethod
+    def _one_line_address(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        if any(ord(char) < 0x20 or ord(char) == 0x7F for char in value):
+            raise ValueError("an email address setting must be a single line")
+        return value.strip()
+
     @field_validator("frontend_base_url", "api_public_base_url", mode="before")
     @classmethod
     def _normalize_base_urls(cls, value: object) -> object:
@@ -226,6 +276,7 @@ class Settings(BaseSettings):
         if self.api_public_base_url is None and self.environment == "development":
             self.api_public_base_url = DEVELOPMENT_API_BASE_URL
         self._check_google_settings(hosted)
+        self._check_email_settings(hosted)
         if self.session_absolute_days < self.session_idle_days:
             raise ValueError("SESSION_ABSOLUTE_DAYS must not be shorter than SESSION_IDLE_DAYS")
         if hosted:
@@ -244,10 +295,10 @@ class Settings(BaseSettings):
                     "FRONTEND_BASE_URL is required in staging/production and must be one of "
                     "FRONTEND_ORIGINS"
                 )
-            if self.email_backend != "disabled":
+            if self.email_backend not in ("resend", "disabled"):
                 raise ValueError(
-                    "EMAIL_BACKEND must be 'disabled' in staging/production until a delivery "
-                    "provider is implemented (console/memory must never run there)"
+                    "EMAIL_BACKEND must be 'resend' or 'disabled' in staging/production "
+                    "(console/memory must never run there)"
                 )
             if (
                 self.password_hash_memory_cost_kib < ARGON2_MIN_MEMORY_KIB
@@ -266,6 +317,30 @@ class Settings(BaseSettings):
         if self.password_hash_memory_cost_kib < 8 * self.password_hash_parallelism:
             raise ValueError("PASSWORD_HASH_MEMORY_COST_KIB must be at least 8 x parallelism")
         return self
+
+    def _check_email_settings(self, hosted: bool) -> None:
+        """A real provider must be completely configured, or the API does not start. No message
+        ever quotes the key."""
+        if self.email_support_address is not None and not _is_mailbox(self.email_support_address):
+            raise ValueError("EMAIL_SUPPORT_ADDRESS must be an email address")
+        if self.email_backend != "resend":
+            return
+        if self.environment == "test":
+            raise ValueError(
+                "EMAIL_BACKEND=resend can never run with ENVIRONMENT=test: tests must not send "
+                "real e-mail"
+            )
+        if self.resend_api_key is None:
+            raise ValueError("RESEND_API_KEY is required when EMAIL_BACKEND=resend")
+        if not _is_mailbox(parseaddr(self.email_from)[1]):
+            raise ValueError(
+                "EMAIL_FROM must be a sender on a real domain, e.g. "
+                "'B-17 Portal <notifications@your-domain>', when EMAIL_BACKEND=resend"
+            )
+        if self.frontend_base_url is None:
+            raise ValueError("FRONTEND_BASE_URL is required when EMAIL_BACKEND=resend")
+        if hosted and not self.frontend_base_url.startswith("https://"):
+            raise ValueError("FRONTEND_BASE_URL must be https:// when hosted: e-mails link to it")
 
     def _check_google_settings(self, hosted: bool) -> None:
         provider = self.google_oauth_provider
@@ -292,6 +367,13 @@ class Settings(BaseSettings):
                 )
             if hosted and not self.api_public_base_url.startswith("https://"):
                 raise ValueError("API_PUBLIC_BASE_URL must be https:// in staging/production")
+
+    @property
+    def email_delivery(self) -> EmailDelivery:
+        """Derived from configuration only, so it can never depend on an account."""
+        if self.email_backend == "resend":
+            return "email"
+        return "console" if self.email_backend == "console" else "off"
 
     @property
     def google_redirect_uri(self) -> str:

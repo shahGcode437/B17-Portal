@@ -1,9 +1,11 @@
 """Shared fixtures.
 
-Isolation rules for the backend suite:
-  * every app under test is built from an explicit ``Settings(_env_file=None, environment="test")``
-    — the developer's real ``.env`` and shell variables are never read;
-  * variables the settings read are removed from the environment for each test;
+Isolation rules for the backend suite (``tests/isolation.py`` enforces the first three):
+  * no ``Settings`` built in the test process reads a ``.env`` file - not even through
+    ``get_settings()``, a CLI or Alembic;
+  * variables the settings read are removed from the environment, at import and for each test;
+  * sockets may reach only this machine: no test can contact Google, an e-mail provider or any
+    other service;
   * ``app.main`` (which builds an app from the real environment at import time) is not imported
     here; it is only exercised in a subprocess with a controlled environment.
 Database tests (``tests/db``) additionally require an explicit, validated ``TEST_DATABASE_URL`` —
@@ -17,29 +19,36 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.core.config import Settings
+from app.core.config import Settings, get_settings
 from app.factory import create_app
+from tests import isolation
+from tests.isolation import SETTINGS_ENV_VARS
+
+# Before any test module is imported or any fixture runs.
+isolation.install()
 
 ALLOWED_ORIGIN = "http://localhost:5173"
-SETTINGS_ENV_VARS = (
-    "APP_NAME",
-    "APP_VERSION",
-    "ENVIRONMENT",
-    "DEBUG",
-    "API_V1_PREFIX",
-    "FRONTEND_ORIGINS",
-    "LOG_LEVEL",
-    "DATABASE_URL",
-    "DB_CONNECT_TIMEOUT_SECONDS",
-    "LOCALITIES",
-)
 
 
 @pytest.fixture(autouse=True)
-def _clean_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+def _clean_environment(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     for name in SETTINGS_ENV_VARS:
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("ENVIRONMENT", "test")
+    get_settings.cache_clear()  # no test inherits settings another test built
+    yield
+    get_settings.cache_clear()
+
+
+@pytest.fixture(autouse=True)
+def _no_outside_network() -> Iterator[None]:
+    """A refused connection fails the test even when the code under test swallowed the error."""
+    isolation.blocked_attempts.clear()
+    yield
+    attempts = list(isolation.blocked_attempts)
+    isolation.blocked_attempts.clear()
+    if attempts:
+        pytest.fail(f"the test tried to reach outside this machine: {attempts}", pytrace=False)
 
 
 @pytest.fixture

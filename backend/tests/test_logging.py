@@ -9,7 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.core.logging import JsonFormatter, RequestIdFilter, configure_logging, request_id_var
-from tests.conftest import SETTINGS_ENV_VARS
+from tests.isolation import remove_settings_variables
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 
@@ -122,7 +122,8 @@ def test_importing_app_main_builds_a_working_app_from_a_controlled_environment()
             "print(TestClient(app).get('/api/v1/health').status_code)",
         ]
     )
-    env = {k: v for k, v in os.environ.items() if k not in SETTINGS_ENV_VARS}
+    env = dict(os.environ)
+    remove_settings_variables(env)
     env["ENVIRONMENT"] = "test"
     result = subprocess.run(
         [sys.executable, "-W", "ignore", "-c", code],

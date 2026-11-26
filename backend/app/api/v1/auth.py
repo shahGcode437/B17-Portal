@@ -1,12 +1,13 @@
 """Email/password authentication endpoints (Phase 11B; docs/backend/AUTH_RBAC.md §12).
 
 HTTP only: parse, call ``AuthService`` (which owns the transactions), set/clear the session
-cookie, schedule email delivery **after** the commit, and shape the response. Every response here
-is ``Cache-Control: no-store`` (see ``AuthSecurityMiddleware``). The raw session token only ever
-leaves in the ``Set-Cookie`` header; ``csrfToken`` (derived from it) is the only token in a body.
+cookie, hand e-mail to the dispatcher **after** the commit, and shape the response. Every
+response here is ``Cache-Control: no-store`` (see ``AuthSecurityMiddleware``). The raw session
+token only ever leaves in the ``Set-Cookie`` header; ``csrfToken`` (derived from it) is the only
+token in a body.
 """
 
-from fastapi import APIRouter, BackgroundTasks, Request, Response
+from fastapi import APIRouter, Request, Response
 from fastapi.responses import RedirectResponse
 
 from app.api.cookies import (
@@ -22,6 +23,7 @@ from app.core.security.tokens import csrf_token_for
 from app.dependencies.auth import (
     AuthServiceDep,
     CurrentUser,
+    EmailDispatcherDep,
     EmailSenderDep,
     OAuthServiceDep,
     OptionalUser,
@@ -46,7 +48,8 @@ from app.schemas.auth import (
 from app.schemas.envelope import Envelope
 from app.services.auth import AccountMethods, AuthService, IssuedSession
 from app.services.auth_sessions import Principal
-from app.services.email import EmailMessage, EmailSender, deliver
+from app.services.email import EmailMessage, EmailSender
+from app.services.email_dispatch import EmailDispatcher
 from app.services.oauth.flow import CALLBACK_ERROR_CODES
 
 router = APIRouter(
@@ -65,8 +68,11 @@ def _user_agent(request: Request) -> str | None:
     return request.headers.get("user-agent")
 
 
-def auth_user_body(principal: Principal, methods: AccountMethods, session_token: str) -> AuthUser:
+def auth_user_body(
+    principal: Principal, methods: AccountMethods, session_token: str, settings: Settings
+) -> AuthUser:
     return AuthUser(
+        email_delivery=settings.email_delivery,
         id=principal.user_id,
         display_name=principal.display_name,
         email=principal.email,
@@ -92,10 +98,11 @@ def _max_age(principal: Principal) -> int:
 
 
 def _schedule(
-    background: BackgroundTasks, sender: EmailSender, messages: tuple[EmailMessage, ...]
+    dispatcher: EmailDispatcher, sender: EmailSender, messages: tuple[EmailMessage, ...]
 ) -> None:
+    """Hand committed messages over. Never raises and never waits for the provider."""
     for message in messages:
-        background.add_task(deliver, sender, message)
+        dispatcher.submit(sender, message)
 
 
 def _signed_in(
@@ -108,7 +115,9 @@ def _signed_in(
     principal = issued.principal
     set_session_cookie(response, settings, issued.session_token, _max_age(principal))
     return Envelope(
-        data=auth_user_body(principal, service.account_methods(principal), issued.session_token)
+        data=auth_user_body(
+            principal, service.account_methods(principal), issued.session_token, settings
+        )
     )
 
 
@@ -123,7 +132,7 @@ def register(
     payload: RegisterRequest,
     request: Request,
     response: Response,
-    background: BackgroundTasks,
+    dispatcher: EmailDispatcherDep,
     service: AuthServiceDep,
     settings: SettingsDep,
     sender: EmailSenderDep,
@@ -138,7 +147,7 @@ def register(
         display_name=payload.display_name,
         user_agent=_user_agent(request),
     )
-    _schedule(background, sender, issued.emails)
+    _schedule(dispatcher, sender, issued.emails)
     return _signed_in(issued, service=service, settings=settings, response=response)
 
 
@@ -147,8 +156,10 @@ def login(
     payload: LoginRequest,
     request: Request,
     response: Response,
+    dispatcher: EmailDispatcherDep,
     service: AuthServiceDep,
     settings: SettingsDep,
+    sender: EmailSenderDep,
 ) -> Envelope[AuthUser]:
     """Unknown email, wrong password and password-less accounts all answer one
     ``401 invalid_credentials``. A correct password on a suspended account is
@@ -158,6 +169,7 @@ def login(
         password=payload.password.get_secret_value(),
         user_agent=_user_agent(request),
     )
+    _schedule(dispatcher, sender, issued.emails)
     return _signed_in(issued, service=service, settings=settings, response=response)
 
 
@@ -168,7 +180,8 @@ def me(
     """Identity, explicit roles, professional plan summary, sign-in methods, session expiry and
     the session-bound ``csrfToken`` (hold it in memory; send it as ``X-CSRF-Token``)."""
     token = request.cookies.get(settings.auth_cookie_name, "")
-    return Envelope(data=auth_user_body(principal, service.account_methods(principal), token))
+    methods = service.account_methods(principal)
+    return Envelope(data=auth_user_body(principal, methods, token, settings))
 
 
 @router.post("/logout", status_code=204, summary="Sign out this device")
@@ -203,13 +216,13 @@ def verify_email(payload: VerifyEmailRequest, service: AuthServiceDep) -> Respon
 @router.post("/resend-verification", status_code=204, summary="Send a fresh verification email")
 def resend_verification(
     principal: CurrentUser,
-    background: BackgroundTasks,
+    dispatcher: EmailDispatcherDep,
     service: AuthServiceDep,
     sender: EmailSenderDep,
 ) -> Response:
     """Authenticated + CSRF. A no-op for an already-verified account. Throttled."""
-    _schedule(background, sender, service.resend_verification(principal))
-    return Response(status_code=204, background=background)
+    _schedule(dispatcher, sender, service.resend_verification(principal))
+    return Response(status_code=204)
 
 
 @router.post(
@@ -220,13 +233,14 @@ def resend_verification(
 )
 def forgot_password(
     payload: ForgotPasswordRequest,
-    background: BackgroundTasks,
+    dispatcher: EmailDispatcherDep,
     service: AuthServiceDep,
+    settings: SettingsDep,
     sender: EmailSenderDep,
 ) -> Envelope[AcceptedStatus]:
     """Always the same ``202`` body, whether or not the account exists."""
-    _schedule(background, sender, service.forgot_password(email=payload.email))
-    return Envelope(data=AcceptedStatus())
+    _schedule(dispatcher, sender, service.forgot_password(email=payload.email))
+    return Envelope(data=AcceptedStatus(email_delivery=settings.email_delivery))
 
 
 @router.post(
@@ -237,7 +251,7 @@ def forgot_password(
 )
 def reset_password(
     payload: ResetPasswordRequest,
-    background: BackgroundTasks,
+    dispatcher: EmailDispatcherDep,
     service: AuthServiceDep,
     sender: EmailSenderDep,
 ) -> Response:
@@ -245,8 +259,8 @@ def reset_password(
     messages = service.reset_password(
         raw_token=payload.token, new_password=payload.new_password.get_secret_value()
     )
-    _schedule(background, sender, messages)
-    return Response(status_code=204, background=background)
+    _schedule(dispatcher, sender, messages)
+    return Response(status_code=204)
 
 
 @router.post(
@@ -258,7 +272,7 @@ def change_password(
     payload: ChangePasswordRequest,
     principal: CurrentUser,
     response: Response,
-    background: BackgroundTasks,
+    dispatcher: EmailDispatcherDep,
     service: AuthServiceDep,
     settings: SettingsDep,
     sender: EmailSenderDep,
@@ -270,7 +284,7 @@ def change_password(
         current_password=payload.current_password.get_secret_value(),
         new_password=payload.new_password.get_secret_value(),
     )
-    _schedule(background, sender, issued.emails)
+    _schedule(dispatcher, sender, issued.emails)
     return _signed_in(issued, service=service, settings=settings, response=response)
 
 
@@ -315,7 +329,7 @@ def _redirect(settings: Settings, path: str) -> RedirectResponse:
 )
 def google_callback(
     request: Request,
-    background: BackgroundTasks,
+    dispatcher: EmailDispatcherDep,
     service: OAuthServiceDep,
     settings: SettingsDep,
     sender: EmailSenderDep,
@@ -339,8 +353,7 @@ def google_callback(
         redirect = _redirect(settings, outcome.return_to)
         if outcome.session_token is not None and outcome.session_max_age is not None:
             set_session_cookie(redirect, settings, outcome.session_token, outcome.session_max_age)
-        _schedule(background, sender, outcome.emails)
-        redirect.background = background
+        _schedule(dispatcher, sender, outcome.emails)
     else:
         code = outcome.error if outcome.error in CALLBACK_ERROR_CODES else "oauth_failed"
         redirect = _redirect(settings, f"/login?error={code}")

@@ -67,7 +67,8 @@ def put_professional_profile(
         response.status_code = 201
     updated = dataclasses.replace(principal, plan_code=plan)
     token = request.cookies.get(settings.auth_cookie_name, "")
-    return Envelope(data=auth_user_body(updated, auth_service.account_methods(updated), token))
+    methods = auth_service.account_methods(updated)
+    return Envelope(data=auth_user_body(updated, methods, token, settings))
 
 
 @router.get(

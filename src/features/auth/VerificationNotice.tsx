@@ -3,10 +3,10 @@ import { MailWarning } from "lucide-react"
 import { Typography } from "@/components/foundation/Typography"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/hooks/useAuth"
-import { devVerifyCommand, isDevMail } from "@/config/devMail"
+import { devVerifyCommand, mailMode } from "@/config/devMail"
 import { resendVerification } from "@/lib/api/auth"
 import { authErrorMessage } from "@/features/auth/authMessages"
-import { VERIFICATION_REASON, VERIFICATION_UNLOCKS } from "@/features/auth/verificationCopy"
+import { CHECK_INBOX, VERIFICATION_REASON, VERIFICATION_UNLOCKS } from "@/features/auth/verificationCopy"
 
 /**
  * Non-blocking reminder for a signed-in account whose e-mail is not yet verified (Phase 12C).
@@ -21,7 +21,8 @@ function VerificationNotice() {
   const [error, setError] = useState<string | null>(null)
 
   if (!user || user.emailVerified) return null
-  const devMail = isDevMail()
+  const mode = mailMode(user.emailDelivery)
+  const developer = mode === "console" || mode === "off"
 
   async function resend() {
     setState("sending")
@@ -48,26 +49,34 @@ function VerificationNotice() {
           <Typography variant="body-sm" className="font-medium">
             Verify your email address
           </Typography>
-          {devMail ? (
+          {developer ? (
             // Development: nothing is e-mailed. Say what is true and how to get the link.
             <Typography variant="body-sm" className="text-muted-foreground" data-testid="dev-verification-hint">
               Development: no e-mail is sent. In <code>backend/</code> run{" "}
-              <code className="break-all">{devVerifyCommand(user.email)}</code> to get your link, then open it (the same
-              link is also printed in the API terminal). Verifying lets you {VERIFICATION_UNLOCKS}; browsing works either
-              way.
+              <code className="break-all">{devVerifyCommand(user.email)}</code> to get your link, then open it
+              {mode === "console" ? " (the same link is also printed in the API terminal)" : ""}. Verifying lets you{" "}
+              {VERIFICATION_UNLOCKS}; browsing works either way.
             </Typography>
           ) : (
-            // Production: production e-mail delivery does not exist yet, so this never says a message was sent.
+            // No wording says a message was sent. With a real provider it says where to look.
             <Typography variant="body-sm" className="text-muted-foreground" data-testid="verification-reason">
               {user.email} is not verified yet. {VERIFICATION_REASON}
+            </Typography>
+          )}
+          {mode === "inbox" && state !== "sent" && ( // after a resend the confirmation below says the same
+            <Typography variant="body-sm" className="text-muted-foreground" data-testid="inbox-verification-hint">
+              {CHECK_INBOX} for the verification email; it can take a few minutes. If it is not there, use the button
+              below to request a new one.
             </Typography>
           )}
           <div role="status" aria-live="polite">
             {state === "sent" && (
               <Typography variant="body-sm">
-                {devMail
-                  ? "A new link was issued. Nothing is e-mailed in development: run the command above, or read the API terminal."
-                  : "A new verification link was requested."}
+                {developer
+                  ? `A new link was issued. Nothing is e-mailed in development: run the command above${mode === "console" ? ", or read the API terminal" : ""}.`
+                  : mode === "inbox"
+                    ? `A new verification link was requested. ${CHECK_INBOX}; it can take a few minutes. Only the newest link works.`
+                    : "A new verification link was requested."}
               </Typography>
             )}
             {error && (

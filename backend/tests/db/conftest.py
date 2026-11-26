@@ -39,14 +39,18 @@ if TYPE_CHECKING:
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 
 
-def _from_environment(name: str) -> str | None:
-    """A variable from the process environment, else from a local ``backend/.env``."""
-    return os.environ.get(name) or dotenv_values(BACKEND_ROOT / ".env").get(name) or None
+def _configured(name: str) -> list[str]:
+    """Every value of one database variable: the process environment first, then a local
+    ``backend/.env``. The harness is the only part of the suite that reads that file, and only for
+    ``TEST_DATABASE_URL`` and ``DATABASE_URL`` (tests/isolation.py)."""
+    found = (os.environ.get(name), dotenv_values(BACKEND_ROOT / ".env").get(name))
+    return [value for value in found if value]
 
 
 # Captured at import time: the autouse fixture in tests/conftest.py clears DATABASE_URL per test.
-TEST_DATABASE_URL = _from_environment("TEST_DATABASE_URL")
-PROTECTED_DATABASE_URL = _from_environment("DATABASE_URL")
+TEST_DATABASE_URL = next(iter(_configured("TEST_DATABASE_URL")), None)
+#: EVERY application database named anywhere is protected, not only the one that takes precedence.
+PROTECTED_DATABASE_URLS = _configured("DATABASE_URL")
 
 
 def alembic_config(url: str) -> Config:
@@ -68,7 +72,7 @@ def test_database_url() -> URL:
             pytest.fail(message, pytrace=False)  # CI must never skip the database suite
         pytest.skip(message)
     try:
-        return assert_safe_test_database(TEST_DATABASE_URL, protected_urls=[PROTECTED_DATABASE_URL])
+        return assert_safe_test_database(TEST_DATABASE_URL, protected_urls=PROTECTED_DATABASE_URLS)
     except UnsafeTestDatabaseError as error:
         pytest.fail(f"UNSAFE TEST DATABASE: {error}", pytrace=False)
 

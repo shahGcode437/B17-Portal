@@ -1,5 +1,6 @@
+import { rememberEmailDelivery } from "@/config/devMail"
 import { apiRequest } from "@/lib/api/client"
-import type { AuthUser, StaffScope } from "@/types/auth"
+import type { AuthUser, EmailDelivery, StaffScope } from "@/types/auth"
 
 /**
  * Typed wrappers for the backend auth endpoints (docs/backend/AUTH_RBAC.md §12). Request fields are
@@ -24,8 +25,17 @@ export function normalizeStaffScopes(value: unknown): StaffScope[] {
   return STAFF_SCOPES.filter((scope) => value.includes(scope))
 }
 
+const EMAIL_DELIVERY: readonly EmailDelivery[] = ["email", "console", "off"]
+
+/** Only a documented value; anything else (or nothing) is "unknown", which keeps the cautious wording. */
+export function normalizeEmailDelivery(value: unknown): EmailDelivery | undefined {
+  return EMAIL_DELIVERY.find((mode) => mode === value)
+}
+
 function normalizeAuthUser(user: AuthUser): AuthUser {
-  return { ...user, staffScopes: normalizeStaffScopes(user.staffScopes) }
+  const emailDelivery = normalizeEmailDelivery(user.emailDelivery)
+  rememberEmailDelivery(emailDelivery)
+  return { ...user, staffScopes: normalizeStaffScopes(user.staffScopes), emailDelivery }
 }
 
 /** `GET /auth/me` — 200 = signed in, 401 = anonymous. Pre-session by nature (it is how we find out). */
@@ -61,9 +71,15 @@ export function resendVerification(): Promise<void> {
   return apiRequest<void>("POST", "/auth/resend-verification", { session: true })
 }
 
-/** `POST /auth/forgot-password` — always `202 accepted`, whether or not the account exists. */
-export function forgotPassword(email: string): Promise<void> {
-  return apiRequest<void>("POST", "/auth/forgot-password", { body: { email } })
+/**
+ * `POST /auth/forgot-password` — always `202 accepted`, whether or not the account exists. The reply also says how
+ * the server handles mail, which is the same for every address; nothing else in it is read.
+ */
+export async function forgotPassword(email: string): Promise<EmailDelivery | undefined> {
+  const reply = await apiRequest<{ emailDelivery?: unknown } | undefined>("POST", "/auth/forgot-password", { body: { email } })
+  const delivery = normalizeEmailDelivery(reply?.emailDelivery)
+  rememberEmailDelivery(delivery)
+  return delivery
 }
 
 /** `POST /auth/reset-password` — does NOT sign the user in. */

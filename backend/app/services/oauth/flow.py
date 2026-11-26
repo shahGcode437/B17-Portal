@@ -19,6 +19,7 @@ text, an authorization code, a token or an email.
 
 import hmac
 import logging
+import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
@@ -29,6 +30,7 @@ from sqlalchemy.orm import Session
 from app.core.clock import Clock
 from app.core.config import Settings
 from app.core.errors import AppError, ErrorCode
+from app.core.rate_limit import RateLimiter
 from app.core.security.identity import normalize_email
 from app.core.security.redirects import InvalidReturnTo, resolve_return_to
 from app.core.security.tokens import hash_token, is_well_formed_token, new_token
@@ -52,7 +54,9 @@ from app.services.auth import VERIFICATION_TTL
 from app.services.auth_audit import AuthAuditService
 from app.services.auth_sessions import Principal, SessionService
 from app.services.auth_tokens import issue_token
-from app.services.email import EmailMessage, verification_email
+from app.services.email import EmailMessage
+from app.services.email_templates import verification_email
+from app.services.login_notices import login_notices
 from app.services.oauth.provider import (
     OAuthIdentity,
     OAuthProvider,
@@ -60,6 +64,7 @@ from app.services.oauth.provider import (
     code_challenge_s256,
     new_code_verifier,
 )
+from app.services.rate_limit import PostgresRateLimiter
 
 logger = logging.getLogger("app.oauth")
 
@@ -101,6 +106,18 @@ class CallbackOutcome:
     #: True once this callback consumed its flow (so the single-use cookie is spent and cleared). A
     #: request that matched no flow (bad state, wrong browser) leaves the genuine flow untouched.
     flow_spent: bool = False
+    #: Set when an EXISTING account signed in: what the "new sign-in" notice needs. It is turned
+    #: into a message only after the sign-in transaction has committed.
+    signed_in: "SignedIn | None" = None
+
+
+@dataclass(frozen=True)
+class SignedIn:
+    user_id: uuid.UUID
+    session_id: uuid.UUID
+    email: str
+    email_verified: bool
+    occurred_at: datetime
 
 
 def _failure(code: str) -> CallbackOutcome:
@@ -114,8 +131,10 @@ class OAuthService:
         settings: Settings,
         clock: Clock,
         providers: Mapping[AuthProvider, OAuthProvider],
+        limiter: RateLimiter | None = None,
     ) -> None:
         self._session = session
+        self._limiter = limiter or PostgresRateLimiter(session, clock)
         self._settings = settings
         self._clock = clock
         self._providers = providers
@@ -283,13 +302,31 @@ class OAuthService:
         for _attempt in range(2):
             try:
                 with transaction(self._session):
-                    return self._resolve_login(flow, identity, user_agent)
+                    outcome = self._resolve_login(flow, identity, user_agent)
+                return self._with_login_notice(outcome)  # committed: now the notice
             except Rejected as rejected:
                 return _failure(rejected.code)
             except IntegrityError:
                 # Lost a race on (provider, subject) or the email: re-resolve with the winner.
                 continue
         return _failure("oauth_failed")
+
+    def _with_login_notice(self, outcome: CallbackOutcome) -> CallbackOutcome:
+        """Adds the "new sign-in" notice to a committed sign-in. Never raises."""
+        who = outcome.signed_in
+        if who is None:
+            return outcome
+        notices = login_notices(
+            self._settings,
+            self._limiter,
+            user_id=who.user_id,
+            session_id=who.session_id,
+            email=who.email,
+            email_verified=who.email_verified,
+            method="google",
+            occurred_at=who.occurred_at,
+        )
+        return replace(outcome, emails=outcome.emails + notices, signed_in=None)
 
     def _identity_email(self, identity: OAuthIdentity) -> str:
         if identity.email is None:
@@ -445,7 +482,19 @@ class OAuthService:
         if event is not None:
             self._audit.record(event, user_id=user.id, details={"provider": identity.provider})
         max_age = max(1, int((auth_session.expires_at - now).total_seconds()))
-        return CallbackOutcome(return_to=flow.return_to, session_token=raw, session_max_age=max_age)
+        signed_in = (  # ``event`` is None when the account is being created, not signed in to
+            None
+            if event is None
+            else SignedIn(
+                user.id, auth_session.id, user.email, user.email_verified_at is not None, now
+            )
+        )
+        return CallbackOutcome(
+            return_to=flow.return_to,
+            session_token=raw,
+            session_max_age=max_age,
+            signed_in=signed_in,
+        )
 
     # -- connect (link flows) ------------------------------------------------------------------
 

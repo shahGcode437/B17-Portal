@@ -89,7 +89,7 @@ Hosting provider(s) and pricing tier · domain names · email-sending provider �
 - **Scheduled maintenance (implemented):** run `python -m app.cli.auth_maintenance purge` periodically (daily) from the host's scheduler; it is a safety-net sweep (login already deletes a user's own expired sessions; expired sessions have no retention guarantee), prints how many rows it removed, is idempotent, and correctness never depends on it.
 - **Bootstrap runbook (implemented):** register normally, verify the email, then run `python -m app.cli.staff promote-super-admin <email> --reason "first Super Admin"` with `DATABASE_URL` pointing at the target database (a reason of 10 to 500 characters is mandatory; audited with `source = cli`; revokes that user's sessions; `demote-super-admin <email> --reason ...` removes the role and is refused for the last usable Super Admin). The target must be an active, verified account with a sign-in method that works right now (a password, or a linked identity whose provider is enabled — with Google sign-in off a Google-only account is not usable and is neither counted nor promotable); run the CLI with the same environment as the API; in staging / production a fixture, demo or reserved-domain address is refused. The normal target is 2 usable Super Admins: a third needs `--override-policy`, one above `SUPER_ADMIN_SAFETY_CEILING` (default 3) needs `--break-glass`, and `--break-glass` is also how an operator documents a recovery from zero. `python -m app.cli.admin grant|revoke` still works as a deprecated wrapper (it now also needs `--reason`). There is no public admin signup, no HTTP endpoint that promotes or demotes a Super Admin, and Moderators are appointed through the Super Admin staff API (`AUTH_RBAC.md` §30).
 - **Planned hardening (RBAC-0 freeze, 2026-11-19; NOT implemented — `AUTH_RBAC.md` §27):** `admin` will mean Super Admin (1–2 accounts operationally; never zero usable), promotion and demotion will stay CLI-only through a shared authority service that requires a reason, is audited and revokes the target's sessions, and hosted grants will reject fixture, demo and reserved-TLD identities. A scoped `moderator` role is planned beside it (the two roles are mutually exclusive). **Before PUBLIC production, every Super Admin and every Moderator must have MFA** (no production staff bypass; any bypass is explicit and development-only), and development fixtures and demo staff identities must not exist in staging or production: staging seeds no staff identity, and a staging Super Admin is provisioned explicitly through the staff CLI from an active, verified account on an approved, controlled staging / test domain or account.
-- **Email delivery** is `disabled` in staging/production until a provider is implemented (settings refuse `console`/`memory` there): verification and reset emails are not delivered yet, so enabling real sign-ups needs the provider and the custom domain first.
+- **Email delivery** (EMAIL-1, §13): a Resend adapter exists. Staging/production stay `disabled` until `EMAIL_BACKEND=resend` is configured with a verified sending domain; real delivery has been accepted **only locally through the Resend sandbox** (§13.5), so enabling real sign-ups still needs the verified domain, production credentials, the §13.6 requirements and the custom domain.
 - **Caching:** the API's `/auth/*` responses are `Cache-Control: no-store`; do not add CDN caching rules that ignore it.
 
 ## 10. Google sign-in (Phase 11C; local setup and diagnostics added in GOOGLE-AUTH-1)
@@ -203,3 +203,125 @@ Nothing here is implemented in 12A; it records what deployment must provide when
 - **SPA fallback for auth links.** `/verify-email`, `/reset-password`, `/forgot-password` and `/login` must serve `index.html` (the same SPA fallback as every route); the OAuth callback redirects the browser to `/login?error=…` or the requested `returnTo`.
 - **Caching.** Do not cache `/api/*` at the CDN for authenticated paths; the service worker already leaves `/api` untouched (network-only).
 - **Logs/analytics.** Do not add third-party scripts to the token routes; do not log full URLs of `/login?error=` or the token routes in analytics.
+
+## 13. Transactional email (EMAIL-1)
+
+Architecture, messages, failure behaviour and guarantees: `AUTH_RBAC.md` §14. **Status: real delivery was accepted by the project owner locally through the Resend sandbox (reported 2026-11-26; §13.5). No verified domain and no production delivery.** Nothing here is needed for development or CI.
+
+### 13.1 Provider: Resend (why)
+
+| | Resend | Postmark | Amazon SES |
+|---|---|---|---|
+| Free allowance (checked 2026-11-26) | 3,000 / month, **100 / day**; 3 domains; 30-day data retention | 100 / month | not checked |
+| First paid step | $20 / month for 50,000, no daily cap | about $15 / month for 10,000 | per-message pricing, lowest at volume |
+| Integration here | one HTTPS `POST` over the existing `httpx`; documented `Idempotency-Key` | HTTP API | AWS account, request signing or the AWS SDK (a new dependency) |
+
+Resend was chosen because it needs no new dependency, its idempotency key makes the single retry safe, and its setup is the smallest. SES is the one to revisit if volume (Grocery, service-request notifications) makes price matter. The choice is confined to `email_resend.py`. Prices and limits change: confirm them on the providers' pricing pages before buying.
+
+**Plan size matters.** Every password and Google sign-in by a verified user sends a notice. The free plan's 100 / day would be reached quickly with real users, and an exhausted quota **also stops verification and password-reset mail**. Use a paid plan before launch.
+
+### 13.2 Variables (server-side only; the key from the host's secret store, never `VITE_*`, never git)
+
+| Variable | Local default | Local Resend sandbox (§13.4) | Production |
+|---|---|---|---|
+| `EMAIL_BACKEND` | `console` | `resend` | `resend` (default there: `disabled`) |
+| `RESEND_API_KEY` | unset | your sending-only key | a separate sending-only key, restricted to `mail.b17portal.com` |
+| `EMAIL_FROM` | `B-17 Portal <no-reply@localhost>` | `B-17 Portal <onboarding@resend.dev>` | `B-17 Portal <notifications@mail.b17portal.com>` |
+| `EMAIL_SUPPORT_ADDRESS` | unset | unset | **unset until a monitored mailbox exists** (it becomes `Reply-To` and is named in the footer) |
+| `EMAIL_TIMEOUT_SECONDS` | `10` | `10` | `10` |
+| `FRONTEND_BASE_URL` | `http://127.0.0.1:5173` | `http://127.0.0.1:5173` | `https://b17portal.com` (every e-mail link uses it) |
+
+The key is one word of printable characters; spaces and newlines around a paste are dropped. An incomplete `resend` configuration stops the API at startup, `ENVIRONMENT=test` refuses `resend` altogether, and startup errors quote no input. **There is no frontend setting:** the API reports `emailDelivery` (`email` / `console` / `off`) and the screens follow it.
+
+### 13.3 The sending domain: `mail.b17portal.com` (owner action; nothing here was done)
+
+1. Resend account: two-factor sign-in, and limit who has access - the dashboard shows sent messages, **including live verification and reset links**, until they expire.
+2. Add the domain **`mail.b17portal.com`** (a subdomain keeps sending reputation apart from the main domain). The sender is **`notifications@mail.b17portal.com`**; sending does not require a mailbox at that address.
+3. At the DNS provider of `b17portal.com`, add **exactly** the records the domain's *Records* tab shows (names and values; record types vary, so do not copy them from a guide). Check whether your DNS provider appends the domain to the host name by itself.
+4. Add **DMARC** as a TXT record, monitoring only at first: host `_dmarc.mail.b17portal.com`, value `v=DMARC1; p=none; rua=mailto:<an address someone reads>`. Move to `quarantine`, then `reject`, once reports show that every legitimate sender passes. (A policy on `_dmarc.b17portal.com` would also cover subdomains; decide with whoever manages the main domain's mail.)
+5. Wait for *Verified*.
+6. **Keep open and click tracking OFF** (Resend's default), and do not add a tracking subdomain. Click tracking rewrites links through that domain, which would carry the one-time tokens there.
+7. Create a **new** API key with the sending-only permission (`sending_access`), restricted to this domain. Use it in the deployed environment only; revoke any key that is no longer used.
+
+### 13.4 Local setup with the Resend sandbox
+
+**What the sandbox can do:** from `onboarding@resend.dev`, Resend delivers **only to the e-mail address of your own Resend account** (anything else is refused with `403`). Resend's `delivered@resend.dev` and `bounced@resend.dev` are test recipients that simulate outcomes.
+
+1. In Resend, **API Keys → create a key** with the **sending-only** permission (API name `sending_access`, not full access). Without a verified domain there is nothing to restrict it to. Resend does not show the value again: copy it straight into the file below and nowhere else (not chat, not git, not a screenshot).
+2. In `backend/.env` (git-ignored) add or uncomment exactly:
+
+```
+EMAIL_BACKEND=resend
+RESEND_API_KEY=<paste your sending-only key>
+EMAIL_FROM=B-17 Portal <onboarding@resend.dev>
+```
+
+Leave `EMAIL_SUPPORT_ADDRESS` unset. `ENVIRONMENT` stays `development`; `FRONTEND_BASE_URL` already defaults to `http://127.0.0.1:5173`.
+
+3. **Use an empty database for the first run** if your Resend address already has a B-17 account locally (for example from the Google sign-in test): registration would answer "already registered", and the verification steps need a new account. This leaves `b17_dev` untouched. In PowerShell, from the repository root:
+
+```powershell
+docker exec b17-portal-db-1 psql -U b17 -d postgres -c "CREATE DATABASE b17_mail;"
+cd backend
+$env:DATABASE_URL = "postgresql+psycopg://b17:b17_dev_password@127.0.0.1:54329/b17_mail"
+.\.venv\Scripts\alembic.exe upgrade head
+```
+
+4. **Restart the API** from `backend/`, in that same window if you set `DATABASE_URL` (stop any API already on port 8000 first): `.\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000`.
+5. Start the app (`npm run dev`) and open `http://127.0.0.1:5173`. The links in the mail point at this local app, so **open them on the same computer**.
+
+To go back: set `EMAIL_BACKEND=console` (or comment the three lines), restart the API, and close that PowerShell window (or `Remove-Item Env:DATABASE_URL`). With no credentials at all, `console` prints each message in the API terminal and `python -m app.cli.dev_verify <email>` prints a verification link. **Automated tests never read these settings and cannot reach a provider** (`TESTING.md`).
+
+### 13.5 Manual acceptance checklist
+
+**Reported by the project owner, 2026-11-26 (local app, sandbox sender, own address):** registration verification e-mail; verifying the address on the laptop; the e-mail / password sign-in notice; the forgot-password e-mail; the password reset; the password-changed notice; the Google sign-in notice. The logs also showed the provider refusing an unauthorized sandbox recipient while the registration succeeded. In the table: step 1 (the verification mail and verifying; the on-screen wording was not separately reported), the sign-in mail of step 4, the mails and the reset of steps 6-7 (not the used-link refusal), and the Google notice of step 9. **Steps 2, 3, 5, 8, 10, 11 and 12 were not reported**; the unauthorized-recipient refusal is a different failure from step 12's wrong key. A tracking redirect seen in the Google notice is open (§13.7).
+
+Use your Resend account's address as the B-17 account. Check the spam folder too. `email accepted by provider` in the API log means accepted for sending; **only the inbox shows delivery.**
+
+| # | Do | Pass when |
+|---|---|---|
+| 1 | Register | the toast and the banner say to check your inbox and spam folder; no development text; **one** verification mail arrives from `onboarding@resend.dev` |
+| 2 | After a minute, **Profile → Resend verification email**, before opening any link | the screen says a new link was *requested*; a second mail arrives |
+| 3 | Open the **first** link, then the **newest** | the first is refused (invalid or used); the newest verifies the account |
+| 4 | Log out, log in with the password | **one** "New sign-in" mail: your address, the correct Pakistan time, *Email and password* |
+| 5 | Reload several pages while signed in | **no** further mail |
+| 6 | Log out, **Forgot password** with your address | the answer starts "If an account exists..." and says where to look; the reset mail arrives |
+| 7 | Reset the password; open the same link again | a *password changed* mail arrives; the used link is refused |
+| 8 | Forgot password with an address that has no account | the **same** on-screen answer as step 6; no mail |
+| 9 | Google sign-in notice: needs an account **created by Google** (a password account with the same address is refused by design, `identity_conflict`, and sends nothing). With the sandbox, the Google account **must use your Resend address** (the only recipient it reaches). Use another empty database (§13.4 step 3, a new name such as `b17_mail2`), *Continue with Google* once (creates the account: **no** mail), log out, *Continue with Google* again | **one** "New sign-in" mail saying *Google* |
+| 10 | In a received mail: view the original / headers and the link addresses | SPF and DKIM pass; links are plain `http://127.0.0.1:5173/...#token=` addresses, **not** rewritten through a tracking domain |
+| 11 | Read the API terminal output of the whole run | no token, link, API key or e-mail address on any log line |
+| 12 | Put a wrong key in `RESEND_API_KEY`, restart, log in | the login works; the log says `email refused` with a `providerStatus`, and shows no address or link. Restore the key |
+
+Limits that can interrupt the run: resend verification 1 per minute and 5 per day; forgot-password 3 per hour; 10 sign-in notices per hour; Resend's own free daily quota. There is no change-password screen, so that notice is covered by step 7 and the automated tests. After the domain is verified, repeat steps 1-8 from `notifications@mail.b17portal.com` to an address at a **different** provider, and confirm that SPF, DKIM **and DMARC** pass and that every link is `https://b17portal.com/...`.
+
+### 13.6 Mandatory before launch
+
+1. **Durable delivery.** The queue is process memory (`AUTH_RBAC.md` §14.2); it is accepted for development only.
+2. **Protection of verification and password-reset mail from notification saturation.** Today every kind shares **one** first-in, first-out queue of 100 with 2 workers, and **one** provider quota. A full queue drops the newest message **whatever its kind**. The cap of 10 notices per hour limits one account, not many accounts together. During a provider outage a message can hold a worker for about 20 seconds (two 10-second attempts), so only a few leave per minute and the queue fills. A design must reserve capacity or give account-recovery mail its own priority lane, **and** protect the sending quota.
+3. **Monitoring and alerting:** refused / unconfirmed / dropped sends (`app.email`), bounces and complaints (dashboard today; webhooks later), and quota use.
+4. A paid plan sized to the expected sign-ins; the verified `mail.b17portal.com`; DMARC; no support address until the mailbox is monitored.
+5. Per-IP rate limiting on `/api/v1/auth/*` at the proxy / CDN (it also protects the mail quota).
+6. **The tracking redirect (§13.7) identified and proven absent** from production mail, with open and click tracking off on the production sending domain.
+7. **MFA for every Super Admin and Moderator**, with no production bypass (`AUTH_RBAC.md` §27.13). It is not specific to e-mail; it is listed so that no launch list omits it.
+
+The **production OAuth prerequisites in §10 are unchanged**: production OAuth configuration, per-IP rate limiting including the OAuth start and callback, and removing the callback query string from every proxy / CDN access log.
+
+### 13.7 OPEN - a tracking redirect in the received Google sign-in notice
+
+**Reported by the project owner (2026-11-26).** Neither the redirect address nor the message source has been examined yet, so **the cause is not established.**
+
+**What the application sends (checked from the template and the adapter).** The Google notice has one link, in two places (button and text): the direct `{FRONTEND_BASE_URL}/forgot-password` address, which carries no token. Google's security address `https://myaccount.google.com/security` is **plain text**, which a mail app may turn into a link of its own. The adapter's request has no tracking field (`from`, `to`, `subject`, `text`, `html`, `reply_to`, `tags`), and the HTML loads nothing remote. So a redirect was introduced **after** the message left the API.
+
+**Candidates.** (a) **The provider rewriting links before delivery** (click tracking). Resend documents tracking as off by default and active only with a verified tracking subdomain; that documentation does not say how the shared `resend.dev` sandbox sender is configured. (b) **The mail app or a security product wrapping a link** when it is shown or clicked: Gmail and Google Workspace can send a click through a `google.com/url?...` address without changing the delivered message. Neither is confirmed.
+
+**How to decide it.** Open the received message's **original source** (Gmail: ⋮ → *Show original*; download it and read the decoded HTML part, since the encoded source wraps long lines) and look at each `href`. Also open the same message in the Resend dashboard and read its events and HTML.
+
+| Delivered source shows | Meaning |
+|---|---|
+| `href` values exactly the application's addresses | the message was not rewritten: the redirect is added by the mail app or a security product at view / click time |
+| `href` values pointing at any other host | links were **rewritten before delivery**: a launch blocker; tracking is on somewhere and must be off |
+
+Report only the **host name** of the redirect. **Do not paste a full redirect address or the message source** anywhere: a rewritten verification or reset address can contain a live one-time token and identifies the recipient.
+
+**Production requirement.** Open and click tracking stay **off** on `mail.b17portal.com`, with no tracking subdomain configured. Before launch, send all four message types from the verified domain and show in the delivered source that every link is the exact `https://b17portal.com/...` address - the verification and reset links with their `#token=` fragment intact - to at least a Gmail and a non-Gmail mailbox. Repeat after any change to the provider's domain settings. A rewrite would hand one-time tokens to a tracking service and its logs.

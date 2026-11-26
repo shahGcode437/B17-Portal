@@ -27,6 +27,12 @@ export type AuthRole = "admin" | "moderator"
  */
 export type StaffScope = "services" | "directory" | "food" | "education" | "property" | "news"
 
+/**
+ * How the server handles e-mail: a real provider, printed in the developer's API terminal, or nothing at all.
+ * Configuration only - it never says that a message was delivered.
+ */
+export type EmailDelivery = "email" | "console" | "off"
+
 export interface ProfessionalSummary {
   planCode: "free" | "premium"
 }
@@ -57,6 +63,8 @@ export interface AuthUser {
   session: SessionSummary
   /** In-memory CSRF token. The auth layer moves it out of the user object and never stores it. */
   csrfToken: string
+  /** Absent from an older backend; screens then keep their cautious wording. */
+  emailDelivery?: EmailDelivery
 }
 
 /** The user as the UI sees it: everything except the CSRF token. */

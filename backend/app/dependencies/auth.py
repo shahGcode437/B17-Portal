@@ -41,6 +41,7 @@ from app.services.auth import AuthService
 from app.services.auth_audit import AuthAuditService
 from app.services.auth_sessions import Authentication, Principal, SessionService
 from app.services.email import EmailSender
+from app.services.email_dispatch import EmailDispatcher
 from app.services.oauth.flow import OAuthService
 from app.services.oauth.provider import OAuthProvider
 from app.services.rate_limit import PostgresRateLimiter
@@ -58,6 +59,10 @@ def get_email_sender(request: Request) -> EmailSender:
     return cast(EmailSender, request.app.state.email_sender)
 
 
+def get_email_dispatcher(request: Request) -> EmailDispatcher:
+    return cast(EmailDispatcher, request.app.state.email_dispatcher)
+
+
 def get_oauth_providers(request: Request) -> dict[AuthProvider, OAuthProvider]:
     return cast(dict[AuthProvider, OAuthProvider], request.app.state.oauth_providers)
 
@@ -65,6 +70,7 @@ def get_oauth_providers(request: Request) -> dict[AuthProvider, OAuthProvider]:
 ClockDep = Annotated[Clock, Depends(get_clock)]
 PasswordServiceDep = Annotated[PasswordService, Depends(get_password_service)]
 EmailSenderDep = Annotated[EmailSender, Depends(get_email_sender)]
+EmailDispatcherDep = Annotated[EmailDispatcher, Depends(get_email_dispatcher)]
 
 
 def get_auth_service(

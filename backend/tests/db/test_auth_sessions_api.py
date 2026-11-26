@@ -54,6 +54,7 @@ def test_me_returns_exactly_the_approved_fields(auth_env: AuthEnv) -> None:
         "authMethods",
         "session",
         "csrfToken",
+        "emailDelivery",  # EMAIL-1, additive: configuration, never account data
     }
     assert data["roles"] == ["admin"] and data["professional"] == {"planCode": "premium"}
     assert data["staffScopes"] == []  # a Super Admin's authority is the role, never scope rows

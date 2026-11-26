@@ -1,4 +1,4 @@
-import { isDevMail } from "@/config/devMail"
+import { mailMode, type MailMode } from "@/config/devMail"
 import { useState } from "react"
 import { useForm } from "react-hook-form"
 import { Link } from "react-router-dom"
@@ -16,7 +16,7 @@ import { fieldErrors, isApiError } from "@/lib/api/errors"
 import { zodResolver } from "@/lib/zodResolver"
 import { PasswordInput } from "@/features/auth/PasswordInput"
 import { authErrorMessage } from "@/features/auth/authMessages"
-import { VERIFICATION_BANNER_REASON } from "@/features/auth/verificationCopy"
+import { CHECK_INBOX, VERIFICATION_BANNER_REASON } from "@/features/auth/verificationCopy"
 
 /** Client-side validation is UX only; the backend's 422 stays authoritative. */
 const loginSchema = z.object({
@@ -153,6 +153,14 @@ function LoginForm() {
   )
 }
 
+const IN_DEVELOPMENT = "Account created. In development no e-mail is sent: your Profile page shows how to verify."
+const ACCOUNT_CREATED: Record<MailMode, string> = {
+  inbox: `Account created. ${CHECK_INBOX} for the verification email.`,
+  console: IN_DEVELOPMENT,
+  off: IN_DEVELOPMENT,
+  neutral: "Account created. Verify your email address to list a business or send requests.",
+}
+
 function RegisterForm() {
   const { register: registerAccount } = useAuth()
   const { show } = useToast()
@@ -171,7 +179,7 @@ function RegisterForm() {
     setFormError(null)
     try {
       await registerAccount({ email: values.email, password: values.password, displayName: values.displayName })
-      show(isDevMail() ? "Account created. In development no e-mail is sent: your Profile page shows how to verify." : "Account created. Verify your email address to list a business or send requests.")
+      show(ACCOUNT_CREATED[mailMode()]) // the register reply has just reported how the server handles mail
     } catch (cause) {
       if (isApiError(cause) && cause.code === "email_already_registered") {
         setError("email", { message: authErrorMessage(cause) })

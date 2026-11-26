@@ -219,6 +219,8 @@ Docker Compose provides PostgreSQL (`backend/compose.yaml`, `postgres:17-alpine`
 | Personalization | Separate activity tables (DATA_MODEL §10) | Out of V1 scope. |
 | Payments / ordering | New module | Explicitly out of scope. |
 
+**E-mail (EMAIL-1):** e-mail no longer uses `BackgroundTasks`; it goes through the bounded in-process dispatcher of `AUTH_RBAC.md` §14.2, which is not durable.
+
 ## 12. Backend phase map (approved in the Phase 10A review; ROADMAP matches)
 
 | Phase | Scope |

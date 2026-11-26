@@ -215,10 +215,10 @@ describe("LoginRegisterPage — registration", () => {
     vi.unstubAllEnvs()
   })
 
-  async function register() {
+  async function register(reported: Record<string, unknown> = {}) {
     const view = renderLogin("/register", (call) => {
       if (call.path === "/auth/me") return fail(401, "unauthenticated")
-      if (call.path === "/auth/register") return ok(meBody({ emailVerified: false, displayName: "New Person" }), 201)
+      if (call.path === "/auth/register") return ok(meBody({ emailVerified: false, displayName: "New Person", ...reported }), 201)
       return fail(404, "x")
     })
     await screen.findByRole("heading", { level: 1, name: "Create Account" })
@@ -235,6 +235,12 @@ describe("LoginRegisterPage — registration", () => {
     const { show } = await register()
     expect(show).toHaveBeenCalledWith("Account created. Verify your email address to list a business or send requests.")
     expect(show).not.toHaveBeenCalledWith(expect.stringMatching(/check your e-?mail|we sent|inbox|on its way/i))
+  })
+
+  it("after registering against a real mail provider, says where to look and still claims no delivery", async () => {
+    const { show } = await register({ emailDelivery: "email" })
+    expect(show).toHaveBeenCalledWith("Account created. Check your inbox and spam folder for the verification email.")
+    expect(show).not.toHaveBeenCalledWith(expect.stringMatching(/we sent|has been sent|delivered|on its way|no e-mail is sent/i))
   })
 
   it("after registering in development, never claims an e-mail was sent", async () => {

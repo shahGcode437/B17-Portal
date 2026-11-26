@@ -222,3 +222,34 @@ test('Admin comes only from the backend roles: an admin account sees the dashboa
   await signIn(page, 'Plain Resident', 'resident')
   await expect(page.getByText(/isn't an administrator account/i)).toBeVisible()
 })
+
+test('with a real mail provider: registering and resending say where to look, and claim no delivery', async ({ page }) => {
+  mockFor(page).emailDelivery = 'email'
+  await openApp(page, '/register', 'Create Account')
+  await page.getByLabel('Your name').fill('Imran Inbox')
+  await page.getByLabel('Email').fill('imran.inbox@example.org')
+  await page.getByLabel('Password', { exact: true }).fill(PASSWORD)
+  await page.getByRole('button', { name: 'Create Account', exact: true }).last().click()
+
+  const banner = page.getByRole('complementary', { name: 'Your email is not verified' })
+  await expect(banner).toContainText('Check your inbox and spam folder for the verification email.')
+  await banner.getByRole('link', { name: 'Open your Profile' }).click()
+  const notice = page.getByRole('region', { name: 'Email verification' })
+  await expect(notice).toContainText('Check your inbox and spam folder for the verification email')
+  await notice.getByRole('button', { name: 'Resend verification email' }).click()
+  await expect(notice).toContainText('A new verification link was requested. Check your inbox and spam folder')
+  await expect(page.locator('body')).not.toContainText(/we sent|has been sent|was sent|delivered|on its way|no e-mail is sent|dev_verify|api terminal/i)
+})
+
+test('with a real mail provider: forgot password stays conditional and says where to look', async ({ page }) => {
+  mockFor(page).emailDelivery = 'email'
+  await openApp(page, '/forgot-password', 'Forgot password')
+
+  await page.getByLabel('Email').fill('nobody-at-all@example.org')
+  await page.getByRole('button', { name: 'Send reset link' }).click()
+
+  const status = page.getByRole('status').filter({ hasText: /if an account exists/i })
+  await expect(status).toContainText('Check your inbox and spam folder')
+  await expect(status).not.toContainText('nobody-at-all')
+  await expect(page.locator('body')).not.toContainText(/we sent|has been sent|was sent|delivered|on its way|no e-mail is sent/i)
+})

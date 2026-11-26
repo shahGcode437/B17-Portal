@@ -52,6 +52,11 @@ export class AuthMock {
   session: { email: string; csrf: string } | null = null
   googleEnabled = true
   /**
+   * How the server says it handles e-mail (EMAIL-1). Unset by default: the field is then left out, as an older
+   * backend would, and the screens keep their cautious wording.
+   */
+  emailDelivery: 'email' | 'console' | 'off' | undefined = undefined
+  /**
    * How `GET /auth/me` behaves (Phase 12S). The real backend is not instant and not always reachable; a mock that
    * always answers at once hid every bug that lives in the gap (a signed-in person sent to Log In while the
    * session check was still running, or while the server could not be reached).
@@ -122,6 +127,7 @@ export class AuthMock {
       authMethods: { password: true, providers: account.providers },
       session: { expiresAt: '2099-01-01T00:00:00Z' },
       csrfToken: csrf,
+      ...(this.emailDelivery && { emailDelivery: this.emailDelivery }),
     }
   }
 
@@ -198,7 +204,7 @@ export class AuthMock {
         return reply(204)
       }
       case 'POST /auth/forgot-password':
-        return data({ status: 'accepted' }, 202)
+        return data({ status: 'accepted', ...(this.emailDelivery && { emailDelivery: this.emailDelivery }) }, 202)
       case 'POST /auth/reset-password': {
         const owner = [...this.accounts.values()].find((a) => `reset-${a.email}` === body?.token)
         if (!owner) return error(400, 'token_invalid')

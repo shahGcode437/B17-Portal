@@ -31,6 +31,10 @@ LOGIN_FAILURES = RatePolicy("login_failures", limit=10, window_seconds=15 * 60)
 REGISTER = RatePolicy("register", limit=5, window_seconds=60 * 60)
 FORGOT_PASSWORD = RatePolicy("forgot_password", limit=3, window_seconds=60 * 60)
 RESEND_VERIFICATION_MINUTE = RatePolicy("resend_verification_minute", limit=1, window_seconds=60)
+#: "New sign-in" notices per account (EMAIL-1). It never limits signing in: past the cap the
+#: sign-in succeeds and only the notice is suppressed (and logged), so repeated sign-ins cannot use
+#: up the sending quota that verification and password-reset mail depend on.
+LOGIN_NOTICE = RatePolicy("login_notice", limit=10, window_seconds=60 * 60)
 RESEND_VERIFICATION_DAY = RatePolicy(
     "resend_verification_day", limit=5, window_seconds=24 * 60 * 60
 )

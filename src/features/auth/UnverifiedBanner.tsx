@@ -2,9 +2,9 @@ import { MailWarning } from "lucide-react"
 import { Link, useLocation } from "react-router-dom"
 import { Container } from "@/components/foundation/Container"
 import { useAuth } from "@/hooks/useAuth"
-import { isDevMail } from "@/config/devMail"
+import { mailMode, type MailMode } from "@/config/devMail"
 import { routes } from "@/config/routes"
-import { VERIFICATION_BANNER_REASON } from "@/features/auth/verificationCopy"
+import { CHECK_INBOX, VERIFICATION_BANNER_REASON } from "@/features/auth/verificationCopy"
 
 /** Screens that already carry the full verification notice (or ARE the verification step): the banner stays out. */
 const QUIET_PATHS: readonly string[] = [routes.profile, routes.verifyEmail]
@@ -15,11 +15,17 @@ const QUIET_PATHS: readonly string[] = [routes.profile, routes.verifyEmail]
  * until an action failed. It is not a modal and not dismissible (it disappears the moment the account is
  * verified); the Profile page it links to holds the full notice with the resend button.
  *
- * Production wording says what verification is for and where to do it - never that an e-mail was sent, because
- * production e-mail delivery does not exist yet. The development line is the only place that mentions the dev
- * helper, and it is compiled out of production builds (`isDevMail`). Nothing here verifies anyone or relaxes a
- * gate: the API is the authority (`403 email_not_verified`).
+ * The wording says what verification is for and where to do it - never that an e-mail was sent. With a real provider
+ * it adds where to look; the development lines are never shown by a production build (`mailMode`). Nothing here
+ * verifies anyone or relaxes a gate: the API is the authority (`403 email_not_verified`).
  */
+const LEAD: Record<MailMode, string> = {
+  inbox: `${CHECK_INBOX} for the verification email. `,
+  console: "Development: no e-mail is sent; your Profile shows how to verify. ",
+  off: "Development: no e-mail is sent; your Profile shows how to verify. ",
+  neutral: "",
+}
+
 function UnverifiedBanner() {
   const { status, user } = useAuth()
   const { pathname } = useLocation()
@@ -35,7 +41,7 @@ function UnverifiedBanner() {
           <p className="min-w-0 text-sm text-foreground">
             <span className="font-medium">Verify your email.</span>{" "}
             <span className="text-muted-foreground">
-              {isDevMail() ? "Development: no e-mail is sent; your Profile shows how to verify. " : ""}
+              {LEAD[mailMode(user.emailDelivery)]}
               {VERIFICATION_BANNER_REASON}
             </span>
           </p>
