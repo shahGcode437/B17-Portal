@@ -192,6 +192,12 @@ class OAuthService:
     ) -> CallbackOutcome:
         """Never raises for a bad request: every failure is a fixed ``CallbackOutcome.error``."""
         provider = self._providers.get(provider_name)
+        if not flow_cookie:
+            # The usual cause is a sign-in started on a different host than the callback's
+            # (AUTH_RBAC.md §5.1). Only the fact is logged, never the state or the code.
+            logger.warning(
+                "oauth callback rejected", extra={"stage": "flow", "reason": "missing_flow_cookie"}
+            )
         if (
             provider is None
             or not state
@@ -211,7 +217,10 @@ class OAuthService:
                 provider=provider_name,
                 now=self._clock(),
             )
-        if flow is None:
+        if flow is None:  # unknown state, another browser, expired or already used
+            logger.warning(
+                "oauth callback rejected", extra={"stage": "flow", "reason": "no_matching_flow"}
+            )
             return _failure("oauth_failed")
         return replace(
             self._complete(

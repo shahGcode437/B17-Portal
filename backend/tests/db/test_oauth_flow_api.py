@@ -1171,3 +1171,69 @@ def test_oauth_responses_are_never_cacheable_but_public_reads_are_untouched(
     assert started.response.headers["cache-control"] == "no-store"
     assert redirect.headers["cache-control"] == "no-store"
     assert "no-store" not in api.get("/health").headers.get("cache-control", "")
+
+
+# -- GOOGLE-AUTH-1: diagnostics, the whole session life cycle and no staff authority --------------
+
+
+def _oauth_log(caplog: pytest.LogCaptureFixture) -> list[dict[str, object]]:
+    return [r.__dict__ for r in caplog.records if r.name == "app.oauth"]
+
+
+def test_a_callback_without_the_flow_cookie_says_so_in_the_log_and_leaks_nothing(
+    auth_env: AuthEnv, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The signature of a sign-in started on one host and returned to another (AUTH_RBAC 5.1)."""
+    started = started_ok(auth_env.client())
+    caplog.set_level(logging.WARNING)
+    other_host = auth_env.client()  # a browser holding no flow cookie for the callback's host
+
+    response = callback(other_host, google_code(), state=started.state)
+
+    assert location(response) == error_url("oauth_failed")
+    records = _oauth_log(caplog)
+    assert [(r["stage"], r["reason"]) for r in records] == [("flow", "missing_flow_cookie")]
+    assert all(secret not in f"{records}" for secret in (started.state, google_code(), GMAIL))
+    assert count(auth_env.session, "users") == 0
+
+
+def test_an_unmatched_flow_is_logged_as_such(
+    auth_env: AuthEnv, caplog: pytest.LogCaptureFixture
+) -> None:
+    api = auth_env.client()
+    started_ok(api)  # this browser holds a flow cookie, but the state below is not its flow
+    caplog.set_level(logging.WARNING)
+
+    response = callback(api, google_code(), state=started_ok(auth_env.client()).state)
+
+    assert location(response) == error_url("oauth_failed")
+    assert [r["reason"] for r in _oauth_log(caplog)] == ["no_matching_flow"]
+    assert count(auth_env.session, "users") == 0
+
+
+def test_a_google_session_persists_across_requests_and_ends_at_logout(auth_env: AuthEnv) -> None:
+    api, _, _ = sign_in(auth_env)
+    token = api.session_cookie
+    assert token
+
+    first, second = api.me(), api.me()  # a reload is another /auth/me with the same cookie
+
+    assert first.status_code == second.status_code == 200
+    assert api.logout().status_code == 204
+    assert api.me().status_code == 401
+    stale = auth_env.client()
+    stale.http.cookies.set(stale.cookie_name, token)
+    assert stale.me().status_code == 401  # revoked on the server, not merely forgotten
+
+
+def test_google_sign_in_grants_no_staff_role_scope_or_professional_capability(
+    auth_env: AuthEnv,
+) -> None:
+    api, _, _ = sign_in(auth_env)
+
+    me = api.me().json()["data"]
+
+    assert me["roles"] == [] and me["staffScopes"] == [] and "professional" not in me
+    for table in ("user_roles", "staff_scope_assignments", "professional_profiles"):
+        assert auth_env.session.execute(text(f"SELECT count(*) FROM {table}")).scalar_one() == 0
+    assert api.get("/admin/listings").status_code == 403

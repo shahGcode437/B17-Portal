@@ -237,6 +237,65 @@ def test_a_hosted_google_provider_needs_an_https_callback() -> None:
     assert settings(api_public_base_url=API, **kwargs).google_redirect_uri == REDIRECT
 
 
+@pytest.mark.parametrize(
+    ("frontend", "api"),
+    [
+        ("http://localhost:5173", "http://127.0.0.1:8000"),
+        ("http://127.0.0.1:5173", "http://localhost:8000"),
+        ("http://[::1]:5173", "http://127.0.0.1:8000"),
+    ],
+)
+def test_two_different_loopback_names_are_refused_at_startup(frontend: str, api: str) -> None:
+    """The session cookie is set on the callback's host; a redirect to another name loses it."""
+    for provider in ("google", "fake"):
+        with pytest.raises(ValidationError, match="same loopback host"):
+            settings(
+                environment="development",
+                google_oauth_provider=provider,
+                google_oauth_client_id=CLIENT_ID,
+                google_oauth_client_secret=CLIENT_SECRET,
+                frontend_base_url=frontend,
+                api_public_base_url=api,
+            )
+    # With Google off nothing depends on the two hosts, so an existing setup still starts.
+    settings(environment="development", frontend_base_url=frontend, api_public_base_url=api)
+
+
+def test_the_documented_local_topology_is_accepted() -> None:
+    config = settings(
+        environment="development",
+        google_oauth_provider="google",
+        google_oauth_client_id=CLIENT_ID,
+        google_oauth_client_secret=CLIENT_SECRET,
+    )
+
+    assert config.frontend_base_url == "http://127.0.0.1:5173"
+    assert config.google_redirect_uri == "http://127.0.0.1:8000/api/v1/auth/oauth/google/callback"
+
+
+def test_the_intended_production_topology_is_accepted_with_its_exact_callback() -> None:
+    hosted = {
+        **HOSTED,
+        "frontend_origins": ["https://b17portal.com"],
+        "frontend_base_url": "https://b17portal.com",
+    }
+    config = settings(
+        environment="production",
+        google_oauth_provider="google",
+        google_oauth_client_id=CLIENT_ID,
+        google_oauth_client_secret=CLIENT_SECRET,
+        api_public_base_url="https://api.b17portal.com",
+        **hosted,
+    )
+
+    assert config.google_redirect_uri == (
+        "https://api.b17portal.com/api/v1/auth/oauth/google/callback"
+    )
+    assert config.auth_cookie_name == "__Host-b17_session"
+    assert config.oauth_cookie_name == "__Host-b17_oauth"
+    assert config.auth_cookie_secure is True
+
+
 def test_empty_google_credentials_mean_unset() -> None:
     config = settings(
         environment="test", google_oauth_client_id="  ", google_oauth_client_secret=""
@@ -885,3 +944,89 @@ def test_exchange_rejects_a_nonce_that_differs_from_the_flow(google: FakeGoogle)
         provider_for(google).exchange(
             code=CODE, code_verifier=VERIFIER, redirect_uri=REDIRECT, nonce="o" * 43
         )
+
+
+# -- diagnostics: the log names the failing stage and nothing sensitive ---------------------------
+
+
+def _oauth_records(caplog: pytest.LogCaptureFixture) -> list[dict[str, Any]]:
+    return [r.__dict__ for r in caplog.records if r.name == "app.oauth"]
+
+
+@pytest.mark.parametrize(
+    ("script", "expected"),
+    [
+        (
+            {
+                "token_status": 401,
+                "token_body": {"error": "invalid_client", "error_description": "SECRET-MARKER"},
+            },
+            {"stage": "token_exchange", "providerStatus": 401, "providerError": "invalid_client"},
+        ),
+        (
+            {"token_status": 400, "token_body": {"error": "redirect_uri_mismatch"}},
+            {"stage": "token_exchange", "providerError": "redirect_uri_mismatch"},
+        ),
+        (
+            # Not a standard code: provider free text never reaches the log, even as "error".
+            {"token_status": 400, "token_body": {"error": "SECRET-MARKER free text"}},
+            {"stage": "token_exchange", "providerStatus": 400, "providerError": None},
+        ),
+        (
+            {"token_status": 502, "token_body": b"<html>SECRET-MARKER</html>"},
+            {"stage": "token_exchange", "providerStatus": 502, "providerError": None},
+        ),
+        (
+            {"error": httpx.ConnectTimeout("SECRET-MARKER handshake timed out")},
+            {"stage": "token_exchange", "errorType": "ConnectTimeout"},
+        ),
+        ({"jwks_status": 500}, {"stage": "jwks"}),
+    ],
+)
+def test_a_failed_exchange_logs_its_stage_without_provider_text(
+    google: FakeGoogle,
+    caplog: pytest.LogCaptureFixture,
+    script: dict[str, Any],
+    expected: dict[str, Any],
+) -> None:
+    caplog.set_level(logging.WARNING)
+    google.id_token = google.sign(claims())
+    for key, value in script.items():
+        setattr(google, key, value)
+
+    with pytest.raises(OAuthProviderError):
+        exchange_with(provider_for(google))
+
+    records = _oauth_records(caplog)
+    matching = [r for r in records if all(r.get(k) == v for k, v in expected.items())]
+    assert matching, records
+    for secret in ("SECRET-MARKER", CLIENT_SECRET, CODE, VERIFIER, NONCE, google.id_token or "?"):
+        assert secret not in f"{records}", secret
+
+
+@pytest.mark.parametrize(
+    ("overrides", "stage", "error_type"),
+    [
+        ({"aud": "another-client.apps.example"}, "id_token", "InvalidAudienceError"),
+        ({"iss": "https://evil.example"}, "id_token", "InvalidIssuerError"),
+        ({"exp": 1, "iat": 1}, "id_token", "ExpiredSignatureError"),
+        ({"nonce": "z" * 43}, "nonce", None),
+    ],
+)
+def test_a_rejected_id_token_logs_why_by_class_name_only(
+    google: FakeGoogle,
+    caplog: pytest.LogCaptureFixture,
+    overrides: dict[str, Any],
+    stage: str,
+    error_type: str | None,
+) -> None:
+    caplog.set_level(logging.WARNING)
+    google.id_token = google.sign(claims(**overrides))
+
+    with pytest.raises(OAuthProviderError):
+        exchange_with(provider_for(google))
+
+    records = _oauth_records(caplog)
+    assert records[-1]["stage"] == stage and records[-1].get("errorType") == error_type
+    for secret in (google.id_token, CLIENT_SECRET, CODE, NONCE, "gina@example.org"):
+        assert secret and secret not in f"{records}"

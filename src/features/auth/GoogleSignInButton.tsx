@@ -1,9 +1,10 @@
 import { useState } from "react"
 import { Typography } from "@/components/foundation/Typography"
 import { Button } from "@/components/ui/button"
+import { API_BASE_URL } from "@/config/api"
 import { startGoogleSignIn } from "@/lib/api/auth"
 import { NETWORK_ERROR_CODE, isApiError } from "@/lib/api/errors"
-import { assignLocation, isNavigableProviderUrl } from "@/lib/navigation"
+import { assignLocation, isNavigableProviderUrl, loopbackSignInAddress } from "@/lib/navigation"
 import { backendReturnTo } from "@/lib/safePath"
 import { GOOGLE_UNAVAILABLE, authErrorMessage } from "@/features/auth/authMessages"
 
@@ -17,13 +18,21 @@ import { GOOGLE_UNAVAILABLE, authErrorMessage } from "@/features/auth/authMessag
 function GoogleSignInButton({ returnTo }: { returnTo?: string }) {
   const [pending, setPending] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
+  const [workingAddress, setWorkingAddress] = useState<string | null>(null)
 
   async function start() {
     setPending(true)
     setMessage(null)
+    setWorkingAddress(null)
     try {
       const url = await startGoogleSignIn(backendReturnTo(returnTo))
       if (!isNavigableProviderUrl(url)) throw new Error("unusable provider url")
+      const elsewhere = loopbackSignInAddress(url, API_BASE_URL, window.location.href)
+      if (elsewhere) {
+        setPending(false)
+        setWorkingAddress(elsewhere)
+        return
+      }
       assignLocation(url)
       // Stay "pending": the page is about to be replaced.
     } catch (cause) {
@@ -43,6 +52,15 @@ function GoogleSignInButton({ returnTo }: { returnTo?: string }) {
       {message && (
         <Typography variant="caption" className="text-destructive" role="alert">
           {message}
+        </Typography>
+      )}
+      {workingAddress && (
+        <Typography variant="caption" className="text-destructive" role="alert">
+          On this computer, Google sign-in only works at {new URL(workingAddress).host}.{" "}
+          <a href={workingAddress} className="font-medium underline">
+            Open this page there
+          </a>{" "}
+          and try again.
         </Typography>
       )}
     </div>

@@ -308,6 +308,28 @@ describe("LoginRegisterPage — Google", () => {
     expect(start.credentials).toBe("include")
   })
 
+  it("does not send the browser into a round trip that cannot finish (two loopback names)", async () => {
+    // jsdom serves the app from `localhost`; the callback is on `127.0.0.1`, where the host-only
+    // flow cookie set by `start` would never arrive.
+    navigation.assignLocation.mockClear()
+    const callback = encodeURIComponent("http://127.0.0.1:8000/api/v1/auth/oauth/google/callback")
+    const { user } = renderLogin("/login", (call) =>
+      call.path === "/auth/me"
+        ? fail(401, "unauthenticated")
+        : ok({ authorizationUrl: `https://accounts.example.test/auth?state=s&redirect_uri=${callback}` })
+    )
+    await ready()
+
+    await user.click(screen.getByRole("button", { name: "Continue with Google" }))
+
+    const link = await screen.findByRole("link", { name: "Open this page there" })
+    expect(new URL(link.getAttribute("href")!).hostname).toBe("127.0.0.1")
+    expect(link.closest('[role="alert"]')).toHaveTextContent(/google sign-in only works at 127\.0\.0\.1/i)
+    expect(navigation.assignLocation).not.toHaveBeenCalled()
+    expect(screen.getByRole("button", { name: "Continue with Google" })).toBeEnabled()
+    expect(document.body.innerHTML).not.toContain("state=s") // the provider URL is never shown
+  })
+
   it("explains clearly when Google sign-in is not configured (503)", async () => {
     navigation.assignLocation.mockClear()
     const { user } = renderLogin("/login", (call) =>

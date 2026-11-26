@@ -14,6 +14,11 @@
 Failures (network error, non-200, malformed JSON, bad signature, wrong issuer/audience/nonce,
 expired token, missing ``sub``/``email``, a non-boolean ``email_verified``) all become
 :class:`OAuthProviderError`; no provider text, token, code or secret is logged or surfaced.
+
+The browser always gets the same ``oauth_failed``, so the server log says which **stage** failed.
+It records only: a fixed stage name, the HTTP status, Google's ``error`` value when it is one of the
+standard codes in :data:`_STANDARD_ERRORS` (never ``error_description``, never any other text), and
+the exception's class name (``ConnectTimeout``, ``InvalidAudienceError``).
 """
 
 import hmac
@@ -40,6 +45,31 @@ SCOPES = "openid email profile"
 _JWKS_TTL_SECONDS = 3600
 _CLOCK_SKEW_LEEWAY_SECONDS = 30
 _MAX_FIELD = 255
+#: RFC 6749 §5.2 token-endpoint codes plus Google's ``redirect_uri_mismatch``: the only provider
+#: values that may reach a log, because each is a fixed word that names a setup mistake.
+_STANDARD_ERRORS = frozenset(
+    {
+        "invalid_request",
+        "invalid_client",
+        "invalid_grant",
+        "invalid_scope",
+        "unauthorized_client",
+        "unsupported_grant_type",
+        "redirect_uri_mismatch",
+    }
+)
+
+
+def _log_failure(message: str, stage: str, **fields: object) -> None:
+    logger.warning(message, extra={"stage": stage, **fields})
+
+
+def _standard_error(response: httpx.Response) -> str | None:
+    try:
+        value = response.json()["error"]
+    except (ValueError, KeyError, TypeError):
+        return None
+    return value if isinstance(value, str) and value in _STANDARD_ERRORS else None
 
 
 class GoogleOAuthProvider:
@@ -90,8 +120,13 @@ class GoogleOAuthProvider:
         if not isinstance(token_nonce, str) or not hmac.compare_digest(
             token_nonce.encode(), nonce.encode()
         ):
+            _log_failure("oauth id token rejected", "nonce")
             raise OAuthProviderError("oauth_failed")
-        return self._identity(claims)
+        try:
+            return self._identity(claims)
+        except OAuthProviderError:
+            _log_failure("oauth identity claims rejected", "claims")
+            raise
 
     def _redeem_code(self, code: str, code_verifier: str, redirect_uri: str) -> str:
         try:
@@ -108,15 +143,24 @@ class GoogleOAuthProvider:
                 headers={"Accept": "application/json"},
             )
             if response.status_code != 200:
+                _log_failure(
+                    "oauth token exchange refused",
+                    "token_exchange",
+                    providerStatus=response.status_code,
+                    providerError=_standard_error(response),
+                )
                 raise OAuthProviderError("oauth_failed")
             body = response.json()
         except OAuthProviderError:
             raise
-        except (httpx.HTTPError, ValueError):
-            logger.warning("oauth token exchange failed", extra={"stage": "token_exchange"})
+        except (httpx.HTTPError, ValueError) as error:
+            _log_failure(
+                "oauth token exchange failed", "token_exchange", errorType=type(error).__name__
+            )
             raise OAuthProviderError("oauth_failed") from None
         id_token = body.get("id_token") if isinstance(body, dict) else None
         if not isinstance(id_token, str) or not id_token:
+            _log_failure("oauth token response had no id token", "token_exchange")
             raise OAuthProviderError("oauth_failed")
         return id_token  # the access/refresh tokens in `body` are intentionally never touched
 
@@ -151,10 +195,11 @@ class GoogleOAuthProvider:
                 parsed = self._parse_key(entry)
                 if parsed is not None:
                     keys[parsed[0]] = parsed[1]
-        except OAuthProviderError:
+        except OAuthProviderError:  # a non-200 answer, or no key list in it
+            _log_failure("oauth key fetch failed", "jwks")
             raise
-        except (httpx.HTTPError, ValueError, KeyError, TypeError):
-            logger.warning("oauth key fetch failed", extra={"stage": "jwks"})
+        except (httpx.HTTPError, ValueError, KeyError, TypeError) as error:
+            _log_failure("oauth key fetch failed", "jwks", errorType=type(error).__name__)
             raise OAuthProviderError("oauth_failed") from None
         if not keys:  # an empty or entirely unusable key set verifies nothing
             logger.warning("oauth key fetch failed", extra={"stage": "jwks"})
@@ -195,13 +240,17 @@ class GoogleOAuthProvider:
                 leeway=_CLOCK_SKEW_LEEWAY_SECONDS,
                 options={"require": ["exp", "iat", "iss", "aud", "sub"]},
             )
-        except OAuthProviderError:
+        except OAuthProviderError:  # wrong header algorithm, no kid, or no usable key for it
+            _log_failure("oauth id token rejected", "id_token")
             raise
-        except jwt.PyJWTError:
+        except jwt.PyJWTError as error:
+            # The class name says why (e.g. a wrong client id, or a clock more than 30 s out).
+            _log_failure("oauth id token rejected", "id_token", errorType=type(error).__name__)
             raise OAuthProviderError("oauth_failed") from None
         # Strict single audience for this web client: Google issues `aud` as one string, so a
         # multi-audience token (which PyJWT would accept if it merely contained our id) is refused.
         if claims.get("aud") != self._client_id:
+            _log_failure("oauth id token rejected", "id_token")
             raise OAuthProviderError("oauth_failed")
         return claims
 

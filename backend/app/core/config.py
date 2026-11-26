@@ -28,6 +28,9 @@ DEVELOPMENT_FRONTEND_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"
 DEVELOPMENT_FRONTEND_BASE_URL = "http://127.0.0.1:5173"
 DEVELOPMENT_API_BASE_URL = "http://127.0.0.1:8000"
 
+#: The names one machine answers to. Cookies treat each as a different host (AUTH_RBAC.md §5.1).
+LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+
 #: Environments served over HTTPS behind a real hostname.
 HOSTED_ENVIRONMENTS = frozenset({"staging", "production"})
 
@@ -272,6 +275,15 @@ class Settings(BaseSettings):
             raise ValueError("API_PUBLIC_BASE_URL is required when Google sign-in is enabled")
         if provider == "fake" and hosted:
             raise ValueError("GOOGLE_OAUTH_PROVIDER=fake can never run in staging/production")
+        api_host = urlsplit(self.api_public_base_url).hostname
+        frontend_host = urlsplit(self.frontend_base_url or "").hostname
+        if api_host != frontend_host and {api_host, frontend_host} <= LOOPBACK_HOSTS:
+            # The callback sets a host-only session cookie and then redirects to the frontend: on
+            # two different loopback names the browser would arrive signed out, with no error.
+            raise ValueError(
+                "API_PUBLIC_BASE_URL and FRONTEND_BASE_URL must use the same loopback host "
+                f"(got {api_host} and {frontend_host}): cookies are host-only"
+            )
         if provider == "google":
             if not self.google_oauth_client_id or self.google_oauth_client_secret is None:
                 raise ValueError(

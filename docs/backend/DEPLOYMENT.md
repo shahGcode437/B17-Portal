@@ -92,9 +92,9 @@ Hosting provider(s) and pricing tier · domain names · email-sending provider �
 - **Email delivery** is `disabled` in staging/production until a provider is implemented (settings refuse `console`/`memory` there): verification and reset emails are not delivered yet, so enabling real sign-ups needs the provider and the custom domain first.
 - **Caching:** the API's `/auth/*` responses are `Cache-Control: no-store`; do not add CDN caching rules that ignore it.
 
-## 10. Google sign-in (Phase 11C)
+## 10. Google sign-in (Phase 11C; local setup and diagnostics added in GOOGLE-AUTH-1)
 
-The backend does the whole OpenID Connect flow (`AUTH_RBAC.md` §10, §21); Google only tells it *who* the user is. Nothing here is needed for development or CI — `GOOGLE_OAUTH_PROVIDER=fake` runs the complete flow in-process, with no network and no credentials.
+The backend does the whole OpenID Connect flow (`AUTH_RBAC.md` §10, §21); Google only tells it *who* the user is. Nothing here is needed for CI or for ordinary development: Google sign-in is **`disabled` by default**, so the start endpoint answers `503` and the button says "Google sign-in isn't available right now". `GOOGLE_OAUTH_PROVIDER=fake` runs the complete flow in-process, with no network and no credentials.
 
 **Environment (per environment; the secret only from the host's secret store):**
 
@@ -103,23 +103,76 @@ The backend does the whole OpenID Connect flow (`AUTH_RBAC.md` §10, §21); Goog
 | `GOOGLE_OAUTH_PROVIDER` | `google` (`disabled` by default; `fake` is development/test only and refused in staging/production) |
 | `GOOGLE_OAUTH_CLIENT_ID` | the OAuth client id from Google Cloud |
 | `GOOGLE_OAUTH_CLIENT_SECRET` | the OAuth client secret — a secret: never in git, an image, a log or the SPA |
-| `API_PUBLIC_BASE_URL` | the public base URL of the API as the browser sees it, e.g. `https://api.b17portal.pk` (`https` required when hosted; no path) |
-| `FRONTEND_BASE_URL` / `FRONTEND_ORIGINS` | unchanged: the callback redirects the browser here |
+| `API_PUBLIC_BASE_URL` | the public base URL of the API as the browser sees it (`https` required when hosted; no path). Development default `http://127.0.0.1:8000` |
+| `FRONTEND_BASE_URL` / `FRONTEND_ORIGINS` | where the callback sends the browser. Development default `http://127.0.0.1:5173`. When both URLs are loopback they must use the **same** host name (settings refuse to start otherwise: cookies are host-only) |
 
-**Google Cloud setup (Google Cloud Console → APIs & Services):**
+**Google Cloud setup (Google Cloud Console → Google Auth Platform, formerly "APIs & Services → OAuth consent screen / Credentials"):**
 
-1. **OAuth consent screen:** user type *External*; app name (e.g. "B-17 Portal"), support email, developer contact email; **scopes** only the non-sensitive `openid`, `email`, `profile` (no verification review is needed for these; add nothing else); keep the app in *Testing* with named test users while trialling, then *Publish* it for general use. Add the privacy-policy and terms URLs before publishing.
-2. **Credentials → Create credentials → OAuth client ID → application type "Web application"** (a *confidential* client — not "Desktop", not "Android/iOS", not a SPA/implicit client).
-3. **Authorized redirect URI** — exactly one per environment, character for character:
-   `{API_PUBLIC_BASE_URL}/api/v1/auth/oauth/google/callback`
-   - development smoke: `http://127.0.0.1:8000/api/v1/auth/oauth/google/callback` (Google permits `http` for loopback; use `127.0.0.1` for **both** the frontend and the API and never mix in `localhost` — cross-site cookies would not be sent)
-   - production: `https://api.<your-domain>/api/v1/auth/oauth/google/callback`
-   Leave *Authorized JavaScript origins* empty: the browser never calls Google from JavaScript.
-4. Copy the client id and secret into the host's secret store. Rotate the secret on suspicion of exposure (create a new one, deploy, delete the old).
+1. **Consent screen** (*Branding* + *Audience*): user type *External*; app name (e.g. "B-17 Portal"), support email, developer contact email. **Scopes** (*Data access*): only `openid`, `.../auth/userinfo.email`, `.../auth/userinfo.profile` — all non-sensitive; add nothing else. While the publishing status is *Testing*, only the accounts listed under **Test users** can sign in: add every account you will test with. *Publish* it for general use; add the privacy-policy and terms URLs first (publishing a branded app can require Google's brand verification).
+2. **Clients → Create client → application type "Web application"** (a *confidential* client — not "Desktop", not "Android/iOS", not a SPA/implicit client). Use a **separate client per environment**.
+3. **Authorized redirect URI** — exactly one per environment, character for character (no trailing slash), `{API_PUBLIC_BASE_URL}/api/v1/auth/oauth/google/callback`:
+   - local development: `http://127.0.0.1:8000/api/v1/auth/oauth/google/callback` (Google permits `http` for loopback). It is the **API's** port 8000, not the Vite port. Register `127.0.0.1` exactly: `localhost` is a different string to Google and a different cookie host to the browser.
+   - production (`b17portal.com`): `https://api.b17portal.com/api/v1/auth/oauth/google/callback`
+4. **Authorized JavaScript origins: leave empty.** This is a server-side authorization-code flow; the browser never calls Google from JavaScript.
+5. Copy the client id and secret into `backend/.env` locally (git-ignored) or the host's secret store. Rotate the secret on suspicion of exposure (create a new one, deploy, delete the old).
 
-**Go-live prerequisites (still open, unchanged by 11C):** a **custom domain** that makes the frontend and API same-site (`§9`), a **production email provider** (verification and reset mail; Google users created with an unverified Google email need it), edge **per-IP rate limiting** on `/api/v1/auth/*` including `oauth/google/start` and `…/callback`, and access-log query-string stripping on `/api/v1/auth/oauth/*` (the callback URL carries the one-time `code` and `state`).
+### 10.1 Local development
 
-**Real-Google smoke checklist (manual; not part of CI):** with a *Testing*-mode consent screen and your own Google account as a test user: set the three variables above; `POST /api/v1/auth/oauth/google/start` from the allowed origin → open `authorizationUrl` → consent → expect a `302` to the frontend with the `b17_session` cookie set and `GET /auth/me` showing `authMethods.providers: ["google"]`; repeat the sign-in (expect a login, no new account); start a second flow and replay the callback URL (expect `/login?error=oauth_failed`); sign in with a *different* Google account whose email matches a verified password account (expect `/login?error=identity_conflict`), sign in to that account and *Connect Google*; finally *Disconnect* and confirm the last-method guard. No test in the repository performs these steps.
+In `backend/.env` set these three (the two base URLs already have the right development defaults):
+
+```
+GOOGLE_OAUTH_PROVIDER=google
+GOOGLE_OAUTH_CLIENT_ID=<from Google Cloud>
+GOOGLE_OAUTH_CLIENT_SECRET=<from Google Cloud>
+```
+
+**Restart the API** (settings are read once at startup), running it from `backend/` so that this `.env` is the one loaded: `uvicorn app.main:app --host 127.0.0.1 --port 8000`. Then open **`http://127.0.0.1:5173`**. The rest of the app also works at `localhost:5173`, but a Google round trip cannot: the browser-binding cookie set by `start` belongs to `localhost` and is not sent to the `127.0.0.1` callback. The sign-in button detects this and links to the `127.0.0.1` page instead of starting a flow that would end in `oauth_failed`.
+
+### 10.2 Production (`b17portal.com` + `api.b17portal.com`; not deployed yet)
+
+| Where | Setting |
+|---|---|
+| API | `ENVIRONMENT=production`, `GOOGLE_OAUTH_PROVIDER=google`, the production client id and secret (secret store), `API_PUBLIC_BASE_URL=https://api.b17portal.com`, `FRONTEND_BASE_URL=https://b17portal.com`, `FRONTEND_ORIGINS=https://b17portal.com` (redirect `www` to the apex, or add it to `FRONTEND_ORIGINS`) |
+| Frontend **build** | `VITE_API_BASE_URL=https://api.b17portal.com/api/v1` (without it the SPA calls its own origin) |
+| Google Cloud | a production Web client; redirect URI `https://api.b17portal.com/api/v1/auth/oauth/google/callback`; no JavaScript origins; consent screen *Published*, with `b17portal.com` as an authorized domain and the privacy-policy and terms URLs |
+
+The two hosts are same-site, so the `SameSite=Lax` host-only cookies (`__Host-b17_oauth`, `__Host-b17_session`, both set by `api.b17portal.com`) travel on the SPA's credentialed requests; CORS with credentials is already on for exact origins.
+
+**Go-live prerequisites (still open):** the **production OAuth configuration** in the table above (not done; the local client must not be reused), the **custom domain** above (`§9`), a **production email provider** (verification and reset mail; a Google user with an unverified Google email needs it), edge **per-IP rate limiting** on `/api/v1/auth/*` including `oauth/google/start` and `…/callback`, and query-string stripping on `/api/v1/auth/oauth/*` in **every proxy / CDN access log** (the callback URL carries the one-time `code` and `state`; the API's own request log already omits query strings and uvicorn's access log is disabled by the application).
+
+### 10.3 When it fails: which stage
+
+The browser only ever gets a fixed code. For `oauth_failed`, the API log has one `app.oauth` warning naming the stage. It never contains a code, state, token, secret, email or provider free text.
+
+| `stage` | Other fields | Usual cause |
+|---|---|---|
+| (no log; start answers `503`) | | `GOOGLE_OAUTH_PROVIDER` is not `google`, or the API was not restarted / was not started from `backend/` |
+| (no log; Google's own error page) | | `redirect_uri_mismatch` (the URI in the console differs by any character), wrong client id, or the account is not a *Test user* |
+| `flow` | `reason: missing_flow_cookie` | the sign-in started on a different host than the callback (`localhost` vs `127.0.0.1`), or the browser blocked the cookie |
+| `flow` | `reason: no_matching_flow` | more than 10 minutes elapsed, the callback was replayed or reloaded, or a second sign-in was started in the same browser |
+| `token_exchange` | `providerStatus: 401`, `providerError: invalid_client` | wrong client secret, or id and secret from different clients |
+| `token_exchange` | `providerError: invalid_grant` / `redirect_uri_mismatch` | the code was already used or expired, or `API_PUBLIC_BASE_URL` does not match the registered URI |
+| `token_exchange`, `jwks` | `errorType: ConnectTimeout` / `ConnectError` / `ReadTimeout` | this machine cannot reach `oauth2.googleapis.com` / `www.googleapis.com` (network, firewall, antivirus TLS inspection). The code is single-use, so there is no automatic retry: start again |
+| `id_token` | `errorType: ImmatureSignatureError` / `ExpiredSignatureError` | the machine's clock is more than 30 s wrong |
+| `id_token` | `errorType: InvalidAudienceError` | the token was issued for another client id |
+| `nonce`, `claims` | | the token does not belong to this flow, or lacks a usable `sub` / `email` / boolean `email_verified` |
+
+`identity_conflict`, `email_not_verified`, `account_disabled` and `oauth_denied` are policy outcomes (`AUTH_RBAC.md` §10.4), not faults.
+
+### 10.4 Real-Google smoke checklist (manual; not part of CI)
+
+With a *Testing*-mode consent screen and your Google account as a test user, after §10.1:
+
+1. At `http://127.0.0.1:5173/login`, **Continue with Google** with an account whose email has no B-17 account → you return signed in. Open `/profile`, reload → still signed in. The account has no role, staff scope or professional profile.
+2. **Log Out**, then Google sign-in again with the same account → same account (`SELECT count(*) FROM auth_identities` is unchanged).
+3. At Google's consent screen press **Cancel** → `/login` says Google sign-in was cancelled.
+4. After a successful sign-in, log out and re-open the callback URL from browser history → "We couldn't complete Google sign-in" and no session.
+5. With a second Google account whose email already has a **verified** password account → "An account with this email already exists"; nothing is linked. (An *unverified* password account with that email is instead reclaimed by the proven mailbox owner: password cleared, old sessions revoked — `AUTH_RBAC.md` §10.4 C2.)
+6. Email/password login still works for an existing account.
+
+*Connect Google* and *Disconnect* have API endpoints but **no screen yet** (`AUTH_RBAC.md` §23). No test in the repository performs these steps against real Google.
+
+**Status (reported by the project owner, 2026-11-26): local real Google sign-in works** - a successful sign-in, the session persisting after reload, logout and a repeat sign-in (the sign-in, reload and logout parts of steps 1 and 2). The remaining checks above were not reported. Production is not configured or tested.
 
 ## 11. Maps and location operations (Phase 12A requirements; design in `LOCATION_MAP.md`)
 
