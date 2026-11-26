@@ -137,6 +137,20 @@ def test_nothing_outside_this_machine_can_be_reached(url: str) -> None:
     isolation.blocked_attempts.clear()  # expected here; anywhere else it fails the test
 
 
+@pytest.mark.parametrize("method", ["connect", "connect_ex"])
+def test_a_direct_socket_connection_to_another_machine_is_refused(method: str) -> None:
+    """No name lookup is involved (the HTTP cases above are refused at the lookup), so this pins the
+    ``socket.socket`` replacements themselves. ``192.0.2.1`` is a reserved documentation address:
+    nothing real is named."""
+    with socket.socket() as sock:
+        sock.settimeout(1)
+        with pytest.raises(isolation.OutboundNetworkBlocked):
+            getattr(sock, method)(("192.0.2.1", 9))
+
+    assert isolation.blocked_attempts == ["192.0.2.1"]
+    isolation.blocked_attempts.clear()  # expected here; anywhere else it fails the test
+
+
 def test_a_real_resend_client_cannot_send_from_a_test_even_with_a_key() -> None:
     sender = ResendEmailSender(
         api_key=SecretStr("re_developer_key_not_real"), sender=HOSTILE["EMAIL_FROM"]

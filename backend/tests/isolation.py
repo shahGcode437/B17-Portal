@@ -23,9 +23,12 @@ import ipaddress
 import os
 import socket
 from collections.abc import MutableMapping
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from app.core.config import Settings
+
+if TYPE_CHECKING:
+    import _socket
 
 #: Every environment variable the application's settings would read.
 SETTINGS_ENV_VARS: tuple[str, ...] = tuple(sorted(name.upper() for name in Settings.model_fields))
@@ -86,11 +89,13 @@ def _block_outside_network() -> None:
             _refuse(host)
         return real_getaddrinfo(host, *args, **kwargs)
 
-    def connect(self: socket.socket, address: Any) -> None:
+    # ``socket.socket`` inherits both methods from ``_socket.socket``, so that is the ``self`` the
+    # replacements must accept.
+    def connect(self: "_socket.socket", address: Any) -> None:
         check_address(address)
         return real_connect(self, address)
 
-    def connect_ex(self: socket.socket, address: Any) -> int:
+    def connect_ex(self: "_socket.socket", address: Any) -> int:
         check_address(address)
         return real_connect_ex(self, address)
 
