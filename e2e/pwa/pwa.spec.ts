@@ -77,7 +77,7 @@ test('offline: cached pages still open and an offline notice shows', async ({ pa
   await expectPage(page, /Food/)
 })
 
-test('offline: data reads fail visibly (no cached API data) while the shell still opens', async ({ page, context }) => {
+test('offline: data reads fail visibly (no cached API data) while the shell still opens', async ({ page, context, authMock }) => {
   await openApp(page, '/')
   await waitForControl(page)
   await page.reload()
@@ -86,9 +86,9 @@ test('offline: data reads fail visibly (no cached API data) while the shell stil
   await navigateInApp(page, '/search?q=pharmacy&type=business', 'Search / Explore')
   await expect(page.getByRole('button', { name: 'Preview B-17 Family Pharmacy' })).toBeVisible()
   await navigateInApp(page, `/businesses/${IDS.generalAreaOnly}`, 'B-17 Family Pharmacy')
-  // The mock would answer even offline; the worker (network-only API) is what is under test.
-  await page.unroute('**/api/v1/**')
-
+  // The mock would answer even offline, so it fails like the network instead; the worker (network-only API) is
+  // what is under test: anything it answered itself would never reach the mock. The mock is never removed.
+  authMock.offline = true
   await context.setOffline(true)
   await page.goto('/search?q=pharmacy&type=business')
   await expectPage(page, 'Search / Explore') // the cached shell boots the SPA...
@@ -99,6 +99,7 @@ test('offline: data reads fail visibly (no cached API data) while the shell stil
   await page.goto(`/businesses/${IDS.generalAreaOnly}`)
   await expect(page.getByRole('alert')).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Business not found' })).toHaveCount(0) // a failure is not "not found"
+  authMock.offline = false // BEFORE reconnecting: the app re-checks the session the moment it is online again
   await context.setOffline(false)
 })
 
@@ -121,13 +122,12 @@ test('map tiles are never cached by the worker, and no API response is stored', 
   expect(cached.filter((url) => url.includes('/api/'))).toEqual([]) // ...and neither is any API response
 })
 
-test('the API is network-only: with the worker in control and no network, /api requests fail instead of returning the app shell', async ({ page, context }) => {
+test('the API is network-only: with the worker in control and no network, /api requests fail instead of returning the app shell', async ({ page, context, authMock }) => {
   await openApp(page, '/')
   await waitForControl(page)
   await page.reload()
   await waitForControl(page)
-  await page.unroute('**/api/v1/**') // the mock would answer even offline; the worker is what is under test
-
+  authMock.offline = true // the mock would answer even offline; the worker is what is under test
   await context.setOffline(true)
   const outcome = await page.evaluate(async () => {
     try {
@@ -137,6 +137,7 @@ test('the API is network-only: with the worker in control and no network, /api r
       return 'network-error'
     }
   })
+  authMock.offline = false
   await context.setOffline(false)
 
   expect(outcome).toBe('network-error') // never the cached index.html (200 text/html)

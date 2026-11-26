@@ -1,6 +1,7 @@
 import type { Page, Route } from '@playwright/test'
 import { routeRead } from '../../src/test/fixtures/readRouter'
 import { publicApprovedListings, resetWriteState, routeWrite, savedRows, writeState } from '../../src/test/fixtures/writeRouter'
+import { isMocked } from './mockedEndpoints'
 
 /**
  * A deterministic stand-in for the FastAPI authentication endpoints (Phase 12C), installed per test
@@ -63,6 +64,13 @@ export class AuthMock {
    */
   meDelayMs = 0
   meUnreachable = false
+  /**
+   * The API is unreachable, as it is with no network: every call fails and nothing is answered. For offline
+   * tests, which must never REMOVE the mock (an unmocked request would leave the browser).
+   */
+  offline = false
+  /** API calls this mock has no answer for. The `authMock` fixture fails the test if there are any. */
+  readonly unmocked: string[] = []
   /** While set, `GET /auth/me` waits for it (see `holdMe`). */
   private meGate: Promise<void> | null = null
   /** Where the fake Google consent page sends the browser back to (the frontend `returnTo`). */
@@ -141,6 +149,7 @@ export class AuthMock {
   }
 
   private async handle(route: Route): Promise<void> {
+    if (this.offline) return route.abort('internetdisconnected')
     const request = route.request()
     const method = request.method()
     const path = new URL(request.url()).pathname.replace(/^.*\/api\/v1/, '')
@@ -158,6 +167,12 @@ export class AuthMock {
     const data = (value: unknown, status = 200) => reply(status, { data: value })
     const error = (status: number, code: string, details: unknown[] = []) =>
       reply(status, { error: { code, message: code, details, requestId: 'req-e2e' } })
+    // No mock for it: never a quiet 401 / 404, which a screen would render and a test could accept.
+    const refuseUnmocked = () => {
+      this.unmocked.push(`${method} ${path}`)
+      return error(501, 'e2e_unmocked_request')
+    }
+    if (!isMocked(method, path)) return refuseUnmocked()
 
     // Authenticated unsafe calls need the session AND its CSRF token (the backend middleware's rule).
     const sessionBound = new Set(['/auth/logout', '/auth/resend-verification'])
@@ -361,7 +376,8 @@ export class AuthMock {
           }
         }
         const read = routeRead(method, path, url.searchParams, session)
-        return read ? reply(read.status, read.body) : error(404, 'not_found')
+        if (read) return reply(read.status, read.body)
+        return refuseUnmocked() // listed in `mockedEndpoints.ts`, but no handler answered
       }
     }
   }

@@ -798,7 +798,8 @@ test.describe("Network failure: no fake success on any write", () => {
     await page.getByLabel("Contact Number").fill("03001234567")  // Listing Contact v1: required for a new owner listing
 
     // Simulate a server failure on POST /listings.
-    await page.route("**/api/v1/listings", (route) => (route.request().method() === "POST" ? route.abort("failed") : route.continue()))
+    // Anything else goes back to the shared mock (`fallback`); `continue()` would send it to the network.
+    await page.route("**/api/v1/listings", (route) => (route.request().method() === "POST" ? route.abort("failed") : route.fallback()))
     await page.getByRole("button", { name: "Submit for Review" }).click()
 
     // The form stays, no "submitted" page, and the form data survives.

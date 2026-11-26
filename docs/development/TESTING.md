@@ -32,7 +32,8 @@ playwright.config.ts       projects, webServer, artifacts
 e2e/*.spec.ts              desktop journeys
 e2e/mobile/*.spec.ts       mobile-viewport specs      (project: mobile)
 e2e/pwa/*.spec.ts          service-worker / offline   (project: pwa)
-e2e/helpers/               shared helpers (readiness, in-app navigation, role flows, `authMock.ts` mock auth API, `test.ts` fixture)
+e2e/helpers/               shared helpers (readiness, in-app navigation, role flows, `authMock.ts` mock API, `test.ts` fixtures, API isolation)
+e2e/global-*.ts            the mocked lane's API-isolation preflight and run gate
 tsconfig.e2e.json          type-checks e2e/ and playwright.config.ts under `tsc -b`
 ```
 
@@ -56,7 +57,7 @@ Unit tests cover pure logic with real inputs/outputs; component tests cover beha
 
 Playwright builds the app and serves it with `vite preview --host 127.0.0.1 --port 4173 --strictPort`; `baseURL` is `http://127.0.0.1:4173`. `localhost` is deliberately avoided: on Windows it can resolve to IPv6 (`::1`) in one process and IPv4 in another (the Vite dev server bound `[::1]` while the Playwright browser resolved IPv4 and was refused). An explicit IPv4 address behaves the same on Windows, macOS and CI. The production build is what is tested — it is also the only build that registers the service worker.
 
-Locally an already-running server on the port is reused (`reuseExistingServer`); in CI it never is. CI sets `PW_SKIP_BUILD=1` because its build gate already produced `dist/`.
+The mocked lane **never reuses a server**, locally or in CI (see *API isolation of the mocked lane*): ports **4173** and **4174** must be free. CI sets `PW_SKIP_BUILD=1` because its build gate already produced `dist/`.
 
 ### Projects
 
@@ -75,6 +76,22 @@ Caching would make functional tests order-dependent, so every functional project
 Every test gets a fresh browser context (empty `localStorage`, cookies, service workers) and the app's in-memory state resets on each full page load. There is **no** reset endpoint or test-only code in the shipped bundle and nothing is exposed on `window`.
 
 Authentication is real from Phase 12C, but E2E runs the production build **without a backend**, so `e2e/helpers/authMock.ts` fakes `/api/v1/auth/*` — and, since Phase 12G, every READ endpoint from the shared `src/test/fixtures/readRouter.ts` plus the OpenStreetMap tile host (a 1×1 PNG; `tileRequests` records what the page asked for, so no spec ever contacts a live tile server) — with `page.route` (all specs import `test` / `expect` from `e2e/helpers/test.ts`, which installs it): a stateful server-side session that survives reloads, `/auth/me`, CSRF enforcement, the error envelope, and a fake Google consent route (no real Google, ever). Listing data is the mock's read fixtures; there are no write endpoints (Phase 12H), so the old cross-role create → moderate → publish lifecycle specs were removed in 12G. The Admin area has no public link, so `navigateInApp()` drives React Router with `history.pushState` + a `popstate` event (the same path Back/Forward takes) and then waits for the destination's `<h1>`. This is a test helper only.
+
+### API isolation of the mocked lane
+
+**The mocked lane has no backend and cannot reach one.** `vite preview` proxies `/api` to `127.0.0.1:8000` by default, so a request that left the browser mock went to a developer's running API, if there was one. One did (found 2026-11-27): `offline: data reads fail visibly` removed the mock with `page.unroute`, and its closing `setOffline(false)` made the app re-check the session by itself (`AuthProvider` re-checks on `online` while the session is `unavailable`). That sent `GET /api/v1/auth/me` through the proxy in **3 of 3** isolated runs, and the test still passed.
+
+| Layer | What it does | What it catches |
+|---|---|---|
+| Dedicated target | `playwright.config.ts` forces the preview proxy to `apiTripwire.mjs` on 4174 (winning over the shell and `.env`), makes its own builds use the relative API base, and reuses neither server | everything proxied; a developer's own preview server |
+| Preflight (`global-setup.ts`) | stops the run unless `/api` reaches the tripwire | broken wiring, before any test |
+| Browser guard (`apiGuard`, `test.ts`) | aborts any `/api` request the page mock did not handle, and **fails that test** | `page.unroute`, `route.fallback()` past the last handler, another page, paths outside `/api/v1` |
+| Mock coverage (`mockedEndpoints.ts`) | a call not listed is answered `501` and **fails the test** (before, it looked like a real `401` / `404`) | missing mocks, signed in or out |
+| Run gate (`global-teardown.ts`) | **fails the run** if anything reached the tripwire | `route.continue()`, `APIRequestContext` calls, specs without the project fixtures, late requests |
+
+The tripwire never answers an API request successfully. `e2e/isolation.spec.ts` is the regression suite, including two `test.fail` cases that pass only while the fixtures fail them. **Writing tests:** never remove the mock to simulate no network (set `authMock.offline = true`, and set it back **before** `setOffline(false)`); use `route.fallback()`, never `route.continue()`, for API routes; a new endpoint needs a handler **and** a line in `mockedEndpoints.ts`.
+
+**Limits.** The guarantee rests on the relative API base. A `dist/` built outside Playwright with an absolute `VITE_API_BASE_URL` (the `PW_SKIP_BUILD=1` path), or a test that names another origin outright, could bypass the proxy with a request that skips the browser mock. Third-party hosts other than the mocked tile host and fake Google are not covered. The **real-stack lane** (`playwright.real.config.ts`) is unchanged: it is meant to reach the local API.
 
 ### Readiness and waiting
 
