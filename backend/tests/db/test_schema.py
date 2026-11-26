@@ -15,6 +15,11 @@ EXPECTED_TABLES = {
     "categories",
     "food_menu_items",
     "food_profiles",
+    "grocery_daily_capacity",
+    "grocery_order_items",
+    "grocery_order_status_history",
+    "grocery_orders",
+    "grocery_settings_revisions",
     "listing_categories",
     "listing_status_history",
     "oauth_flows",
@@ -146,7 +151,8 @@ def test_every_timestamp_is_timezone_aware_and_every_id_is_a_uuid(db_session: Se
             "SELECT table_name || '.' || column_name FROM information_schema.columns "
             "WHERE table_schema = 'public' AND (column_name = 'id' OR column_name LIKE '%\\_id') "
             "AND table_name <> 'alembic_version' AND data_type <> 'uuid' "
-            "AND NOT (table_name IN ('auth_events', 'staff_audit_events') "
+            "AND NOT (table_name IN ('auth_events', 'staff_audit_events', "
+            "'grocery_settings_revisions') "
             "AND column_name = 'request_id')"  # a request id is text, not a uuid
         )
     ).all()

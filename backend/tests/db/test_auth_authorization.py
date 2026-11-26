@@ -255,6 +255,7 @@ def test_the_production_api_has_no_role_or_probe_routes(auth_env: AuthEnv) -> No
         "/api/v1/admin/requests/{request_id}/start",
         "/api/v1/admin/requests/{request_id}/complete",
         "/api/v1/admin/requests/{request_id}/cancel",
+        "/api/v1/admin/grocery/settings",
     ]
     assert [p for p in paths if "/auth/" in p] == [
         "/api/v1/auth/register",

@@ -539,3 +539,22 @@ The remaining D3 / D4 questions have **provisional** answers in the GROCERY-1b e
 This **replaces** the earlier statement that GROCERY-1b needs the block list before it can start: it can be built with an empty list, but **cannot accept an order** until verified blocks are configured.
 **Reason:** work can proceed without guessing local geography, and an unconfigured or half-configured deployment refuses orders instead of taking ones it cannot serve.
 **Revisit when:** the official block list is supplied; the quotation phase confirms the cap; pilot data suggests a minimum order value.
+
+---
+
+**Decision (GROCERY-1b — order intake; BUILT and approved for commit, 2026-11-27; migration `0011`; contract `docs/backend/API_CONTRACT.md` §18).** It implements the pilot defaults and the 2026-11-27 provisional defaults above. Choices made while building. At the 2026-11-27 review the owner approved the pilot behaviour of 2, 3, 6, 7, 9 and 10, together with the empty default block list and revision-based cancellation. The final verification found that 1, 4, 5, 8 and 11 change no approved business or security rule:
+(1) **Only `submitted` and `cancelled` exist**, in code and in the database checks (the planning note had reserved the full vocabulary).
+(2) **Unit bounds** per line are those of `API_CONTRACT.md` §18.3; units are `kg, gram, litre, ml, piece, pack, dozen`.
+(3) **Submission limits are 3 per hour and 4 per day per account**, replacing the planning suggestion of 5 and 10: since cancelled orders keep their capacity place, 10 a day would have let **one account use up a whole day's capacity**. **Approved: 3 per hour and 4 per day, counting successful new submissions only.** The windows are the limiter's **fixed** ones, not rolling: the clock hour, and the **UTC day, which resets at 05:00 in Karachi**. With the default hours a whole opening window falls in one UTC day (at most 4 per operating day); opening hours that start before 05:00 would span two.
+(4) The **delivery snapshot** is a contact name, Pakistani phone, configured block, address line and optional landmark. No separate area field: the service is B-17 and the block list is its area. The **contact name is required**, although the specification did not list it.
+(5) **Substitution preference is per item** (`allow`, `ask`, `none`; default `ask`).
+(6) **Idempotency hashes live on the order and never expire.**
+(7) **Settings are an insert-only version table**, not rows in the staff audit (12-item list limit; a new audit action would break older code reading the audit).
+(8) **Settings need the Super Admin role with the ordinary admin freshness rule**, not the 15-minute window.
+(9) **Availability** names why it is closed, including that today is full, but shows no number.
+(10) **No `GROCERY_ENABLED` deployment switch**: the database setting, disabled by default, is the only one.
+(11) Every order route needs a **verified** account, reads included.
+**No official B-17 block was added or invented**: the list is empty, and tests use labels named "Test Block".
+**Recorded at approval (2026-11-27):** (a) **GROCERY-5 pilot security requirement:** several accounts together can use up a day's capacity (with the defaults, three: 4 + 4 + 2 orders, cancelled ones included). It must be addressed before the limited pilot. (b) **Grocery stays disabled for real customers.** (c) The **PKR 20,000** quotation cap **including fees** is still **subject to GROCERY-2 approval**.
+**Reason:** a small, closed intake that cannot oversell a day, create an order twice or show one customer another's data, and that stays inert until deliberately configured.
+**Revisit when:** GROCERY-2 is designed; the official block list arrives; pilot data suggests different limits.

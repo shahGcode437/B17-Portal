@@ -634,3 +634,107 @@ Authority is the actor's LIVE role and scope, read and locked in the transaction
 - **Assignable:** the five listing scopes and `grocery`. `news` is still `422 validation_error` with `invalid_staff_scope`; an unknown value is `422 validation_error`.
 - **Admin authority** (`AUTH_RBAC.md` §32): every route that §12, §15 and §16 describe as open to "staff" or "a Moderator" requires a **listing** scope. A Moderator holding only `grocery` gets `403 forbidden` on every `/admin/*` route, before the body or id is examined. Responses for every other account are unchanged.
 - **Client note:** a client older than this change drops the unknown `grocery` value from `staffScopes` (the shipped frontend already normalised unknown values).
+
+## 18. GROCERY-1b — Grocery order intake (as built)
+
+All under `/api/v1`, camelCase, the standard envelopes. **Every `/grocery` and `/admin/grocery` response is `Cache-Control: no-store`**, errors included. Unsafe calls need an exact `Origin` and `X-CSRF-Token` (`AUTH_RBAC.md` §6). There is **no** staff order queue, quotation, price, payment or e-mail.
+
+### 18.1 Endpoints
+
+| Method and path | Who | Answer |
+|---|---|---|
+| `GET /grocery/availability` | public | `200` availability |
+| `POST /grocery/orders` | verified, active account; header `Idempotency-Key` | `201` + `Location` (new) · `200` (the order this key already created) |
+| `GET /grocery/orders` `?status&limit&offset` | verified; own orders only | `200` `{data: summary[], meta: {total, limit, offset}}`, newest first; `limit` 12, max 50 |
+| `GET /grocery/orders/{orderId}` | verified; the owner | `200` detail |
+| `POST /grocery/orders/{orderId}/cancel` | verified; the owner | `200` detail |
+| `GET /admin/grocery/settings` | Super Admin | `200` settings |
+| `PATCH /admin/grocery/settings` | Super Admin | `200` settings |
+
+Anyone else's order, an unknown id and a malformed id are the same `404 not_found` — for a Super Admin and for any Moderator too.
+
+### 18.2 Availability
+
+`{acceptingOrders, unavailableReason?, serviceableBlocks[], schedule{timezone, operatingDays[], opensAt, closesAt}, limits{maxItemsPerOrder, maxActiveOrders}, units[{unit, minimum, maximum, step}], substitutionOptions[]}`.
+`unavailableReason` (only when not accepting), first that applies: `disabled`, `no_service_area`, `closed`, `daily_limit_reached`. **No capacity figure, order count or person is exposed.** It is a hint: submission decides again under lock.
+
+### 18.3 Submit
+
+```json
+{
+  "items": [
+    {"name": "Basmati rice", "unit": "kg", "quantity": "5",
+     "preferredBrand": "Any good brand", "substitution": "ask", "note": "Long grain"}
+  ],
+  "delivery": {"contactName": "…", "contactPhone": "0300 1234567", "block": "…",
+               "addressLine": "House …, Street …", "landmark": "…"},
+  "instructions": "…"
+}
+```
+
+Optional: `preferredBrand`, `substitution` (default `ask`), `note`, `landmark`, `instructions`. A blank optional text means absent. **Any other key — `customerId`, `status`, `reference`, `serviceDate`, `price`, `total`, `area`, … at any level — is `422 not_allowed`.** The customer is the session user; status, reference, revision and times are the server's. No message repeats a submitted value.
+
+| Field | Rule |
+|---|---|
+| `items` | 1 to the configured `maxItemsPerOrder` (default 50; never above 100); order matters |
+| `name` | trimmed, one line, 1–80 |
+| `unit` | `kg` · `gram` · `litre` · `ml` · `piece` · `pack` · `dozen` |
+| `quantity` | a **string**: digits with at most 3 decimals, above zero (no sign, exponent, `NaN`, `Infinity`; a JSON number is refused). Per-unit bounds below |
+| `substitution` | `allow` · `ask` · `none` (a preference; it approves nothing) |
+| `preferredBrand` / `note` | one line, ≤ 60 / ≤ 200 |
+| `contactName` | one line, 2–80 |
+| `contactPhone` | any common spelling of a **Pakistani** number, mobile or landline (`app/core/phone.py`); stored and returned as `+92…` |
+| `block` | 1–40, the listing block characters (letters, digits, space, `-`, `/`, `.`; starts with a letter or digit); must match a **configured** block (case and extra spaces ignored, nothing else guessed); the configured spelling is stored |
+| `addressLine` / `landmark` | one line, 5–200 / ≤ 100 |
+| `instructions` | ≤ 500, line breaks allowed |
+
+| Unit | Minimum | Maximum | Step |
+|---|---|---|---|
+| `kg` | 0.05 | 50 | 0.001 |
+| `gram` | 1 | 5000 | 1 |
+| `litre` | 0.1 | 50 | 0.001 |
+| `ml` | 1 | 5000 | 1 |
+| `piece` | 1 | 100 | 1 |
+| `pack` | 1 | 50 | 1 |
+| `dozen` | 0.5 | 20 | 0.5 |
+
+Quantities are `NUMERIC(10,3)` in the database, `Decimal` in Python and strings on the wire (no trailing zeros). **There is no minimum order value and no value limit: an order has no price.** The proposed PKR 20,000 cap belongs to the quotation phase.
+
+**Order of refusal:** CSRF / Origin → `401` / `403 email_not_verified` → `422` (everything in the table above that does not depend on settings) → `400 idempotency_key_required` / `idempotency_key_invalid` → the live account re-check (`401 session_expired`, `403 email_not_verified`) → **the idempotency key** (`200` replay, or `409 idempotency_key_reused`) → `429 rate_limited` → `503 grocery_unavailable` (disabled, or no serviceable block) → `409 grocery_closed` → `422` (`items.too_many_items`, `delivery.block.not_serviceable`) → `409 grocery_active_order_limit` → `409 grocery_capacity_reached`. A refused submission stores nothing, takes no capacity place, binds no key and is not counted against the submission limits.
+
+**Rate limits** (per account, counted only when an order is created): **3 per hour and 4 per day** (fixed windows, not rolling: the clock hour and the UTC day, which resets at 05:00 in Karachi), `429` with `Retry-After`. They are deliberately low because a cancelled order keeps its capacity place.
+
+### 18.4 Idempotency
+
+- `Idempotency-Key` is **required**: 8–128 characters of `A–Z a–z 0–9 . _ : -`. A UUID per intended order is the expected use.
+- It is bound to the customer and to a SHA-256 of the **validated** payload: spacing, phone spelling, trailing zeros in a quantity and block case do not matter; any other difference, including the order of the lines, does.
+- Same customer, key and payload → `200` with that order **as it is now** (it may be cancelled). No new order, place or rate-limit count. This holds even if ordering has since been disabled, closed or filled, the block removed or a limit lowered.
+- Same customer and key, different payload → `409 idempotency_key_reused`.
+- Keys are scoped by customer: another account using the same key gets its own order and learns nothing.
+- A replay needs the same authentication as any submission.
+- **Retention:** only the two hashes are stored, **on the order row, for as long as the order exists. They never expire and there is no cleanup job**, so a late retry can never create a second order. A future redaction of order data must keep the key hash (if it clears the payload hash, a same-key request must then answer `409`, never create).
+
+### 18.5 Responses and cancellation
+
+Summary: `{id, reference, status, revision, itemCount, block, submittedAt, cancelledAt?}` — **no name, phone, address or item text**. Detail adds `items[]`, `delivery{contactName, contactPhone, block, addressLine, landmark?}`, `instructions?`, `cancelReason?`, `canCancel`, `history[{fromStatus?, toStatus, actorRole, reason?, createdAt}]`, `updatedAt`. No user id, name of an actor, price, supplier or payment field exists. `reference` is `GRC-` plus 8 random characters without look-alikes (not sequential).
+
+Cancel body: `{"revision": n, "reason"?: "…"}` (reason ≤ 200, one line). Allowed only from `submitted`, whether or not ordering is on or open. Refusals: `404` → `401`/`403` (live account) → `409 invalid_state_transition` (so **a repeated cancellation changes nothing**) → `409 order_conflict` (`details` `revision`/`stale_revision`). There is no endpoint that sets a status.
+
+### 18.6 Settings
+
+`{revision, enabled, serviceableBlocks[], operatingDays[] (ISO 1 = Monday), opensAt, closesAt ("HH:MM"), timezone, dailyCapacity, maxActiveOrdersPerCustomer, maxItemsPerOrder, updatedAt, updatedBy?{userId, displayName}}`.
+
+| Setting | Default | Allowed |
+|---|---|---|
+| `enabled` | `false` | boolean |
+| `serviceableBlocks` | **empty** | up to 100 labels, unique ignoring case and spacing |
+| `operatingDays` | all seven | 1–7 distinct days |
+| `opensAt` / `closesAt` | `10:00` / `20:00` | `HH:MM`, closing after opening (no overnight window). Orders are accepted from opening **included** to closing **excluded** |
+| `timezone` | `Asia/Karachi` | `Asia/Karachi` only |
+| `dailyCapacity` | 10 | 1–200 |
+| `maxActiveOrdersPerCustomer` | 2 | 1–10 |
+| `maxItemsPerOrder` | 50 | 1–100 |
+
+`PATCH` takes `revision` (the one read) plus any settings; omitted = unchanged, `null` refused, lists replace whole. Refusals: `403` → `429` (30 changes per 15 min per Super Admin) → `409 conflict` (`stale_revision`) → `422` (`no_changes`, `closes_before_opens`, field rules). A change equal to the current settings writes nothing. **Every real change adds a permanent version.** Lowering a limit affects only later submissions.
+
+**New error codes:** `grocery_unavailable` (503), `grocery_closed`, `grocery_capacity_reached`, `grocery_active_order_limit`, `order_conflict`, `idempotency_key_reused` (409), `idempotency_key_required`, `idempotency_key_invalid` (400).

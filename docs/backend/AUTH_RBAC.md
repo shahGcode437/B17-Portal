@@ -1120,3 +1120,19 @@ Anonymous is `401`. An unverified account is `403 email_not_verified`. A suspend
 ### 32.6 Unchanged and outstanding
 
 Unchanged: Super Admin invariants, the last-usable-Super-Admin guard, role exclusivity, lock order, audit append-only triggers, listing `403` / `404` concealment. Still outstanding before any public production: **MFA for every Super Admin and Moderator** (§27.13), which includes Grocery staff.
+
+## 33. GROCERY-1b as built — authorization and privacy of order intake
+
+| Action | Anonymous | Verified account (any kind) | Moderator incl. `grocery` | Super Admin |
+|---|---|---|---|---|
+| availability | yes | yes | yes | yes |
+| submit; list / view / cancel **own** orders | `401` | yes | as an ordinary customer: own only | as an ordinary customer: own only |
+| view / cancel **another's** order | `401` | `404` | `404` | `404` |
+| read / change settings | `401` | `403` | `403` | yes |
+
+- **There is no staff or administrator read of any order in this phase.** The `grocery` scope of §32 still grants nothing: `require_grocery_staff` guards no route. Settings authority is the Super Admin role only (`require_super_admin`, with the 2 h / 12 h freshness rule; the 15-minute window of staff management is not required). Both settings routes are `super_admin_only` in `ADMIN_AUTHORITY`.
+- An unverified account is `403 email_not_verified` on every order route; a suspended or revoked session is `401`.
+- **Re-checked under lock.** A submission or cancellation re-reads the account and session `FOR SHARE` inside its transaction: a suspension, revocation or loss of verification that committed after authentication is obeyed, and one in flight waits. A settings change re-reads the `admin` role under lock.
+- **Owner scoping is in the query:** every order read is `WHERE id AND customer_id`.
+- **Privacy:** name, phone and address appear only in the owner's order detail. The history list and availability carry none. Nothing public (search, listings, news, categories) reads a Grocery table. Request logs record paths, never bodies; validation errors never repeat a value; and every Grocery write replaces a database error with one that carries only the SQLSTATE and constraint, because SQLAlchemy's message would include the statement's parameters (`app/services/grocery_errors.py`). All Grocery responses are `no-store`.
+- **Not yet decided or built:** retention and redaction of order data (D12), account deletion with orders (the foreign keys are `RESTRICT`), and what staff and a delivery person may see (D11).

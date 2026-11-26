@@ -438,3 +438,29 @@ Two additive migrations, each shipped with the slice that needs it (`0001`–`00
 - **No Grocery domain table exists.** Orders, items, events and settings are GROCERY-1b (planned as `0011`).
 - **Alembic's drift check does not compare `CHECK` constraints**, so a separate test pins the database's accepted values to `StaffScope`.
 - **Downgrade** locks the table and **refuses, changing nothing**, while any `grocery` assignment exists (otherwise staff authority would disappear with no audit record). Audit rows that mention `grocery` do not block it and stay unchanged. With no assignment it restores the previous `CHECK` exactly and can be upgraded again. Application rollback order: `DEPLOYMENT.md` §14.
+
+## 21. Grocery order intake — **`0011` implemented in GROCERY-1b**
+
+**Additive: five new tables, no change to any existing table, no taxonomy, role or scope change.** An independent domain: its only shared reference is `users`. No price, quotation, supplier, bill or payment table or column exists.
+
+```
+users 1─* grocery_orders 1─* grocery_order_items
+                         1─* grocery_order_status_history *─1 users (actor)
+grocery_daily_capacity        (one row per Karachi calendar day)
+grocery_settings_revisions    (insert-only; the highest revision is current)
+```
+
+| Table | Columns | Rules the database enforces |
+|---|---|---|
+| `grocery_orders` | `id`, `reference`, `customer_id`, `status`, `revision`, `contact_name`, `contact_phone`, `block`, `address_line`, `landmark?`, `instructions?`, `service_date`, `submitted_at`, `cancelled_at?`, `cancel_reason?`, `idempotency_key_hash`, `request_hash`, `created_at`, `updated_at` | customer FK `RESTRICT`; `status` in `submitted`, `cancelled`; unique `reference` (format check); unique `(customer_id, idempotency_key_hash)`; 32-byte hashes; phone `^\+92[0-9]{9,10}$`; `cancelled_at` present **iff** cancelled; a reason only when cancelled; non-blank texts; indexes `(customer_id, status)`, `(customer_id, submitted_at DESC)` |
+| `grocery_order_items` | `id`, `order_id`, `position`, `name`, `quantity NUMERIC(10,3)`, `unit`, `preferred_brand?`, `substitution`, `note?` | FK `CASCADE`; unique `(order_id, position)`; position 1–100; `0 < quantity <= 5000`; whole numbers for `gram`, `ml`, `piece`, `pack`; closed `unit` and `substitution`. Never updated by the application |
+| `grocery_order_status_history` | `id`, `order_id`, `from_status?`, `to_status`, `actor_user_id`, `actor_role`, `reason?`, `created_at` | both FKs `RESTRICT` (an order with history cannot be deleted); `from_status` null **iff** `to_status = 'submitted'`; `actor_role` `customer`; **trigger refuses UPDATE and DELETE**, but **not `TRUNCATE`** (unlike the settings table; the application issues none, and the table owner can also disable a trigger); index `(order_id, created_at)` |
+| `grocery_daily_capacity` | `service_date` (PK), `reserved` | `reserved >= 0` |
+| `grocery_settings_revisions` | `revision` (PK), the nine settings, `actor_user_id?`, `request_id?`, `created_at` | bounds of `API_CONTRACT.md` §18.6; opening before closing; an actor on every revision after the first; **triggers refuse UPDATE, DELETE and TRUNCATE**; no foreign key (as in the staff audit) |
+
+- **Lifecycle:** `submitted → cancelled` (customer). `delivered` and `cancelled` are the planned terminal states; today `cancelled` is the only one, so **active** = `submitted`. A later phase widens the `status` checks in its own migration and adds transitions to `grocery_rules.TRANSITIONS`; a new status counts as active unless it is added to the terminal set.
+- **Capacity** counts accepted submissions per Asia/Karachi day and is **never released**.
+- **Settings as their own history.** The table is both the current settings and the record of every change (who, when, the complete values). It does not use `staff_audit_events`: that payload allows at most 12 list items (a block list is longer), and a new audit action would make older code unable to read the audit log (the same hazard as `DEPLOYMENT.md` §14).
+- **Seed:** the migration inserts revision 1 only: disabled, **no serviceable block**, 10:00–20:00 Asia/Karachi, all days, 10 / 2 / 50.
+- **Downgrade** locks the tables and **refuses, changing nothing**, while any order or capacity row exists or the settings were ever changed.
+- Alembic does not compare `CHECK` constraints; a test pins the closed vocabularies and the whole-unit rule to the code.

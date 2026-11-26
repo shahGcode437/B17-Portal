@@ -78,7 +78,9 @@ def test_exactly_the_12d_operations_were_added(document: dict[str, Any]) -> None
         (method, path)
         for method, path in operations(document)
         if method != "GET"
-        and not path.startswith(("/auth/", "/health", "/admin/", "/saved", "/requests"))
+        and not path.startswith(
+            ("/auth/", "/health", "/admin/", "/saved", "/requests", "/grocery/")
+        )
     }
 
     assert written == {

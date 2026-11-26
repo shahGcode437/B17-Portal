@@ -442,7 +442,9 @@ def test_no_account_phone_number_exists_to_leak_into_a_listing(auth_env: AuthEnv
         )
         assert not [name for name in names if "phone" in name or "mobile" in name], table
 
-    # The only phone columns in the whole database are the listings own.
+    # The only phone columns in the whole database are the listings own, and (GROCERY-1b) the
+    # delivery number a customer types for ONE grocery order: private order data that only that
+    # customer reads. It is not an account number, and no listing path reads a grocery table.
     phone_columns = set(
         auth_env.session.execute(
             text(
@@ -451,7 +453,11 @@ def test_no_account_phone_number_exists_to_leak_into_a_listing(auth_env: AuthEnv
             )
         ).scalars()
     )
-    assert phone_columns == {"listings.contact_phone", "listings.whatsapp_phone"}
+    assert phone_columns == {
+        "listings.contact_phone",
+        "listings.whatsapp_phone",
+        "grocery_orders.contact_phone",
+    }
 
 
 def test_the_account_endpoints_return_no_phone_number(auth_env: AuthEnv) -> None:

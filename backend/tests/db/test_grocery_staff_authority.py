@@ -343,6 +343,12 @@ class World:
                 )
                 for action in ("accept", "start", "complete", "cancel")
             },
+            "GET /admin/grocery/settings": ("GET", "/admin/grocery/settings", None),
+            "PATCH /admin/grocery/settings": (
+                "PATCH",
+                "/admin/grocery/settings",
+                {"revision": 1, "enabled": True},
+            ),
             "GET /admin/staff": ("GET", STAFF, None),
             "GET /admin/audit": ("GET", AUDIT, None),
             "POST /admin/staff/moderators": (

@@ -105,6 +105,10 @@ def test_openapi_document_loads_and_describes_the_health_endpoint(client: TestCl
         "/api/v1/requests/{request_id}/start",
         "/api/v1/requests/{request_id}/complete",
         "/api/v1/requests/{request_id}/cancel",
+        "/api/v1/grocery/availability",
+        "/api/v1/grocery/orders",
+        "/api/v1/grocery/orders/{order_id}",
+        "/api/v1/grocery/orders/{order_id}/cancel",
         "/api/v1/admin/listings",
         "/api/v1/admin/listings/{listing_id}",
         "/api/v1/admin/listings/{listing_id}/approve",
@@ -128,6 +132,7 @@ def test_openapi_document_loads_and_describes_the_health_endpoint(client: TestCl
         "/api/v1/admin/requests/{request_id}/start",
         "/api/v1/admin/requests/{request_id}/complete",
         "/api/v1/admin/requests/{request_id}/cancel",
+        "/api/v1/admin/grocery/settings",
         "/api/v1/news",
         "/api/v1/news/{article_id}",
     ]

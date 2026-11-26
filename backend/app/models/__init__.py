@@ -1,6 +1,13 @@
 """ORM models. Importing this package registers every table on ``Base.metadata``."""
 
 from app.models.auth import AuthEvent, AuthRateLimit, AuthSession, AuthToken, OAuthFlow
+from app.models.grocery import (
+    GroceryDailyCapacity,
+    GroceryOrder,
+    GroceryOrderItem,
+    GroceryOrderStatusHistory,
+    GrocerySettingsRevision,
+)
 from app.models.listings import (
     BusinessProfile,
     FoodMenuItem,
@@ -27,6 +34,11 @@ __all__ = [
     "Category",
     "FoodMenuItem",
     "FoodProfile",
+    "GroceryDailyCapacity",
+    "GroceryOrder",
+    "GroceryOrderItem",
+    "GroceryOrderStatusHistory",
+    "GrocerySettingsRevision",
     "Listing",
     "ListingCategory",
     "ListingStatusHistory",

@@ -17,12 +17,14 @@ from fastapi.routing import APIRoute
 from sqlalchemy import select, text
 
 from app.api.v1 import admin as admin_routes
+from app.api.v1 import admin_grocery as admin_grocery_routes
 from app.api.v1 import admin_providers as admin_provider_routes
 from app.api.v1 import admin_requests as admin_request_routes
 from app.api.v1 import admin_staff as admin_staff_routes
 from app.api.v1 import auth as auth_routes
 from app.api.v1 import (
     categories,
+    grocery,
     health,
     listings,
     news,
@@ -410,6 +412,8 @@ ROUTER_MODULES = [
     admin_staff_routes,
     admin_provider_routes,
     admin_request_routes,
+    admin_grocery_routes,
+    grocery,
     news,
 ]
 
@@ -439,6 +443,7 @@ def test_every_current_admin_route_has_an_explicit_authority_classification() ->
         *_routes(admin_staff_routes),
         *_routes(admin_provider_routes),
         *_routes(admin_request_routes),
+        *_routes(admin_grocery_routes),
     ]:
         calls = _calls(route.dependant)
         for method in route.methods or set():

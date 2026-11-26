@@ -76,11 +76,16 @@ RBAC_D_REQUEST_OPERATIONS = {
     ("POST", "/admin/requests/{request_id}/cancel"),
 }
 RBAC_D_OPERATIONS = RBAC_D_PROVIDER_OPERATIONS | RBAC_D_REQUEST_OPERATIONS
+#: GROCERY-1b: the Super Admin's Grocery operating settings. No staff order route exists yet.
+GROCERY_OPERATIONS = {
+    ("GET", "/admin/grocery/settings"),
+    ("PATCH", "/admin/grocery/settings"),
+}
 
 
 def test_exactly_the_frozen_admin_operations_exist(document: dict[str, Any]) -> None:
-    assert (
-        admin_operations(document) == PHASE_12E_OPERATIONS | RBAC_C_OPERATIONS | RBAC_D_OPERATIONS
+    assert admin_operations(document) == (
+        PHASE_12E_OPERATIONS | RBAC_C_OPERATIONS | RBAC_D_OPERATIONS | GROCERY_OPERATIONS
     )
 
 
@@ -92,7 +97,8 @@ def test_the_phase_12e_surface_has_no_delete_no_module_endpoint_and_no_later_sli
     operations = {
         (method, path)
         for method, path in admin_operations(document)
-        if path not in _staff_paths() and (method, path) not in RBAC_D_OPERATIONS
+        if path not in _staff_paths()
+        and (method, path) not in RBAC_D_OPERATIONS | GROCERY_OPERATIONS
     }
     paths = [path for _, path in operations]
 

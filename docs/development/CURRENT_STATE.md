@@ -1039,18 +1039,33 @@ Baseline `709b8a4`. No migration (head stays `0009`), no new dependency. The fro
 - **Mandatory before launch:** a verified sending domain with production e-mail credentials; durable delivery; priority for critical mail and protection of the sending quota; delivery monitoring; the tracking-redirect investigation, with open and click tracking kept off on the production sending domain (`DEPLOYMENT.md` §13.6-13.7); production OAuth configuration; per-IP rate limiting at the proxy and callback-log sanitization; **MFA for every staff account** (`AUTH_RBAC.md` §27.13).
 - **Outstanding:** Resend plan, key, verified `mail.b17portal.com`, DMARC, bounce monitoring (no support address until a monitored mailbox exists); and still **production OAuth configuration, per-IP rate limiting at the proxy / CDN and OAuth callback-log sanitization** (`DEPLOYMENT.md` §10 and §13.6).
 
-## GROCERY-1a Result — staff authority foundation for the Grocery pilot (BUILT; **awaiting owner review, not committed**; no Grocery feature exists)
+## GROCERY-1a Result — staff authority foundation for the Grocery pilot (BUILT, **COMMITTED** as `e1b566f` and **PUSHED** 2026-11-27; GitHub CI passed)
 
 Baseline `004a208`. Migration head **`0010`** (one `CHECK` widened). No new dependency.
 
 - **Built:** the `grocery` **staff scope**; `StaffScope` separated from the listing taxonomy (`CategoryModule` unchanged); the staff front door narrowed to **listing** scopes; `require_grocery_staff` (no production route yet); Grocery staff appointed through the **existing** staff-management API with the same session revocation and audit. Frontend: the `StaffScope` type only, no screen. As built: `AUTH_RBAC.md` §32.
 - **Nobody received `grocery`** from the migration, and **no Grocery category, module or listing kind exists**.
-- **Planned, not built:** order intake (GROCERY-1b), quotations (2), screens (3), fulfilment and cash (4), hardening and pilot (5). **No Grocery route, table, setting, order or e-mail exists.**
+- **Planned at that point:** order intake (GROCERY-1b), quotations (2), screens (3), fulfilment and cash (4), hardening and pilot (5). **GROCERY-1a itself added no Grocery route, table, setting, order or e-mail** (GROCERY-1b, below, adds the intake ones).
 - **Decisions:** D1–D4 pilot defaults recorded; **D5–D18 open**; provisional GROCERY-1b defaults recorded (`DECISIONS.md`). **The official B-17 block list has not been supplied:** the planned service-area setting may be empty and then fails closed (no new orders).
-- **Local databases:** `b17_dev` was deliberately **left at `0009`**. On it, the new code works except assigning `grocery`.
+- **Local databases:** while GROCERY-1a was built, `b17_dev` was deliberately **left at `0009`**. Whether it has been upgraded since is not recorded here: check with `alembic current`; do not assume.
 - **Rollback:** never roll the code back while a `grocery` assignment exists (`DEPLOYMENT.md` §14).
 - **Blockers unchanged** (durable and prioritised e-mail, tracking investigation, production Google OAuth, proxy rate limiting, callback-log sanitization, staff MFA, backups, production readiness).
-- **Verification:** `TESTING.md` (GROCERY-1a).
+- **Verification:** `TESTING.md` (GROCERY-1a). Two separate commits went out with it: the CI type-check correction (`0e4302a`) and the mocked browser lane's API isolation (`e45e099`).
+- **CI:** Backend CI had **failed** at the type-check step on `004a208` (EMAIL-1), so its later steps, the backend tests included, had not run there. On `e1b566f` (pushed together with the two commits above) **Backend CI and Frontend CI passed**.
+
+## GROCERY-1b Result — customer order intake, backend only (BUILT; reviewed and **committed locally** 2026-11-27, **not pushed**; **GitHub CI pending**; **disabled by default**)
+
+Baseline `e1b566f`. Migration head **`0011`**. No new dependency; no frontend change.
+
+- **Built:** availability, submit, own history and detail, cancel; Super Admin settings; idempotency; the daily capacity and per-customer limits under PostgreSQL locks; `no-store` and log privacy. Contract `API_CONTRACT.md` §18, tables `DATA_MODEL.md` §21, authority `AUTH_RBAC.md` §33, locks `BACKEND_ARCHITECTURE.md` §5.
+- **Disabled by default, with an empty block list. No official B-17 block was added or invented.**
+- **NOT built:** staff order queue, quotations and prices, partner marts, procurement, packing, delivery, cash, e-mail, catalogue, payments, any screen. **No staff member can see an order through the portal.**
+- **Do not enable for real customers** (`DEPLOYMENT.md` §15): verified blocks, the later phases, privacy / retention / refund / cash policies, durable and prioritised e-mail with quota protection, the tracking investigation, production Google OAuth, proxy rate limiting, callback-log sanitization, staff MFA, backups and production readiness are all open.
+- **Approved pilot limits:** 3 successful new submissions per hour and 4 per day per account (fixed windows; `DECISIONS.md`).
+- **Verification (local):** the one full backend run was **not fully green: 5,315 passed, 1 failed, 3 skipped**. The failing test's exact list of phone columns lacked the order's delivery phone; after that test-only correction its file passed (**59 of 59**). The full suite was not run again. That run took 45 minutes against 18 before; **the increase is not explained**. **GitHub CI has not run this change.** Details: `TESTING.md` (GROCERY-1b).
+- **Open business decisions:** D5–D18 (`DECISIONS.md`), among them fees, quote validity, partner marts, cancellation after approval, cash handling and retention; the PKR 20,000 cap including fees (GROCERY-2); the official block list.
+- **Pilot security requirement (GROCERY-5):** several accounts together can use up a day's capacity.
+- **Not production-ready.**
 
 ## VR1 (Visual Redesign) — Glassmorphism + Controlled Maximalism Foundation (in progress, NOT committed)
 

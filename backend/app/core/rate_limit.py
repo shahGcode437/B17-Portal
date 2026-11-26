@@ -65,6 +65,16 @@ STAFF_MUTATION = RatePolicy("staff_mutation", limit=20, window_seconds=15 * 60)
 PROVIDER_WRITE = RatePolicy("provider_write", limit=60, window_seconds=15 * 60)
 
 
+#: Grocery orders CREATED per customer (GROCERY-1b; API_CONTRACT.md §18). Counted only when an
+#: order is actually created, in the same transaction; a replay of an idempotency key counts
+#: nothing. Deliberately low: cancelled orders keep their daily capacity slot, so without these
+#: one account could submit, cancel and resubmit until the whole day's capacity was gone.
+GROCERY_SUBMIT_HOUR = RatePolicy("grocery_submit_hour", limit=3, window_seconds=60 * 60)
+GROCERY_SUBMIT_DAY = RatePolicy("grocery_submit_day", limit=4, window_seconds=24 * 60 * 60)
+#: Grocery settings changes per acting Super Admin: a tripwire for a runaway client.
+GROCERY_SETTINGS_WRITE = RatePolicy("grocery_settings_write", limit=30, window_seconds=15 * 60)
+
+
 class RateLimiter(Protocol):
     def blocked(self, identifier: str, policy: RatePolicy) -> RateDecision:
         """Is ``identifier`` already over ``policy`` (without counting this call)?"""

@@ -253,6 +253,11 @@ def test_no_other_schema_exposes_a_location_field() -> None:
             continue
         # The admin QUEUE row shows the privacy MODE only (never a coordinate, address or landmark).
         mode_only = {"locationVisibility"} if name == "AdminListingSummary" else set()
+        # GROCERY-1b: a delivery landmark is the customer's own PRIVATE order data, not a listing
+        # location. Only these two shapes (the submission body and the owner-only detail) may
+        # carry it, and still no coordinate or other location field.
+        if name in {"GroceryDeliveryInput", "GroceryDeliveryRead"}:
+            mode_only = {"landmark"}
         leaked = forbidden & set(schema.get("properties", {})) - mode_only
         assert not leaked, (name, leaked)
 

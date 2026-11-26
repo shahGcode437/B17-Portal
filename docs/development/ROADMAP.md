@@ -371,9 +371,9 @@ An independent domain: B-17 Portal manages procurement and fulfilment, local par
 | Phase | Scope | Status |
 |---|---|---|
 | **GROCERY-0** | Planning and decision register (kept outside the repository) | done |
-| **GROCERY-1a** | Staff authority: `StaffScope`, the `grocery` scope, guards, migration `0010` | **BUILT; awaiting review; not committed** |
-| **GROCERY-1b** | Order intake (backend): availability switch, configurable hours / capacity / limits / serviceable blocks, submit, list, detail, cancel, idempotency, privacy (planned `0011`) | NOT STARTED; can be built with an empty, fail-closed block list; **no order can be accepted** until the owner supplies verified blocks |
+| **GROCERY-1a** | Staff authority: `StaffScope`, the `grocery` scope, guards, migration `0010` | **COMPLETE:** committed `e1b566f`, pushed, CI passed |
+| **GROCERY-1b** | Order intake (backend): availability switch, configurable hours / capacity / limits / serviceable blocks, submit, list, detail, cancel, idempotency, privacy (planned `0011`) | **BUILT; reviewed and committed locally 2026-11-27; not pushed; GitHub CI pending** (`0011`). Disabled; empty block list: **no order can be accepted** until the owner supplies verified blocks and enables it |
 | **GROCERY-2** | Staff review and quotation (backend; planned `0012`) | NOT STARTED; D5–D9 |
 | **GROCERY-3** | Customer and staff screens, staff appointment | NOT STARTED; D10, D11, D13, D14, D18 |
 | **GROCERY-4** | Fulfilment, cash and corrections (planned `0013`) | NOT STARTED; D15–D17 |
-| **GROCERY-5** | Hardening and limited pilot | NOT STARTED; D12 and every launch blocker, including the separate durable-e-mail phase |
+| **GROCERY-5** | Hardening and limited pilot | NOT STARTED; D12 and every launch blocker, including the separate durable-e-mail phase. **Required security work:** stop several accounts from using up a day's order capacity (`DECISIONS.md`, GROCERY-1b) |

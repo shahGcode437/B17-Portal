@@ -386,3 +386,20 @@ Windows PowerShell, from `backend/`, with the API stopped. **Rehearsed on 2026-1
 7. Start the API again.
 
 **To go back:** while nobody holds `grocery`, `alembic downgrade 0009`, then run the older code. If anyone does, follow §14.2 first. Restoring the dump is a last resort: it discards everything written since the backup. Delete the dump when you no longer need it.
+
+## 15. Grocery order intake, migration `0011` (GROCERY-1b)
+
+**Upgrade:** `alembic upgrade head` before or with the application. It only creates five tables and inserts the default settings row. The new application **requires** `0011` for every `/grocery` route; the rest of the portal does not read those tables.
+
+**Applying it to a local database:** follow §14.3 (check the target by name, back up outside any synced folder, verify), upgrading to `head`. `alembic current` must then print `0011 (head)`. A database still at `0009` receives `0010` and `0011` in the same run.
+
+**Rolling back**
+
+- **The application alone can be rolled back safely** to the release before GROCERY-1b: it does not read the new tables. (The rule of §14.2 still applies to anything older than `0010`.) Orders stay stored and are served again after rolling forward.
+- **Downgrading `0011` refuses, changing nothing,** while any order or capacity record exists, or the settings were ever changed. A database where Grocery was never used downgrades cleanly. Removing real data first is a deliberate, destructive operator decision: take a backup, and expect the append-only triggers to block deletes.
+
+**Grocery is disabled after deployment and stays so until a Super Admin enables it.** Enabling it today only lets customers submit orders **that no staff member can see or process through the portal** (there is no staff queue), and sends no e-mail. **Do not enable it for real customers** before the pilot blockers are closed, at least: the owner-verified block list configured; the staff review, quotation and fulfilment phases; privacy and retention, refund and cash-handling policies; durable, prioritised e-mail with quota protection and the tracking investigation, if any Grocery e-mail is sent; production Google OAuth; per-IP rate limiting at the proxy and callback-log sanitization; a control against several accounts filling a day's capacity, which per-account limits cannot stop (**GROCERY-5 requirement**); MFA for every staff account; backups with a tested restore; monitoring.
+
+**Recommended hardening, not yet decided:** run the application under a database role that cannot `TRUNCATE` or alter tables, so that order history cannot be emptied through it (its trigger refuses only `UPDATE` and `DELETE`).
+
+There is **no deployment-level switch**: the database setting is the only one (planning had suggested an additional `GROCERY_ENABLED` setting; it was not approved).

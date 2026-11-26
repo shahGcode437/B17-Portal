@@ -132,6 +132,8 @@ ADMIN_AUTHORITY: dict[str, str] = {
     "POST /admin/providers": "services_staff",
     "PATCH /admin/providers/{provider_id}": "services_staff",
     "POST /admin/providers/{provider_id}/archive": "services_staff",
+    "GET /admin/grocery/settings": "super_admin_only",
+    "PATCH /admin/grocery/settings": "super_admin_only",
     "GET /admin/requests": "services_staff",
     "GET /admin/requests/{request_id}": "services_staff",
     "POST /admin/requests/{request_id}/accept": "services_staff",

@@ -33,6 +33,15 @@ class ErrorCode(StrEnum):
     # Listing writes (Phase 12D; docs/backend/API_CONTRACT.md §10.10)
     LISTING_CONFLICT = "listing_conflict"
     PROFESSIONAL_PROFILE_REQUIRED = "professional_profile_required"
+    # Grocery order intake (GROCERY-1b; docs/backend/API_CONTRACT.md §18)
+    GROCERY_UNAVAILABLE = "grocery_unavailable"
+    GROCERY_CLOSED = "grocery_closed"
+    GROCERY_CAPACITY_REACHED = "grocery_capacity_reached"
+    GROCERY_ACTIVE_ORDER_LIMIT = "grocery_active_order_limit"
+    ORDER_CONFLICT = "order_conflict"
+    IDEMPOTENCY_KEY_REQUIRED = "idempotency_key_required"
+    IDEMPOTENCY_KEY_INVALID = "idempotency_key_invalid"
+    IDEMPOTENCY_KEY_REUSED = "idempotency_key_reused"
     NOT_FOUND = "not_found"
     METHOD_NOT_ALLOWED = "method_not_allowed"
     CONFLICT = "conflict"
@@ -58,6 +67,18 @@ DEFAULT_MESSAGES: dict[ErrorCode, str] = {
     ErrorCode.PLAN_LIMIT_REACHED: "Your plan's listing limit has been reached.",
     ErrorCode.LISTING_CONFLICT: "This listing changed since you opened it.",
     ErrorCode.PROFESSIONAL_PROFILE_REQUIRED: "Create your professional profile to do this.",
+    ErrorCode.GROCERY_UNAVAILABLE: "Grocery ordering is not available right now.",
+    ErrorCode.GROCERY_CLOSED: "Grocery ordering is closed right now.",
+    ErrorCode.GROCERY_CAPACITY_REACHED: "No more grocery orders can be accepted today.",
+    ErrorCode.GROCERY_ACTIVE_ORDER_LIMIT: (
+        "You already have the most grocery orders you can have open at once."
+    ),
+    ErrorCode.ORDER_CONFLICT: "This order changed since you opened it.",
+    ErrorCode.IDEMPOTENCY_KEY_REQUIRED: "Send an Idempotency-Key header with this request.",
+    ErrorCode.IDEMPOTENCY_KEY_INVALID: "The Idempotency-Key header is not valid.",
+    ErrorCode.IDEMPOTENCY_KEY_REUSED: (
+        "This Idempotency-Key was already used for a different order."
+    ),
     ErrorCode.NOT_FOUND: "Resource not found.",
     ErrorCode.METHOD_NOT_ALLOWED: "Method not allowed.",
     ErrorCode.CONFLICT: "The request conflicts with the current state of the resource.",

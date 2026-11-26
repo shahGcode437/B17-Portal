@@ -266,6 +266,41 @@ class StaffAuditResource(StrEnum):
     CATEGORY = "category"
 
 
+class GroceryOrderStatus(StrEnum):
+    """A Grocery order's lifecycle (docs/backend/DATA_MODEL.md §21). Only the INTAKE states exist
+    (GROCERY-1b). Later phases add review, quotation, fulfilment and delivery states by widening
+    the database CHECK in their own migration and adding transitions to ``grocery_rules``."""
+
+    SUBMITTED = "submitted"
+    CANCELLED = "cancelled"
+
+
+class GroceryUnit(StrEnum):
+    """The closed unit vocabulary of an order line. Bounds and precision: ``grocery_rules``."""
+
+    KG = "kg"
+    GRAM = "gram"
+    LITRE = "litre"
+    ML = "ml"
+    PIECE = "piece"
+    PACK = "pack"
+    DOZEN = "dozen"
+
+
+class GrocerySubstitution(StrEnum):
+    """The customer's wish if an item is unavailable. A PREFERENCE only: it approves nothing."""
+
+    ALLOW = "allow"
+    ASK = "ask"
+    NONE = "none"
+
+
+class GroceryActorRole(StrEnum):
+    """In which capacity a Grocery history row's actor acted. Staff roles arrive with GROCERY-2."""
+
+    CUSTOMER = "customer"
+
+
 class OAuthPurpose(StrEnum):
     """What an OAuth round trip is for: sign in, or connect a provider to the signed-in account."""
 

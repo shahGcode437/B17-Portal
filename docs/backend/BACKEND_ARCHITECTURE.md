@@ -147,6 +147,23 @@ The lock order (profile before listing) is the same everywhere, so two writers c
 
 *As built in 12F — requests and Saved.* Two new, independent lock points, neither of which waits on (or is waited on by) the 12D / 12E locks, so the global order *taxonomy → profile → listing* is unchanged. (1) **Create** takes `pg_advisory_xact_lock` keyed by the requester first, then the target listing `FOR SHARE` (a moderation decision takes `FOR UPDATE` on the same row alone, so create and takedown serialise without a cycle). Everything — the limit checks, the insert, the history row and the limit counts (`RateLimiter.record`, which, unlike `hit`, does not end the transaction) — commits together, which is what makes the frozen limits exact under parallel creates and means a refused or failed request costs no allowance. A first design used a *session*-level advisory lock around separate transactions; it was wrong (a SQLAlchemy `Session` returns its connection to the pool on commit, so the unlock ran on another connection and the lock leaked) and was caught by the separate-connection concurrency suite — never hold a session-level lock across a service commit. (2) A **transition** locks only its request row and guards the `UPDATE` by the expected status; history rows are stamped with `clock_timestamp()` because `now()` is the transaction start and would mis-order two transitions that waited on each other. **Saved** uses no lock: `INSERT … ON CONFLICT DO NOTHING` / `DELETE` on a table whose primary key is the uniqueness rule.
 
+### Grocery order intake (GROCERY-1b)
+
+Every limit is held in PostgreSQL, so it is correct across restarts and any number of API processes. Lock order (a path takes only the steps it needs, always in this order):
+
+| Path | Order |
+|---|---|
+| submit | requester advisory lock → `users` `FOR SHARE` → the session `FOR SHARE` → settings advisory lock (**shared**) → the day's capacity row (updated) → inserts |
+| cancel | the order row `FOR UPDATE` → `users` `FOR SHARE` → the session `FOR SHARE` |
+| change settings | `users` `FOR KEY SHARE` → `user_roles` `FOR SHARE` → settings advisory lock (**exclusive**) → insert |
+
+- `users` before `auth_sessions` is the order of password change, password reset and every staff mutation, so none can form a cycle with these.
+- **Logout goes the other way:** it updates the session, then the foreign key of its audit row takes `FOR KEY SHARE` on the user. That mode does not conflict with the `FOR SHARE` these paths take, and PostgreSQL grants it even while a `FOR UPDATE` request is waiting, so it closes no cycle with them (checked 2026-11-27 on a minimal replica; no automated test). It **would** conflict if a Grocery path ever took `FOR UPDATE` on the user row: do not add one.
+- **Daily capacity** is one guarded statement, `UPDATE … SET reserved = reserved + 1 WHERE service_date = :d AND reserved < :limit RETURNING`: concurrent submitters queue on the row and re-read the committed count. A rollback returns the place; nothing else ever does.
+- **Active-order limit and idempotency** are read-then-write, made safe by the requester lock (the only path that adds a customer's order). A concurrent cancel can only lower the count. The unique `(customer_id, idempotency_key_hash)` constraint is the backstop.
+- **Settings** cannot change under a submission: it holds the settings lock shared until commit. A waiting change queues later submissions behind it.
+- The current time is read **after** the locks, so waiting never extends the opening hours.
+
 ## 6. Concurrency and consistency (no distributed locking)
 
 Prefer, in order: **database constraints**, **guarded single-statement updates**, **row locks inside a transaction**, **optimistic concurrency tokens**.
@@ -218,7 +235,7 @@ Docker Compose provides PostgreSQL (`backend/compose.yaml`, `postgres:17-alpine`
 | Content-version history — full snapshots of past listing content, restore/diff, keep the old approved version live while a new one is reviewed (**not** the `revision` counter, which is current) | e.g. a `listing_revisions` table | Frontend semantics today: an edit takes the listing offline until re-approved; the counter alone suffices for concurrency. |
 | Personalization | Separate activity tables (DATA_MODEL §10) | Out of V1 scope. |
 | Online payments | New module | Explicitly out of scope. |
-| Grocery ordering (controlled pilot; cash on delivery only, recorded and never processed) | An independent domain: its own tables, services, API and frontend feature; it reuses sessions, verified accounts, staff-authority locking, API conventions and the design system, with no foreign key to listings or Service Requests | Approved as a pilot, **off by default** (`DECISIONS.md`). **Only the staff-authority foundation is built** (GROCERY-1a, `AUTH_RBAC.md` §32); no ordering exists. |
+| Grocery ordering (controlled pilot; cash on delivery only, recorded and never processed) | An independent domain: its own tables, services, API and frontend feature; it reuses sessions, verified accounts, staff-authority locking, API conventions and the design system, with no foreign key to listings or Service Requests | Approved as a pilot, **off by default** (`DECISIONS.md`). Built: the staff-authority foundation (GROCERY-1a, `AUTH_RBAC.md` §32) and **customer order intake** (GROCERY-1b, `API_CONTRACT.md` §18). No review, quotation, fulfilment or payment exists. |
 | Other ordering (for example Food & Dining) | New module | Out of scope. |
 
 **E-mail (EMAIL-1):** e-mail no longer uses `BackgroundTasks`; it goes through the bounded in-process dispatcher of `AUTH_RBAC.md` §14.2, which is not durable.

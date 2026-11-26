@@ -14,7 +14,8 @@ without anyone remembering to opt in):
 4. **Content type** — auth endpoints accept JSON bodies only (``415`` otherwise). This is scoped to
    ``/auth/``; future upload routes may accept multipart and are protected by 1-3 like any other.
 5. **Caching** — every response under ``/auth/``, ``/users/me/`` (the signed-in user's own
-   resources, Phase 12D) and ``/admin/`` (Phase 12E) is ``Cache-Control: no-store``, errors
+   resources, Phase 12D), ``/admin/`` (Phase 12E) and ``/grocery`` (GROCERY-1b: private orders,
+   and an availability answer that changes with the clock) is ``Cache-Control: no-store``, errors
    included. Public read APIs are not touched; the owner WRITE routes under ``/listings`` set it
    themselves.
 
@@ -60,6 +61,7 @@ class AuthSecurityMiddleware:
             f"{self._prefix}/admin/",
             f"{self._prefix}/saved",
             f"{self._prefix}/requests",
+            f"{self._prefix}/grocery",
         )
         self._allowed_origins = frozenset(allowed_origins)
         self._cookie_name = cookie_name
