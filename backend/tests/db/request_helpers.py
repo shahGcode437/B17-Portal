@@ -13,7 +13,7 @@ from httpx import Response
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.models.enums import CategoryModule, ListingStatus, PlanCode
+from app.models.enums import ListingStatus, PlanCode, StaffScope
 from tests.db.auth_helpers import AuthApi, AuthEnv, make_account
 from tests.db.write_helpers import created_id, set_status, signed_in
 from tests.write_payloads import business_body, provider_body, tutor_body
@@ -64,7 +64,7 @@ def provider_signed_in(
     return signed_in(env, email, professional=plan, display_name="Pro Vider", admin=True)
 
 
-def moderator_signed_in(env: AuthEnv, name: str, *scopes: CategoryModule) -> AuthApi:
+def moderator_signed_in(env: AuthEnv, name: str, *scopes: StaffScope) -> AuthApi:
     """A Moderator holding exactly ``scopes`` (none = the role with no scope), signed in."""
     email = f"{name}@example.org"
     make_account(env.session, email, moderator_scopes=list(scopes), display_name=name)

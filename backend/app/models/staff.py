@@ -14,8 +14,9 @@ Database-enforced invariants (each has a test in ``tests/db/test_staff_schema.py
 * a scope row cannot exist unless the same user holds ``moderator`` — composite foreign key
   ``(user_id, role) -> user_roles`` with the constant ``role = 'moderator'`` — and removing the role
   removes its scope rows (``ON DELETE CASCADE``);
-* no duplicate ``(user_id, scope)``; ``scope`` is a closed set (the ``CategoryModule`` values — one
-  source of truth, never a second enum);
+* no duplicate ``(user_id, scope)``; ``scope`` is a closed set: the ``StaffScope`` values, the one
+  staff permission vocabulary, separate from the listing taxonomy (widened by migration ``0010``,
+  which added ``grocery``);
 * a user cannot hold ``admin`` and ``moderator`` at once: the partial unique index
   ``uq_user_roles_one_staff_role`` on ``user_roles(user_id) WHERE role IN ('admin', 'moderator')``
   enforces this as a native database invariant, so it holds under every transaction isolation level;
@@ -47,11 +48,11 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base import Base, UUIDPrimaryKeyMixin
 from app.db.types import in_values, str_enum
 from app.models.enums import (
-    CategoryModule,
     RoleName,
     StaffAuditAction,
     StaffAuditResource,
     StaffAuditSource,
+    StaffScope,
 )
 
 #: Every staff-audit state payload is at most this many characters of JSON text (an abuse bound; the
@@ -72,13 +73,13 @@ _REASON_REQUIRED_SQL = ", ".join(f"'{action.value}'" for action in REASON_REQUIR
 
 
 class StaffScopeAssignment(Base):
-    """One module scope held by one Moderator. Exists iff the scope is active (a revoke deletes the
+    """One staff scope held by one Moderator. Exists iff the scope is active (a revoke deletes the
     row; the history of grants lives in ``staff_audit_events``)."""
 
     __tablename__ = "staff_scope_assignments"
 
     user_id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)
-    scope: Mapped[CategoryModule] = mapped_column(str_enum(CategoryModule), primary_key=True)
+    scope: Mapped[StaffScope] = mapped_column(str_enum(StaffScope), primary_key=True)
     #: Constant ``moderator`` (CHECK): the target of the composite foreign key below.
     role: Mapped[RoleName] = mapped_column(
         str_enum(RoleName), nullable=False, default=RoleName.MODERATOR, server_default="moderator"
@@ -91,7 +92,7 @@ class StaffScopeAssignment(Base):
     )
 
     __table_args__ = (
-        in_values("scope", CategoryModule, name="scope_valid"),
+        in_values("scope", StaffScope, name="scope_valid"),
         CheckConstraint("role = 'moderator'", name="role_is_moderator"),
         ForeignKeyConstraint(
             ["user_id", "role"],

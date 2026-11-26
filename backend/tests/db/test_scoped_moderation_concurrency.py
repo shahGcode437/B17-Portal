@@ -38,7 +38,7 @@ from httpx import Response
 from sqlalchemy import Engine, event, text
 from sqlalchemy.exc import DBAPIError
 
-from app.models.enums import CategoryModule, PlanCode
+from app.models.enums import PlanCode, StaffScope
 from app.repositories.staff import StaffAuthorityRepository
 from tests.db.admin_helpers import ADMIN_LISTINGS, pending
 from tests.db.auth_helpers import AuthApi, AuthEnv, make_account
@@ -72,7 +72,7 @@ class Actor:
     role: str
 
 
-FOOD = CategoryModule.FOOD
+FOOD = StaffScope.FOOD
 _USER = "(SELECT id FROM users WHERE email = :e)"
 
 ACTORS = [

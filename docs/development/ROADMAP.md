@@ -361,3 +361,19 @@ A functional audit of the running product (real browser, real API) found that gr
 **Follow-ups surfaced by RBAC-D (decisions for the product owner, not built):** (1) **a staff screen for portal Service requests and the Provider authoring UI** (RBAC-E / RBAC-F): the portal request API (`/admin/requests`) and the Provider API (`/admin/providers`) exist and are tested, but nothing in the frontend calls them yet — staff cannot see or process a request from a screen, and the legacy owner Leads page and its mock fixtures remain only as inert UI (the real `/users/me/leads` is always empty); (2) an optional **professional claim flow** for Providers (it would relax `ck_listings_provider_has_no_owner` in its own migration); (3) an optional four-eyes rule between the author and the approver of a Provider.
 
 **After RBAC:** staff-login hardening, rate limits and MFA implementation. **Before PUBLIC production every Super Admin and every Moderator must have MFA** — no production staff bypass; any bypass is explicit and development-only (`AUTH_RBAC.md` §27.13). Task 3A (verification copy) and Task 3B (the Super Admin Admin Dashboard shortcut) are already committed (`0c29519`, `079cd6a`). Where the RBAC phases sit relative to the visual redesign and Phase 13 is for the product owner to decide; this roadmap fixes only their order among themselves.
+
+---
+
+## Multi_Grocery — controlled Grocery pilot (D1–D4 pilot defaults authorised 2026-11-26)
+
+An independent domain: B-17 Portal manages procurement and fulfilment, local partner marts supply, **cash on delivery only**, **off by default** until the pilot is ready. Each phase is separately approved, reviewed and committed. Decisions and blockers: `DECISIONS.md`. Planned migration numbers may move.
+
+| Phase | Scope | Status |
+|---|---|---|
+| **GROCERY-0** | Planning and decision register (kept outside the repository) | done |
+| **GROCERY-1a** | Staff authority: `StaffScope`, the `grocery` scope, guards, migration `0010` | **BUILT; awaiting review; not committed** |
+| **GROCERY-1b** | Order intake (backend): availability switch, configurable hours / capacity / limits / serviceable blocks, submit, list, detail, cancel, idempotency, privacy (planned `0011`) | NOT STARTED; can be built with an empty, fail-closed block list; **no order can be accepted** until the owner supplies verified blocks |
+| **GROCERY-2** | Staff review and quotation (backend; planned `0012`) | NOT STARTED; D5–D9 |
+| **GROCERY-3** | Customer and staff screens, staff appointment | NOT STARTED; D10, D11, D13, D14, D18 |
+| **GROCERY-4** | Fulfilment, cash and corrections (planned `0013`) | NOT STARTED; D15–D17 |
+| **GROCERY-5** | Hardening and limited pilot | NOT STARTED; D12 and every launch blocker, including the separate durable-e-mail phase |

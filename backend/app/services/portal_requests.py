@@ -51,7 +51,7 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import AppError, ErrorCode
 from app.db.session import transaction
-from app.models.enums import CategoryModule, RequestActorRole, RoleName
+from app.models.enums import RequestActorRole, RoleName, StaffScope
 from app.repositories.service_requests import RequestRow, ServiceRequestRepository
 from app.repositories.staff import StaffAuthorityRepository
 from app.schemas.envelope import PageMeta
@@ -75,7 +75,7 @@ def _forbidden() -> AppError:
     return AppError(ErrorCode.FORBIDDEN, status_code=403)
 
 
-def request_scope(row: RequestRow) -> CategoryModule | None:
+def request_scope(row: RequestRow) -> StaffScope | None:
     """The staff scope that handles ``row``, from its target listing's KIND (never from the request
     or a client): ``services`` for a Provider, ``None`` (unmapped: Super Admin only) when the
     listing no longer exists."""
@@ -108,7 +108,7 @@ class PortalRequestService:
         Admin or holds the ``services`` scope (a collection, so no per-id concealment applies)."""
         if not (
             principal.is_super_admin
-            or CategoryModule.SERVICES in effective_staff_scopes(principal.staff_scopes)
+            or StaffScope.SERVICES in effective_staff_scopes(principal.staff_scopes)
         ):
             raise _forbidden()
         total, rows = self._requests.portal_page(query.status, query.limit, query.offset)

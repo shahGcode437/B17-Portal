@@ -325,3 +325,64 @@ The **production OAuth prerequisites in §10 are unchanged**: production OAuth c
 Report only the **host name** of the redirect. **Do not paste a full redirect address or the message source** anywhere: a rewritten verification or reset address can contain a live one-time token and identifies the recipient.
 
 **Production requirement.** Open and click tracking stay **off** on `mail.b17portal.com`, with no tracking subdomain configured. Before launch, send all four message types from the verified domain and show in the delivered source that every link is the exact `https://b17portal.com/...` address - the verification and reset links with their `#token=` fragment intact - to at least a Gmail and a non-Gmail mailbox. Repeat after any change to the provider's domain settings. A rewrite would hand one-time tokens to a tracking service and its logs.
+
+## 14. Staff scope migration `0010` (GROCERY-1a): upgrade and rollback
+
+### 14.1 Upgrade
+
+1. Apply the migration (`alembic upgrade head`) **before or together with** the new application. It replaces one `CHECK` and changes no row.
+2. Deploy the application.
+
+The previous application works against the `0010` schema as long as nobody holds `grocery` (it cannot assign it). The new application on a `0009` schema works except that assigning `grocery` fails (`500 internal_error`) and changes nothing; do not leave it that way.
+
+### 14.2 Rollback — the order is mandatory
+
+> **Application code older than `0010` cannot read a `grocery` assignment.** The column maps to a closed enum, so loading such a row raises. With one in the database, the old application fails **every signed-in request of that Moderator**, and also fails the **Super Admin staff roster and any staff action on that Moderator** — so the old application **cannot be used to remove it**.
+
+**Checked on 2026-11-26** by running the previous release's code (`004a208`) against a throwaway database at `0010` with `grocery` assignments. For a holder: an existing session, a fresh sign-in and the listing queue each answered `500`. For the Super Admin: `/auth/me` and the staff audit still answered `200`, while the roster, **pause** and **remove** answered `500`. Another Moderator, a Resident and the public routes were unaffected. Following the order below, the downgrade was refused while assignments existed and succeeded after their removal, the audit rows were unchanged, and the previous code then worked for every former holder.
+
+1. **With the new application still running**, find every holder (staff roster: `GET /api/v1/admin/staff`, all pages). Remove `grocery` through staff management, which audits each change and revokes that person's sessions:
+   - a Moderator who holds only `grocery`: **pause** (keeps the role with no scope) or **remove**;
+   - a Moderator who also holds listing scopes: **replace the scopes** without `grocery`.
+   These are Super Admin actions that need a recent sign-in (15 minutes). Make no new `grocery` assignment until the rollback is finished.
+2. **Confirm that none is left**: `SELECT count(*) FROM staff_scope_assignments WHERE scope = 'grocery';` returns `0`.
+3. **Downgrade the database** (`alembic downgrade 0009`). It refuses, changing nothing, while an assignment exists.
+4. **Roll back the application code.**
+
+**Rolling back the code without step 1 is the dangerous case, and no migration can prevent it.** If it has happened, redeploy the new application and follow the order above. Do not delete rows by hand: that removes staff authority without an audit record or a session revocation.
+
+**Audit history is preserved.** `staff_audit_events` is append-only. Entries that mention `grocery` are not rewritten or deleted by the downgrade and do not block it; they are plain JSON that older code reads as it is.
+
+### 14.3 Applying `0010` to a local development database
+
+Windows PowerShell, from `backend/`, with the API stopped. **Rehearsed on 2026-11-27 on throwaway databases** (backup, upgrade, drift check, downgrade, and a restore of the backup into a second database); the development database itself was not touched. Stop at any step whose result differs.
+
+1. No shell override: `Test-Path Env:DATABASE_URL` prints `False` (otherwise `Remove-Item Env:DATABASE_URL`).
+2. The target, **by name only** (prints no credential); it must print the database you mean, normally `b17_dev`:
+
+   ```powershell
+   .\.venv\Scripts\python.exe -c "from sqlalchemy.engine import make_url; from app.core.config import Settings; print(make_url(Settings().database_url.get_secret_value()).database)"
+   ```
+
+3. `.\.venv\Scripts\python.exe -m alembic current` prints `0009`.
+4. Back up **outside any synced folder**: the dump holds personal data and password hashes. Do not redirect `pg_dump` with `>` (Windows PowerShell corrupts binary output); write inside the container and copy the file out.
+
+   ```powershell
+   New-Item -ItemType Directory -Force "$env:USERPROFILE\b17-backups"
+   docker exec b17-portal-db-1 pg_dump -U b17 -d b17_dev -Fc -f /tmp/b17_dev_before_0010.dump
+   docker exec b17-portal-db-1 pg_restore --list /tmp/b17_dev_before_0010.dump | Select-String "TABLE DATA public users "
+   docker cp b17-portal-db-1:/tmp/b17_dev_before_0010.dump "$env:USERPROFILE\b17-backups\b17_dev_before_0010.dump"
+   docker exec b17-portal-db-1 rm /tmp/b17_dev_before_0010.dump
+   ```
+
+   The third command must print one line, and `docker cp` must succeed, before you continue.
+5. `.\.venv\Scripts\python.exe -m alembic upgrade 0010`
+6. Verify: `alembic current` prints `0010 (head)`; `alembic check` prints `No new upgrade operations detected.`; and nobody holds the new scope (`0`):
+
+   ```powershell
+   docker exec b17-portal-db-1 psql -U b17 -d b17_dev -tAc "SELECT count(*) FROM staff_scope_assignments WHERE scope = 'grocery'"
+   ```
+
+7. Start the API again.
+
+**To go back:** while nobody holds `grocery`, `alembic downgrade 0009`, then run the older code. If anyone does, follow §14.2 first. Restoring the dump is a last resort: it discards everything written since the backup. Delete the dump when you no longer need it.

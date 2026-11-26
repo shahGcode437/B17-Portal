@@ -40,7 +40,9 @@ class BusinessVertical(StrEnum):
 
 
 class CategoryModule(StrEnum):
-    """Code-defined product areas. A category lives inside a module; it never creates one."""
+    """Code-defined product areas of the listing TAXONOMY (and News). A category lives inside a
+    module; it never creates one. This is not the staff permission vocabulary: see
+    :class:`StaffScope`."""
 
     SERVICES = "services"
     DIRECTORY = "directory"
@@ -48,6 +50,27 @@ class CategoryModule(StrEnum):
     EDUCATION = "education"
     PROPERTY = "property"
     NEWS = "news"
+
+
+class StaffScope(StrEnum):
+    """The one canonical vocabulary of staff AUTHORITY: what a Moderator can be assigned
+    (docs/backend/AUTH_RBAC.md §32). It is separate from the listing taxonomy: adding a staff
+    scope creates no category, listing kind or module.
+
+    Which values confer what is decided in ``app/services/staff_scopes.py`` (listing scopes,
+    Grocery, reserved). The listing scopes share their names with the taxonomy module whose listings
+    they moderate. ``grocery`` is a staff scope ONLY; ``news`` is reserved and confers nothing.
+
+    A ``StrEnum`` member compares equal to a same-named member of another ``StrEnum``, so Python
+    will not notice a ``CategoryModule`` used where a ``StaffScope`` belongs: mypy does."""
+
+    SERVICES = "services"
+    DIRECTORY = "directory"
+    FOOD = "food"
+    EDUCATION = "education"
+    PROPERTY = "property"
+    NEWS = "news"
+    GROCERY = "grocery"
 
 
 class FoodServiceOption(StrEnum):

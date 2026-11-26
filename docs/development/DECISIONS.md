@@ -502,3 +502,40 @@ Concise decisions only. Where the originating date isn't known, none is given ra
 **Revisit when:** the durable-delivery phase is designed (it must settle priority and quota protection), or a monitored support mailbox exists.
 
 **Update (2026-11-26, EMAIL-1 closeout):** the "real delivery NOT yet verified" status in the EMAIL-1 entry above is superseded for the **local Resend sandbox only** (owner-reported manual acceptance; `DEPLOYMENT.md` §13.5). **Open:** a tracking redirect seen in the Google sign-in notice, cause not established; identifying it and proving unrewritten links from the production domain is a launch requirement, and open and click tracking stay off (§13.7).
+
+---
+
+**Decision (GROCERY — pilot defaults D1–D4; authorised by the product owner, 2026-11-26. Only the authority foundation is built; everything else here is PLANNED):**
+**D1.** Grocery is an **independent B-17 Portal domain**. **B-17 Portal manages procurement and fulfilment**; **local partner marts supply** the products. **Cash on delivery only** (recorded, never processed). It is **disabled by default until the pilot is ready**. This approves ordering and delivery **for this controlled pilot only**; it supersedes "ordering — out of scope" to that extent. Online payments stay out of scope.
+**D2.** A **dedicated `grocery` staff permission**, with **staff permissions separated from listing taxonomy** (this supersedes the RBAC-A "one scope vocabulary" decision). **Existing Moderators receive no automatic Grocery authority.** No new global role.
+**D3.** Service area: **configured B-17 blocks**. Hours **10:00–20:00 Asia/Karachi, seven days a week**. Initial capacity **10 orders per day**. **Cancelled orders count toward the daily submission limit** (this overrides the planning recommendation to release the place).
+**D4.** At most **50 line items** per order and **2 active orders** per customer. **Maximum approved order value PKR 20,000.** A **first-time customer** is one with **no previously delivered order**; their **phone confirmation happens before procurement** (the planning note had suggested before the quotation), and **it never replaces acceptance of the quotation**.
+**These are pilot defaults, not permanent business restrictions; operational policies must be configurable.**
+**Planning inputs for GROCERY-1b (owner, 2026-11-26; not built):** use the **existing canonical B-17 block definitions** and invent none; serviceable blocks are configurable; **new submissions outside operating hours are rejected**; the **submission cut-off is initially 20:00**; **existing orders stay accessible** outside hours and while new submissions are disabled; all configurable pilot defaults.
+**⚠ Open for GROCERY-1b: the repository holds no canonical B-17 block definitions.** The only canonical location value is the locality `B-17` (`LOCALITIES`); `block` is free text, and `LOCATION_MAP.md` §5 states that current data does not support a block list (the `Block A`–`E` strings are demo and test data). **The owner must supply or point to the authoritative list; none is to be derived from demo data.**
+The remaining D3 / D4 questions have **provisional** answers in the GROCERY-1b entry below.
+**D5–D18 are undecided** and will be resolved in their phases: D5 fees and discounts, D6 quote validity and price tolerance, D7 phone approvals, D8 late cancellation and refunds, D9 partner-mart management and access (GROCERY-2 / 4); D10 who the Grocery staff are and how they are appointed in practice, D11 delivery person's access to address and phone, D13 navigation and name, D14 excluded goods and produce quality, D18 languages (GROCERY-3); D15 failed delivery and returns, D16 marts per order and paying marts, D17 cash handling (GROCERY-4); D12 retention and account deletion (GROCERY-5).
+**Pilot / production blockers (none closed by GROCERY-1a):** durable e-mail delivery; priority for critical e-mail and protection of the sending quota; delivery monitoring; the e-mail **tracking-redirect investigation**; a verified sending domain and production credentials; **production Google OAuth**; **per-IP rate limiting at the proxy**; **callback-log sanitization**; **MFA for every staff account**, Grocery staff included; backups with a tested restore; production readiness (hosting, deployment, monitoring). Grocery additionally needs a staff screen and a way to appoint without calling the API by hand, an exclusion list, fulfilment, cash and failed-delivery policies, a retention policy and a runbook. The pilot sends **no Grocery e-mail** until durable, prioritised delivery exists.
+**Reason:** the product owner wants a controlled, reversible pilot that cannot widen any existing staff member's authority or disturb the listing platform.
+**Revisit when:** the pilot is evaluated; each D5–D18 decision is due.
+
+---
+
+**Decision (GROCERY-1a — how staff authority is separated; BUILT, 2026-11-26; migration `0010`; the full text is `docs/backend/AUTH_RBAC.md` §32):** (1) **`StaffScope` is the one vocabulary of staff authority**; `CategoryModule` is taxonomy only and is unchanged. Listing scopes, `grocery` and reserved `news` are disjoint, exhaustive classes of it. (2) **There is no "any staff" test:** `Principal.is_staff` is removed; `require_staff` needs a **listing** scope; `require_grocery_staff` needs `grocery`. (3) **The existing `moderator` role, staff-management API and authority service are reused**; no role, route or write path is added. (4) **Migration `0010` only widens one `CHECK`** and grants nobody; its **downgrade refuses while a `grocery` assignment exists**, and audit history is preserved. (5) **Rollback order is fixed** because older code cannot read a `grocery` row: remove assignments with the new code → downgrade → roll back the code (`DEPLOYMENT.md` §14). (6) The development database `b17_dev` was deliberately **left at `0009`**.
+**Reason:** a Grocery Moderator shares the role of listing Moderators, so authority must be decided by the specific scope; the old front door ("any effective scope") would have admitted them to listing routes.
+**Revisit when:** another non-listing staff domain is added (give it its own class, property and guard).
+
+---
+
+**Decision (GROCERY-1b — PROVISIONAL implementation defaults; set by the product owner, 2026-11-27; NOT IMPLEMENTED; all configurable or open to revision):**
+(1) **Active orders are all non-terminal orders.** In the planned state machine the only terminal states are `delivered` and `cancelled`, so every other state counts, `delivery_failed` included.
+(2) **No minimum monetary order value initially.**
+(3) **Quantities are positive, bounded and validated according to their units.** The unit list and each unit's bounds and precision are still to be set in the GROCERY-1b design.
+(4) At most **50 line items** per order and **2 active orders** per customer.
+(5) Initial capacity **10 orders per day**; **cancelled orders keep counting** toward the daily submission capacity (nothing releases a place).
+(6) **Proposed:** the **PKR 20,000** approved-order cap **includes all fees**. **Subject to final approval in the quotation phase** (GROCERY-2).
+(7) Grocery **stays disabled by default**.
+(8) **Serviceable blocks are configurable. The official B-17 block list has not been supplied and none may be invented.** The service-area configuration must be able to be **empty and must then fail closed**: no block is serviceable, so **no new order can be submitted**, whatever the enable switch says. Existing orders stay accessible. Only blocks the owner has verified are ever added; demo and test `Block` strings are not a source.
+This **replaces** the earlier statement that GROCERY-1b needs the block list before it can start: it can be built with an empty list, but **cannot accept an order** until verified blocks are configured.
+**Reason:** work can proceed without guessing local geography, and an unconfigured or half-configured deployment refuses orders instead of taking ones it cannot serve.
+**Revisit when:** the official block list is supplied; the quotation phase confirms the cap; pilot data suggests a minimum order value.

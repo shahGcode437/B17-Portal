@@ -6,10 +6,11 @@ TWO routers share the ``/admin`` prefix, and the choice of router IS the authori
   taxonomy routes live here. A route added to the admin surface and not deliberately moved
   elsewhere therefore fails CLOSED to the strictest authority; it can never be public and never be
   Moderator-accessible by accident.
-* ``staff_router`` — ``require_staff`` router-wide, for the four listing-moderation routes ONLY
-  (queue, detail, approve, reject). ``require_staff`` is the front door: the reads are scoped by
-  the principal it resolved, and a decision never trusts that principal — the service reads and
-  LOCKS the actor's authority inside its own transaction, after locking the listing
+* ``staff_router`` — ``require_staff`` (LISTING staff) router-wide, for the four
+  listing-moderation routes ONLY (queue, detail, approve, reject). ``require_staff`` is the front
+  door: the reads are scoped by the principal it resolved, and a decision never trusts that
+  principal — the service reads and LOCKS the actor's authority inside its own transaction, after
+  locking the listing
   (``app/services/moderation.py``). A Moderator sees and acts on only their assigned scopes; a
   listing outside their scope is indistinguishable from a missing one (``404``, never ``403``).
 
@@ -79,8 +80,9 @@ router = APIRouter(
     responses=_AUTH_RESPONSES,
 )
 
-#: Staff (Super Admin or a Moderator with an effective scope). Listing moderation ONLY — putting a
-#: route here is a deliberate decision that must also be recorded in ``ADMIN_AUTHORITY``.
+#: Listing staff (Super Admin or a Moderator with a listing scope; ``grocery`` alone is refused).
+#: Listing moderation ONLY — putting a route here is a deliberate decision that must also be
+#: recorded in ``ADMIN_AUTHORITY``.
 staff_router = APIRouter(
     prefix="/admin",
     route_class=ContractRoute,

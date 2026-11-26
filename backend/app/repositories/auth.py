@@ -29,10 +29,10 @@ from app.models import (
 from app.models.enums import (
     AuthProvider,
     AuthTokenPurpose,
-    CategoryModule,
     PlanCode,
     RoleName,
     SessionRevokeReason,
+    StaffScope,
 )
 
 
@@ -106,7 +106,7 @@ class SessionRepository:
         ).one_or_none()
         return roles, plan
 
-    def moderator_scopes(self, user_id: uuid.UUID) -> list[CategoryModule]:
+    def moderator_scopes(self, user_id: uuid.UUID) -> list[StaffScope]:
         """The stored scope assignments of a Moderator (policy — which of them confer authority —
         is the service's: see ``effective_staff_scopes``)."""
         return list(

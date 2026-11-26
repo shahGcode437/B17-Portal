@@ -12,7 +12,7 @@ import uuid
 from sqlalchemy.orm import Session
 
 from app.models import StaffAuditEvent, User, UserRole
-from app.models.enums import CategoryModule, RoleName
+from app.models.enums import RoleName, StaffScope
 from app.repositories.staff import AuditFilters, StaffReadRepository
 from app.schemas.staff import (
     StaffAuditEntry,
@@ -27,7 +27,7 @@ from app.services.staff_rules import StaffAuthorityError, StaffCode
 def _member(
     role: UserRole,
     user: User,
-    scopes: list[CategoryModule],
+    scopes: list[StaffScope],
     names: dict[uuid.UUID, str],
 ) -> StaffMember:
     grantor = names.get(role.granted_by) if role.granted_by is not None else None

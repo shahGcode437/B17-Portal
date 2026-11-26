@@ -13,7 +13,7 @@ from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.models import Listing, ListingStatusHistory
-from app.models.enums import ActorRole, CategoryModule, HistoryAction, ListingStatus, PlanCode
+from app.models.enums import ActorRole, HistoryAction, ListingStatus, PlanCode, StaffScope
 from tests.db.auth_helpers import AuthApi, AuthEnv, make_account
 from tests.write_payloads import (
     CONTACT_PHONE,
@@ -79,7 +79,7 @@ def signed_in(
     verified: bool = True,
     professional: PlanCode | None = PlanCode.FREE,
     admin: bool = False,
-    moderator_scopes: Sequence[CategoryModule] | None = None,
+    moderator_scopes: Sequence[StaffScope] | None = None,
     display_name: str = "Sana Baker",
 ) -> AuthApi:
     """A browser signed in (real login) as a fresh account with the given capabilities.

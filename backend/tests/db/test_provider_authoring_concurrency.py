@@ -34,7 +34,7 @@ import pytest
 from httpx import Response
 from sqlalchemy import Engine, text
 
-from app.models.enums import CategoryModule, PlanCode
+from app.models.enums import PlanCode, StaffScope
 from app.repositories.staff import STAFF_AUTHORITY_LOCK_KEY, StaffAuthorityRepository
 from app.repositories.taxonomy import TAXONOMY_LOCK_KEY
 from tests.db.admin_helpers import ADMIN_LISTINGS
@@ -61,7 +61,7 @@ from tests.db.write_helpers import (
     staff_provider_body,
 )
 
-SERVICES = CategoryModule.SERVICES
+SERVICES = StaffScope.SERVICES
 _USER = "(SELECT id FROM users WHERE email = :e)"
 #: The Provider / listing row lock, as ``pg_stat_activity`` shows it. The statement lists many columns,
 #: so ``track_activity_query_size`` truncates its tail (``FOR UPDATE OF listings``): match its head

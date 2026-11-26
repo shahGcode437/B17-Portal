@@ -44,7 +44,7 @@ from app.dependencies.auth import (
 )
 from app.dependencies.providers import require_services_staff
 from app.models import StaffScopeAssignment, UserRole
-from app.models.enums import CategoryModule, PlanCode
+from app.models.enums import CategoryModule, PlanCode, StaffScope
 from tests.db.auth_helpers import OTHER_PASSWORD, PASSWORD, AuthApi, AuthEnv, make_account
 
 probe = APIRouter(prefix="/_probe")
@@ -71,13 +71,13 @@ def current_probe(user: CurrentUser) -> dict[str, str]:
 
 
 GUARDS = ["super-admin", "staff", "admin"]
-FOOD, DIRECTORY, NEWS = CategoryModule.FOOD, CategoryModule.DIRECTORY, CategoryModule.NEWS
+FOOD, DIRECTORY, NEWS = StaffScope.FOOD, StaffScope.DIRECTORY, StaffScope.NEWS
 ALL_SCOPES = [
-    CategoryModule.SERVICES,
-    CategoryModule.DIRECTORY,
-    CategoryModule.FOOD,
-    CategoryModule.EDUCATION,
-    CategoryModule.PROPERTY,
+    StaffScope.SERVICES,
+    StaffScope.DIRECTORY,
+    StaffScope.FOOD,
+    StaffScope.EDUCATION,
+    StaffScope.PROPERTY,
 ]
 
 ACCOUNTS: dict[str, dict[str, Any]] = {
@@ -374,9 +374,12 @@ def test_the_openapi_contract_documents_staff_scopes_as_a_closed_list(auth_env: 
 
     assert "staffScopes" in schema["required"]
     items = schema["properties"]["staffScopes"]["items"]
-    assert items == {"$ref": "#/components/schemas/CategoryModule"}
-    module = auth_env.app.openapi()["components"]["schemas"]["CategoryModule"]
-    assert set(module["enum"]) == {m.value for m in CategoryModule}
+    assert items == {"$ref": "#/components/schemas/StaffScope"}
+    components = auth_env.app.openapi()["components"]["schemas"]
+    assert components["StaffScope"]["enum"] == [s.value for s in StaffScope]
+    # the TAXONOMY component is untouched: no ``grocery`` module
+    assert set(components["CategoryModule"]["enum"]) == {m.value for m in CategoryModule}
+    assert "grocery" not in components["CategoryModule"]["enum"]
 
 
 # -- the current /admin surface was NOT widened -----------------------------------------------------

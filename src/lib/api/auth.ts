@@ -7,7 +7,7 @@ import type { AuthUser, EmailDelivery, StaffScope } from "@/types/auth"
  * the backend's exact camelCase names. Nothing here stores anything; the AuthProvider owns state.
  */
 
-const STAFF_SCOPES = ["services", "directory", "food", "education", "property", "news"] as const
+const STAFF_SCOPES = ["services", "directory", "food", "education", "property", "news", "grocery"] as const
 
 // A compile-time tripwire: the list above must contain every `StaffScope`.
 type MissingScope = Exclude<StaffScope, (typeof STAFF_SCOPES)[number]>

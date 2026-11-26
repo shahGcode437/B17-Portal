@@ -28,7 +28,7 @@ from typing import Any
 import pytest
 from sqlalchemy import text
 
-from app.models.enums import CategoryModule, PlanCode
+from app.models.enums import PlanCode, StaffScope
 from app.repositories.service_requests import ServiceRequestRepository
 from tests.db.auth_helpers import AuthApi, AuthEnv, make_account
 from tests.db.request_helpers import (
@@ -53,12 +53,12 @@ from tests.db.request_helpers import (
 from tests.db.staff_helpers import MODERATORS, audit_count, remove, super_admin
 from tests.db.write_helpers import signed_in
 
-SERVICES = CategoryModule.SERVICES
+SERVICES = StaffScope.SERVICES
 OTHER_SCOPES = [
-    CategoryModule.DIRECTORY,
-    CategoryModule.FOOD,
-    CategoryModule.EDUCATION,
-    CategoryModule.PROPERTY,
+    StaffScope.DIRECTORY,
+    StaffScope.FOOD,
+    StaffScope.EDUCATION,
+    StaffScope.PROPERTY,
 ]
 
 
@@ -164,7 +164,7 @@ def test_authorised_staff_drive_a_request_to_completion(auth_env: AuthEnv, who: 
         "super_admin": lambda: w.author,
         "services_moderator": lambda: moderator_signed_in(auth_env, "mod-s", SERVICES),
         "services_and_directory": lambda: moderator_signed_in(
-            auth_env, "mod-sd", SERVICES, CategoryModule.DIRECTORY
+            auth_env, "mod-sd", SERVICES, StaffScope.DIRECTORY
         ),
     }[who]()
 
@@ -186,9 +186,9 @@ def test_authorised_staff_drive_a_request_to_completion(auth_env: AuthEnv, who: 
 # =================================================================================================
 
 
-@pytest.mark.parametrize("scope", OTHER_SCOPES + [CategoryModule.NEWS], ids=lambda s: s.value)
+@pytest.mark.parametrize("scope", OTHER_SCOPES + [StaffScope.NEWS], ids=lambda s: s.value)
 def test_a_moderator_of_another_scope_cannot_touch_a_portal_request(
-    auth_env: AuthEnv, scope: CategoryModule
+    auth_env: AuthEnv, scope: StaffScope
 ) -> None:
     w, request_id = scene(auth_env)
     outsider = moderator_signed_in(auth_env, f"mod-{scope.value}", scope)
@@ -205,7 +205,7 @@ def test_a_moderator_of_another_scope_cannot_touch_a_portal_request(
         for action in ("accept", "start", "complete", "cancel")
     ]
 
-    if scope is CategoryModule.NEWS:
+    if scope is StaffScope.NEWS:
         # ``news`` confers no authority at all: the front door itself refuses (the same as no scope)
         assert queue.status_code == one.status_code == missing.status_code == 403
         assert [r.status_code for r in acts] == [403] * 4
@@ -318,7 +318,7 @@ def test_a_moderator_who_lost_services_keeps_other_scopes_but_loses_the_portal(
     boss = super_admin(auth_env)
     w, request_id = scene(auth_env)
     email = "scoped@example.org"
-    make_account(auth_env.session, email, moderator_scopes=[SERVICES, CategoryModule.DIRECTORY])
+    make_account(auth_env.session, email, moderator_scopes=[SERVICES, StaffScope.DIRECTORY])
     moderator = auth_env.client()
     assert moderator.login(email).status_code == 200
     assert moderator.get(PORTAL_REQUESTS).status_code == 200

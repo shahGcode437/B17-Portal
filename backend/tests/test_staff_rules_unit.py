@@ -7,7 +7,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.core.config import Settings
-from app.models.enums import AuthProvider, CategoryModule
+from app.models.enums import AuthProvider, StaffScope
 from app.services.oauth import create_oauth_providers, enabled_login_providers
 from app.services.staff_audit import clean_state
 from app.services.staff_authority import StaffPolicy
@@ -22,7 +22,7 @@ from app.services.staff_rules import (
     validate_scopes,
 )
 
-FOOD, DIRECTORY, NEWS = CategoryModule.FOOD, CategoryModule.DIRECTORY, CategoryModule.NEWS
+FOOD, DIRECTORY, NEWS = StaffScope.FOOD, StaffScope.DIRECTORY, StaffScope.NEWS
 
 
 def build(**overrides: Any) -> Settings:
@@ -44,7 +44,7 @@ def refused(code: StaffCode) -> pytest.RaisesExc[StaffAuthorityError]:
 
 def test_scopes_are_deduplicated_and_must_be_assignable() -> None:
     assert validate_scopes([FOOD, FOOD, DIRECTORY]) == {FOOD, DIRECTORY}
-    assert validate_scopes(list(CategoryModule)[:0] + [FOOD]) == {FOOD}
+    assert validate_scopes(list(StaffScope)[:0] + [FOOD]) == {FOOD}
 
 
 def test_an_empty_scope_set_is_a_pause_not_an_update() -> None:
@@ -54,7 +54,7 @@ def test_an_empty_scope_set_is_a_pause_not_an_update() -> None:
 
 
 @pytest.mark.parametrize("scopes", [[NEWS], [NEWS, FOOD], [FOOD, DIRECTORY, NEWS]])
-def test_the_reserved_news_scope_can_never_be_stored(scopes: list[CategoryModule]) -> None:
+def test_the_reserved_news_scope_can_never_be_stored(scopes: list[StaffScope]) -> None:
     with refused(StaffCode.INVALID_STAFF_SCOPE):
         validate_scopes(scopes)
 

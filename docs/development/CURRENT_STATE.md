@@ -1023,7 +1023,7 @@ Baseline `89e6366`. No migration (head stays `0009`), no new dependency; the OAu
 - **Environment observation.** On the development machine 1 of 6 TLS handshakes to `oauth2.googleapis.com` timed out. A real sign-in could occasionally end in `oauth_failed` for that reason (log: `token_exchange`, `ConnectTimeout`); the code is single-use, so no retry was added.
 - **Outstanding deployment prerequisites (none done):** (1) **production OAuth configuration** - a separate production OAuth client, its redirect URI, the API and frontend-build settings and a published consent screen (`DEPLOYMENT.md` section 10.2); (2) **per-IP rate limiting at the proxy / CDN** on `/api/v1/auth/*`, including the OAuth start and callback (the application has no limit of its own there); (3) **callback-log sanitization** - strip the query string of `/api/v1/auth/oauth/*` from every proxy / CDN access log (it carries the one-time `code` and `state`). Also still open: domain / hosting and production e-mail delivery. *Connect / Disconnect Google* still have no screen.
 
-## EMAIL-1 Result — transactional e-mail integration (BUILT; **real delivery through the Resend sandbox accepted by the owner**; commit pending approval; production not configured)
+## EMAIL-1 Result — transactional e-mail integration (BUILT and **COMMITTED** as `004a208`; **real delivery through the Resend sandbox accepted by the owner**; production not configured)
 
 Baseline `709b8a4`. No migration (head stays `0009`), no new dependency. The frontend changed only in the correction round below (email wording).
 
@@ -1038,6 +1038,19 @@ Baseline `709b8a4`. No migration (head stays `0009`), no new dependency. The fro
 - **Correction round (owner-reviewed, 2026-11-26).** (a) **Test isolation:** backend tests no longer read `backend/.env` or shell settings and cannot reach outside this machine; before this, a CLI under test fell back to **`b17_dev`**. (b) **Screens follow the server:** the API reports `emailDelivery`; with a real provider the screens say to check inbox and spam (never that anything was delivered), otherwise the earlier wording. This closes the wording gaps first reported here. (c) **Adapter review:** `reply_to` confirmed in Resend's OpenAPI specification; a pasted API key is trimmed and an unusable one refused without being quoted; `ENVIRONMENT=test` refuses `resend`; no outside call holds a database transaction (e-mail and Google exchange, now permanent tests); no secret in `DEBUG` logs of the real HTTP stack. (d) Accepted defaults recorded in `DECISIONS.md`.
 - **Mandatory before launch:** a verified sending domain with production e-mail credentials; durable delivery; priority for critical mail and protection of the sending quota; delivery monitoring; the tracking-redirect investigation, with open and click tracking kept off on the production sending domain (`DEPLOYMENT.md` §13.6-13.7); production OAuth configuration; per-IP rate limiting at the proxy and callback-log sanitization; **MFA for every staff account** (`AUTH_RBAC.md` §27.13).
 - **Outstanding:** Resend plan, key, verified `mail.b17portal.com`, DMARC, bounce monitoring (no support address until a monitored mailbox exists); and still **production OAuth configuration, per-IP rate limiting at the proxy / CDN and OAuth callback-log sanitization** (`DEPLOYMENT.md` §10 and §13.6).
+
+## GROCERY-1a Result — staff authority foundation for the Grocery pilot (BUILT; **awaiting owner review, not committed**; no Grocery feature exists)
+
+Baseline `004a208`. Migration head **`0010`** (one `CHECK` widened). No new dependency.
+
+- **Built:** the `grocery` **staff scope**; `StaffScope` separated from the listing taxonomy (`CategoryModule` unchanged); the staff front door narrowed to **listing** scopes; `require_grocery_staff` (no production route yet); Grocery staff appointed through the **existing** staff-management API with the same session revocation and audit. Frontend: the `StaffScope` type only, no screen. As built: `AUTH_RBAC.md` §32.
+- **Nobody received `grocery`** from the migration, and **no Grocery category, module or listing kind exists**.
+- **Planned, not built:** order intake (GROCERY-1b), quotations (2), screens (3), fulfilment and cash (4), hardening and pilot (5). **No Grocery route, table, setting, order or e-mail exists.**
+- **Decisions:** D1–D4 pilot defaults recorded; **D5–D18 open**; provisional GROCERY-1b defaults recorded (`DECISIONS.md`). **The official B-17 block list has not been supplied:** the planned service-area setting may be empty and then fails closed (no new orders).
+- **Local databases:** `b17_dev` was deliberately **left at `0009`**. On it, the new code works except assigning `grocery`.
+- **Rollback:** never roll the code back while a `grocery` assignment exists (`DEPLOYMENT.md` §14).
+- **Blockers unchanged** (durable and prioritised e-mail, tracking investigation, production Google OAuth, proxy rate limiting, callback-log sanitization, staff MFA, backups, production readiness).
+- **Verification:** `TESTING.md` (GROCERY-1a).
 
 ## VR1 (Visual Redesign) — Glassmorphism + Controlled Maximalism Foundation (in progress, NOT committed)
 

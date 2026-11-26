@@ -77,7 +77,6 @@ from app.db.session import transaction
 from app.models import Listing, ListingCategory, ListingStatusHistory
 from app.models.enums import (
     ActorRole,
-    CategoryModule,
     HistoryAction,
     ListingKind,
     ListingStatus,
@@ -85,6 +84,7 @@ from app.models.enums import (
     StaffAuditAction,
     StaffAuditResource,
     StaffAuditSource,
+    StaffScope,
 )
 from app.repositories.admin_listings import AdminListingRepository
 from app.repositories.owner_listings import OwnerListingRepository
@@ -120,7 +120,7 @@ from app.services.staff_scopes import ScopeFilter
 
 #: The one scope that confers Provider authority (``staff_scopes.listing_scope(PROVIDER) ==
 #: SERVICES``). A constant, never derived from a request.
-PROVIDER_SCOPE = CategoryModule.SERVICES
+PROVIDER_SCOPE = StaffScope.SERVICES
 
 #: The fields a Provider edit can change, in the API's vocabulary (what the audit's
 #: ``changed_fields`` lists — never the values, which may include a private location).

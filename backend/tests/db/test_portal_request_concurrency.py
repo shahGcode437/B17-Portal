@@ -36,7 +36,7 @@ from httpx import Response
 from sqlalchemy import Engine, text
 from sqlalchemy.exc import DBAPIError
 
-from app.models.enums import CategoryModule
+from app.models.enums import StaffScope
 from tests.db.admin_helpers import ADMIN_LISTINGS
 from tests.db.auth_helpers import AuthApi, AuthEnv
 from tests.db.request_helpers import PORTAL_REQUESTS, REQUESTS, request_body
@@ -63,7 +63,7 @@ from tests.db.test_scoped_moderation_concurrency import (
 from tests.db.test_scoped_moderation_concurrency import _sign_in as sign_in_account
 from tests.db.write_helpers import PROVIDERS, staff_provider_body
 
-SERVICES = CategoryModule.SERVICES
+SERVICES = StaffScope.SERVICES
 ACTIONS = ["accept", "cancel"]
 #: A statement that waits for a ``service_requests`` row lock, as ``pg_stat_activity`` shows it (the
 #: tail ``FOR UPDATE OF service_requests`` is truncated away: match the head).

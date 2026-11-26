@@ -13,20 +13,20 @@ from typing import Annotated, Any
 from pydantic import AwareDatetime, Field, StringConstraints, model_validator
 
 from app.models.enums import (
-    CategoryModule,
     RoleName,
     StaffAuditAction,
     StaffAuditResource,
     StaffAuditSource,
+    StaffScope,
     UserStatus,
 )
 from app.schemas.envelope import ApiModel, PageMeta
 from app.schemas.write import StrictRequest
 
-#: At most one entry per module. NOT ``min_length=1``: an empty list reaches the service so the
-#: answer is the explicit ``invalid_staff_scope`` ("pause the moderator instead"), not a generic
+#: At most one entry per staff scope. NOT ``min_length=1``: an empty list reaches the service so
+#: the answer is the explicit ``invalid_staff_scope`` ("pause the moderator instead"), not a generic
 #: validation error.
-Scopes = Annotated[list[CategoryModule], Field(max_length=len(CategoryModule))]
+Scopes = Annotated[list[StaffScope], Field(max_length=len(StaffScope))]
 
 # ------------------------------------------------------------------------------ requests
 
@@ -93,7 +93,7 @@ class StaffMember(ApiModel):
     #: Moderator.
     role: RoleName
     #: A Moderator's active scopes, sorted; always empty for a Super Admin.
-    scopes: list[CategoryModule]
+    scopes: list[StaffScope]
     #: A Moderator with no scopes: keeps the role, has no authority. Always ``false`` for admins.
     paused: bool
     account_status: UserStatus

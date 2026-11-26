@@ -47,6 +47,7 @@ from app.models.enums import (
     StaffAuditAction,
     StaffAuditResource,
     StaffAuditSource,
+    StaffScope,
 )
 from app.services.staff_audit import StaffAuditService
 from tests.db.admin_helpers import ADMIN_LISTINGS, approve, reject
@@ -90,13 +91,13 @@ from tests.db.write_helpers import (
     tutor_body,
 )
 
-SERVICES = CategoryModule.SERVICES
+SERVICES = StaffScope.SERVICES
 ALL_SCOPES = [
-    CategoryModule.SERVICES,
-    CategoryModule.DIRECTORY,
-    CategoryModule.FOOD,
-    CategoryModule.EDUCATION,
-    CategoryModule.PROPERTY,
+    StaffScope.SERVICES,
+    StaffScope.DIRECTORY,
+    StaffScope.FOOD,
+    StaffScope.EDUCATION,
+    StaffScope.PROPERTY,
 ]
 
 ACCOUNTS: dict[str, dict[str, Any]] = {
@@ -112,11 +113,11 @@ ACCOUNTS: dict[str, dict[str, Any]] = {
         "moderator_scopes": ALL_SCOPES,
         "professional": PlanCode.FREE,
     },
-    "directory_moderator": {"moderator_scopes": [CategoryModule.DIRECTORY]},
-    "food_moderator": {"moderator_scopes": [CategoryModule.FOOD]},
-    "education_moderator": {"moderator_scopes": [CategoryModule.EDUCATION]},
-    "property_moderator": {"moderator_scopes": [CategoryModule.PROPERTY]},
-    "news_only_moderator": {"moderator_scopes": [CategoryModule.NEWS]},
+    "directory_moderator": {"moderator_scopes": [StaffScope.DIRECTORY]},
+    "food_moderator": {"moderator_scopes": [StaffScope.FOOD]},
+    "education_moderator": {"moderator_scopes": [StaffScope.EDUCATION]},
+    "property_moderator": {"moderator_scopes": [StaffScope.PROPERTY]},
+    "news_only_moderator": {"moderator_scopes": [StaffScope.NEWS]},
     "zero_scope_moderator": {"moderator_scopes": []},
     "professional": {"professional": PlanCode.FREE},
     "premium_professional": {"professional": PlanCode.PREMIUM},

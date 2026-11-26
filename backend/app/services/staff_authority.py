@@ -60,11 +60,11 @@ from app.models import User
 from app.models.enums import (
     AuthEventType,
     AuthProvider,
-    CategoryModule,
     RoleName,
     SessionRevokeReason,
     StaffAuditAction,
     StaffAuditSource,
+    StaffScope,
     UserStatus,
 )
 from app.repositories.auth import RoleRepository, SessionRepository
@@ -122,7 +122,7 @@ class StaffChange:
 
 
 def _state(
-    role: RoleName | None, scopes: Collection[CategoryModule], **extra: object
+    role: RoleName | None, scopes: Collection[StaffScope], **extra: object
 ) -> dict[str, object]:
     """An allow-listed audit payload for a role / scope state."""
     return {
@@ -146,7 +146,7 @@ class StaffAuthorityService:
     # ==== web: manage Moderators ==================================================================
 
     def appoint_moderator(
-        self, actor_id: uuid.UUID, email: str, scopes: Collection[CategoryModule]
+        self, actor_id: uuid.UUID, email: str, scopes: Collection[StaffScope]
     ) -> StaffChange:
         """Make an existing, active, verified account a Moderator with ``scopes`` (at least one,
         assignable). A Professional profile is NOT required."""
@@ -185,7 +185,7 @@ class StaffAuthorityService:
             return StaffChange(user.id, user.email, True, revoked)
 
     def replace_scopes(
-        self, actor_id: uuid.UUID, user_id: uuid.UUID, scopes: Collection[CategoryModule]
+        self, actor_id: uuid.UUID, user_id: uuid.UUID, scopes: Collection[StaffScope]
     ) -> StaffChange:
         """Replace an ACTIVE Moderator's scope set (replace-set semantics, atomic). An identical
         set changes nothing (no session revocation, no audit). A paused Moderator is resumed, not
@@ -246,7 +246,7 @@ class StaffAuthorityService:
             return StaffChange(user.id, user.email, True, revoked)
 
     def resume_moderator(
-        self, actor_id: uuid.UUID, user_id: uuid.UUID, scopes: Collection[CategoryModule]
+        self, actor_id: uuid.UUID, user_id: uuid.UUID, scopes: Collection[StaffScope]
     ) -> StaffChange:
         """Give a PAUSED Moderator scopes again (at least one, assignable), after the same
         eligibility checks as an appointment. Recorded as ``scope_granted`` from a paused state:
@@ -430,7 +430,7 @@ class StaffAuthorityService:
                 StaffCode.ACTOR_NOT_AUTHORISED, "You do not have permission to do this."
             )
 
-    def _moderator_target(self, user_id: uuid.UUID) -> tuple[User, frozenset[CategoryModule]]:
+    def _moderator_target(self, user_id: uuid.UUID) -> tuple[User, frozenset[StaffScope]]:
         """Lock the target and return it with its CURRENT scopes. Not a Moderator (or no such
         account): ``moderator_not_found``, one answer for both. A Super Admin: refused."""
         user = self._staff.lock_user(user_id)

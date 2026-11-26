@@ -217,7 +217,9 @@ Docker Compose provides PostgreSQL (`backend/compose.yaml`, `postgres:17-alpine`
 | Notifications (Phase 9I UI shell) | An `events` seam from status transitions | UI is mock-only. |
 | Content-version history — full snapshots of past listing content, restore/diff, keep the old approved version live while a new one is reviewed (**not** the `revision` counter, which is current) | e.g. a `listing_revisions` table | Frontend semantics today: an edit takes the listing offline until re-approved; the counter alone suffices for concurrency. |
 | Personalization | Separate activity tables (DATA_MODEL §10) | Out of V1 scope. |
-| Payments / ordering | New module | Explicitly out of scope. |
+| Online payments | New module | Explicitly out of scope. |
+| Grocery ordering (controlled pilot; cash on delivery only, recorded and never processed) | An independent domain: its own tables, services, API and frontend feature; it reuses sessions, verified accounts, staff-authority locking, API conventions and the design system, with no foreign key to listings or Service Requests | Approved as a pilot, **off by default** (`DECISIONS.md`). **Only the staff-authority foundation is built** (GROCERY-1a, `AUTH_RBAC.md` §32); no ordering exists. |
+| Other ordering (for example Food & Dining) | New module | Out of scope. |
 
 **E-mail (EMAIL-1):** e-mail no longer uses `BackgroundTasks`; it goes through the bounded in-process dispatcher of `AUTH_RBAC.md` §14.2, which is not durable.
 

@@ -18,8 +18,9 @@ from app.services.rate_limit import PostgresRateLimiter
 
 def require_services_staff(principal: StaffUser) -> Principal:
     """The front door of the whole Services staff surface (``services_staff`` in
-    ``ADMIN_AUTHORITY``): a verified, fresh-session staff member (``require_staff`` — a Moderator
-    with no effective scope at all is refused here). It is a FRONT DOOR, not the authority and not
+    ``ADMIN_AUTHORITY``): a verified, fresh-session listing staff member (``require_staff`` — a
+    Moderator with no listing scope, a Grocery-only one included, is refused here). It is a FRONT
+    DOOR, not the authority and not
     a scope check: whether this actor may act on Services right now is decided — and, for a write,
     locked — by the service inside its transaction (``ProviderAuthoringService``,
     ``PortalRequestService``), and the route class exists so that the inventory test can prove no
@@ -34,8 +35,8 @@ def require_provider_authoring(
     principal: ServicesStaff, db: DbSession, clock: ClockDep
 ) -> Principal:
     """The front door of every Provider authoring route, in this order: a verified, fresh-session
-    staff member (``require_staff`` — a Moderator with no scope at all is refused here), then the
-    operational provider-write rate limit.
+    listing staff member (``require_staff`` — a Moderator with no listing scope is refused here,
+    before the limiter is touched), then the operational provider-write rate limit.
 
     It is a FRONT DOOR, not the authority: it does not look at the ``services`` scope. Whether this
     actor may author Providers right now is decided — and locked — by ``ProviderAuthoringService``

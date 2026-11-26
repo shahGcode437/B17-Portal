@@ -22,10 +22,12 @@ export type AuthStatus =
 export type AuthRole = "admin" | "moderator"
 
 /**
- * The canonical staff scopes (mirrors the backend's `CategoryModule`; docs/backend/AUTH_RBAC.md §27.3).
+ * The canonical staff scopes (mirrors the backend's `StaffScope`; docs/backend/AUTH_RBAC.md §32). This is
+ * staff PERMISSION, not the listing taxonomy: `grocery` is a staff scope only — never a category, listing
+ * kind or module — and it confers no listing authority. `news` is reserved and confers nothing.
  * Only a Moderator has any; a Super Admin's authority is the `admin` role itself, never "all scopes".
  */
-export type StaffScope = "services" | "directory" | "food" | "education" | "property" | "news"
+export type StaffScope = "services" | "directory" | "food" | "education" | "property" | "news" | "grocery"
 
 /**
  * How the server handles e-mail: a real provider, printed in the developer's API terminal, or nothing at all.

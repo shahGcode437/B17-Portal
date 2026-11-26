@@ -18,6 +18,15 @@ describe("normalizeStaffScopes", () => {
     ])
   })
 
+  it("keeps `grocery`, alone or beside listing scopes (GROCERY-1a)", () => {
+    expect(normalizeStaffScopes(["grocery"])).toEqual(["grocery"])
+    expect(normalizeStaffScopes(["grocery", "food", "services", "grocery"])).toEqual(["services", "food", "grocery"])
+  })
+
+  it("accepts only the exact `grocery` value", () => {
+    expect(normalizeStaffScopes(["Grocery", "GROCERY", " grocery", "groceries", "grocery_staff"])).toEqual([])
+  })
+
   it("drops anything that is not a canonical scope — including a role name or junk", () => {
     expect(normalizeStaffScopes(["admin", "moderator", "tutor", "*", "", 3, null, {}, "food"])).toEqual(["food"])
   })
@@ -45,6 +54,15 @@ describe("the auth API normalizes staffScopes on every user-bearing response", (
 
     expect(me.roles).toEqual(["moderator"])
     expect(me.staffScopes).toEqual(["directory", "food"])
+  })
+
+  it("fetchMe: a Grocery-only Moderator's scope is reported, with no role added to it", async () => {
+    installFetchMock(() => ok(meBody({ roles: ["moderator"], staffScopes: ["grocery"] })))
+
+    const me = await fetchMe()
+
+    expect(me.roles).toEqual(["moderator"])
+    expect(me.staffScopes).toEqual(["grocery"])
   })
 
   it("fetchMe: a Super Admin has no scopes — authority is the role", async () => {

@@ -31,7 +31,7 @@ from app.models import (
     User,
     UserRole,
 )
-from app.models.enums import CategoryModule, PlanCode, RoleName, UserStatus
+from app.models.enums import PlanCode, RoleName, StaffScope, UserStatus
 from app.services.email import MemoryEmailSender
 
 ORIGIN = "http://127.0.0.1:5173"
@@ -207,7 +207,7 @@ def make_account(
     display_name: str = "Ayesha Khan",
     professional: PlanCode | None = None,
     admin: bool = False,
-    moderator_scopes: Sequence[CategoryModule] | None = None,
+    moderator_scopes: Sequence[StaffScope] | None = None,
 ) -> User:
     """A database-built account. ``admin`` = Super Admin. ``moderator_scopes`` makes a Moderator:
     ``None`` is not one, ``[]`` is a Moderator with no scope (zero staff authority), a non-empty

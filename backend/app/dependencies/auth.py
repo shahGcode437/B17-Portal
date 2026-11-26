@@ -12,8 +12,12 @@ are UX only — these are the authority.
                            ``403 professional_profile_required``
 ``require_super_admin``    verified + the ``admin`` role (= Super Admin) + a recent session, else
                            403 / 401. ``require_admin`` is its unchanged compatibility alias.
-``require_staff``          verified + (Super Admin, or a Moderator with >= 1 effective scope) + a
-                           recent session. Attached only to the listing-moderation routes (RBAC-B).
+``require_staff``          LISTING staff: verified + (Super Admin, or a Moderator with >= 1
+                           listing scope) + a recent session. The front door of listing moderation
+                           and, through ``require_services_staff``, of Providers and portal Service
+                           Requests. ``grocery`` alone does NOT pass.
+``require_grocery_staff``  verified + (Super Admin, or a Moderator holding ``grocery``) + a recent
+                           session. No route uses it yet (GROCERY-1a).
 ``require_sensitive_super_admin``
                            ``require_super_admin`` + a session created within the staff sensitive
                            window (15 minutes), else ``403 sensitive_reauth_required``. Guards every
@@ -205,10 +209,32 @@ def require_staff(
     settings: SettingsDep,
     clock: ClockDep,
 ) -> Principal:
-    """A verified, active Super Admin, or a Moderator who holds at least one effective scope, with
-    a fresh session. A Moderator with zero scopes is refused. RBAC-A defines it; no route uses it
-    until RBAC-B scopes every read and write (docs/backend/AUTH_RBAC.md §27.4, §27.16)."""
-    if not principal.is_staff:
+    """LISTING staff: a verified, active Super Admin, or a Moderator who holds at least one listing
+    scope, with a fresh session (docs/backend/AUTH_RBAC.md §27.4, §32). A Moderator with zero
+    scopes, only the reserved ``news`` scope, or only ``grocery`` is refused. It is a front door:
+    each service still proves the exact scope of the resource it touches."""
+    if not principal.has_listing_authority:
+        raise AppError(ErrorCode.FORBIDDEN, status_code=403)
+    _require_fresh_staff_session(principal, authentication, db, settings, clock)
+    return principal
+
+
+def require_grocery_staff(
+    principal: VerifiedUser,
+    authentication: AuthenticationDep,
+    db: DbSession,
+    settings: SettingsDep,
+    clock: ClockDep,
+) -> Principal:
+    """Grocery staff: a verified, active Super Admin, or a Moderator who holds the explicit
+    ``grocery`` scope, with the same fresh-session rule as every staff guard
+    (docs/backend/AUTH_RBAC.md §32). No listing scope implies it.
+
+    No production route uses it yet. It is a FRONT DOOR, answered from the authority read at the
+    start of the request. A Grocery WRITE must also read and lock the actor's authority inside its
+    own transaction, through ``StaffAuthorityRepository``: ``key_share_user`` →
+    ``share_staff_roles`` → (unless Super Admin) ``share_moderator_scope(actor, GROCERY_SCOPE)``."""
+    if not principal.has_grocery_authority:
         raise AppError(ErrorCode.FORBIDDEN, status_code=403)
     _require_fresh_staff_session(principal, authentication, db, settings, clock)
     return principal
@@ -249,4 +275,5 @@ def require_sensitive_super_admin(
 SuperAdminUser = Annotated[Principal, Depends(require_super_admin)]
 AdminUser = SuperAdminUser
 StaffUser = Annotated[Principal, Depends(require_staff)]
+GroceryStaffUser = Annotated[Principal, Depends(require_grocery_staff)]
 SensitiveSuperAdminUser = Annotated[Principal, Depends(require_sensitive_super_admin)]

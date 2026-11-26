@@ -24,7 +24,7 @@ from app.models import (
     User,
     UserRole,
 )
-from app.models.enums import AuthEventType, AuthProvider, CategoryModule
+from app.models.enums import AuthEventType, AuthProvider, StaffScope
 from app.services.staff_authority import StaffAuthorityService, StaffPolicy
 from tests.db.auth_helpers import AuthApi, AuthEnv, FakeClock, make_account
 from tests.db.write_helpers import signed_in
@@ -34,18 +34,19 @@ MODERATORS = "/admin/staff/moderators"
 AUDIT = "/admin/audit"
 REASON = "Rotating credentials after the quarterly review."
 
-FOOD, DIRECTORY, SERVICES, EDUCATION, PROPERTY, NEWS = (
-    CategoryModule.FOOD,
-    CategoryModule.DIRECTORY,
-    CategoryModule.SERVICES,
-    CategoryModule.EDUCATION,
-    CategoryModule.PROPERTY,
-    CategoryModule.NEWS,
+FOOD, DIRECTORY, SERVICES, EDUCATION, PROPERTY, NEWS, GROCERY = (
+    StaffScope.FOOD,
+    StaffScope.DIRECTORY,
+    StaffScope.SERVICES,
+    StaffScope.EDUCATION,
+    StaffScope.PROPERTY,
+    StaffScope.NEWS,
+    StaffScope.GROCERY,
 )
 
 
-def values(scopes: Iterable[CategoryModule | str]) -> list[str]:
-    return [s.value if isinstance(s, CategoryModule) else s for s in scopes]
+def values(scopes: Iterable[StaffScope | str]) -> list[str]:
+    return [s.value if isinstance(s, StaffScope) else s for s in scopes]
 
 
 # -- services and accounts -------------------------------------------------------------------------
@@ -85,14 +86,12 @@ def sign_in(env: AuthEnv, email: str) -> AuthApi:
 # -- the API, one thin call per route -------------------------------------------------------------
 
 
-def appoint(
-    api: AuthApi, email: str, scopes: Iterable[CategoryModule | str], **kw: Any
-) -> Response:
+def appoint(api: AuthApi, email: str, scopes: Iterable[StaffScope | str], **kw: Any) -> Response:
     return api.request("POST", MODERATORS, json={"email": email, "scopes": values(scopes)}, **kw)
 
 
 def put_scopes(
-    api: AuthApi, user_id: uuid.UUID | str, scopes: Iterable[CategoryModule | str], **kw: Any
+    api: AuthApi, user_id: uuid.UUID | str, scopes: Iterable[StaffScope | str], **kw: Any
 ) -> Response:
     return api.request(
         "PUT", f"{MODERATORS}/{user_id}/scopes", json={"scopes": values(scopes)}, **kw
@@ -104,7 +103,7 @@ def pause(api: AuthApi, user_id: uuid.UUID | str, **kw: Any) -> Response:
 
 
 def resume(
-    api: AuthApi, user_id: uuid.UUID | str, scopes: Iterable[CategoryModule | str], **kw: Any
+    api: AuthApi, user_id: uuid.UUID | str, scopes: Iterable[StaffScope | str], **kw: Any
 ) -> Response:
     return api.request(
         "POST", f"{MODERATORS}/{user_id}/resume", json={"scopes": values(scopes)}, **kw

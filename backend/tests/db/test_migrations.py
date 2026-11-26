@@ -3,6 +3,7 @@ match the migrations (no drift). Runs against a scratch database so it cannot di
 test schema."""
 
 import io
+import re
 from collections.abc import Iterator
 
 import pytest
@@ -12,6 +13,7 @@ from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.engine import URL
 from sqlalchemy.exc import IntegrityError
 
+from app.models.enums import StaffScope
 from tests.db.conftest import alembic_config
 from tests.db.test_schema import EXPECTED_TABLES
 from tests.db_safety import assert_connected_to, assert_safe_test_database
@@ -66,7 +68,7 @@ def test_a_fresh_database_upgrades_to_head(scratch_url: str) -> None:
     command.upgrade(alembic_config(scratch_url), "head")
 
     assert tables(scratch_url) == EXPECTED_TABLES | {"alembic_version"}
-    assert version(scratch_url) == "0009"
+    assert version(scratch_url) == "0010"
 
 
 def test_it_downgrades_to_base_and_upgrades_again(scratch_url: str) -> None:
@@ -91,8 +93,9 @@ def test_the_models_and_the_migrations_have_not_drifted(scratch_url: str) -> Non
 def test_there_is_a_single_linear_migration_history(scratch_url: str) -> None:
     script = ScriptDirectory.from_config(alembic_config(scratch_url))
 
-    assert script.get_heads() == ["0009"]
+    assert script.get_heads() == ["0010"]
     assert [revision.revision for revision in script.walk_revisions()] == [
+        "0010",
         "0009",
         "0008",
         "0007",
@@ -169,7 +172,7 @@ def test_0002_downgrades_cleanly_to_0001_and_upgrades_again(scratch_url: str) ->
     assert "search_document" not in columns(scratch_url, "listings")
     assert "pg_trgm" not in extensions(scratch_url)
     command.upgrade(config, "head")
-    assert version(scratch_url) == "0009"
+    assert version(scratch_url) == "0010"
     command.check(config)
 
 
@@ -256,7 +259,7 @@ def test_0003_downgrades_to_0002_and_upgrades_again(scratch_url: str) -> None:
     assert tables(scratch_url).isdisjoint(AUTH_TABLES)
     assert "ck_users_email_normalized" not in user_checks(scratch_url)
     command.upgrade(config, "head")
-    assert version(scratch_url) == "0009"
+    assert version(scratch_url) == "0010"
     assert tables(scratch_url) >= AUTH_TABLES
 
 
@@ -362,7 +365,7 @@ def test_0004_downgrades_to_0003_and_upgrades_again(scratch_url: str) -> None:
         scratch_url, "auth_identities"
     )
     command.upgrade(config, "head")
-    assert version(scratch_url) == "0009" and "oauth_flows" in tables(scratch_url)
+    assert version(scratch_url) == "0010" and "oauth_flows" in tables(scratch_url)
 
 
 def test_0004_refuses_to_run_over_duplicate_provider_identities(scratch_url: str) -> None:
@@ -571,7 +574,7 @@ def test_0005_downgrades_to_0004_and_reupgrades_without_touching_listings(
     command.upgrade(config, "head")
 
     # Re-upgrading to head also applies 0008, which makes the legacy providers portal-managed.
-    assert version(scratch_url) == "0009"
+    assert version(scratch_url) == "0010"
     assert listing_snapshot(scratch_url) == portal_managed(before)
     command.check(config)
 
@@ -741,7 +744,7 @@ def test_0006_downgrades_to_0005_and_reupgrades_without_touching_existing_data(
     command.upgrade(config, "head")
 
     # Re-upgrading to head also applies 0008, which makes the legacy providers portal-managed.
-    assert version(scratch_url) == "0009"
+    assert version(scratch_url) == "0010"
     expected = {**before, "listings": portal_managed(before["listings"])}
     assert existing_data(scratch_url) == expected
     command.check(config)
@@ -926,7 +929,7 @@ def test_0007_downgrades_an_empty_staff_schema_and_reupgrades(scratch_url: str) 
 
     command.upgrade(config, "head")
 
-    assert version(scratch_url) == "0009" and tables(scratch_url) >= STAFF_TABLES
+    assert version(scratch_url) == "0010" and tables(scratch_url) >= STAFF_TABLES
     command.check(config)
 
 
@@ -1002,7 +1005,7 @@ def test_0007_refuses_to_downgrade_over_live_staff_data_and_changes_nothing(
         command.downgrade(config, "0006")
 
     assert expected in str(refused.value)  # it says exactly what it would have destroyed
-    assert version(scratch_url) == "0009"  # nothing was downgraded...
+    assert version(scratch_url) == "0010"  # nothing was downgraded...
     assert tables(scratch_url) == tables_before  # ...no table was dropped...
     assert trigger_names(scratch_url) == STAFF_TRIGGERS  # ...and the protection is still in place
     for statement in CLEAR_STAFF_DATA:  # the operator removes the data deliberately
@@ -1334,7 +1337,7 @@ def test_0009_adds_exactly_the_two_contact_columns_and_their_two_checks(scratch_
 
     command.upgrade(config, "head")
 
-    assert version(scratch_url) == "0009"
+    assert version(scratch_url) == "0010"
     assert columns(scratch_url, "listings") == before_columns | CONTACT_COLUMNS
     assert listing_check_constraints(scratch_url) == before_constraints | CONTACT_CONSTRAINTS
     assert tables(scratch_url) == before_tables  # no table appears or disappears
@@ -1412,7 +1415,7 @@ def test_0009_downgrades_to_0008_keeping_every_row_and_upgrades_again(scratch_ur
 
     command.upgrade(config, "head")
 
-    assert version(scratch_url) == "0009"
+    assert version(scratch_url) == "0010"
     assert columns(scratch_url, "listings") >= CONTACT_COLUMNS
     assert rows(scratch_url, UNTOUCHED_SQL) == before
     # Re-upgrading invents nothing either: the numbers are gone with the column that held them.
@@ -1435,6 +1438,250 @@ def test_0009_downgrades_all_the_way_to_base_and_upgrades_again(scratch_url: str
 
     command.upgrade(config, "head")
 
-    assert version(scratch_url) == "0009"
+    assert version(scratch_url) == "0010"
     assert columns(scratch_url, "listings") >= CONTACT_COLUMNS
     command.check(config)
+
+
+# -- 0010: the grocery staff scope (GROCERY-1a; docs/backend/DATA_MODEL.md §20, AUTH_RBAC.md §32) -------
+
+SCOPE_CHECK = "ck_staff_scope_assignments_scope_valid"
+PREVIOUS_SCOPE_VALUES = {"services", "directory", "food", "education", "property", "news"}
+
+
+def all_constraints(url: str) -> dict[tuple[str, str], str]:
+    """Every constraint of the public schema: ``(table, name) -> definition``."""
+    return {
+        (str(table), str(name)): str(definition)
+        for table, name, definition in rows(
+            url,
+            "SELECT c.relname, k.conname, pg_get_constraintdef(k.oid) FROM pg_constraint k "
+            "JOIN pg_class c ON c.oid = k.conrelid JOIN pg_namespace n ON n.oid = c.relnamespace "
+            "WHERE n.nspname = 'public'",
+        )
+    }
+
+
+def schema_shape(url: str) -> tuple[object, ...]:
+    """Everything about the schema that is not a constraint."""
+    return (
+        tables(url),
+        rows(
+            url,
+            "SELECT table_name, column_name, data_type, character_maximum_length, is_nullable, "
+            "column_default FROM information_schema.columns WHERE table_schema = 'public' "
+            "ORDER BY table_name, column_name",
+        ),
+        rows(
+            url,
+            "SELECT indexname, indexdef FROM pg_indexes WHERE schemaname = 'public' "
+            "ORDER BY indexname",
+        ),
+        trigger_names(url),
+        function_names(url),
+    )
+
+
+def every_row(url: str) -> dict[str, list[tuple[object, ...]]]:
+    """Every row of every application table, as JSON text."""
+    return {
+        table: rows(url, f'SELECT to_jsonb(t)::text FROM "{table}" AS t ORDER BY 1')  # noqa: S608
+        for table in sorted(tables(url) - {"alembic_version"})
+    }
+
+
+def scope_check_values(url: str) -> set[str]:
+    definition = all_constraints(url)[("staff_scope_assignments", SCOPE_CHECK)]
+    return set(re.findall(r"'([a-z_]+)'", definition))
+
+
+def add_moderator(url: str, email: str, *scopes: str) -> None:
+    execute(
+        url,
+        "INSERT INTO users (id, email, display_name) VALUES (gen_random_uuid(), :e, 'Staff User')",
+        e=email,
+    )
+    execute(
+        url,
+        "INSERT INTO user_roles (user_id, role) SELECT id, 'moderator' FROM users WHERE email = :e",
+        e=email,
+    )
+    for scope in scopes:
+        execute(
+            url,
+            "INSERT INTO staff_scope_assignments (user_id, scope) "
+            "SELECT id, :s FROM users WHERE email = :e",
+            e=email,
+            s=scope,
+        )
+
+
+def add_scope_audit(url: str, before: str, after: str) -> None:
+    execute(
+        url,
+        "INSERT INTO staff_audit_events (id, source, action, actor_user_id, target_user_id, "
+        "before, after) VALUES (gen_random_uuid(), 'web', 'scope_granted', gen_random_uuid(), "
+        "gen_random_uuid(), CAST(:b AS jsonb), CAST(:a AS jsonb))",
+        b=before,
+        a=after,
+    )
+
+
+def seed_0009_staff_world(url: str) -> None:
+    """A populated 0009 database: listings, categories and every kind of existing staff member."""
+    seed_post_0008_world(url, provider_status="approved")
+    execute(url, ADD_USER)
+    execute(
+        url,
+        "INSERT INTO user_roles (user_id, role) "
+        "SELECT id, 'admin' FROM users WHERE email = 'staff@example.test'",
+    )
+    for scope in sorted(PREVIOUS_SCOPE_VALUES):
+        add_moderator(url, f"mod-{scope}@example.test", scope)
+    add_moderator(url, "mod-every@example.test", *sorted(PREVIOUS_SCOPE_VALUES))
+    add_moderator(url, "mod-paused@example.test")
+    add_scope_audit(url, '{"scopes": []}', '{"scopes": ["food"]}')
+
+
+def test_0010_changes_only_the_scope_check(scratch_url: str) -> None:
+    config = alembic_config(scratch_url)
+    command.upgrade(config, "0009")
+    before_constraints = all_constraints(scratch_url)
+    before_shape = schema_shape(scratch_url)
+    assert scope_check_values(scratch_url) == PREVIOUS_SCOPE_VALUES
+
+    command.upgrade(config, "head")
+
+    assert version(scratch_url) == "0010"
+    after = all_constraints(scratch_url)
+    assert set(after) == set(before_constraints)  # no constraint appears or disappears
+    assert [key for key in after if after[key] != before_constraints[key]] == [
+        ("staff_scope_assignments", SCOPE_CHECK)
+    ]
+    assert scope_check_values(scratch_url) == PREVIOUS_SCOPE_VALUES | {"grocery"}
+    assert schema_shape(scratch_url) == before_shape  # no table, column, index or trigger change
+    command.check(config)
+
+
+def test_0010_changes_no_row_and_gives_nobody_grocery(scratch_url: str) -> None:
+    config = alembic_config(scratch_url)
+    command.upgrade(config, "0009")
+    seed_0009_staff_world(scratch_url)
+    before = every_row(scratch_url)
+    assert before["staff_scope_assignments"] and before["user_roles"]
+
+    command.upgrade(config, "head")
+
+    assert every_row(scratch_url) == before  # every table, byte for byte
+    assert (
+        scalar(scratch_url, "SELECT count(*) FROM staff_scope_assignments WHERE scope = 'grocery'")
+        == 0
+    )
+
+
+def test_the_database_scope_check_is_exactly_the_application_vocabulary(scratch_url: str) -> None:
+    """Alembic's autogenerate does not compare CHECK constraints, so the no-drift test cannot see
+    a ``StaffScope`` and a database check that disagree. This does."""
+    command.upgrade(alembic_config(scratch_url), "head")
+
+    assert scope_check_values(scratch_url) == {scope.value for scope in StaffScope}
+
+
+def test_0010_allows_grocery_for_a_moderator_only_and_adds_no_taxonomy(scratch_url: str) -> None:
+    command.upgrade(alembic_config(scratch_url), "head")
+
+    add_moderator(scratch_url, "mod-grocery@example.test", "grocery")
+
+    for number, bad in enumerate(("groceries", "Grocery", "multi_grocery", "")):
+        with pytest.raises(IntegrityError, match=SCOPE_CHECK):
+            add_moderator(scratch_url, f"bad-{number}@example.test", bad)
+    # still only for a holder of the moderator role
+    execute(scratch_url, ADD_USER)
+    with pytest.raises(IntegrityError, match="fk_staff_scope_assignments_user_id_role_user_roles"):
+        execute(
+            scratch_url,
+            "INSERT INTO staff_scope_assignments (user_id, scope) "
+            "SELECT id, 'grocery' FROM users WHERE email = 'staff@example.test'",
+        )
+    # and the listing taxonomy has no grocery module: the same value is refused there
+    with pytest.raises(IntegrityError, match="ck_categories_module_valid"):
+        execute(
+            scratch_url,
+            "INSERT INTO categories (id, module, slug, name, display_order) "
+            "VALUES (gen_random_uuid(), 'grocery', 'vegetables', 'Vegetables', 0)",
+        )
+    assert scalar(scratch_url, "SELECT count(*) FROM categories") == 0  # the migration seeds none
+
+
+def test_0010_downgrades_when_nobody_holds_grocery_and_keeps_audit_history(
+    scratch_url: str,
+) -> None:
+    config = alembic_config(scratch_url)
+    command.upgrade(config, "head")
+    add_moderator(scratch_url, "mod-food@example.test", "food")
+    add_moderator(scratch_url, "mod-was-grocery@example.test")  # held it once; removed since
+    add_scope_audit(scratch_url, '{"scopes": []}', '{"scopes": ["grocery"]}')
+    add_scope_audit(scratch_url, '{"scopes": ["grocery"]}', '{"scopes": []}')
+    before = every_row(scratch_url)
+
+    command.downgrade(config, "0009")
+
+    assert version(scratch_url) == "0009"
+    assert scope_check_values(scratch_url) == PREVIOUS_SCOPE_VALUES
+    assert every_row(scratch_url) == before  # the history that mentions grocery is untouched
+    with pytest.raises(IntegrityError, match=SCOPE_CHECK):
+        add_moderator(scratch_url, "too-late@example.test", "grocery")
+
+    command.upgrade(config, "head")
+
+    assert version(scratch_url) == "0010"
+    assert scope_check_values(scratch_url) == PREVIOUS_SCOPE_VALUES | {"grocery"}
+    command.check(config)
+
+
+@pytest.mark.parametrize("target", ["0009", "0006", "base"])
+def test_0010_refuses_to_downgrade_while_grocery_is_held_and_changes_nothing(
+    scratch_url: str, target: str
+) -> None:
+    config = alembic_config(scratch_url)
+    command.upgrade(config, "head")
+    add_moderator(scratch_url, "mod-only-grocery@example.test", "grocery")
+    add_moderator(scratch_url, "mod-both@example.test", "food", "grocery")
+    add_scope_audit(scratch_url, '{"scopes": []}', '{"scopes": ["grocery"]}')
+    rows_before = every_row(scratch_url)
+    constraints_before = all_constraints(scratch_url)
+
+    with pytest.raises(RuntimeError, match="Refusing to downgrade 0010") as refused:
+        command.downgrade(config, target)
+
+    assert "2 grocery staff scope assignment(s)" in str(refused.value)
+    assert "roll back the application code" in str(refused.value)  # it says the order
+    assert version(scratch_url) == "0010"
+    assert every_row(scratch_url) == rows_before
+    assert all_constraints(scratch_url) == constraints_before
+
+    # Removing the assignments (the application does it through staff management) unblocks it.
+    execute(scratch_url, "DELETE FROM staff_scope_assignments WHERE scope = 'grocery'")
+    command.downgrade(config, "0009")
+
+    assert version(scratch_url) == "0009"
+    assert rows(scratch_url, "SELECT scope FROM staff_scope_assignments ORDER BY scope") == [
+        ("food",)
+    ]
+    assert scalar(scratch_url, "SELECT count(*) FROM staff_audit_events") == 1
+
+
+def test_0010_is_one_constraint_swap_with_no_data_statement(scratch_url: str) -> None:
+    command.upgrade(alembic_config(scratch_url), "0009")
+    buffer = io.StringIO()
+    offline = alembic_config(scratch_url)
+    offline.output_buffer = buffer
+
+    command.upgrade(offline, "0009:0010", sql=True)
+
+    lines = [line for line in buffer.getvalue().splitlines() if not line.strip().startswith("--")]
+    statements = [s.strip().upper() for s in " ".join(lines).split(";") if s.strip()]
+    own = [s for s in statements if "ALEMBIC_VERSION" not in s and s not in {"BEGIN", "COMMIT"}]
+    assert len(own) == 2, own
+    assert all(s.startswith("ALTER TABLE STAFF_SCOPE_ASSIGNMENTS ") for s in own), own
+    assert "DROP CONSTRAINT" in own[0] and "ADD CONSTRAINT" in own[1]

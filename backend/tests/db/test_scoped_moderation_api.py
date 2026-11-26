@@ -25,11 +25,11 @@ from sqlalchemy import func, select
 from app.models import ListingStatusHistory, StaffAuditEvent
 from app.models.enums import (
     ActorRole,
-    CategoryModule,
     HistoryAction,
     PlanCode,
+    StaffScope,
 )
-from app.services.staff_scopes import ASSIGNABLE_STAFF_SCOPES
+from app.services.staff_scopes import LISTING_STAFF_SCOPES
 from tests.db.admin_helpers import ADMIN_CATEGORIES, ADMIN_LISTINGS, pending
 from tests.db.auth_helpers import AuthApi, AuthEnv
 from tests.db.write_helpers import (
@@ -56,7 +56,7 @@ def super_admin(env: AuthEnv, email: str = "sa@example.org") -> AuthApi:
 
 def moderator(
     env: AuthEnv,
-    scopes: list[CategoryModule],
+    scopes: list[StaffScope],
     email: str = "mod@example.org",
     professional: PlanCode | None = None,
 ) -> AuthApi:
@@ -108,16 +108,16 @@ def counts(response: Any) -> dict[str, int]:
         (["property"], {"property"}),
         (["food", "directory"], {"food", "directory"}),
         (
-            sorted(ASSIGNABLE_STAFF_SCOPES),
+            sorted(LISTING_STAFF_SCOPES),
             {"services", "directory", "food", "education", "property"},
         ),
     ],
 )
 def test_the_queue_shows_exactly_the_moderators_assigned_scopes(
-    auth_env: AuthEnv, scopes: list[CategoryModule], visible_keys: set[str]
+    auth_env: AuthEnv, scopes: list[StaffScope], visible_keys: set[str]
 ) -> None:
     listings = seed_one_of_each(auth_env)
-    mod = moderator(auth_env, [CategoryModule(s) for s in scopes])
+    mod = moderator(auth_env, [StaffScope(s) for s in scopes])
 
     response = mod.get(ADMIN_LISTINGS)
 
@@ -139,7 +139,7 @@ def test_a_super_admin_sees_every_kind_in_the_queue(auth_env: AuthEnv) -> None:
 def test_a_client_filter_can_narrow_but_never_widen_authority(auth_env: AuthEnv) -> None:
     """A Food moderator adding ``?kind=tutor`` does not thereby see tutors."""
     seed_one_of_each(auth_env)
-    mod = moderator(auth_env, [CategoryModule.FOOD])
+    mod = moderator(auth_env, [StaffScope.FOOD])
 
     out_of_scope = mod.get(f"{ADMIN_LISTINGS}?kind=tutor")
 
@@ -154,7 +154,7 @@ def test_counts_are_scoped_for_moderator_and_global_for_super_admin(auth_env: Au
     sa_counts = counts(super_admin(auth_env).get(ADMIN_LISTINGS))
     assert sa_counts["pending"] == 5  # one of each kind
 
-    mod_counts = counts(moderator(auth_env, [CategoryModule.FOOD]).get(ADMIN_LISTINGS))
+    mod_counts = counts(moderator(auth_env, [StaffScope.FOOD]).get(ADMIN_LISTINGS))
     assert mod_counts["pending"] == 1  # only Food
 
 
@@ -176,7 +176,7 @@ def test_detail_shows_in_scope_and_returns_404_out_of_scope_same_as_missing(
     auth_env: AuthEnv,
 ) -> None:
     listings = seed_one_of_each(auth_env)
-    mod = moderator(auth_env, [CategoryModule.FOOD])
+    mod = moderator(auth_env, [StaffScope.FOOD])
 
     in_scope = mod.get(f"{ADMIN_LISTINGS}/{listings['food']}")
     out_of_scope = mod.get(f"{ADMIN_LISTINGS}/{listings['directory']}")
@@ -216,7 +216,7 @@ def test_an_in_scope_moderator_can_approve_a_third_partys_listing(
         admin=scope_value == "services",  # provider authoring is admin-only pre-RBAC-D
     )
     listing_id = pending(author, body)
-    mod = moderator(auth_env, [CategoryModule(scope_value)], email=mod_email)
+    mod = moderator(auth_env, [StaffScope(scope_value)], email=mod_email)
 
     response = mod.request("POST", f"{ADMIN_LISTINGS}/{listing_id}/approve", json={"revision": 1})
 
@@ -229,11 +229,11 @@ def test_a_wrong_scope_moderator_gets_404_on_mutation(auth_env: AuthEnv, scope_v
     author = owner(auth_env, f"author2-{scope_value}@example.org", admin=scope_value == "services")
     listing_id = pending(author, body)
     other_scope = {
-        "services": CategoryModule.FOOD,
-        "directory": CategoryModule.FOOD,
-        "food": CategoryModule.EDUCATION,
-        "education": CategoryModule.PROPERTY,
-        "property": CategoryModule.DIRECTORY,
+        "services": StaffScope.FOOD,
+        "directory": StaffScope.FOOD,
+        "food": StaffScope.EDUCATION,
+        "education": StaffScope.PROPERTY,
+        "property": StaffScope.DIRECTORY,
     }[scope_value]
     wrong = moderator(auth_env, [other_scope], email=f"wrong-{scope_value}@example.org")
 
@@ -251,7 +251,7 @@ def test_a_moderator_cannot_approve_reject_or_takedown_their_own_content(auth_en
         auth_env,
         "modown@example.org",
         professional=PlanCode.FREE,
-        moderator_scopes=[CategoryModule.FOOD],
+        moderator_scopes=[StaffScope.FOOD],
     )
     listing_id = pending(mod_owner, food_body(name="Own Food"))
 
@@ -278,7 +278,7 @@ def test_history_records_moderator_vs_super_admin_actor_role(auth_env: AuthEnv) 
     food_id = pending(author, food_body(name="Food For History"))
     other_id = pending(author, food_body(name="Food For SA"))
 
-    mod = moderator(auth_env, [CategoryModule.FOOD], email="food-mod@example.org")
+    mod = moderator(auth_env, [StaffScope.FOOD], email="food-mod@example.org")
     sa = super_admin(auth_env, email="sa-hist@example.org")
 
     assert (
@@ -324,7 +324,7 @@ def test_scope_derivation_at_decision_time_follows_the_current_listing_state(
     )
     auth_env.session.commit()
 
-    directory_mod = moderator(auth_env, [CategoryModule.DIRECTORY], email="dir-mod@example.org")
+    directory_mod = moderator(auth_env, [StaffScope.DIRECTORY], email="dir-mod@example.org")
 
     response = directory_mod.request(
         "POST", f"{ADMIN_LISTINGS}/{listing_id}/approve", json={"revision": 1}
@@ -387,7 +387,7 @@ def test_a_moderators_location_is_exactly_the_public_projection(
     listing_id = pending(
         owner(auth_env, "loc-owner@example.org"), business_body(name="Shop", location=location)
     )
-    mod = moderator(auth_env, [CategoryModule.DIRECTORY], email="dir-loc-mod@example.org")
+    mod = moderator(auth_env, [StaffScope.DIRECTORY], email="dir-loc-mod@example.org")
     sa = super_admin(auth_env, email="sa-loc@example.org")
 
     pending_detail = mod.get(f"{ADMIN_LISTINGS}/{listing_id}").json()["data"]
@@ -431,7 +431,7 @@ def test_module_and_scope_query_keys_are_not_queue_parameters_and_change_nothing
     scoped queue — neither widened (a ``[directory, food]`` Moderator asking ``module=education``
     gets no tutor) nor narrowed (``module=directory`` does not drop the Food listing)."""
     listings = seed_one_of_each(auth_env)
-    mod = moderator(auth_env, [CategoryModule.DIRECTORY, CategoryModule.FOOD])
+    mod = moderator(auth_env, [StaffScope.DIRECTORY, StaffScope.FOOD])
     baseline = mod.get(ADMIN_LISTINGS)
     expected = {listings["directory"], listings["food"]}
     assert baseline.status_code == 200 and set(queue_ids(baseline)) == expected
@@ -462,7 +462,7 @@ def test_forged_scope_claims_do_not_widen_a_moderators_authority(auth_env: AuthE
     authority: a Food Moderator pointing a request at a Directory listing with ``?module=directory``
     and headers like ``X-Staff-Scopes: directory`` is still refused (``404``)."""
     listings = seed_one_of_each(auth_env)
-    mod = moderator(auth_env, [CategoryModule.FOOD], email="food-forge@example.org")
+    mod = moderator(auth_env, [StaffScope.FOOD], email="food-forge@example.org")
     headers = {"X-Staff-Scopes": "directory,food", "X-Role": "admin"}
 
     detail = mod.get(
@@ -503,7 +503,7 @@ def test_normal_moderation_decisions_do_not_write_staff_audit_rows(auth_env: Aut
     for exceptional events (RBAC-A §27.11)."""
     listing_owner = owner(auth_env, "ord-owner@example.org")
     listing_id = pending(listing_owner, food_body(name="Routine Food"))
-    mod = moderator(auth_env, [CategoryModule.FOOD], email="food-ord-mod@example.org")
+    mod = moderator(auth_env, [StaffScope.FOOD], email="food-ord-mod@example.org")
 
     assert (
         mod.request(
@@ -522,7 +522,7 @@ def test_normal_moderation_decisions_do_not_write_staff_audit_rows(auth_env: Aut
 def test_moderators_are_never_allowed_to_touch_taxonomy(auth_env: AuthEnv) -> None:
     sa = super_admin(auth_env, email="sa-tax@example.org")
     sa.get(ADMIN_CATEGORIES)  # warm-up / no-op
-    mod_all = moderator(auth_env, sorted(ASSIGNABLE_STAFF_SCOPES), email="mod-all-tax@example.org")
+    mod_all = moderator(auth_env, sorted(LISTING_STAFF_SCOPES), email="mod-all-tax@example.org")
 
     list_resp = mod_all.get(ADMIN_CATEGORIES)
     create_resp = mod_all.request(

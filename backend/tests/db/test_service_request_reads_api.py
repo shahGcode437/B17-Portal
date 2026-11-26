@@ -12,7 +12,7 @@ from typing import Any
 import pytest
 from sqlalchemy import event, text
 
-from app.models.enums import CategoryModule, ListingStatus, PlanCode
+from app.models.enums import ListingStatus, PlanCode, StaffScope
 from tests.db.auth_helpers import AuthEnv
 from tests.db.request_helpers import (
     LEADS,
@@ -33,7 +33,7 @@ from tests.db.request_helpers import (
 )
 from tests.db.write_helpers import archive_provider, set_status, signed_in
 
-SERVICES = CategoryModule.SERVICES
+SERVICES = StaffScope.SERVICES
 
 
 def ids(response: Any) -> list[str]:
@@ -187,7 +187,7 @@ def test_nobody_else_can_read_a_request(auth_env: AuthEnv) -> None:
     request_id = sent_id(w.resident, w.listing_id)
     other_resident = requester_signed_in(auth_env, "other@example.org")
     plain_pro = signed_in(auth_env, "rival@example.org", professional=PlanCode.PREMIUM)
-    directory = moderator_signed_in(auth_env, "mod-directory", CategoryModule.DIRECTORY)
+    directory = moderator_signed_in(auth_env, "mod-directory", StaffScope.DIRECTORY)
     zero_scope = moderator_signed_in(auth_env, "mod-zero")
 
     # the requester's API: everyone who is not the requester — staff included — is a non-party
@@ -291,11 +291,11 @@ def test_the_queue_is_a_collection_for_services_authority_only(auth_env: AuthEnv
         "a professional": signed_in(auth_env, "pro@example.org", professional=PlanCode.PREMIUM),
     }
     others = {
-        "directory": moderator_signed_in(auth_env, "m-d", CategoryModule.DIRECTORY),
-        "food": moderator_signed_in(auth_env, "m-f", CategoryModule.FOOD),
-        "education": moderator_signed_in(auth_env, "m-e", CategoryModule.EDUCATION),
-        "property": moderator_signed_in(auth_env, "m-p", CategoryModule.PROPERTY),
-        "news only": moderator_signed_in(auth_env, "m-n", CategoryModule.NEWS),
+        "directory": moderator_signed_in(auth_env, "m-d", StaffScope.DIRECTORY),
+        "food": moderator_signed_in(auth_env, "m-f", StaffScope.FOOD),
+        "education": moderator_signed_in(auth_env, "m-e", StaffScope.EDUCATION),
+        "property": moderator_signed_in(auth_env, "m-p", StaffScope.PROPERTY),
+        "news only": moderator_signed_in(auth_env, "m-n", StaffScope.NEWS),
         "no scope": moderator_signed_in(auth_env, "m-z"),
     }
 

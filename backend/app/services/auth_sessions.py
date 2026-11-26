@@ -25,15 +25,19 @@ from app.db.session import transaction
 from app.models import AuthSession, User
 from app.models.enums import (
     AuthEventType,
-    CategoryModule,
     PlanCode,
     RoleName,
     SessionRevokeReason,
+    StaffScope,
     UserStatus,
 )
 from app.repositories.auth import SessionRepository, UserAuthRepository
 from app.services.auth_audit import AuthAuditService
-from app.services.staff_scopes import effective_staff_scopes
+from app.services.staff_scopes import (
+    GROCERY_SCOPE,
+    LISTING_STAFF_SCOPES,
+    effective_staff_scopes,
+)
 
 #: ``last_seen_at`` (and the sliding idle expiry) is written at most this often per session.
 LAST_SEEN_INTERVAL = timedelta(minutes=5)
@@ -59,7 +63,7 @@ class Principal:
     #: from the database with the session on every request — never from a cookie or a client claim.
     #: Empty for everyone else, a Super Admin included: a Super Admin's authority is the ``admin``
     #: role itself and is never encoded as "all scopes" rows.
-    staff_scopes: frozenset[CategoryModule] = frozenset()
+    staff_scopes: frozenset[StaffScope] = frozenset()
 
     @property
     def is_professional(self) -> bool:
@@ -77,14 +81,27 @@ class Principal:
 
     @property
     def is_moderator(self) -> bool:
-        """Holds the ``moderator`` role. Not authority by itself: see :attr:`is_staff`."""
+        """Holds the ``moderator`` role. Not authority by itself: see
+        :attr:`has_listing_authority` and :attr:`has_grocery_authority`."""
         return RoleName.MODERATOR in self.roles and not self.is_super_admin
 
+    # There is deliberately no "is staff at all" property: Moderators of unrelated domains share
+    # the role, so a guard must name the authority it needs (AUTH_RBAC.md §32).
+
     @property
-    def is_staff(self) -> bool:
-        """Super Admin, or a Moderator with at least one effective scope. A Moderator with zero
-        scopes (paused, or holding only a reserved scope) has no staff authority at all."""
-        return self.is_super_admin or (self.is_moderator and bool(self.staff_scopes))
+    def has_listing_authority(self) -> bool:
+        """Super Admin, or a Moderator with at least one LISTING scope: the front door of listing
+        moderation, Provider management and portal Service Requests (the last two also require
+        ``services``, proven by their services). ``grocery`` and reserved ``news`` do not count."""
+        return self.is_super_admin or (
+            self.is_moderator and bool(self.staff_scopes & LISTING_STAFF_SCOPES)
+        )
+
+    @property
+    def has_grocery_authority(self) -> bool:
+        """Super Admin, or a Moderator holding the explicit ``grocery`` scope. No other scope,
+        and no number of them, implies it."""
+        return self.is_super_admin or (self.is_moderator and GROCERY_SCOPE in self.staff_scopes)
 
 
 @dataclass(frozen=True)
@@ -204,7 +221,7 @@ class SessionService:
             auth_session, user, plan_code, roles, staff_scopes=self._staff_scopes(user.id, roles)
         )
 
-    def _staff_scopes(self, user_id: uuid.UUID, roles: list[RoleName]) -> frozenset[CategoryModule]:
+    def _staff_scopes(self, user_id: uuid.UUID, roles: list[RoleName]) -> frozenset[StaffScope]:
         """Live scopes of a Moderator; no query at all for anyone who is not one. A Super Admin has
         none by definition (the roles are mutually exclusive, and ``admin`` wins if a corrupt state
         ever held both)."""
@@ -219,7 +236,7 @@ class SessionService:
         plan_code: PlanCode | None,
         roles: list[RoleName],
         *,
-        staff_scopes: frozenset[CategoryModule] = frozenset(),
+        staff_scopes: frozenset[StaffScope] = frozenset(),
         last_seen_before: datetime | None = None,
         expires_at: datetime | None = None,
     ) -> Principal:

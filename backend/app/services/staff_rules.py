@@ -17,7 +17,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import StrEnum
 
-from app.models.enums import CategoryModule
+from app.models.enums import StaffScope
 from app.services.moderation_rules import MAX_REJECTION_REASON_LENGTH, normalize_reason
 from app.services.staff_scopes import ASSIGNABLE_STAFF_SCOPES
 
@@ -69,7 +69,7 @@ class StaffAuthorityError(Exception):
         super().__init__(message)
 
 
-def validate_scopes(requested: Iterable[CategoryModule]) -> frozenset[CategoryModule]:
+def validate_scopes(requested: Iterable[StaffScope]) -> frozenset[StaffScope]:
     """The de-duplicated scope set, or ``invalid_staff_scope``.
 
     Refuses an empty set (that is a pause, not an update) and every non-assignable value —

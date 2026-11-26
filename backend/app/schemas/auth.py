@@ -16,7 +16,7 @@ from pydantic_core import PydanticCustomError
 from app.core.config import EmailDelivery
 from app.core.security.identity import normalize_email
 from app.core.security.redirects import InvalidReturnTo, resolve_return_to
-from app.models.enums import CategoryModule, OAuthPurpose, PlanCode, RoleName
+from app.models.enums import OAuthPurpose, PlanCode, RoleName, StaffScope
 from app.schemas.envelope import ApiModel
 
 _Password = Annotated[SecretStr, Field(max_length=1024)]  # DoS bound; the policy limit is 128
@@ -108,7 +108,7 @@ class AuthUser(ApiModel):
     #: A Moderator's effective, assigned scopes (sorted). ``[]`` for everyone else — a Super Admin
     #: included: the ``admin`` role is global authority, never encoded as "all scopes". A UX hint
     #: only; the API re-checks authority on every request (docs/backend/AUTH_RBAC.md §27.12).
-    staff_scopes: list[CategoryModule]
+    staff_scopes: list[StaffScope]
     professional: ProfessionalSummary | None = None
     auth_methods: AuthMethods
     session: SessionInfo

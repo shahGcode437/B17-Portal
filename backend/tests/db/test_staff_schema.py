@@ -22,10 +22,10 @@ from sqlalchemy.orm import Session
 
 from app.models import StaffAuditEvent, StaffScopeAssignment, UserRole
 from app.models.enums import (
-    CategoryModule,
     RoleName,
     StaffAuditAction,
     StaffAuditSource,
+    StaffScope,
 )
 from tests.db.helpers import make_listing, make_user, raw_insert, violates
 
@@ -56,7 +56,7 @@ def scopes_of(session: Session, user_id: uuid.UUID) -> list[str]:
     )
 
 
-def moderator(session: Session, *scopes: CategoryModule) -> uuid.UUID:
+def moderator(session: Session, *scopes: StaffScope) -> uuid.UUID:
     user = make_user(session)
     grant(session, user.id, "moderator")
     for scope in scopes:
@@ -137,9 +137,9 @@ def test_the_listing_history_actor_role_accepts_moderator_and_nothing_else_new(
 
 
 def test_every_canonical_scope_can_be_assigned_to_a_moderator(db_session: Session) -> None:
-    user_id = moderator(db_session, *CategoryModule)
+    user_id = moderator(db_session, *StaffScope)
 
-    assert scopes_of(db_session, user_id) == sorted(scope.value for scope in CategoryModule)
+    assert scopes_of(db_session, user_id) == sorted(scope.value for scope in StaffScope)
     row = db_session.scalars(
         select(StaffScopeAssignment).where(StaffScopeAssignment.user_id == user_id)
     ).first()
@@ -158,7 +158,7 @@ def test_a_scope_outside_the_closed_vocabulary_is_rejected(db_session: Session, 
 
 
 def test_a_duplicate_scope_assignment_is_impossible(db_session: Session) -> None:
-    user_id = moderator(db_session, CategoryModule.FOOD)
+    user_id = moderator(db_session, StaffScope.FOOD)
 
     with violates(db_session, "pk_staff_scope_assignments"):
         raw_insert(db_session, "staff_scope_assignments", user_id=user_id, scope="food")
@@ -191,8 +191,8 @@ def test_the_role_column_of_an_assignment_is_the_constant_moderator(db_session: 
 
 
 def test_removing_the_moderator_role_removes_every_scope_assignment(db_session: Session) -> None:
-    user_id = moderator(db_session, CategoryModule.FOOD, CategoryModule.EDUCATION)
-    other = moderator(db_session, CategoryModule.FOOD)
+    user_id = moderator(db_session, StaffScope.FOOD, StaffScope.EDUCATION)
+    other = moderator(db_session, StaffScope.FOOD)
     assert len(scopes_of(db_session, user_id)) == 2
 
     db_session.execute(
@@ -204,7 +204,7 @@ def test_removing_the_moderator_role_removes_every_scope_assignment(db_session: 
 
 
 def test_deleting_the_account_removes_its_role_and_scopes(db_session: Session) -> None:
-    user_id = moderator(db_session, CategoryModule.PROPERTY)
+    user_id = moderator(db_session, StaffScope.PROPERTY)
 
     db_session.execute(text("DELETE FROM users WHERE id = :u"), {"u": user_id})
 
@@ -257,7 +257,7 @@ def test_an_admin_cannot_also_be_granted_moderator(db_session: Session) -> None:
 
 
 def test_a_moderator_cannot_also_be_granted_admin(db_session: Session) -> None:
-    user_id = moderator(db_session, CategoryModule.FOOD)
+    user_id = moderator(db_session, StaffScope.FOOD)
 
     with violates(db_session, EXCLUSIVE):
         grant(db_session, user_id, "admin")
@@ -270,7 +270,7 @@ def test_different_users_may_hold_different_staff_roles(db_session: Session) -> 
     admin = make_user(db_session)
     grant(db_session, admin.id, "admin")
 
-    mod = moderator(db_session, CategoryModule.FOOD)
+    mod = moderator(db_session, StaffScope.FOOD)
 
     assert roles_of(db_session, admin.id) == ["admin"] and roles_of(db_session, mod) == [
         "moderator"
@@ -279,7 +279,7 @@ def test_different_users_may_hold_different_staff_roles(db_session: Session) -> 
 
 def test_the_roles_can_succeed_one_another_once_the_first_is_removed(db_session: Session) -> None:
     """The legitimate promotion path: remove the moderator role (scopes cascade), then add admin."""
-    user_id = moderator(db_session, CategoryModule.FOOD)
+    user_id = moderator(db_session, StaffScope.FOOD)
 
     db_session.execute(
         text("DELETE FROM user_roles WHERE user_id = :u AND role = 'moderator'"), {"u": user_id}
@@ -323,7 +323,7 @@ def test_swapping_a_scopeless_moderator_row_to_admin_is_a_legitimate_update(
 def test_a_moderator_row_with_scopes_cannot_be_swapped_to_admin_leaving_orphans(
     db_session: Session,
 ) -> None:
-    user_id = moderator(db_session, CategoryModule.FOOD)
+    user_id = moderator(db_session, StaffScope.FOOD)
 
     with violates(db_session, FK_ROLE):
         db_session.execute(
@@ -509,7 +509,7 @@ def test_an_audit_row_may_reference_an_identifier_that_no_longer_exists(
 
 def test_the_models_report_the_expected_role_rows(db_session: Session) -> None:
     """ORM round trip of the new enum value (the role vocabulary is one Python enum)."""
-    user_id = moderator(db_session, CategoryModule.SERVICES)
+    user_id = moderator(db_session, StaffScope.SERVICES)
 
     role = db_session.get(UserRole, (user_id, RoleName.MODERATOR))
 

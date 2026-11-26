@@ -14,8 +14,8 @@ from typing import Any
 import pytest
 from sqlalchemy import text
 
-from app.models.enums import CategoryModule, PlanCode
-from app.services.staff_scopes import ASSIGNABLE_STAFF_SCOPES
+from app.models.enums import PlanCode, StaffScope
+from app.services.staff_scopes import LISTING_STAFF_SCOPES
 from tests.db.admin_helpers import (
     ADMIN_CATEGORIES,
     ADMIN_LISTINGS,
@@ -142,7 +142,7 @@ NON_ADMIN_ACTORS: dict[str, tuple[Callable[[AuthEnv], AuthApi], int, str]] = {
     ),
     "a moderator with only the reserved news scope": (
         lambda env: signed_in(
-            env, "mod-news@example.org", professional=None, moderator_scopes=[CategoryModule.NEWS]
+            env, "mod-news@example.org", professional=None, moderator_scopes=[StaffScope.NEWS]
         ),
         403,
         "forbidden",
@@ -156,13 +156,13 @@ NON_ADMIN_ACTORS: dict[str, tuple[Callable[[AuthEnv], AuthApi], int, str]] = {
 # taxonomy remains Super Admin-only, so a Moderator cannot reach any category operation.
 MODERATOR_ACTORS: dict[str, Callable[[AuthEnv], AuthApi]] = {
     "a moderator of one scope": lambda env: signed_in(
-        env, "mod-one@example.org", professional=None, moderator_scopes=[CategoryModule.FOOD]
+        env, "mod-one@example.org", professional=None, moderator_scopes=[StaffScope.FOOD]
     ),
     "a moderator of every assignable scope": lambda env: signed_in(
         env,
         "mod-all@example.org",
         professional=None,
-        moderator_scopes=sorted(ASSIGNABLE_STAFF_SCOPES),
+        moderator_scopes=sorted(LISTING_STAFF_SCOPES),
     ),
 }
 

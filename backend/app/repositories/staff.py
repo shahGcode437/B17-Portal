@@ -33,10 +33,10 @@ from sqlalchemy.sql.elements import ColumnElement
 from app.models import AuthIdentity, StaffAuditEvent, StaffScopeAssignment, User, UserRole
 from app.models.enums import (
     AuthProvider,
-    CategoryModule,
     RoleName,
     StaffAuditAction,
     StaffAuditResource,
+    StaffScope,
     UserStatus,
 )
 
@@ -106,7 +106,7 @@ class StaffAuthorityRepository:
         )
         return frozenset(rows)
 
-    def share_moderator_scope(self, user_id: uuid.UUID, scope: CategoryModule) -> bool:
+    def share_moderator_scope(self, user_id: uuid.UUID, scope: StaffScope) -> bool:
         """Whether the actor holds ``scope`` RIGHT NOW; the one assignment row that proves it is
         locked ``FOR SHARE`` until the transaction ends, so a revoke waits for the decision."""
         found = self._session.scalars(
@@ -197,7 +197,7 @@ class StaffManagementRepository:
             )
         )
 
-    def scopes_of(self, user_id: uuid.UUID) -> frozenset[CategoryModule]:
+    def scopes_of(self, user_id: uuid.UUID) -> frozenset[StaffScope]:
         return frozenset(
             self._session.scalars(
                 select(StaffScopeAssignment.scope).where(StaffScopeAssignment.user_id == user_id)
@@ -259,7 +259,7 @@ class StaffManagementRepository:
     def add_scopes(
         self,
         user_id: uuid.UUID,
-        scopes: Collection[CategoryModule],
+        scopes: Collection[StaffScope],
         granted_by: uuid.UUID | None,
         now: datetime,
     ) -> None:
@@ -271,7 +271,7 @@ class StaffManagementRepository:
             )
         self._session.flush()
 
-    def remove_scopes(self, user_id: uuid.UUID, scopes: Collection[CategoryModule]) -> None:
+    def remove_scopes(self, user_id: uuid.UUID, scopes: Collection[StaffScope]) -> None:
         if not scopes:
             return
         self._session.execute(
@@ -333,8 +333,8 @@ class StaffReadRepository:
         ).first()
         return None if row is None else (row[0], row[1])
 
-    def scopes_for(self, user_ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, list[CategoryModule]]:
-        grouped: dict[uuid.UUID, list[CategoryModule]] = {}
+    def scopes_for(self, user_ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, list[StaffScope]]:
+        grouped: dict[uuid.UUID, list[StaffScope]] = {}
         if not user_ids:
             return grouped
         for user_id, scope in self._session.execute(

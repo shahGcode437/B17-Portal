@@ -201,8 +201,8 @@ def test_changed_fields_never_contains_a_value() -> None:
 
 
 def test_the_provider_scope_is_services() -> None:
-    from app.models.enums import CategoryModule
+    from app.models.enums import StaffScope
     from app.services.staff_scopes import listing_scope
 
-    assert PROVIDER_SCOPE is CategoryModule.SERVICES
+    assert PROVIDER_SCOPE is StaffScope.SERVICES
     assert listing_scope(ListingKind.PROVIDER, None) is PROVIDER_SCOPE

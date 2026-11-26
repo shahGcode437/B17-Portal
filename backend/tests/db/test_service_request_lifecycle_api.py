@@ -20,7 +20,7 @@ from typing import Any
 
 import pytest
 
-from app.models.enums import CategoryModule, PlanCode
+from app.models.enums import PlanCode, StaffScope
 from tests.db.auth_helpers import AuthApi, AuthEnv, make_account
 from tests.db.request_helpers import (
     ACTIONS,
@@ -108,11 +108,9 @@ class Scene:
             env = self.env
             plain = name.removesuffix("_on_requester_api")
             self._actors[name] = {
-                "services_moderator": lambda: moderator(
-                    env, "mod-services", CategoryModule.SERVICES
-                ),
+                "services_moderator": lambda: moderator(env, "mod-services", StaffScope.SERVICES),
                 "directory_moderator": lambda: moderator(
-                    env, "mod-directory", CategoryModule.DIRECTORY
+                    env, "mod-directory", StaffScope.DIRECTORY
                 ),
                 "professional": lambda: signed_in(
                     env, "rival@example.org", professional=PlanCode.PREMIUM, display_name="Riv Al"
@@ -141,7 +139,7 @@ class Scene:
         return history_rows(self.env.session, self.request_id)
 
 
-def moderator(env: AuthEnv, name: str, scope: CategoryModule) -> AuthApi:
+def moderator(env: AuthEnv, name: str, scope: StaffScope) -> AuthApi:
     email = f"{name}@example.org"
     make_account(env.session, email, moderator_scopes=[scope], display_name=name)
     api = env.client()
@@ -391,7 +389,7 @@ def test_one_request_per_provider_the_portal_handles_all_of_them(auth_env: AuthE
     second_listing = approved_provider(auth_env, w.author, name="Second Provider Co")
     first = sent_id(w.resident, w.listing_id)
     second = sent_id(w.resident, second_listing)
-    moderator_api = moderator(auth_env, "mod-services", CategoryModule.SERVICES)
+    moderator_api = moderator(auth_env, "mod-services", StaffScope.SERVICES)
 
     # any staff with services authority handles either request: authority comes from the staff
     # role and scope, never from which Provider was named or who authored it
