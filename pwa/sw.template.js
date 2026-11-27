@@ -59,7 +59,12 @@ self.addEventListener("fetch", (event) => {
   if (url.pathname.startsWith("/assets/")) {
     event.respondWith(
       caches.open(CACHE_NAME).then((cache) =>
-        cache.match(request).then(
+        // `ignoreVary`: the precache is filled by requests with NO `Origin` header, but the page asks for these
+        // files WITH one (`crossorigin` module scripts and styles). A server that answers `Vary: Origin` (`vite
+        // preview` does) would then make every lookup miss, and an offline reload right after a first visit showed
+        // a blank page. These URLs are content-hashed, same-origin and immutable: one URL is one file, whatever
+        // header asked for it. Only this lookup ignores `Vary`; nothing under /api is ever cached or matched.
+        cache.match(request, { ignoreVary: true }).then(
           (cached) =>
             cached ||
             fetch(request).then((response) => {

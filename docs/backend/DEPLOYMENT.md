@@ -450,3 +450,13 @@ Recorded 2026-11-27 by the owner's decision. **Deferred: none of these is implem
 - staff **MFA**; tested backups; monitoring of orders waiting without a holder.
 
 **The portal is not production-ready.**
+
+## 18. Service worker: offline cache and `Vary` (fix, 2026-11-27; frontend only)
+
+**Defect (existed before GROCERY-3A: reproduced on a build of `e70c651`).** Going offline right after a **first** visit and reloading showed a **blank page**, although the app's entry files had been precached. The worker's precache requests carry **no `Origin` header**; the page requests its `crossorigin` module scripts and stylesheet **with** one; `vite preview` answers those files with **`Vary: Origin`**. The cache lookup therefore missed every precached file. Proven by changing only the lookup in a built worker: the page then rendered. The older browser tests reloaded once online first, which re-cached the files through the worker and hid it.
+
+**Fix** (`pwa/sw.template.js`): the lookup for **`/assets/*` only** uses `ignoreVary: true`. Those URLs are content-hashed, same-origin and immutable, so one URL is one file whatever header asked for it. The navigation fallback is unchanged, and **`/api` stays network-only: never cached or looked up.** Pinned by `e2e/pwa/first-visit.spec.ts` (offline with no online reload; every precached file served) and `src/pwa/serviceWorkerPrecache.test.ts`; both fail without the fix.
+
+**Hosting:** whether the production host sends `Vary: Origin` is not known (no host is chosen); the fix does not depend on it. If a host varies built assets on a header that changes their **content** (not expected for hashed files), this assumption must be revisited.
+
+**Still not available offline after a first visit, by design:** screens not yet opened (their code is not precached), images, and font subsets the page had not yet loaded (it falls back to system fonts). Real-device behaviour has not been tested.
