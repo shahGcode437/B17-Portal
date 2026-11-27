@@ -158,11 +158,27 @@ Every limit is held in PostgreSQL, so it is correct across restarts and any numb
 | change settings | `users` `FOR KEY SHARE` → `user_roles` `FOR SHARE` → settings advisory lock (**exclusive**) → insert |
 
 - `users` before `auth_sessions` is the order of password change, password reset and every staff mutation, so none can form a cycle with these.
-- **Logout goes the other way:** it updates the session, then the foreign key of its audit row takes `FOR KEY SHARE` on the user. That mode does not conflict with the `FOR SHARE` these paths take, and PostgreSQL grants it even while a `FOR UPDATE` request is waiting, so it closes no cycle with them (checked 2026-11-27 on a minimal replica; no automated test). It **would** conflict if a Grocery path ever took `FOR UPDATE` on the user row: do not add one.
+- **Logout and logout-all** take `users` `FOR KEY SHARE` and then the session (the authentication order below). That mode does not conflict with the `FOR SHARE` these paths take, and PostgreSQL grants it even while a `FOR UPDATE` request is waiting. Covered by `tests/db/test_auth_concurrency.py`, three-way case included.
 - **Daily capacity** is one guarded statement, `UPDATE … SET reserved = reserved + 1 WHERE service_date = :d AND reserved < :limit RETURNING`: concurrent submitters queue on the row and re-read the committed count. A rollback returns the place; nothing else ever does.
 - **Active-order limit and idempotency** are read-then-write, made safe by the requester lock (the only path that adds a customer's order). A concurrent cancel can only lower the count. The unique `(customer_id, idempotency_key_hash)` constraint is the backstop.
 - **Settings** cannot change under a submission: it holds the settings lock shared until commit. A waiting change queues later submissions behind it.
 - The current time is read **after** the locks, so waiting never extends the opening hours.
+
+### Authentication writes: `users` before `auth_sessions`
+
+**A transaction that writes both a user's row (or a row that references it) and that user's sessions locks the `users` row first.**
+
+| Path | Lock on `users`, taken first | Then |
+|---|---|---|
+| logout, logout-all | `FOR KEY SHARE` | the session rows; audit event |
+| password change, password reset | `FOR UPDATE` | revoke sessions (reset locks its **token** row before the user) |
+| sign-in that creates a session (cap eviction), Google sign-in and account claim | `FOR UPDATE` | delete / revoke / insert sessions |
+| staff changes (web and operator CLI) | advisory lock, then `FOR UPDATE` on the target | roles, scopes, revoke sessions |
+
+- **Any audit insert locks the user.** `auth_events` references `users`, so inserting an event takes `FOR KEY SHARE` there. A path that writes sessions and records an event must hold that lock **before** the session write (`UserAuthRepository.key_share`). Sign-out did it the other way round and deadlocked with every path above (fixed 2026-11-27).
+- Single-statement session writes with no event (the `last_seen` touch) hold one row and cannot form a cycle.
+- There is **no account-suspension path** in the application. One added later must lock the user before the sessions.
+- **Known exception, not fixed:** one-time **tokens** and the user are locked in both orders (`AUTH_RBAC.md` §34).
 
 ## 6. Concurrency and consistency (no distributed locking)
 

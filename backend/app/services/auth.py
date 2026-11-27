@@ -229,11 +229,13 @@ class AuthService:
 
     def logout(self, principal: Principal) -> None:
         with transaction(self._session):
+            self._users.key_share(principal.user_id)  # users before auth_sessions
             self._sessions.revoke(principal.session_id, SessionRevokeReason.LOGOUT)
             self._audit.record(AuthEventType.LOGOUT, user_id=principal.user_id)
 
     def logout_all(self, principal: Principal) -> None:
         with transaction(self._session):
+            self._users.key_share(principal.user_id)  # users before auth_sessions
             self._sessions.revoke_all(principal.user_id, SessionRevokeReason.LOGOUT_ALL)
             self._audit.record(AuthEventType.LOGOUT_ALL, user_id=principal.user_id)
 

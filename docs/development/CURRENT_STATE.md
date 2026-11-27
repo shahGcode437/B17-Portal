@@ -1053,7 +1053,7 @@ Baseline `004a208`. Migration head **`0010`** (one `CHECK` widened). No new depe
 - **Verification:** `TESTING.md` (GROCERY-1a). Two separate commits went out with it: the CI type-check correction (`0e4302a`) and the mocked browser lane's API isolation (`e45e099`).
 - **CI:** Backend CI had **failed** at the type-check step on `004a208` (EMAIL-1), so its later steps, the backend tests included, had not run there. On `e1b566f` (pushed together with the two commits above) **Backend CI and Frontend CI passed**.
 
-## GROCERY-1b Result — customer order intake, backend only (BUILT; reviewed and **committed locally** 2026-11-27, **not pushed**; **GitHub CI pending**; **disabled by default**)
+## GROCERY-1b Result — customer order intake, backend only (BUILT, **COMMITTED** as `d401593` and **PUSHED** 2026-11-27; GitHub CI passed; **disabled by default**)
 
 Baseline `e1b566f`. Migration head **`0011`**. No new dependency; no frontend change.
 
@@ -1062,10 +1062,17 @@ Baseline `e1b566f`. Migration head **`0011`**. No new dependency; no frontend ch
 - **NOT built:** staff order queue, quotations and prices, partner marts, procurement, packing, delivery, cash, e-mail, catalogue, payments, any screen. **No staff member can see an order through the portal.**
 - **Do not enable for real customers** (`DEPLOYMENT.md` §15): verified blocks, the later phases, privacy / retention / refund / cash policies, durable and prioritised e-mail with quota protection, the tracking investigation, production Google OAuth, proxy rate limiting, callback-log sanitization, staff MFA, backups and production readiness are all open.
 - **Approved pilot limits:** 3 successful new submissions per hour and 4 per day per account (fixed windows; `DECISIONS.md`).
-- **Verification (local):** the one full backend run was **not fully green: 5,315 passed, 1 failed, 3 skipped**. The failing test's exact list of phone columns lacked the order's delivery phone; after that test-only correction its file passed (**59 of 59**). The full suite was not run again. That run took 45 minutes against 18 before; **the increase is not explained**. **GitHub CI has not run this change.** Details: `TESTING.md` (GROCERY-1b).
+- **Verification (local):** the one full backend run was **not fully green: 5,315 passed, 1 failed, 3 skipped**. The failing test's exact list of phone columns lacked the order's delivery phone; after that test-only correction its file passed (**59 of 59**). The full suite was not run again. That run took 45 minutes against 18 before; **the increase is not explained**. **GitHub CI on `d401593` passed** (backend and frontend; the backend job took 8 min 43 s of its 15-minute limit, its test step 7 min 55 s). Details: `TESTING.md` (GROCERY-1b).
 - **Open business decisions:** D5–D18 (`DECISIONS.md`), among them fees, quote validity, partner marts, cancellation after approval, cash handling and retention; the PKR 20,000 cap including fees (GROCERY-2); the official block list.
 - **Pilot security requirement (GROCERY-5):** several accounts together can use up a day's capacity.
+- **Added to the blocker register (owner, 2026-11-27):** the order history's `TRUNCATE` limitation; **least-privilege database credentials before production**; the daily limit's **05:00 PKT** reset, to correct before the pilot (`DEPLOYMENT.md` §15).
 - **Not production-ready.**
+
+## Authentication correction — sign-out lock order (BUILT 2026-11-27; **awaiting owner review, not committed**)
+
+- **Fixed:** logout and logout-all could deadlock with password change, password reset, a sign-in at the session cap and staff changes. Both now lock the user before the session (`AUTH_RBAC.md` §34; `BACKEND_ARCHITECTURE.md` §5). No migration; no API change.
+- **Open, reproduced, not fixed:** deadlocks between `verify-email` and password reset or resend; a password change, or a sign-in, that checked the **old** password can defeat a password reset that commits meanwhile (`AUTH_RBAC.md` §34).
+- **Verification:** `TESTING.md` (sign-out lock order).
 
 ## VR1 (Visual Redesign) — Glassmorphism + Controlled Maximalism Foundation (in progress, NOT committed)
 

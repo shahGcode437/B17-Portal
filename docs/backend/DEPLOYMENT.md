@@ -400,6 +400,12 @@ Windows PowerShell, from `backend/`, with the API stopped. **Rehearsed on 2026-1
 
 **Grocery is disabled after deployment and stays so until a Super Admin enables it.** Enabling it today only lets customers submit orders **that no staff member can see or process through the portal** (there is no staff queue), and sends no e-mail. **Do not enable it for real customers** before the pilot blockers are closed, at least: the owner-verified block list configured; the staff review, quotation and fulfilment phases; privacy and retention, refund and cash-handling policies; durable, prioritised e-mail with quota protection and the tracking investigation, if any Grocery e-mail is sent; production Google OAuth; per-IP rate limiting at the proxy and callback-log sanitization; a control against several accounts filling a day's capacity, which per-account limits cannot stop (**GROCERY-5 requirement**); MFA for every staff account; backups with a tested restore; monitoring.
 
-**Recommended hardening, not yet decided:** run the application under a database role that cannot `TRUNCATE` or alter tables, so that order history cannot be emptied through it (its trigger refuses only `UPDATE` and `DELETE`).
+**Blocker register additions (owner, 2026-11-27):**
+
+- **Order history can be emptied by `TRUNCATE`.** `grocery_order_status_history` refuses only `UPDATE` and `DELETE` by trigger. This limitation stays open until production controls it.
+- **Required before production: least-privilege application database credentials.** The runtime role of the two-role design above must be used: data reads and writes only, **no `TRUNCATE`, no schema changes, and not the owner of any table** (an owner can disable a trigger). Migrations run under the separate migration role. Verify the grants on the deployed database.
+- **Before the pilot: correct the daily submission-limit reset.** The 4-per-day limit resets at **05:00 PKT** (midnight UTC), while capacity uses the Karachi date. With the default hours it has no effect; opening hours that start before 05:00 would let an account get a second daily allowance on one Karachi date.
+
+**Open authentication defects** (found 2026-11-27, not fixed, `AUTH_RBAC.md` §34): token / user deadlocks, and a password reset that an in-flight password change or sign-in with the old password can defeat. Recommended closed before any public production.
 
 There is **no deployment-level switch**: the database setting is the only one (planning had suggested an additional `GROCERY_ENABLED` setting; it was not approved).

@@ -58,6 +58,18 @@ class UserAuthRepository:
             select(User).where(func.lower(User.email) == email).with_for_update()
         ).first()
 
+    def key_share(self, user_id: uuid.UUID) -> None:
+        """``SELECT ... FOR KEY SHARE`` — for a transaction that writes this user's sessions
+        without taking :meth:`lock` (sign-out), BEFORE its first session write.
+
+        The lock order is ``users`` before ``auth_sessions``. A row that references the user (the
+        sign-out's audit event) takes exactly this lock through its foreign key; taken after the
+        session write it deadlocks with whoever holds :meth:`lock` and is revoking sessions.
+        Sign-outs do not wait for each other."""
+        self._session.execute(
+            select(User.id).where(User.id == user_id).with_for_update(read=True, key_share=True)
+        )
+
     def add(self, user: User) -> None:
         self._session.add(user)
         self._session.flush()

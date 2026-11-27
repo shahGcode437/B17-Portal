@@ -558,3 +558,15 @@ This **replaces** the earlier statement that GROCERY-1b needs the block list bef
 **Recorded at approval (2026-11-27):** (a) **GROCERY-5 pilot security requirement:** several accounts together can use up a day's capacity (with the defaults, three: 4 + 4 + 2 orders, cancelled ones included). It must be addressed before the limited pilot. (b) **Grocery stays disabled for real customers.** (c) The **PKR 20,000** quotation cap **including fees** is still **subject to GROCERY-2 approval**.
 **Reason:** a small, closed intake that cannot oversell a day, create an order twice or show one customer another's data, and that stays inert until deliberately configured.
 **Revisit when:** GROCERY-2 is designed; the official block list arrives; pilot data suggests different limits.
+
+---
+
+**Decision (owner requirements recorded 2026-11-27).** (a) **Grocery stays disabled.** (b) The `TRUNCATE` limitation of the order history stays in the launch blocker register. (c) **Least-privilege application database credentials are required before production.** (d) The daily submission limit resetting at **05:00 PKT** instead of Karachi midnight is a discrepancy **to be corrected before the pilot launch**; it is not changed now. Earlier open business decisions and security requirements are unchanged. Register: `DEPLOYMENT.md` §15.
+**Reason:** known gaps must stay visible until they are closed.
+**Revisit when:** production deployment is designed; GROCERY-5 begins.
+
+---
+
+**Decision (authentication lock order — correction BUILT 2026-11-27, awaiting owner review; no migration).** Authentication writes lock the `users` row **before** any of its sessions; logout and logout-all now take `FOR KEY SHARE` there first. Rejected: retrying or hiding the deadlock; a stronger lock in sign-out (it would make sign-outs wait for order submissions and each other for no gain); weakening the `FOR UPDATE` of the other paths (staff authority checks rely on it).
+**Reason:** smallest change that removes the cycle without changing what any operation locks out.
+**Revisit when:** the token and stale-password defects of `AUTH_RBAC.md` §34 are addressed, or an account-suspension feature is added.
