@@ -8,8 +8,8 @@ import { getCsrfToken, getSessionHandlers } from "@/lib/api/session"
  *  - Cookie auth: every call uses `credentials: "include"`; the HttpOnly session cookie is attached
  *    by the browser and is never readable here. There is no bearer-token code anywhere.
  *  - `session: true` marks an AUTHENTICATED call: unsafe ones carry `X-CSRF-Token`, a
- *    `403 csrf_failed` triggers ONE `/auth/me` refresh and ONE retry (never a loop, never for
- *    other 403s, 409s, 422s, 401s or network failures), and a `401 unauthenticated|session_expired`
+ *    `403 csrf_failed` triggers ONE `/auth/me` refresh and ONE retry (never a loop, none at all
+ *    with `replayAfterCsrfRefresh: false`, never for other 403s, 409s, 422s, 401s or network failures), and a `401 unauthenticated|session_expired`
  *    (or `account_disabled`) ends the local session. Pre-session calls (login, register,
  *    forgot/reset password, verify-email, `/auth/me` itself) leave `session` off.
  *  - Failures become typed `ApiError`s from the backend's error envelope.
@@ -22,6 +22,12 @@ export interface RequestOptions {
   session?: boolean
   /** Extra request headers an endpoint requires (e.g. `Idempotency-Key`). Re-sent unchanged by the CSRF retry. */
   headers?: Record<string, string>
+  /**
+   * `false`: after a `403 csrf_failed` the session is still re-read, but the request is NOT sent again
+   * and the refusal reaches the caller. For writes that must never be repeated on the person's behalf
+   * (the account in this browser may have changed since they pressed the button).
+   */
+  replayAfterCsrfRefresh?: boolean
 }
 
 const UNSAFE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"])
@@ -94,7 +100,9 @@ async function execute<T>(method: string, path: string, options: RequestOptions,
     if (unsafe && error.status === 403 && error.code === "csrf_failed" && !retried) {
       // The token we held went stale (e.g. the session was rotated elsewhere): re-read it ONCE.
       const handlers = getSessionHandlers()
-      if (handlers && (await handlers.refreshSession())) return execute<T>(method, path, options, true)
+      if (handlers && (await handlers.refreshSession()) && options.replayAfterCsrfRefresh !== false) {
+        return execute<T>(method, path, options, true)
+      }
     }
     if (endsTheSession(error)) getSessionHandlers()?.onSessionLost(error.code)
   }

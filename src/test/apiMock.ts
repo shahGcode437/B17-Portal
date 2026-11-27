@@ -22,7 +22,7 @@ export interface MockReply {
   headers?: Record<string, string>
 }
 
-export type MockHandler = (call: MockCall) => MockReply | Promise<MockReply> | "network-error"
+export type MockHandler = (call: MockCall) => MockReply | "network-error" | Promise<MockReply | "network-error">
 
 export const ok = (data?: unknown, status = 200): MockReply => ({
   status: data === undefined && status === 200 ? 204 : status,

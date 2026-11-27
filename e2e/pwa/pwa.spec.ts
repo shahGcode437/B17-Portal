@@ -185,3 +185,54 @@ test('private grocery orders are never cached: offline they fail visibly instead
   // on its way while the page closes (one that is can slip past the mock).
   await expectPage(page, `Order ${order.reference}`)
 })
+
+test('private staff grocery data is never cached or stored: offline nothing old is shown after a reload', async ({ page, context, authMock }) => {
+  authMock.addAccount({ email: 'sana@example.org', displayName: 'Sana Staff', roles: ['moderator'], staffScopes: ['grocery'] })
+  authMock.addAccount({ email: 'ayesha@example.org', displayName: 'Ayesha Khan' })
+  const order = authMock.grocery.seed('ayesha@example.org')
+  authMock.session = { email: 'sana@example.org', csrf: 'csrf-pwa-staff' }
+  await openApp(page, '/')
+  await waitForControl(page)
+  await page.reload()
+  await expectPage(page, 'B-17 Portal')
+  await navigateInApp(page, '/admin/grocery', 'Grocery orders')
+  await expect(page.getByText(order.reference)).toBeVisible()
+  await navigateInApp(page, `/admin/grocery/${order.id}`, `Order ${order.reference}`)
+  await page.getByRole('region', { name: 'Actions' }).getByRole('button', { name: 'Claim order' }).click()
+  await expect(page.getByRole('region', { name: 'Actions' })).toContainText('Assigned to you')
+
+  const kept = await page.evaluate(async () => {
+    const found: string[] = []
+    for (const name of await caches.keys()) {
+      const cache = await caches.open(name)
+      for (const request of await cache.keys()) {
+        const body = await (await cache.match(request))!.clone().text()
+        if (request.url.includes('/api/') || body.includes('House 17, Street 4') || body.includes('+923001234567')) {
+          found.push(request.url)
+        }
+      }
+    }
+    return {
+      cached: found,
+      storage: JSON.stringify([{ ...localStorage }, { ...sessionStorage }]),
+      databases: (await indexedDB.databases()).length,
+    }
+  })
+  expect(kept.cached).toEqual([])
+  expect(kept.databases).toBe(0)
+  for (const value of ['House 17, Street 4', '923001234567', 'Ayesha Khan', order.id]) expect(kept.storage).not.toContain(value)
+
+  authMock.offline = true
+  await context.setOffline(true)
+  await page.getByRole('button', { name: 'Refresh' }).click()
+  await expect(page.getByText(/What's shown may be out of date/)).toBeVisible()
+  await page.reload()
+  await expectPage(page, "We can't reach the server")
+  await expect(page.getByText(order.reference)).toHaveCount(0)
+  await expect(page.getByText('House 17, Street 4')).toHaveCount(0)
+  authMock.offline = false
+  await context.setOffline(false)
+  // Wait for the app's own re-check on reconnect, so nothing is still on its way when the page closes.
+  await expectPage(page, `Order ${order.reference}`)
+  await expect(page.getByRole('region', { name: 'Customer and delivery' })).toContainText('House 17, Street 4')
+})

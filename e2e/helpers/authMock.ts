@@ -2,6 +2,7 @@ import type { Page, Route } from '@playwright/test'
 import { routeRead } from '../../src/test/fixtures/readRouter'
 import { publicApprovedListings, resetWriteState, routeWrite, savedRows, writeState } from '../../src/test/fixtures/writeRouter'
 import { GroceryBackend } from '../../src/test/fixtures/groceryBackend'
+import { GroceryStaffBackend } from '../../src/test/fixtures/groceryStaffBackend'
 import { isMocked } from './mockedEndpoints'
 
 /**
@@ -26,6 +27,8 @@ export interface MockAccount {
   password: string
   emailVerified: boolean
   roles: string[]
+  /** A Moderator's effective scopes (empty for everyone else, and for a paused Moderator). */
+  staffScopes?: string[]
   professional?: { planCode: 'free' | 'premium' }
   providers: string[]
 }
@@ -62,6 +65,14 @@ export class AuthMock {
    * is stored, or the server answers 500 after storing it. Empty: answered normally.
    */
   readonly grocerySubmitFaults: ('lost-before' | 'lost-after' | 'error-after')[] = []
+  /** The Grocery STAFF API over the same orders (GROCERY-3B). */
+  readonly groceryStaff = new GroceryStaffBackend(this.grocery)
+  /** What happens to the next staff changes, one entry each (see `grocerySubmitFaults`). */
+  readonly groceryStaffFaults: ('lost-before' | 'lost-after' | 'error-after')[] = []
+  /** The staff session is past its idle or age limit: the staff routes answer `401 session_expired`. */
+  groceryStaffSessionStale = false
+  /** While set, a staff change waits for it (see `holdGroceryStaffWrite`). */
+  private staffGate: Promise<void> | null = null
   /** While set, a grocery submission waits for it (see `holdGrocerySubmit`). */
   private submitGate: Promise<void> | null = null
   /**
@@ -125,6 +136,24 @@ export class AuthMock {
     return full
   }
 
+  /** Holds staff changes unanswered until the returned function is called. */
+  holdGroceryStaffWrite(): () => void {
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    this.staffGate = gate
+    return () => {
+      if (this.staffGate === gate) this.staffGate = null
+      release()
+    }
+  }
+
+  /** The id `/auth/me` reports for an account: distinct per account. */
+  idOf(email: string): string {
+    return `00000000-0000-4000-8000-${String([...this.accounts.keys()].indexOf(email.toLowerCase()) + 1).padStart(12, '0')}`
+  }
+
   /** Holds grocery submissions unanswered until the returned function is called. */
   holdGrocerySubmit(): () => void {
     let release!: () => void
@@ -152,11 +181,12 @@ export class AuthMock {
   private me(account: MockAccount, csrf: string) {
     return {
       // distinct per account: switching accounts must look like a different person
-      id: `00000000-0000-4000-8000-${String([...this.accounts.keys()].indexOf(account.email) + 1).padStart(12, '0')}`,
+      id: this.idOf(account.email),
       displayName: account.displayName,
       email: account.email,
       emailVerified: account.emailVerified,
       roles: account.roles,
+      staffScopes: account.staffScopes ?? [],
       ...(account.professional && { professional: account.professional }),
       authMethods: { password: true, providers: account.providers },
       session: { expiresAt: '2099-01-01T00:00:00Z' },
@@ -200,6 +230,37 @@ export class AuthMock {
       return error(501, 'e2e_unmocked_request')
     }
     if (!isMocked(method, path)) return refuseUnmocked()
+
+    if (path.startsWith('/admin/grocery/orders')) {
+      const account = this.current()
+      if (method !== 'GET') {
+        if (!account) return error(401, 'unauthenticated')
+        if (csrf !== this.session!.csrf) return error(403, 'csrf_failed')
+      }
+      if (account && this.groceryStaffSessionStale) return error(401, 'session_expired')
+      if (method !== 'GET' && this.staffGate) await this.staffGate
+      const fault = method !== 'GET' ? this.groceryStaffFaults.shift() : undefined
+      if (fault === 'lost-before') return route.abort('connectionreset')
+      const answer = this.groceryStaff.route(
+        method,
+        path,
+        new URL(request.url()).searchParams,
+        body,
+        account
+          ? {
+              id: this.idOf(account.email),
+              displayName: account.displayName,
+              ownerKey: account.email,
+              superAdmin: account.roles.includes('admin'),
+              groceryScope: account.roles.includes('moderator') && (account.staffScopes ?? []).includes('grocery'),
+              emailVerified: account.emailVerified,
+            }
+          : null
+      )
+      if (fault === 'lost-after') return route.abort('connectionreset')
+      if (fault === 'error-after') return error(500, 'internal_error')
+      return answer ? reply(answer.status, answer.body) : refuseUnmocked()
+    }
 
     if (path.startsWith('/grocery/')) {
       const account = this.current()

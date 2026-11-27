@@ -63,6 +63,8 @@ const ModerationQueuePage = lazyPage(() => import("@/features/admin/ModerationQu
 const AdminCategoriesPage = lazyPage(() => import("@/features/admin/AdminCategoriesPage"), "AdminCategoriesPage")
 const ContentListPage = lazyPage(() => import("@/features/admin/ContentListPage"), "ContentListPage")
 const ContentFormPage = lazyPage(() => import("@/features/admin/ContentFormPage"), "ContentFormPage")
+const StaffGroceryQueuePage = lazyPage(() => import("@/features/grocery-staff/StaffGroceryQueuePage"), "StaffGroceryQueuePage")
+const StaffGroceryOrderPage = lazyPage(() => import("@/features/grocery-staff/StaffGroceryOrderPage"), "StaffGroceryOrderPage")
 
 /**
  * Centralized route tree (Master Spec §15). Phase 1 wires navigation and the
@@ -146,6 +148,14 @@ const appRoutes: RouteObject[] = [
           { path: "content", element: <ContentListPage /> },
           { path: "content/new", element: <ContentFormPage /> },
           { path: "content/:id/edit", element: <ContentFormPage /> },
+        ],
+      },
+      {
+        // Grocery staff only (a separate gate: it widens nothing above). The API is the authority.
+        element: <AuthGate requires="grocery-staff" />,
+        children: [
+          { path: "grocery", element: <StaffGroceryQueuePage /> },
+          { path: "grocery/:orderId", element: <StaffGroceryOrderPage /> },
         ],
       },
     ],

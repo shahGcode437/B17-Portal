@@ -61,6 +61,9 @@ describe("service worker and the API", () => {
     ["my grocery orders", "https://app.example.org/api/v1/grocery/orders?limit=10&offset=0", "cors"],
     ["one grocery order", "https://app.example.org/api/v1/grocery/orders/22222222-2222-4222-8222-000000000001", "cors"],
     ["grocery availability", "https://app.example.org/api/v1/grocery/availability", "cors"],
+    // GROCERY-3B: the staff API carries customer contact details and internal notes
+    ["the staff grocery queue", "https://app.example.org/api/v1/admin/grocery/orders?status=submitted&limit=12", "cors"],
+    ["one order on the staff side", "https://app.example.org/api/v1/admin/grocery/orders/22222222-2222-4222-8222-000000000001", "cors"],
     ["the bare /api path", "https://app.example.org/api", "navigate"],
   ])("never touches %s (no cache, no offline shell substitution)", (_label, url, mode) => {
     caches.open.mockClear()

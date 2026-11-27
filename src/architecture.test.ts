@@ -67,6 +67,28 @@ describe("architecture guards", () => {
     expect(offenders((path, s) => !allowed(path) && privateModules.test(s))).toEqual([])
   })
 
+  it("only the grocery staff workspace imports the grocery STAFF API modules", () => {
+    // They carry customer contact details, staff names, internal notes and the staff changes.
+    const staffApi = /@\/lib\/api\/(dto|reads|writes)\/groceryStaff/
+    const allowed = (path: string) => path.startsWith("/src/features/grocery-staff/") || path.startsWith("/src/lib/api/")
+    expect(offenders((path, s) => !allowed(path) && staffApi.test(s))).toEqual([])
+    // And nothing outside the router reaches into the workspace itself.
+    expect(
+      offenders(
+        (path, s) =>
+          !path.startsWith("/src/features/grocery-staff/") && path !== "/src/app/router.tsx" && /@\/features\/grocery-staff\//.test(s)
+      )
+    ).toEqual([])
+    // The guard is not vacuous: the workspace exists and does import them.
+    expect(offenders((path, s) => path.startsWith("/src/features/grocery-staff/") && staffApi.test(s)).length).toBeGreaterThan(3)
+  })
+
+  it("every grocery staff change is sent without the client's CSRF replay", () => {
+    const writes = production.find(([path]) => path === "/src/lib/api/writes/groceryStaff.ts")?.[1] ?? ""
+    expect(writes.match(/apiRequest\w*(<[^>]*>)?\(/g)).toHaveLength(1)
+    expect(writes).toMatch(/replayAfterCsrfRefresh:\s*false/)
+  })
+
   it("the public DTO module has no private-location field names", () => {
     const source = production.find(([path]) => path === "/src/lib/api/dto/public.ts")?.[1] ?? ""
     expect(source).not.toMatch(/\b(privateLocation|publicLocation|latitude\??:\s*number;\s*\n\s*longitude)/)

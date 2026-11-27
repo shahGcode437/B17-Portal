@@ -1,3 +1,4 @@
+import { Fragment } from "react"
 import { MailWarning, ShieldAlert, Store, WifiOff } from "lucide-react"
 import { Navigate, Outlet, useLocation, useNavigate } from "react-router-dom"
 import { Container } from "@/components/foundation/Container"
@@ -11,9 +12,10 @@ import { AuthLoading } from "@/features/auth/AuthShell"
 import { VerificationNotice } from "@/features/auth/VerificationNotice"
 import { createProfessionalProfile } from "@/lib/api/writes/professional"
 import { userMessageFor } from "@/lib/api/writeErrors"
+import { canWorkGroceryOrders } from "@/lib/staffAccess"
 import { routes } from "@/config/routes"
 
-type Requirement = "authenticated" | "professional" | "admin"
+type Requirement = "authenticated" | "professional" | "admin" | "grocery-staff"
 
 interface AuthGateProps {
   requires?: Requirement
@@ -27,7 +29,10 @@ interface AuthGateProps {
  *  - unavailable   → "can't reach the server" with a retry (not mistaken for "logged out");
  *  - anonymous     → redirect to Log In (Admin Login for admin routes) remembering where we were;
  *  - authenticated → the capability check: `professional` needs a VERIFIED e-mail first and then the backend's
- *                    professional summary, `admin` needs the `admin` role from `/auth/me`.
+ *                    professional summary, `admin` needs the `admin` role from `/auth/me`, and
+ *                    `grocery-staff` needs Grocery authority (`canWorkGroceryOrders`) and a verified e-mail.
+ *                    Its pages are keyed by the account, so nothing one staff account loaded or typed
+ *                    can survive into another's.
  *
  * The order for the Professional Workspace is the order the person can act on: loading, unavailable, anonymous,
  * e-mail unverified ("Verify your email first"), professional profile missing, allowed. Offering "Create a
@@ -66,7 +71,8 @@ function AuthGate({ requires = "authenticated" }: AuthGateProps) {
 
   if (status === "anonymous" || !user) {
     const from = `${location.pathname}${location.search}`
-    return <Navigate to={requires === "admin" ? routes.adminLogin : routes.login} replace state={{ from }} />
+    const staffArea = requires === "admin" || requires === "grocery-staff"
+    return <Navigate to={staffArea ? routes.adminLogin : routes.login} replace state={{ from }} />
   }
 
   if (requires === "admin" && !user.roles.includes("admin")) {
@@ -80,6 +86,34 @@ function AuthGate({ requires = "authenticated" }: AuthGateProps) {
           actionLabel="Back to home"
           onAction={() => navigate(routes.home)}
         />
+      </Container>
+    )
+  }
+
+  if (requires === "grocery-staff" && !canWorkGroceryOrders(user)) {
+    return (
+      <Container>
+        <EmptyState
+          icon={ShieldAlert}
+          headingLevel={1}
+          title="Grocery staff access only"
+          description="This account can't handle grocery orders. Staff access is granted by the B-17 team, never from this screen."
+          actionLabel="Back to home"
+          onAction={() => navigate(routes.home)}
+        />
+      </Container>
+    )
+  }
+
+  if (requires === "grocery-staff" && !user.emailVerified) {
+    return (
+      <Container>
+        <Stack gap={4} className="mx-auto my-12 max-w-md">
+          <Typography variant="h1" className="text-2xl">
+            Verify your email first
+          </Typography>
+          <VerificationNotice />
+        </Stack>
       </Container>
     )
   }
@@ -144,6 +178,14 @@ function AuthGate({ requires = "authenticated" }: AuthGateProps) {
           )}
         </Stack>
       </Container>
+    )
+  }
+
+  if (requires === "grocery-staff") {
+    return (
+      <Fragment key={user.id}>
+        <Outlet />
+      </Fragment>
     )
   }
 

@@ -53,6 +53,9 @@ export const routes = {
   adminContent: "/admin/content",
   adminContentNew: "/admin/content/new",
   adminContentEdit: "/admin/content/:id/edit",
+  /** Grocery staff workspace: the Super Admin, or a Moderator with the grocery scope. */
+  adminGrocery: "/admin/grocery",
+  adminGroceryOrder: "/admin/grocery/:orderId",
 
   comingSoon: "/coming-soon",
 } as const
@@ -72,6 +75,11 @@ export function groceryOrderPath(id: string): string {
 /** The confirmation shown right after an order was sent. */
 export function grocerySubmittedPath(id: string): string {
   return `${groceryOrderPath(id)}/submitted`
+}
+
+/** One grocery order on the staff side. */
+export function adminGroceryOrderPath(id: string): string {
+  return `${routes.adminGrocery}/${encodeURIComponent(id)}`
 }
 
 /** Builds a concrete link to a news article/update detail page (e.g. "/news/news-01"). */

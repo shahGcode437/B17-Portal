@@ -50,7 +50,7 @@ export async function pushInApp(page: Page, path: string) {
  * ``user.professional``), e.g. to show that the owner form offers no Service / Professional kind
  * even to them (RBAC-D: a Service is portal-managed and authored by staff, never an owner's listing).
  */
-export type AccountKind = 'resident' | 'professional' | 'admin' | 'adminProfessional'
+export type AccountKind = 'resident' | 'professional' | 'admin' | 'adminProfessional' | 'groceryModerator'
 
 /** The deterministic e-mail the mock backend knows an account by. */
 export function emailFor(name: string) {
@@ -67,6 +67,7 @@ export function emailFor(name: string) {
  *     because they have no profile).
  *   - `adminProfessional`: BOTH `admin` role AND a professional profile — a Super Admin who
  *     can also open the Professional workspace (RBAC-D: still not offered a Service form there).
+ *   - `groceryModerator`: the `moderator` role with the grocery scope.
  */
 export async function signIn(page: Page, name: string, kind: AccountKind = 'professional') {
   const email = emailFor(name)
@@ -77,7 +78,8 @@ export async function signIn(page: Page, name: string, kind: AccountKind = 'prof
     mock.addAccount({
       email,
       displayName: name,
-      roles: isAdmin ? ['admin'] : [],
+      roles: isAdmin ? ['admin'] : kind === 'groceryModerator' ? ['moderator'] : [],
+      ...(kind === 'groceryModerator' && { staffScopes: ['grocery'] }),
       ...(hasProfile && { professional: { planCode: 'free' as const } }),
     })
   }

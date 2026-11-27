@@ -1111,7 +1111,9 @@ Baseline `f2d5b0f`. Migration head **`0012`** (run only on isolated test databas
 
 **Update (2026-11-27):** the GROCERY-2 commits were pushed (`c429665`, `ab4fa8d`, `e70c651`) and **GitHub CI passed on `e70c651`**: Backend CI [run 46003605086](https://github.com/shahGcode437/B17-Portal/actions/runs/46003605086): `verify` job **12 min 43 s of its 25-minute limit** (test step 11 min 55 s; lint, format, mypy, migrations through `0012`, drift check and double seed passed), Docker build job 29 s; Frontend CI [run 46003605103](https://github.com/shahGcode437/B17-Portal/actions/runs/46003605103): 5 min 45 s (type-check, lint, Vitest, build, Playwright 3 min 28 s). Step results were read from GitHub's public status; job logs and test counts were not read. **This is the latest successful CI.**
 
-## GROCERY-3A Result — customer Grocery frontend (BUILT 2026-11-27; **awaiting the owner's review, NOT committed**)
+## GROCERY-3A Result — customer Grocery frontend (built 2026-11-27; **since committed and pushed by the owner**)
+
+**Update:** committed as `d2db92b`, after the separate offline fix `539181b`. **Frontend CI passed on `d2db92b`** ([run 46028272262](https://github.com/shahGcode437/B17-Portal/actions/runs/46028272262): about 6 min 7 s; type-check, lint, Vitest, build and Playwright passed; read from GitHub's public status, logs not read). No backend file changed, so Backend CI did not run for it; the latest Backend CI (`e70c651`, run 46003605086) passed. The notes below are as written before the commit.
 
 Baseline `e70c651`. **Frontend only:** no backend, migration or dependency change. Architecture, API use, privacy and limits: `docs/product/GROCERY.md`; decisions: `DECISIONS.md`.
 
@@ -1122,6 +1124,17 @@ Baseline `e70c651`. **Frontend only:** no backend, migration or dependency chang
 - **Found while testing and fixed as a SEPARATE change** (not Grocery code; it existed on `e70c651`): an offline reload right after a **first** visit showed a blank page. Cause, fix and limits: `DEPLOYMENT.md` §18.
 - **Launch blockers are unchanged and all open** (the GROCERY-2 list below and `DEPLOYMENT.md` §15–§17), with the missing staff and Super Admin screens. **Not production-ready.**
 - **Verification:** `TESTING.md` (GROCERY-3A).
+
+## GROCERY-3B Result — staff Grocery operations (BUILT 2026-11-27; **awaiting the owner's review, NOT committed**)
+
+Baseline `d2db92b` (clean, equal to `origin/master`, latest relevant CI passed). **Frontend only:** no backend, migration or dependency change. Routes, access, workflow, API mapping, safety rules, limits and blockers: `docs/product/GROCERY.md`; decisions: `DECISIONS.md`.
+
+- **Built:** `/admin/grocery` (open-order summary and queue) and `/admin/grocery/:orderId` (the order and all its staff actions), using all 13 staff endpoints; a separate `grocery-staff` gate; staff navigation and sign-in for grocery Moderators.
+- **NOT built:** Super Admin Grocery settings screens and staff appointment (**proposed GROCERY-3C**, not approved), notifications, issue resolution, refunds.
+- **Shared code changed:** the API client (`replayAfterCsrfRefresh`), `AuthGate`, `AdminLayout` (navigation by access; the header may wrap on narrow phones), `AdminLoginPage`, the account page (a button for grocery Moderators), routes and SEO entries, `useRefreshableRead` (`forgetOn`). The `admin` gate's rules are unchanged.
+- **Verified against fakes only.** No real backend, database or real device. **Grocery stays disabled with an empty block list**; nothing was enabled and no database was migrated.
+- **Not production-ready.** Launch blockers stay open (`DEPLOYMENT.md` §15–§17; `GROCERY.md`, "Before a pilot").
+- **Verification:** `TESTING.md` (GROCERY-3B).
 
 ## VR1 (Visual Redesign) — Glassmorphism + Controlled Maximalism Foundation (in progress, NOT committed)
 

@@ -44,7 +44,7 @@ export interface GroceryViewer {
   emailVerified: boolean
 }
 
-interface StoredOrder {
+export interface StoredOrder {
   owner: string
   detail: GroceryOrderDetailDto
 }
@@ -101,6 +101,11 @@ export class GroceryBackend {
       units: UNIT_RULES,
       substitutionOptions: ["allow", "ask", "none"],
     }
+  }
+
+  /** The next moment on this fake's clock (the staff fake shares it). */
+  tick(): string {
+    return this.stamp()
   }
 
   private stamp(): string {

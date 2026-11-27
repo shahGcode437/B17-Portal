@@ -385,6 +385,38 @@ Affected runs, one after another:
 
 **Not run:** the real-stack lane (`e2e-real/`, which has no Grocery spec); backend tests (no backend file changed); any real device.
 
+## GROCERY-3B (staff Grocery operations)
+
+**CI before it.** Frontend CI passed on `d2db92b` (run 46028272262); latest Backend CI passed on `e70c651` (run 46003605086).
+
+**The fake backend.** `src/test/fixtures/groceryStaffBackend.ts` is the staff contract over the same in-memory orders as the customer fake, written from `grocery_staff_orders.py` (order of refusal, holder rule, transitions, claim and release not moving the revision, own order hidden and refused, queue filters and counts). The mocked browser lane answers it from `authMock.groceryStaff` (`groceryStaffFaults`, `groceryStaffSessionStale`, `holdGroceryStaffWrite`); accounts now carry `staffScopes`. All 13 endpoints are listed in `mockedEndpoints.ts`. API isolation is unchanged: Playwright refuses and records any request that leaves the mock, Google is a fake page, and no test sends e-mail or reaches Resend. **Mocked results say nothing about the real backend.**
+
+| File | What |
+|---|---|
+| `features/grocery-staff/staffRules.test.ts` | rupees → paisa (every amount to Rs 100, floating-point traps, refused forms); queue filters; who may work orders; what each failure means; copy from codes only |
+| `features/grocery-staff/staffAccess.test.tsx` | every account type; sign-in routing; own order; session expiry and scope removal during reads, writes and on return; account switch, including **no replay as the new account**; no browser storage |
+| `features/grocery-staff/staffQueue.test.tsx` | parameters and counts, no customer detail, filters, search, paging, empty and error states, refresh rules |
+| `features/grocery-staff/staffOperations.test.tsx` | each of the 11 changes with its exact body; nothing preselected; duplicate prevention; nothing shown before the server answers; conflicts and outdated forms; cancellation rules; unknown outcomes and the time limit; `429`, offline |
+| `lib/api/client.test.ts`, `architecture.test.ts`, `pwa/serviceWorkerApi.test.ts` | the no-replay option; staff modules imported only by the staff workspace; the staff API never handled by the worker |
+| `e2e/grocery-staff.spec.ts` | the whole journey and what the customer then sees (no internal note); nothing private in storage, console or addresses; deep link; access; own order; unknown outcome; double click; cross-account press; expiry and revocation |
+| `e2e/mobile/grocery-staff.spec.ts` | 375 and 320 px: no sideways scroll, 44 px targets, dialogs that fit, problems in view; six staff navigation controls at 320 px; an order worked by keyboard, with focus kept and returned |
+| `e2e/pwa/pwa.spec.ts` | after staff screens no cache or storage holds an API answer or delivery detail; offline, a reload shows no stored order |
+
+**Results (local, mocked; no backend, database or real API was used).**
+
+| Check | Result |
+|---|---|
+| `npx tsc -b --force`; `npm run build` | passed |
+| `npm run lint` (oxlint) | passed, with the 7 warnings that existed before; none in a new or changed file |
+| `npx vitest run --maxWorkers=2`, caches cleared | **1,549 passed** (85 files); before this phase 1,408 in 81 |
+| `npx playwright test` (desktop, mobile, PWA), after the build | **216 passed**, first full run; before this phase 203. The count includes the suite's two isolation checks that are meant to fail. No request escaped the mock |
+
+**Earlier focused runs, recorded as they happened.** (1) Operation tests: 36 of 37; the failure was the test's own (its second click landed on a disabled button, which moved focus in the test environment), so it was split. (2) The first browser run of the staff specs is **void**: a type error in the new test helper had failed the build, the command's output filter hid that, and all 12 ran against the previous build. (3) Then 10 of 12: two measured the words of a radio option, not its tappable row. (4) PWA: 8 of 9; a text selector matched both the app's offline notice and the staff one. (5) Reading the code again found **two defects the tests had not**: every change made on screen loaded the order twice, and a role change that kept access did not reload data on the same "Refresh". A failing test was written for each, then both were fixed. (6) Screenshots: the Search button sat 2 px low; fixed.
+
+**Mutation check:** eleven protections removed one at a time (no replay after a CSRF refresh; dropping data on a refused read; the identity check on return; the lock after an unknown outcome; one change per order; blocking an outdated form; no default substitution answer; the account keys; the gate's scope rule; the exact-cash rule; re-reading the account after lost access). **All eleven made at least one test fail.** The four touching files changed afterwards were run again: all four still caught. Files were restored byte for byte.
+
+**Not run:** the real-stack lane (`e2e-real/`, which has no Grocery spec); backend tests (no backend file changed); any real device or screen reader; the screens against a running backend.
+
 ## Known intermittent failure in the mocked browser lane
 
 **2026-11-27, local, once.** In a full mocked run (184 passed, 1 failed), `e2e/write-journeys.spec.ts`, *"rejected → the owner sees the reason → edits a real field → PATCH → pending …"*, failed at the heading check **after `page.reload()`**: the "Listings" heading did not appear within the 10 s assertion timeout. The page snapshot taken just afterwards showed the heading and the updated card. The test then passed 30 of 30 repeats alone, its file passed 72 of 72 over three repeats, and the next full run passed 185 of 185. **The cause is not proven**; slowness under a parallel local run is the likely explanation. Nothing was changed: no timeout, retry or test. The GitHub run on `e1b566f` reported 185 passed (CI allows one retry per test; its summary listed no flaky test). **If it recurs, keep the trace and investigate; do not just raise the timeout.**

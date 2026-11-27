@@ -126,6 +126,8 @@ const entries: RouteEntry[] = [
   { path: routes.adminContentNew, seo: privatePage("Create Content") },
   { path: routes.adminContentEdit, seo: privatePage("Edit Content") },
   { path: routes.adminContent, seo: privatePage("News & Updates (Admin)") },
+  { path: routes.adminGroceryOrder, seo: privatePage("Grocery order (Staff)") },
+  { path: routes.adminGrocery, seo: privatePage("Grocery orders (Staff)") },
   { path: routes.adminDashboard, seo: privatePage("Admin Dashboard") },
 ]
 

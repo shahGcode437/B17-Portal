@@ -120,6 +120,24 @@ describe("csrf_failed recovery (authenticated unsafe requests)", () => {
     expect(refresh).toHaveBeenCalledTimes(1)
   })
 
+  it("with replayAfterCsrfRefresh: false, re-reads the session but never sends the request again", async () => {
+    setCsrfToken("old")
+    const refresh = vi.fn(async () => {
+      setCsrfToken("someone-elses")
+      return true
+    })
+    const { onSessionLost } = wire(refresh)
+    const { calls } = installFetchMock(() => fail(403, "csrf_failed"))
+
+    await expect(apiRequest("POST", "/x", { session: true, replayAfterCsrfRefresh: false })).rejects.toMatchObject({
+      code: "csrf_failed",
+    })
+
+    expect(refresh).toHaveBeenCalledTimes(1)
+    expect(calls.map((c) => c.headers.get("X-CSRF-Token"))).toEqual(["old"])
+    expect(onSessionLost).not.toHaveBeenCalled()
+  })
+
   it("does not retry when the refresh says the session is gone", async () => {
     setCsrfToken("t")
     wire(async () => false)

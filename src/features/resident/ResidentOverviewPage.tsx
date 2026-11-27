@@ -23,6 +23,7 @@ import { useToast } from "@/hooks/useToast"
 import { VerificationNotice } from "@/features/auth/VerificationNotice"
 import { useRequireAuth } from "@/hooks/useRequireAuth"
 import { routes } from "@/config/routes"
+import { canWorkGroceryOrders } from "@/lib/staffAccess"
 import { fadeUp } from "@/lib/motion"
 import type { ServiceRequestRecord } from "@/types/resident"
 
@@ -86,6 +87,15 @@ function ResidentOverviewPage() {
                     <Link to={routes.adminDashboard}>
                       <ShieldCheck />
                       Admin Dashboard
+                    </Link>
+                  </Button>
+                )}
+                {!isAdmin && canWorkGroceryOrders(user) && (
+                  // A Grocery Moderator's way in. A Super Admin reaches it from the Admin area.
+                  <Button asChild variant="outline" className="h-11">
+                    <Link to={routes.adminGrocery}>
+                      <ShoppingBasket />
+                      Grocery staff
                     </Link>
                   </Button>
                 )}

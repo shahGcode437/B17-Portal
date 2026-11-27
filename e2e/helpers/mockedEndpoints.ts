@@ -28,6 +28,8 @@ const MOCKED: Record<'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE', string[]> = {
     '/grocery/availability',
     '/grocery/orders',
     `/grocery/orders/${ID}`,
+    '/admin/grocery/orders',
+    `/admin/grocery/orders/${ID}`,
   ],
   POST: [
     '/auth/(login|register|logout|logout-all|resend-verification|verify-email|forgot-password|reset-password)',
@@ -41,6 +43,7 @@ const MOCKED: Record<'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE', string[]> = {
     '/admin/categories/reorder',
     '/grocery/orders',
     `/grocery/orders/${ID}/cancel`,
+    `/admin/grocery/orders/${ID}/(claim|release|confirm|reconfirm|reduce-amount|start-preparing|dispatch|delivery-failed|complete|cancel|issues)`,
   ],
   PUT: ['/users/me/professional-profile', `/saved/${ID}`],
   PATCH: [`/listings/${ID}`, `/admin/categories/${ID}`],
