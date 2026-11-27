@@ -22,6 +22,7 @@ from app.models import (
     GroceryOrderStatusHistory,
     GrocerySettingsRevision,
 )
+from app.models.enums import StaffScope
 from tests.db.auth_helpers import AuthApi, AuthEnv
 from tests.db.write_helpers import signed_in
 
@@ -122,6 +123,79 @@ def outcome(response: Response) -> tuple[int, str | None]:
 
 def detail_pairs(response: Response) -> set[tuple[str, str]]:
     return {(d["field"], d["code"]) for d in response.json()["error"]["details"]}
+
+
+# -- the staff side (GROCERY-2) --------------------------------------------------------------
+
+STAFF_ORDERS = "/admin/grocery/orders"
+#: Rs 1,850.00 of goods, Rs 100.00 service and Rs 150.00 delivery, in paisa (test figures).
+ITEMS_PAISA, SERVICE_PAISA, DELIVERY_PAISA = 185_000, 10_000, 15_000
+TOTAL_PAISA = ITEMS_PAISA + SERVICE_PAISA + DELIVERY_PAISA
+
+
+def grocery_moderator(env: AuthEnv, name: str = "runner") -> AuthApi:
+    """A signed-in Moderator whose only scope is ``grocery``."""
+    return customer(env, name, moderator_scopes=[StaffScope.GROCERY])
+
+
+def agreement(revision: int = 1, **changes: Any) -> dict[str, Any]:
+    body: dict[str, Any] = {
+        "revision": revision,
+        "itemsSubtotalPaisa": ITEMS_PAISA,
+        "serviceFeePaisa": SERVICE_PAISA,
+        "deliveryFeePaisa": DELIVERY_PAISA,
+        "agreedTotalPaisa": TOTAL_PAISA,
+        "customerAgreed": True,
+        "method": "phone_call",
+    }
+    body.update(changes)
+    return body
+
+
+def reagreement(revision: int = 1, **changes: Any) -> dict[str, Any]:
+    """A NEW agreement: it must say what the customer agreed to."""
+    return agreement(revision, **{"consentNote": "Agreed by telephone (test note)", **changes})
+
+
+def staff_post(
+    api: AuthApi, order_id: str, action: str, body: dict[str, Any] | None = None, **kw: Any
+) -> Response:
+    path = f"{STAFF_ORDERS}/{order_id}/{action}"
+    if body is None:
+        return api.request("POST", path, **kw)
+    return api.request("POST", path, json=body, **kw)
+
+
+def staff_order(api: AuthApi, order_id: str) -> dict[str, Any]:
+    response = api.get(f"{STAFF_ORDERS}/{order_id}")
+    assert response.status_code == 200, response.text
+    data: dict[str, Any] = response.json()["data"]
+    return data
+
+
+#: The usual way to each status, as ``(action, body without its revision)``.
+_ROUTE: dict[str, tuple[tuple[str, dict[str, Any]], ...]] = {"submitted": ()}
+_ROUTE["confirmed"] = (("confirm", agreement()),)
+_ROUTE["preparing"] = (*_ROUTE["confirmed"], ("start-preparing", {}))
+_ROUTE["out_for_delivery"] = (*_ROUTE["preparing"], ("dispatch", {}))
+_ROUTE["delivered"] = (
+    *_ROUTE["out_for_delivery"],
+    ("complete", {"amountCollectedPaisa": TOTAL_PAISA}),
+)
+_ROUTE["cancelled"] = (("cancel", {"reason": "Test cancellation"}),)
+
+
+def advance(staff: AuthApi, order_id: str, status: str) -> dict[str, Any]:
+    """Claim the order and take it to ``status`` through the real API; its detail."""
+    claimed = staff_post(staff, order_id, "claim")
+    assert claimed.status_code == 200, claimed.text
+    detail: dict[str, Any] = claimed.json()["data"]
+    for action, body in _ROUTE[status]:
+        response = staff_post(staff, order_id, action, {**body, "revision": detail["revision"]})
+        assert response.status_code == 200, (action, response.text)
+        detail = response.json()["data"]
+    assert detail["status"] == status
+    return detail
 
 
 # -- stored truth ------------------------------------------------------------------------------------

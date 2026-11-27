@@ -35,6 +35,7 @@ SETTING_FIELDS: tuple[str, ...] = (
     "closes_at",
     "timezone",
     "daily_capacity",
+    "max_order_value_paisa",
     "max_active_orders_per_customer",
     "max_items_per_order",
 )
@@ -141,6 +142,7 @@ class GrocerySettingsService:
             closes_at=clock_text(row.closes_at),
             timezone=row.timezone,
             daily_capacity=row.daily_capacity,
+            max_order_value_paisa=row.max_order_value_paisa,
             max_active_orders_per_customer=row.max_active_orders_per_customer,
             max_items_per_order=row.max_items_per_order,
             updated_at=row.created_at,

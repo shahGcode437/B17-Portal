@@ -298,6 +298,43 @@ The 14 that passed before are orders that were already safe and legitimate flows
 
 **Not covered:** `start`, `complete` and `cancel` of staff requests are not staged separately; a Moderator as the actor is covered by the existing moderation, Provider and request concurrency files (role and scope), not by these revocation cases; a password change in the same session (`DEPLOYMENT.md` §16, item 5).
 
+## GROCERY-2 (order management)
+
+**CI before it.** On `f2d5b0f` Backend CI and Frontend CI passed: backend job **11 min 17 s of 15**, test step 10 min 23 s, Docker build 23 s; frontend 4 min 31 s (Playwright 3 min 1 s).
+
+**What is pinned.**
+
+| File | What |
+|---|---|
+| `tests/db/test_grocery_staff_api.py` (new) | who is refused on all 13 routes (no oracle); CSRF, staff session, rate limit; queue privacy, filters and counts; assignment; own order; pricing, cap, recorded agreement, re-agreement (**with its required note**), reduction; every allowed and refused transition; failed delivery; exact cash and single completion; cancellation; active-order limit; idempotent replay; clean logs; what the customer sees |
+| `tests/db/test_grocery_staff_concurrency.py` (new) | two claims; six pairs of competing changes of one order, **each in both orders** (the loser is observed waiting for the order row); a cap change against an agreement, both orders; the `grocery` scope removed after authentication for **each of the 11 changes**; a scope removal waiting for a change in flight |
+| `tests/db/test_privileged_session_races.py` | the 11 changes added to `OPERATIONS` (26 operations, 244 tests): four revocations in both orders and a removed role for each; the fingerprint now includes the five Grocery order tables |
+| `tests/db/test_migrations.py` | `0012`: additive over existing data; the database refuses inconsistent rows, second collections and changes to the insert-only tables; clean downgrade and re-upgrade; **refusal to downgrade for each of seven kinds of data**, changing nothing |
+
+**Existing tests changed, and why** (deliberate new behaviour only): the lifecycle unit tests (new statuses and transitions); the route inventories (13 new routes); `?status=delivered` is now a valid filter; the route classification and the Grocery-only Moderator's refusal table (the new `grocery_staff` class is the one it may use); the schema inventory; the migration head (`0012`); the `0011` tests now stop at `0011`.
+
+**Test speed, no coverage change.** The migration helpers opened a new engine, and so a new login, for **every query**. They now share one engine per scratch database (`shared_engine`). The same 83 migration and schema tests took **8 min 55 s before and 4 min 58 s after** on the same machine.
+
+**Results (local, isolated test database; separate runs, never two at once).**
+
+| Run | Result |
+|---|---|
+| `test_migrations.py` + `test_schema.py` (with the shared engine) | **83 passed**, 4 min 58 s |
+| `test_privileged_session_races.py` | **244 passed**, 8 min 13 s |
+| `test_grocery_staff_concurrency.py` | **27 passed**, 1 min 22 s |
+| `tests/api`, the unit tests in `tests/`, schema, and the Grocery API, settings, authority, intake-concurrency and staff API files | **2,361 passed, 2 failed**, 8 min 15 s. Both failures were GROCERY-1b expectations (`delivered` was an invalid filter; the route list had no staff route). After correcting them, `test_grocery_orders_api.py`: **75 passed** |
+| admin, staff authority, authorization, authentication concurrency and credential races, moderation, Provider, portal request and external-I/O files | **1,135 passed, 3 skipped** (existing skips), 20 min 10 s |
+
+**Mutation check:** twelve protections removed one at a time (session verdict; scope check; order row lock; settings lock; exact cash; own order; late cancellation; assignment; price rise; the customer's agreement; staff reasons shown to the customer; revision check): **each made a test fail**; files restored byte for byte. ruff check and format and the configured mypy passed. **The full backend suite was not run locally; GitHub CI after an approved commit is the final gate.** No Google or Resend service was contacted.
+
+**CI duration risk — HIGH (a projection, not a measurement).** The machine ran the unchanged `f2d5b0f` race file in **212 s** on the day of this work, against about 95 s a phase earlier, so local times overstate CI. Database round trips through Docker on Windows take about 8 ms here. Local cost added: about 91 s (staff API), 83 s (staff concurrency), 254 s (new race cases), 43 s (`0012` migrations), about 26 s more cleanup in the older race cases; about 147 s **saved** by the shared engine. Converting the HTTP tests at about 0.42 (one noisy calibration point) gives about **+150 to +210 s** in CI: test step about 12.9–13.9 min and **job about 13.8–14.8 min of 15**. The margin may be only seconds, and a less favourable ratio or a slow runner would **exceed the limit**. No test was removed. **The recommended limit increase (15 → 25 minutes) was approved and made as its own commit** (“Backend CI time limit” under CI, above), with nothing else in CI changed. The longer-term options (migrations in their own job; parallel runs with one database per worker) stay open. **The CI duration of this change is still unmeasured: it is known only after a push.**
+
+**Final review before commit (2026-11-27).** Re-checked from the source: all **11** changes pass the one gate (`_change`, three of them through `_move`), every staff route has a Grocery guard and every `POST` the writer guard, and only the two order services write amounts, agreements or payments. A **temporary** probe (not committed) injected a failure after the payment was saved: **nothing remained**. `test_search_upgrade_path.py`, which imports the changed migration fixture and had **not** been in the runs above, passed (2 tests). Shared migration connections: used only with each test's own scratch URL, disposed before that database is dropped, each connection rolled back on return, no session-level state set by those tests, no prepared statements; Alembic keeps its own engines and every test still gets a newly created database. The two corrected GROCERY-1b tests still refuse an unknown status (`shipped`) and still pin the **exact** Grocery route set, with only `GET` and `POST` on order paths; refusal of unauthorised accounts on all 13 routes is in the staff API file.
+
+**One defect found and fixed:** `reconfirm` accepted no `consentNote`, so an approved substitution could leave no record of what was agreed (reproduced: `200`). The note is now required there. Reruns for that executable change: `tests/api` + staff API + staff concurrency **179 passed** (3 min 53 s); the `reconfirm` cases of the race matrix **9 passed**. Without the requirement, 4 of the 5 new refusal cases fail (the over-length one is refused by the length limit). Afterwards only comments, docstrings and one test name changed (the cap is no longer “provisional”); a comparison of syntax trees confirmed no other code change, and the lifecycle rules file passed (**163 passed**). ruff and mypy passed on the final code. **The expensive runs in the table above were not repeated.**
+
+**Not covered:** no frontend or browser test (no screen exists); no load test; nothing ran against a hosted environment; the race matrix stages the Super Admin as the actor (a Moderator's lost scope and competing changes are in the concurrency file).
+
 ## Known intermittent failure in the mocked browser lane
 
 **2026-11-27, local, once.** In a full mocked run (184 passed, 1 failed), `e2e/write-journeys.spec.ts`, *"rejected → the owner sees the reason → edits a real field → PATCH → pending …"*, failed at the heading check **after `page.reload()`**: the "Listings" heading did not appear within the 10 s assertion timeout. The page snapshot taken just afterwards showed the heading and the updated card. The test then passed 30 of 30 repeats alone, its file passed 72 of 72 over three repeats, and the next full run passed 185 of 185. **The cause is not proven**; slowness under a parallel local run is the likely explanation. Nothing was changed: no timeout, retry or test. The GitHub run on `e1b566f` reported 185 passed (CI allows one retry per test; its summary listed no flaky test). **If it recurs, keep the trace and investigate; do not just raise the timeout.**

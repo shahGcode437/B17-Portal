@@ -164,6 +164,18 @@ Every limit is held in PostgreSQL, so it is correct across restarts and any numb
 - **Settings** cannot change under a submission: it holds the settings lock shared until commit. A waiting change queues later submissions behind it.
 - The current time is read **after** the locks, so waiting never extends the opening hours.
 
+### Grocery order handling by staff (GROCERY-2)
+
+| Path | Order |
+|---|---|
+| every staff change (11) | the order row `FOR UPDATE` → the actor's `users` row `FOR SHARE` → the acting session `FOR SHARE` → `user_roles` `FOR SHARE` → a Moderator's `grocery` scope row `FOR SHARE` → inserts and the guarded update |
+| confirm / reconfirm, additionally | after the scope: settings advisory lock (**shared**), then the cap is read |
+
+- **The order row is first**, as in the customer's cancel, so the two queue on it and exactly one applies.
+- **No new cycle.** A staff change locks one order, then only the actor's own rows. Staff management locks users before roles and scopes, and never an order. The settings change takes actor → session → roles → settings lock; an agreement takes the settings lock after its actor rows, the same direction. Two staff changes of one order serialise on the row; changes of different orders share only `FOR SHARE` locks. Submit takes no order row lock.
+- A status change is a guarded `UPDATE … WHERE id, status, revision`; the row lock already makes it safe, the guard is the safety net. Claim and release guard on the expected holder and **do not bump `revision`**.
+- One transaction holds the order change and every record of it: history, event, agreement, payment.
+
 ### Authentication writes: `users` first
 
 **The order is `users` → `auth_tokens` / `auth_sessions` / `auth_identities`.** A transaction that touches a user's tokens, sessions or identities locks the `users` row first, and re-reads under that lock whatever it checked earlier (`AUTH_RBAC.md` §35).

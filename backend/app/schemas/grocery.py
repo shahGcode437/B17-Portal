@@ -9,8 +9,9 @@ quantities, the phone number). What depends on the settings — enabled, opening
 serviceable blocks, the configured line limit, capacity — is the service's, checked AFTER an
 idempotency key is looked up, so a retry still finds its order after the settings change.
 
-No error message repeats what the client sent. Responses are explicit field lists; there is no
-price, supplier or payment field, because none exists yet.
+No error message repeats what the client sent. Responses are explicit field lists. A customer
+sees amounts, the agreements staff recorded and the cash collected, and NEVER a staff member's
+identity, note or reason. There is no supplier field.
 """
 
 import datetime
@@ -24,7 +25,13 @@ from pydantic_core import PydanticCustomError
 from pydantic_core.core_schema import ValidationInfo
 
 from app.core.phone import MAX_RAW_LENGTH, normalize_phone
-from app.models.enums import GroceryOrderStatus, GrocerySubstitution, GroceryUnit
+from app.models.enums import (
+    GroceryConfirmationMethod,
+    GroceryOrderStatus,
+    GroceryPaymentMethod,
+    GrocerySubstitution,
+    GroceryUnit,
+)
 from app.schemas.envelope import ApiModel, PageMeta
 from app.schemas.write import MAX_REVISION, StrictRequest, printable
 from app.services import grocery_rules as rules
@@ -199,6 +206,14 @@ class GrocerySettingsPatch(StrictRequest):
     closes_at: StrictStr | None = None
     timezone: StrictStr | None = None
     daily_capacity: Annotated[StrictInt, Field(ge=1, le=200)] | None = None
+    #: Configurable cap on an agreed total, fees included, in paisa.
+    max_order_value_paisa: (
+        Annotated[
+            StrictInt,
+            Field(ge=rules.MIN_ORDER_VALUE_LIMIT_PAISA, le=rules.MAX_AMOUNT_PAISA),
+        ]
+        | None
+    ) = None
     max_active_orders_per_customer: Annotated[StrictInt, Field(ge=1, le=10)] | None = None
     max_items_per_order: Annotated[StrictInt, Field(ge=1, le=ABSOLUTE_MAX_ITEMS)] | None = None
 
@@ -210,6 +225,7 @@ class GrocerySettingsPatch(StrictRequest):
         "closes_at",
         "timezone",
         "daily_capacity",
+        "max_order_value_paisa",
         "max_active_orders_per_customer",
         "max_items_per_order",
         mode="before",
@@ -283,7 +299,8 @@ class GroceryHistoryRead(ApiModel):
     from_status: GroceryOrderStatus | None = None
     to_status: GroceryOrderStatus
     #: In which capacity, never who: no user id or name.
-    actor_role: Literal["customer"]
+    actor_role: Literal["customer", "staff"]
+    #: The customer's OWN reason only. A staff member's reason is internal.
     reason: str | None = None
     created_at: datetime.datetime
 
@@ -297,6 +314,31 @@ class GroceryOrderSummary(ApiModel):
     block: str
     submitted_at: datetime.datetime
     cancelled_at: datetime.datetime | None = None
+    #: Present once the team has recorded the customer's agreement.
+    final_amount_due_paisa: int | None = None
+    delivered_at: datetime.datetime | None = None
+
+
+class GroceryAgreementRead(ApiModel):
+    """An agreement THE TEAM RECORDED after speaking with the customer. It is not an approval
+    the customer gave in the application."""
+
+    sequence: int
+    items_subtotal_paisa: int
+    service_fee_paisa: int
+    delivery_fee_paisa: int
+    total_paisa: int
+    method: GroceryConfirmationMethod
+    recorded_by: Literal["staff"]
+    recorded_at: datetime.datetime
+
+
+class GroceryPaymentRead(ApiModel):
+    method: GroceryPaymentMethod
+    status: Literal["due", "collected"]
+    amount_due_paisa: int
+    amount_collected_paisa: int | None = None
+    collected_at: datetime.datetime | None = None
 
 
 class GroceryOrderDetail(GroceryOrderSummary):
@@ -304,6 +346,13 @@ class GroceryOrderDetail(GroceryOrderSummary):
     delivery: GroceryDeliveryRead
     instructions: str | None = None
     cancel_reason: str | None = None
+    cancelled_by: Literal["customer", "staff"] | None = None
+    #: The total of the current agreement; the amount due may be lower.
+    agreed_total_paisa: int | None = None
+    #: Every agreement, oldest first. A changed price is a further entry.
+    agreements: list[GroceryAgreementRead]
+    #: Cash on delivery. Absent until a total is agreed, and for a cancelled order.
+    payment: GroceryPaymentRead | None = None
     #: Whether the customer may cancel it now (a hint; the server decides again on the request).
     can_cancel: bool
     history: list[GroceryHistoryRead]
@@ -373,6 +422,7 @@ class GrocerySettingsRead(ApiModel):
     closes_at: str
     timezone: str
     daily_capacity: int
+    max_order_value_paisa: int
     max_active_orders_per_customer: int
     max_items_per_order: int
     updated_at: datetime.datetime

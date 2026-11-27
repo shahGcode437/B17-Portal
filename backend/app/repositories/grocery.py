@@ -27,8 +27,10 @@ from app.models import (
     AuthSession,
     GroceryDailyCapacity,
     GroceryOrder,
+    GroceryOrderConfirmation,
     GroceryOrderItem,
     GroceryOrderStatusHistory,
+    GroceryPayment,
     GrocerySettingsRevision,
     User,
 )
@@ -225,6 +227,20 @@ class GroceryRepository:
             .offset(offset)
         ).all()
         return total, [(order, int(items)) for order, items in rows]
+
+    def confirmations_of(self, order_id: uuid.UUID) -> list[GroceryOrderConfirmation]:
+        return list(
+            self._session.scalars(
+                select(GroceryOrderConfirmation)
+                .where(GroceryOrderConfirmation.order_id == order_id)
+                .order_by(GroceryOrderConfirmation.sequence)
+            )
+        )
+
+    def payment_of(self, order_id: uuid.UUID) -> GroceryPayment | None:
+        return self._session.scalars(
+            select(GroceryPayment).where(GroceryPayment.order_id == order_id)
+        ).one_or_none()
 
     def items_of(self, order_id: uuid.UUID) -> list[GroceryOrderItem]:
         return list(

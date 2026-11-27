@@ -661,7 +661,9 @@ def test_the_list_filters_by_status(auth_env: AuthEnv) -> None:
     assert submitted_ids(buyer) == [second["id"]]
     cancelled = buyer.get(f"{ORDERS}?status=cancelled").json()
     assert [o["id"] for o in cancelled["data"]] == [first["id"]] and cancelled["meta"]["total"] == 1
-    assert buyer.get(f"{ORDERS}?status=delivered").status_code == 422
+    delivered = buyer.get(f"{ORDERS}?status=delivered")  # a real status since GROCERY-2
+    assert delivered.status_code == 200 and delivered.json()["data"] == []
+    assert buyer.get(f"{ORDERS}?status=shipped").status_code == 422
     assert buyer.get(f"{ORDERS}?limit=51").status_code == 422
 
 
@@ -774,7 +776,22 @@ def test_there_is_no_route_that_sets_a_status(auth_env: AuthEnv) -> None:
         ("POST", "/api/v1/grocery/orders/{order_id}/cancel"),
         ("GET", "/api/v1/admin/grocery/settings"),
         ("PATCH", "/api/v1/admin/grocery/settings"),
+        # GROCERY-2: each staff route is one named operation, never a status to set
+        ("GET", "/api/v1/admin/grocery/orders"),
+        ("GET", "/api/v1/admin/grocery/orders/{order_id}"),
+        ("POST", "/api/v1/admin/grocery/orders/{order_id}/claim"),
+        ("POST", "/api/v1/admin/grocery/orders/{order_id}/release"),
+        ("POST", "/api/v1/admin/grocery/orders/{order_id}/confirm"),
+        ("POST", "/api/v1/admin/grocery/orders/{order_id}/reconfirm"),
+        ("POST", "/api/v1/admin/grocery/orders/{order_id}/reduce-amount"),
+        ("POST", "/api/v1/admin/grocery/orders/{order_id}/start-preparing"),
+        ("POST", "/api/v1/admin/grocery/orders/{order_id}/dispatch"),
+        ("POST", "/api/v1/admin/grocery/orders/{order_id}/delivery-failed"),
+        ("POST", "/api/v1/admin/grocery/orders/{order_id}/complete"),
+        ("POST", "/api/v1/admin/grocery/orders/{order_id}/cancel"),
+        ("POST", "/api/v1/admin/grocery/orders/{order_id}/issues"),
     }
+    assert {method for method, path in paths if "/orders" in path} == {"GET", "POST"}
 
 
 # -- privacy -------------------------------------------------------------------------------------------

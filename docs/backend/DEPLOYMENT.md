@@ -389,6 +389,8 @@ Windows PowerShell, from `backend/`, with the API stopped. **Rehearsed on 2026-1
 
 ## 15. Grocery order intake, migration `0011` (GROCERY-1b)
 
+> **GROCERY-2 (2026-11-27):** a staff queue and order handling now exist in the **backend** (§17); there is still no frontend. The `TRUNCATE` limitation below **also applies** to `grocery_order_confirmations`, `grocery_payments` and `grocery_order_events`. Grocery stays disabled for real customers.
+
 **Upgrade:** `alembic upgrade head` before or with the application. It only creates five tables and inserts the default settings row. The new application **requires** `0011` for every `/grocery` route; the rest of the portal does not read those tables.
 
 **Applying it to a local database:** follow §14.3 (check the target by name, back up outside any synced folder, verify), upgrading to `head`. `alembic current` must then print `0011 (head)`. A database still at `0009` receives `0010` and `0011` in the same run.
@@ -421,3 +423,30 @@ Recorded 2026-11-27 by the owner's decision. **Deferred: none of these is implem
 | 3 | **Failed sign-in limit under concurrency** | The limit is checked before an attempt and counted after it, so simultaneous attempts can slightly exceed it. Per-IP limiting at the proxy is still required. |
 | 4 | **Least-privilege database credentials** | Required before production (§15): no `TRUNCATE`, no schema changes, not the owner of any table. |
 | 5 | **Comprehensive review of privileged operations** | `AUTH_RBAC.md` §36 covers revocation, expiry, account status and role for the staff mutations that exist today. Open for the review: a password change **in the same session** rotates its token without revoking it, so a request already past authentication with the old token is still applied; freshness windows are judged only as the request arrives; staff **reads** use the request-start authority; owners' and customers' own writes do not re-check their session (Grocery orders do); **MFA for every Super Admin and Moderator is required before production** (`AUTH_RBAC.md` §27.13) and does not exist; and every **new** privileged route must follow the mandatory rule of `AUTH_RBAC.md` §36.4 (nothing yet fails automatically if one does not). |
+
+## 17. Grocery order handling, migration `0012` (GROCERY-2)
+
+**`0012` has been run only on isolated test databases.** It has not been applied to a local or hosted application database.
+
+**Upgrade:** `alembic upgrade head` **before** the application (§14.3 for a local database: check the target by name, back up outside any synced folder, verify). It is additive: new columns, wider checks, three new tables, no data statement. Existing orders and settings are kept; the new cap column takes its default. It takes short exclusive locks on the three altered Grocery tables. The new application **requires** `0012` for every `/grocery` and `/admin/grocery` route. `alembic current` must then print `0012 (head)`.
+
+**Rolling back**
+
+- **Before any staff action** the application can be rolled back to the GROCERY-1b release, with the database left at `0012`: the older code reads only `submitted` and `cancelled` orders and customer history rows, and the new settings column has a default.
+- **After any staff action, rolling back the application is NOT safe.** Older code cannot read the new statuses or `actor_role = 'staff'`: customer order lists and details that include such an order would fail, and it would count that order wrongly against the active limit. **Roll forward.** Disabling Grocery stops new orders but does not make an older release able to read handled ones.
+- A changed value cap alone does not break the older release, which ignores the column (a settings change made by the older release takes the default cap again).
+- **Downgrading `0012` refuses, changing nothing,** while any staff-handled, assigned or priced order, agreement, cash collection, event, staff history row or changed cap exists. Removing real records is a deliberate, destructive operator decision: take a backup, and expect the append-only triggers to block deletes. These are financial records.
+
+**Still disabled.** The deployment enables nothing: `enabled` stays `false` and the block list stays empty until a Super Admin changes them. No Grocery scope is granted by any migration.
+
+**Before real customers, in addition to every blocker in §15 and §16:**
+
+- a staff **frontend** and a customer frontend (GROCERY-3 and later);
+- the **PKR 20,000** pilot cap including fees is approved (owner, 2026-11-27) and configurable; confirm the stored setting before enabling;
+- the owner-verified serviceable block list;
+- **pilot launch requirements, still unresolved:** written **refund / dispute**, **privacy / retention**, **excluded-goods** and **cash-handling** (custody, daily reconciliation, who may collect) policies;
+- written working rules for failed deliveries and for the cost of goods already bought when an order is cancelled (only a Super Admin may cancel then);
+- a staff routine for the approved policy that **the team tells customers directly** about cancellations, substitutions and failed deliveries (the application sends nothing); a recorded agreement stays a **staff attestation** and is never presented as authenticated customer consent (`AUTH_RBAC.md` §37.5);
+- staff **MFA**; tested backups; monitoring of orders waiting without a holder.
+
+**The portal is not production-ready.**

@@ -71,6 +71,9 @@ PROVIDER_WRITE = RatePolicy("provider_write", limit=60, window_seconds=15 * 60)
 #: one account could submit, cancel and resubmit until the whole day's capacity was gone.
 GROCERY_SUBMIT_HOUR = RatePolicy("grocery_submit_hour", limit=3, window_seconds=60 * 60)
 GROCERY_SUBMIT_DAY = RatePolicy("grocery_submit_day", limit=4, window_seconds=24 * 60 * 60)
+#: Grocery STAFF order changes per acting staff member (GROCERY-2): a pilot day of 10 orders is
+#: far below it, so it only stops a runaway or stuck client. Not an authorization boundary.
+GROCERY_STAFF_WRITE = RatePolicy("grocery_staff_write", limit=120, window_seconds=15 * 60)
 #: Grocery settings changes per acting Super Admin: a tripwire for a runaway client.
 GROCERY_SETTINGS_WRITE = RatePolicy("grocery_settings_write", limit=30, window_seconds=15 * 60)
 

@@ -441,6 +441,8 @@ Two additive migrations, each shipped with the slice that needs it (`0001`–`00
 
 ## 21. Grocery order intake — **`0011` implemented in GROCERY-1b**
 
+> **GROCERY-2 (2026-11-27):** §22 (`0012`) widens the statuses and actor roles and adds columns and tables. §21 describes `0011` as built.
+
 **Additive: five new tables, no change to any existing table, no taxonomy, role or scope change.** An independent domain: its only shared reference is `users`. No price, quotation, supplier, bill or payment table or column exists.
 
 ```
@@ -464,3 +466,31 @@ grocery_settings_revisions    (insert-only; the highest revision is current)
 - **Seed:** the migration inserts revision 1 only: disabled, **no serviceable block**, 10:00–20:00 Asia/Karachi, all days, 10 / 2 / 50.
 - **Downgrade** locks the tables and **refuses, changing nothing**, while any order or capacity row exists or the settings were ever changed.
 - Alembic does not compare `CHECK` constraints; a test pins the closed vocabularies and the whole-unit rule to the code.
+
+## 22. Grocery order handling — **`0012` implemented in GROCERY-2** (not applied to any real database)
+
+**Additive.** No existing row is rewritten, no data statement runs, no role or scope is granted, and ordering stays as it was set.
+
+```
+grocery_orders *─0..1 users (assigned_to)
+               1─* grocery_order_confirmations *─1 users (recorded_by)
+               1─0..1 grocery_payments         *─1 users (collected_by)
+               1─* grocery_order_events        *─1 users (actor, subject?)
+```
+
+| Table | Change | Rules the database enforces |
+|---|---|---|
+| `grocery_orders` | adds `assigned_to?` (FK `RESTRICT`), `assigned_at?`, `agreed_total_paisa?`, `final_due_paisa?` (`BIGINT`), `delivered_at?` | the six statuses; holder and time together; both amounts or neither; `0 < final_due <= agreed_total <= 100 000 000`; **`confirmed`, `preparing`, `out_for_delivery`, `delivered` require an amount**; `submitted` has none; `delivered_at` **iff** `delivered`; indexes `(status, submitted_at)`, `(service_date)`, `(assigned_to)` |
+| `grocery_order_status_history` | widened `from_status`, `to_status`; `actor_role` adds `staff` | unchanged protection |
+| `grocery_settings_revisions` | adds `max_order_value_paisa BIGINT NOT NULL DEFAULT 2000000` | 100–100 000 000. Existing versions take the default |
+| `grocery_order_confirmations` (new) | `id`, `order_id`, `sequence`, `items_subtotal_paisa`, `service_fee_paisa`, `delivery_fee_paisa`, `total_paisa`, `method`, `pricing_note?`, `consent_note?`, `recorded_by`, `recorded_at` | unique `(order_id, sequence)`; items > 0, fees >= 0; **total is the sum**; closed `method`. `consent_note` is nullable here; the **application** requires it for every agreement after the first (`API_CONTRACT.md` §19.5) |
+| `grocery_payments` (new) | `id`, `order_id`, `method`, `amount_due_paisa`, `amount_collected_paisa`, `collected_by`, `collected_at` | **one row per order**; `cash_on_delivery` only; **collected equals due** |
+| `grocery_order_events` (new) | `id`, `order_id`, `action`, `actor_user_id`, `subject_user_id?`, `amount_before_paisa?`, `amount_after_paisa?`, `issue_kind?`, `note?`, `created_at` | closed `action` (`claimed`, `released`, `amount_reduced`, `issue_recorded`) and `issue_kind`; a subject **iff** claim or release; both amounts **iff** a reduction, and lower; a kind **iff** an issue; a reason for a reduction or issue; index `(order_id, created_at)` |
+
+- All money is an **integer number of paisa**. No floating point and no currency column (PKR only).
+- The three new tables are **insert-only**: triggers (the `0011` function) refuse `UPDATE` and `DELETE`. Like the status history they have **no `TRUNCATE` trigger** (`DEPLOYMENT.md` §15).
+- `final_due_paisa` is the only mutable money value; every change of it is an agreement row or an `amount_reduced` event.
+- **Delivery attempts have no table:** they are read from the status history (each move to `out_for_delivery` begins one; the next move out decides it).
+- The order's `cancel_reason` stays the **customer's** field; a staff reason lives in the history row.
+- Not created: quotation, supplier, bill, price-per-line, inventory, refund or issue-resolution tables.
+- **Downgrade** locks the six tables and **refuses, changing nothing**, while any order is past `submitted`/`cancelled`, is assigned or priced, or any agreement, payment, event, staff history row or changed value cap exists (`DEPLOYMENT.md` §17).

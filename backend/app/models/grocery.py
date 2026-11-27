@@ -1,11 +1,16 @@
-"""Grocery order intake (GROCERY-1b, migration ``0011``; docs/backend/DATA_MODEL.md §21).
+"""Grocery orders (migrations ``0011`` and ``0012``; docs/backend/DATA_MODEL.md §21 and §22).
 
 An INDEPENDENT domain: no foreign key to listings, categories or service requests. The only shared
 references are ``users``.
 
 * ``grocery_orders`` + ``grocery_order_items`` — what a customer asked for, with the delivery
-  details as they were at submission (a snapshot). No price, quotation, supplier or payment column
-  exists: those arrive with the phases that give them meaning. Items never change.
+  details as they were at submission (a snapshot), plus who is handling it and the CURRENT agreed
+  total and amount due. Items never change. There is no supplier, quotation or inventory table.
+* ``grocery_order_confirmations`` — each agreement of the customer that a staff member recorded.
+  A changed price is a NEW row; none is ever edited.
+* ``grocery_payments`` — the one cash-on-delivery collection of a delivered order.
+* ``grocery_order_events`` — claims, releases, reductions of the amount due and recorded issues.
+  All three are insert-only (triggers refuse UPDATE and DELETE).
 * ``grocery_order_status_history`` — one row per creation or transition, in the same transaction.
   Append-only: a database trigger refuses UPDATE and DELETE.
 * ``grocery_daily_capacity`` — one counter per Asia/Karachi calendar day. A place is reserved by a
@@ -23,6 +28,7 @@ import uuid
 from decimal import Decimal
 
 from sqlalchemy import (
+    BigInteger,
     CheckConstraint,
     Date,
     DateTime,
@@ -45,10 +51,17 @@ from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 from app.db.types import in_values, str_enum
 from app.models.enums import (
     GroceryActorRole,
+    GroceryConfirmationMethod,
+    GroceryEventAction,
+    GroceryIssueKind,
     GroceryOrderStatus,
+    GroceryPaymentMethod,
     GrocerySubstitution,
     GroceryUnit,
 )
+
+#: The database backstop of every amount (``grocery_rules.MAX_AMOUNT_PAISA``).
+_MAX_PAISA = 100_000_000
 
 
 class GroceryOrder(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -81,7 +94,18 @@ class GroceryOrder(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     #: The application clock at submission (the clock the operating window was judged on).
     submitted_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     cancelled_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
+    #: The CUSTOMER'S own reason. A staff member's reason is kept in the history, which the
+    #: customer never sees.
     cancel_reason: Mapped[str | None] = mapped_column(String(200))
+    # -- staff handling (GROCERY-2) -----------------------------------------------------------
+    assigned_to: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="RESTRICT")
+    )
+    assigned_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
+    #: The total of the CURRENT recorded agreement, and what is to be collected (never more).
+    agreed_total_paisa: Mapped[int | None] = mapped_column(BigInteger)
+    final_due_paisa: Mapped[int | None] = mapped_column(BigInteger)
+    delivered_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
     # -- idempotency (hashes only; kept as long as the order, so a key can never create twice) --
     idempotency_key_hash: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
     request_hash: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
@@ -119,8 +143,35 @@ class GroceryOrder(UUIDPrimaryKeyMixin, TimestampMixin, Base):
             "octet_length(idempotency_key_hash) = 32 AND octet_length(request_hash) = 32",
             name="hash_lengths",
         ),
+        CheckConstraint(
+            "(assigned_to IS NULL) = (assigned_at IS NULL)", name="assignment_complete"
+        ),
+        CheckConstraint(
+            "(agreed_total_paisa IS NULL) = (final_due_paisa IS NULL)", name="amounts_together"
+        ),
+        CheckConstraint(
+            "agreed_total_paisa IS NULL OR (final_due_paisa > 0 "
+            f"AND final_due_paisa <= agreed_total_paisa AND agreed_total_paisa <= {_MAX_PAISA})",
+            name="amounts_valid",
+        ),
+        # No order reaches confirmed or beyond without an agreed amount, none has one before.
+        CheckConstraint(
+            "status NOT IN ('confirmed', 'preparing', 'out_for_delivery', 'delivered') "
+            "OR agreed_total_paisa IS NOT NULL",
+            name="agreement_required",
+        ),
+        CheckConstraint(
+            "status <> 'submitted' OR agreed_total_paisa IS NULL", name="no_amount_when_submitted"
+        ),
+        CheckConstraint(
+            "(status = 'delivered') = (delivered_at IS NOT NULL)", name="delivered_at_iff_delivered"
+        ),
         # The per-customer active-order count.
         Index("ix_grocery_orders_customer_id_status", "customer_id", "status"),
+        # The staff queue.
+        Index("ix_grocery_orders_status_submitted_at", "status", "submitted_at"),
+        Index("ix_grocery_orders_service_date", "service_date"),
+        Index("ix_grocery_orders_assigned_to", "assigned_to"),
     )
 
 
@@ -228,6 +279,10 @@ class GrocerySettingsRevision(Base):
     closes_at: Mapped[datetime.time] = mapped_column(Time, nullable=False)
     timezone: Mapped[str] = mapped_column(String(64), nullable=False)
     daily_capacity: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    #: Pilot cap on an agreed total, fees included (owner approved PKR 20,000).
+    max_order_value_paisa: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, server_default="2000000"
+    )
     max_active_orders_per_customer: Mapped[int] = mapped_column(SmallInteger, nullable=False)
     max_items_per_order: Mapped[int] = mapped_column(SmallInteger, nullable=False)
     actor_user_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
@@ -250,8 +305,138 @@ class GrocerySettingsRevision(Base):
         CheckConstraint("timezone IN ('Asia/Karachi')", name="timezone_valid"),
         CheckConstraint("daily_capacity BETWEEN 1 AND 200", name="daily_capacity_range"),
         CheckConstraint(
+            f"max_order_value_paisa BETWEEN 100 AND {_MAX_PAISA}", name="max_order_value_range"
+        ),
+        CheckConstraint(
             "max_active_orders_per_customer BETWEEN 1 AND 10", name="max_active_orders_range"
         ),
         CheckConstraint("max_items_per_order BETWEEN 1 AND 100", name="max_items_range"),
         CheckConstraint("revision = 1 OR actor_user_id IS NOT NULL", name="change_has_actor"),
+    )
+
+
+class GroceryOrderConfirmation(UUIDPrimaryKeyMixin, Base):
+    """One agreement of the customer, RECORDED BY A STAFF MEMBER (normally after a telephone
+    call). It is not an action the customer took in the application, and nothing may present it
+    as one. Insert-only: a changed price or substitution is the next ``sequence``."""
+
+    __tablename__ = "grocery_order_confirmations"
+
+    order_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("grocery_orders.id", ondelete="RESTRICT"), nullable=False
+    )
+    sequence: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    items_subtotal_paisa: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    service_fee_paisa: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    delivery_fee_paisa: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    total_paisa: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    method: Mapped[GroceryConfirmationMethod] = mapped_column(
+        str_enum(GroceryConfirmationMethod), nullable=False
+    )
+    #: Both INTERNAL.
+    pricing_note: Mapped[str | None] = mapped_column(String(200))
+    consent_note: Mapped[str | None] = mapped_column(String(500))
+    recorded_by: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    recorded_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "order_id", "sequence", name="uq_grocery_order_confirmations_order_id_sequence"
+        ),
+        CheckConstraint("sequence >= 1", name="sequence_positive"),
+        CheckConstraint(
+            "items_subtotal_paisa > 0 AND service_fee_paisa >= 0 AND delivery_fee_paisa >= 0",
+            name="components_not_negative",
+        ),
+        CheckConstraint(
+            "total_paisa = items_subtotal_paisa + service_fee_paisa + delivery_fee_paisa "
+            f"AND total_paisa <= {_MAX_PAISA}",
+            name="total_is_the_sum",
+        ),
+        in_values("method", GroceryConfirmationMethod, name="method_valid"),
+    )
+
+
+class GroceryPayment(UUIDPrimaryKeyMixin, Base):
+    """THE cash collection of a delivered order: at most one per order, written in the same
+    transaction as ``delivered``, and only for exactly the amount due. Insert-only. Anything
+    else (a shortage, a dispute, a return) is an issue for a person to resolve."""
+
+    __tablename__ = "grocery_payments"
+
+    order_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("grocery_orders.id", ondelete="RESTRICT"), nullable=False
+    )
+    method: Mapped[GroceryPaymentMethod] = mapped_column(
+        str_enum(GroceryPaymentMethod), nullable=False
+    )
+    amount_due_paisa: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    amount_collected_paisa: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    #: The staff member who recorded the collection.
+    collected_by: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    collected_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("order_id", name="uq_grocery_payments_order_id"),
+        in_values("method", GroceryPaymentMethod, name="method_valid"),
+        CheckConstraint(
+            f"amount_due_paisa > 0 AND amount_due_paisa <= {_MAX_PAISA}", name="amount_due_valid"
+        ),
+        CheckConstraint(
+            "amount_collected_paisa = amount_due_paisa", name="collected_is_the_amount_due"
+        ),
+    )
+
+
+class GroceryOrderEvent(UUIDPrimaryKeyMixin, Base):
+    """A staff operation that changes no status. INTERNAL; insert-only."""
+
+    __tablename__ = "grocery_order_events"
+
+    order_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("grocery_orders.id", ondelete="RESTRICT"), nullable=False
+    )
+    action: Mapped[GroceryEventAction] = mapped_column(str_enum(GroceryEventAction), nullable=False)
+    actor_user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    #: Whose assignment a claim or release concerns.
+    subject_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="RESTRICT")
+    )
+    amount_before_paisa: Mapped[int | None] = mapped_column(BigInteger)
+    amount_after_paisa: Mapped[int | None] = mapped_column(BigInteger)
+    issue_kind: Mapped[GroceryIssueKind | None] = mapped_column(str_enum(GroceryIssueKind))
+    note: Mapped[str | None] = mapped_column(String(500))
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.clock_timestamp()
+    )
+
+    __table_args__ = (
+        in_values("action", GroceryEventAction, name="action_valid"),
+        in_values("issue_kind", GroceryIssueKind, name="issue_kind_valid", nullable=True),
+        CheckConstraint(
+            "(subject_user_id IS NOT NULL) = (action IN ('claimed', 'released'))",
+            name="subject_iff_assignment",
+        ),
+        CheckConstraint(
+            "(amount_before_paisa IS NOT NULL) = (action = 'amount_reduced') "
+            "AND (amount_after_paisa IS NOT NULL) = (action = 'amount_reduced') "
+            "AND (action <> 'amount_reduced' "
+            "OR (amount_after_paisa > 0 AND amount_after_paisa < amount_before_paisa))",
+            name="amounts_iff_reduction",
+        ),
+        CheckConstraint(
+            "(issue_kind IS NOT NULL) = (action = 'issue_recorded')", name="kind_iff_issue"
+        ),
+        CheckConstraint(
+            "action NOT IN ('amount_reduced', 'issue_recorded') "
+            "OR (note IS NOT NULL AND char_length(btrim(note)) >= 1)",
+            name="reason_required",
+        ),
+        Index("ix_grocery_order_events_order_id_created_at", "order_id", "created_at"),
     )

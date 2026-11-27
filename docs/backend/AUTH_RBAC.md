@@ -1251,3 +1251,48 @@ One function, `hold_acting_session` (`app/services/auth_sessions.py`), called by
 **Every new privileged route MUST come with regression tests**, on real PostgreSQL through the endpoint, for **a revoked session** (both arrival orders), **lost authority** (role and, where it applies, scope) and **concurrent mutations**. For the first two, add the operation to `OPERATIONS` in `tests/db/test_privileged_session_races.py`; scope and same-resource collisions follow the existing moderation, Provider, request and Grocery concurrency suites.
 
 A route that cannot follow this rule needs an explicit recorded decision **before** it is built. **Nothing enforces the rule automatically yet:** the review of every new route must check it.
+
+## 37. GROCERY-2 as built — Grocery staff authority over orders
+
+### 37.1 Who
+
+| Account | `/admin/grocery/orders*` | `/admin/grocery/settings` | Another person's order on `/grocery/orders*` |
+|---|---|---|---|
+| Super Admin | all (§37.3 exceptions) | yes | `404` |
+| Verified, active Moderator with `grocery` | all except late cancellation | `403` | `404` |
+| Listing Moderator (any or all listing scopes), paused Moderator, resident, professional | `403` | `403` | `404` |
+
+No new role, scope or authority system: the guard is the existing `require_grocery_staff` (§32, §33), which judges the staff session's freshness windows. The 13 routes are classified `grocery_staff` in `ADMIN_AUTHORITY`; a test fails for any unclassified `/admin` route. They are the only `/admin` routes a Grocery-only Moderator may use.
+
+### 37.2 Every change follows §36.4
+
+Inside one transaction (`GroceryStaffOrderService._change`): the order row `FOR UPDATE` → `hold_acting_session` (actor, then session, `FOR SHARE`) → `share_staff_roles` (lost role `403`) → `acting.require()` (ended session `401`) → for a Moderator `share_moderator_scope(GROCERY_SCOPE)` (`403`) → only then whether the order exists (`404`), its owner, holder, status and revision. Recording an agreement then takes the settings lock, shared. History, events, agreements and payments are written in the same transaction.
+
+- A lost scope answers `403`, not `404`: one scope covers every order, so there is nothing to conceal.
+- **Holding an order grants nothing.** The assignment is checked only after the authority.
+- Reads (queue, detail) are judged by the request's principal: a read is stale for at most its own duration and changes nothing.
+- **Operator-level limit:** as in §36, freshness windows are not re-evaluated inside the transaction.
+
+### 37.3 Additional rules
+
+- **Nobody handles their own order** (`403 own_order`), a Super Admin included. Another staff member must.
+- A Moderator changes only an order they **hold**; any Grocery staff member may record an issue.
+- **Cancelling from `preparing` is Super Admin only** (`403 super_admin_required`).
+- A per-person limit of 120 changes per 15 minutes stops a runaway client. It is not an authorization control.
+
+### 37.4 Privacy
+
+- The queue carries no customer identity, contact, address or item text. The detail carries them to Grocery staff only, who need them to handle the order. All responses are `no-store`.
+- Customers see amounts, statuses and `recordedBy: "staff"`; never a staff identity, note or reason (`API_CONTRACT.md` §19.8).
+- Database errors are sanitised before logging (`private_database_errors`); a test checks that no submitted or typed text reaches the logs.
+- **Not built:** a record of who **viewed** an order's contact details, retention or redaction, and masking. These stay open before live use.
+
+### 37.5 What a recorded agreement does and does not prove
+
+**Approved for the pilot (owner, 2026-11-27):** a staff-recorded telephone confirmation is sufficient. **It must never be represented, in a response, a screen or a document, as consent the customer gave under their own authentication.** The API records the other methods (`in_person`, `written_message`) the same way.
+
+It proves that a named, authenticated staff member **recorded** that the customer agreed, when, how and to what total, and that the record was not changed afterwards. **It does not prove that the customer agreed:** nothing authenticates the customer, and there is no in-app approval or one-time code. The customer can see the recorded total before delivery, but is not notified. **Staff MFA does not exist yet** (`DEPLOYMENT.md` §16).
+
+### 37.6 Regression tests
+
+Real PostgreSQL, through the endpoints: all 11 changes are in `OPERATIONS` of `tests/db/test_privileged_session_races.py` (password reset, logout, logout-all and suspension in both orders, and a removed role), now 26 operations; `tests/db/test_grocery_staff_concurrency.py` removes the `grocery` scope after authentication for each of the 11 changes, shows that a removal waits for a change in flight, and stages competing changes of one order in both orders; `tests/db/test_grocery_staff_api.py` covers who is refused, ownership and privacy.

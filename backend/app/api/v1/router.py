@@ -6,6 +6,7 @@ from app.api.routing import ContractRoute
 from app.api.v1 import (
     admin,
     admin_grocery,
+    admin_grocery_orders,
     admin_providers,
     admin_requests,
     admin_staff,
@@ -45,4 +46,5 @@ api_router.include_router(admin_staff.sensitive_router)
 api_router.include_router(admin_providers.router)
 api_router.include_router(admin_requests.router)
 api_router.include_router(admin_grocery.router)
+api_router.include_router(admin_grocery_orders.router)
 api_router.include_router(news.router)

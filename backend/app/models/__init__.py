@@ -4,8 +4,11 @@ from app.models.auth import AuthEvent, AuthRateLimit, AuthSession, AuthToken, OA
 from app.models.grocery import (
     GroceryDailyCapacity,
     GroceryOrder,
+    GroceryOrderConfirmation,
+    GroceryOrderEvent,
     GroceryOrderItem,
     GroceryOrderStatusHistory,
+    GroceryPayment,
     GrocerySettingsRevision,
 )
 from app.models.listings import (
@@ -36,8 +39,11 @@ __all__ = [
     "FoodProfile",
     "GroceryDailyCapacity",
     "GroceryOrder",
+    "GroceryOrderConfirmation",
+    "GroceryOrderEvent",
     "GroceryOrderItem",
     "GroceryOrderStatusHistory",
+    "GroceryPayment",
     "GrocerySettingsRevision",
     "Listing",
     "ListingCategory",

@@ -39,6 +39,8 @@ class ErrorCode(StrEnum):
     GROCERY_CAPACITY_REACHED = "grocery_capacity_reached"
     GROCERY_ACTIVE_ORDER_LIMIT = "grocery_active_order_limit"
     ORDER_CONFLICT = "order_conflict"
+    ORDER_ALREADY_CLAIMED = "order_already_claimed"
+    ORDER_NOT_CLAIMED = "order_not_claimed"
     IDEMPOTENCY_KEY_REQUIRED = "idempotency_key_required"
     IDEMPOTENCY_KEY_INVALID = "idempotency_key_invalid"
     IDEMPOTENCY_KEY_REUSED = "idempotency_key_reused"
@@ -74,6 +76,8 @@ DEFAULT_MESSAGES: dict[ErrorCode, str] = {
         "You already have the most grocery orders you can have open at once."
     ),
     ErrorCode.ORDER_CONFLICT: "This order changed since you opened it.",
+    ErrorCode.ORDER_ALREADY_CLAIMED: "Another staff member is handling this order.",
+    ErrorCode.ORDER_NOT_CLAIMED: "Claim this order before you work on it.",
     ErrorCode.IDEMPOTENCY_KEY_REQUIRED: "Send an Idempotency-Key header with this request.",
     ErrorCode.IDEMPOTENCY_KEY_INVALID: "The Idempotency-Key header is not valid.",
     ErrorCode.IDEMPOTENCY_KEY_REUSED: (

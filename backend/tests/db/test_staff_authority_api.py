@@ -18,6 +18,7 @@ from sqlalchemy import select, text
 
 from app.api.v1 import admin as admin_routes
 from app.api.v1 import admin_grocery as admin_grocery_routes
+from app.api.v1 import admin_grocery_orders as admin_grocery_order_routes
 from app.api.v1 import admin_providers as admin_provider_routes
 from app.api.v1 import admin_requests as admin_request_routes
 from app.api.v1 import admin_staff as admin_staff_routes
@@ -40,6 +41,7 @@ from app.dependencies.auth import (
     StaffUser,
     SuperAdminUser,
     require_admin,
+    require_grocery_staff,
     require_sensitive_super_admin,
     require_staff,
     require_super_admin,
@@ -413,6 +415,7 @@ ROUTER_MODULES = [
     admin_provider_routes,
     admin_request_routes,
     admin_grocery_routes,
+    admin_grocery_order_routes,
     grocery,
     news,
 ]
@@ -444,11 +447,14 @@ def test_every_current_admin_route_has_an_explicit_authority_classification() ->
         *_routes(admin_provider_routes),
         *_routes(admin_request_routes),
         *_routes(admin_grocery_routes),
+        *_routes(admin_grocery_order_routes),
     ]:
         calls = _calls(route.dependant)
         for method in route.methods or set():
             key = f"{method} {route.path}"
-            if require_services_staff in calls and require_super_admin not in calls:
+            if require_grocery_staff in calls and require_staff not in calls:
+                found[key] = "grocery_staff"
+            elif require_services_staff in calls and require_super_admin not in calls:
                 found[key] = "services_staff"
             elif require_sensitive_super_admin in calls and require_staff not in calls:
                 found[key] = "super_admin_sensitive"
@@ -485,7 +491,13 @@ def test_every_current_admin_route_has_an_explicit_authority_classification() ->
         "services_staff",
         "super_admin_only",
         "super_admin_sensitive",
+        "grocery_staff",  # GROCERY-2: every one under /admin/grocery/orders
     }
+    assert all(
+        key.split(" ", 1)[1].startswith("/admin/grocery/orders")
+        for key, value in expected_by_key.items()
+        if value == "grocery_staff"
+    )
 
 
 def test_the_default_admin_router_is_super_admin_only_and_staff_is_opt_in() -> None:

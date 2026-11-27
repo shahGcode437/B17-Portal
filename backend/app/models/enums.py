@@ -267,11 +267,14 @@ class StaffAuditResource(StrEnum):
 
 
 class GroceryOrderStatus(StrEnum):
-    """A Grocery order's lifecycle (docs/backend/DATA_MODEL.md §21). Only the INTAKE states exist
-    (GROCERY-1b). Later phases add review, quotation, fulfilment and delivery states by widening
-    the database CHECK in their own migration and adding transitions to ``grocery_rules``."""
+    """A Grocery order's lifecycle (docs/backend/DATA_MODEL.md §22). The allowed moves are the
+    ones listed in ``grocery_rules.TRANSITIONS``; ``delivered`` and ``cancelled`` are final."""
 
     SUBMITTED = "submitted"
+    CONFIRMED = "confirmed"
+    PREPARING = "preparing"
+    OUT_FOR_DELIVERY = "out_for_delivery"
+    DELIVERED = "delivered"
     CANCELLED = "cancelled"
 
 
@@ -296,9 +299,47 @@ class GrocerySubstitution(StrEnum):
 
 
 class GroceryActorRole(StrEnum):
-    """In which capacity a Grocery history row's actor acted. Staff roles arrive with GROCERY-2."""
+    """In which capacity a Grocery history row's actor acted."""
 
     CUSTOMER = "customer"
+    STAFF = "staff"
+
+
+class GroceryConfirmationMethod(StrEnum):
+    """How the customer told a staff member that they agree. Every one is RECORDED BY STAFF: none
+    is an action the customer took in the application."""
+
+    PHONE_CALL = "phone_call"
+    IN_PERSON = "in_person"
+    WRITTEN_MESSAGE = "written_message"
+
+
+class GroceryEventAction(StrEnum):
+    """Staff operations on an order that are not a change of status (status changes are in the
+    status history, agreements and cash collections in their own tables)."""
+
+    CLAIMED = "claimed"
+    RELEASED = "released"
+    AMOUNT_REDUCED = "amount_reduced"
+    ISSUE_RECORDED = "issue_recorded"
+
+
+class GroceryIssueKind(StrEnum):
+    """An exceptional situation left for a person to resolve. Nothing is automatic."""
+
+    PAYMENT_DISCREPANCY = "payment_discrepancy"
+    ITEM_SHORTAGE = "item_shortage"
+    DELIVERY_PROBLEM = "delivery_problem"
+    CUSTOMER_UNREACHABLE = "customer_unreachable"
+    OTHER = "other"
+    #: Written by the system only, when an order is cancelled after purchasing had started.
+    CANCELLED_AFTER_PROCUREMENT = "cancelled_after_procurement"
+
+
+class GroceryPaymentMethod(StrEnum):
+    """Cash on delivery only. There is no online payment."""
+
+    CASH_ON_DELIVERY = "cash_on_delivery"
 
 
 class OAuthPurpose(StrEnum):

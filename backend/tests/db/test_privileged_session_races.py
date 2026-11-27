@@ -33,6 +33,7 @@ from app.models.enums import PlanCode, StaffScope
 from app.repositories.staff import StaffManagementRepository
 from app.services import (
     grocery_settings,
+    grocery_staff_orders,
     moderation,
     portal_requests,
     provider_authoring,
@@ -49,11 +50,21 @@ from tests.db.auth_helpers import (
     last_token,
     make_account,
 )
-from tests.db.grocery_helpers import SETTINGS, purge_grocery
+from tests.db.grocery_helpers import (
+    BLOCKS,
+    SETTINGS,
+    advance,
+    configure,
+    purge_grocery,
+    staff_order,
+    staff_post,
+    submitted,
+)
 from tests.db.request_helpers import PORTAL_REQUESTS, REQUESTS, request_body
 from tests.db.staff_helpers import MODERATORS, purge_staff_audit
 from tests.db.test_auth_concurrency import same_session
 from tests.db.test_grocery_concurrency import Running, browser, gate_method, user_id, waiting
+from tests.db.test_grocery_staff_api import body_for
 from tests.db.test_listing_write_concurrency import committed_world
 from tests.db.test_scoped_moderation_concurrency import Gate, scalar, wait_until
 from tests.write_payloads import LISTINGS, business_body, staff_provider_body
@@ -91,6 +102,11 @@ FINGERPRINT = (
     "SELECT user_id, scope FROM staff_scope_assignments ORDER BY 1, 2",
     "SELECT * FROM staff_audit_events ORDER BY id",
     "SELECT * FROM grocery_settings_revisions ORDER BY revision",
+    "SELECT * FROM grocery_orders ORDER BY id",
+    "SELECT * FROM grocery_order_status_history ORDER BY id",
+    "SELECT * FROM grocery_order_confirmations ORDER BY id",
+    "SELECT * FROM grocery_payments ORDER BY id",
+    "SELECT * FROM grocery_order_events ORDER BY id",
 )
 
 
@@ -277,6 +293,40 @@ def op_grocery_settings(env: AuthEnv, engine: Engine) -> Prepared:
     )
 
 
+def _grocery_change(action: str, needs: str | None) -> Callable[[AuthEnv, Engine], Prepared]:
+    """One Grocery staff change, on a customer's order brought to the status it needs. ``needs``
+    is ``None`` for the claim itself; every other order is claimed by ``boss``."""
+
+    def prepare(env: AuthEnv, engine: Engine) -> Prepared:
+        boss = _boss(env)
+        configure(boss, enabled=True, serviceableBlocks=BLOCKS)
+        make_account(env.session, "customer@example.org")
+        order = submitted(browser(env, "customer@example.org"))["id"]
+        if needs is not None:
+            advance(boss, order, needs)
+        body = body_for(action, staff_order(boss, order)["revision"])
+        return Prepared(
+            boss, lambda: staff_post(boss, order, action, body), grocery_staff_orders, 200
+        )
+
+    return prepare
+
+
+#: Every Grocery staff change, with the status it needs (AUTH_RBAC.md §37).
+GROCERY_CHANGES: dict[str, str | None] = {
+    "claim": None,
+    "release": "submitted",
+    "confirm": "submitted",
+    "reconfirm": "confirmed",
+    "reduce-amount": "confirmed",
+    "start-preparing": "confirmed",
+    "dispatch": "preparing",
+    "delivery-failed": "out_for_delivery",
+    "complete": "out_for_delivery",
+    "cancel": "preparing",
+    "issues": "submitted",
+}
+
 OPERATIONS: dict[str, Callable[[AuthEnv, Engine], Prepared]] = {
     "listing approve": op_approve,
     "listing reject": op_reject,
@@ -293,6 +343,10 @@ OPERATIONS: dict[str, Callable[[AuthEnv, Engine], Prepared]] = {
     "provider archive": op_provider_archive,
     "staff request action": op_staff_request,
     "grocery settings": op_grocery_settings,
+    **{
+        f"grocery order {action}": _grocery_change(action, needs)
+        for action, needs in GROCERY_CHANGES.items()
+    },
 }
 STAFF_MANAGEMENT = {name for name in OPERATIONS if name.startswith("moderator ")}
 

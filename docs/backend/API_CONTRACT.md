@@ -639,6 +639,8 @@ Authority is the actor's LIVE role and scope, read and locked in the transaction
 
 ## 18. GROCERY-1b — Grocery order intake (as built)
 
+> **GROCERY-2 (2026-11-27):** §18 describes GROCERY-1b as it was built. §19 adds the staff side, prices and cash on delivery, and changes the customer responses (§19.8) and the settings (§19.9). Where they differ, §19 is current.
+
 All under `/api/v1`, camelCase, the standard envelopes. **Every `/grocery` and `/admin/grocery` response is `Cache-Control: no-store`**, errors included. Unsafe calls need an exact `Origin` and `X-CSRF-Token` (`AUTH_RBAC.md` §6). There is **no** staff order queue, quotation, price, payment or e-mail.
 
 ### 18.1 Endpoints
@@ -740,3 +742,107 @@ Cancel body: `{"revision": n, "reason"?: "…"}` (reason ≤ 200, one line). All
 `PATCH` takes `revision` (the one read) plus any settings; omitted = unchanged, `null` refused, lists replace whole. Refusals: `403` → `429` (30 changes per 15 min per Super Admin) → `409 conflict` (`stale_revision`) → `422` (`no_changes`, `closes_before_opens`, field rules). A change equal to the current settings writes nothing. **Every real change adds a permanent version.** Lowering a limit affects only later submissions.
 
 **New error codes:** `grocery_unavailable` (503), `grocery_closed`, `grocery_capacity_reached`, `grocery_active_order_limit`, `order_conflict`, `idempotency_key_reused` (409), `idempotency_key_required`, `idempotency_key_invalid` (400).
+
+## 19. GROCERY-2 — order handling, delivery and cash on delivery (as built, backend only)
+
+**The business, deliberately simple (owner, 2026-11-27):** the customer sends a list; the team contacts them and agrees a price; the team buys from the local market, prepares and delivers; the customer pays **cash on delivery**. There is **no** supplier management, quotation engine, inventory, catalogue, procurement system or online payment. All conventions of §18 apply (`no-store` on every response, errors included; exact `Origin` and `X-CSRF-Token` on unsafe calls).
+
+### 19.1 Endpoints
+
+**Who:** a Super Admin, or a verified, active Moderator holding the `grocery` scope, with a fresh staff session (`AUTH_RBAC.md` §37). Everyone else (residents, professionals, listing Moderators, a paused Moderator) gets `403 forbidden` on every route here, before the body or id is examined. Anonymous `401`; unverified `403 email_not_verified`; stale session `401 session_expired`.
+
+| Method and path (under `/api/v1/admin/grocery/orders`) | From status | Body | Result |
+|---|---|---|---|
+| `GET` (none) | — | query §19.3 | queue |
+| `GET /{orderId}` | any | — | detail §19.4 |
+| `POST /{orderId}/claim` | any active | none | assigned to the caller |
+| `POST /{orderId}/release` | any active | none | unassigned |
+| `POST /{orderId}/confirm` | `submitted` | agreement §19.5 | `confirmed` |
+| `POST /{orderId}/reconfirm` | `confirmed`, `preparing` | agreement, **`consentNote` required** | a further agreement; status unchanged |
+| `POST /{orderId}/reduce-amount` | `confirmed`, `preparing`, `out_for_delivery` | `{revision, finalAmountPaisa, reason}` | a lower amount due |
+| `POST /{orderId}/start-preparing` | `confirmed` | `{revision}` | `preparing` |
+| `POST /{orderId}/dispatch` | `preparing` | `{revision, note?}` | `out_for_delivery` |
+| `POST /{orderId}/delivery-failed` | `out_for_delivery` | `{revision, reason}` | `preparing` |
+| `POST /{orderId}/complete` | `out_for_delivery` | `{revision, amountCollectedPaisa}` | `delivered`, cash recorded |
+| `POST /{orderId}/cancel` | `submitted`, `confirmed`, `preparing` | `{revision, reason, procurementAcknowledged?}` | `cancelled` |
+| `POST /{orderId}/issues` | any | `{kind, note}` | an issue recorded; nothing else changes |
+
+Every `POST` answers `200` with the full staff detail. Reasons are one line, 1–200; `note` on dispatch ≤ 200; an issue `note` 1–500. **Any undeclared key** (`status`, `total`, `assignedTo`, `collectedAt` …) is `422 not_allowed`. The actor, statuses, totals and times are the server's. **There is no endpoint that sets a status.** Staff can work on existing orders whether or not ordering is enabled or open.
+
+### 19.2 State machine
+
+Exactly six statuses: `submitted`, `confirmed`, `preparing`, `out_for_delivery`, `delivered`, `cancelled`. `delivered` and `cancelled` are final. No other transition exists and none can be skipped.
+
+| From | To | By |
+|---|---|---|
+| `submitted` | `cancelled` | the customer |
+| `submitted` | `confirmed` | staff, **only** by recording an agreement |
+| `confirmed` | `preparing` | staff |
+| `preparing` | `out_for_delivery` | staff |
+| `out_for_delivery` | `delivered` | staff, with the cash, in one transaction |
+| `out_for_delivery` | `preparing` | staff: the attempt failed |
+| `submitted`, `confirmed` | `cancelled` | staff, with a reason |
+| `preparing` | `cancelled` | **Super Admin only**, with a reason and `procurementAcknowledged: true` |
+
+- Every status change writes one immutable history row and increases `revision`.
+- **No cancellation while `out_for_delivery`:** first record the failed attempt.
+- Cancelling from `preparing` also records the issue `cancelled_after_procurement`. **No refund, charge or cost is created or calculated**; a person resolves it.
+- A failed delivery is never delivered or paid. The order waits in `preparing` for another attempt or a manual decision. Attempts are numbered from the history.
+- A cancelled order keeps its daily capacity place (§18.3). `delivered` and `cancelled` no longer count towards the customer's active-order limit.
+
+### 19.3 Queue
+
+Query: `status?`, `reference?` (3–16; a reference or its beginning, with or without `GRC-`, any case), `submittedOn?` (a Karachi calendar day), `assigned?` (`me`, `unassigned` or a staff user id), `sort` (`oldest` default, `newest`), `limit` (12, max 50), `offset`.
+
+Summary: `{id, reference, status, revision, submittedAt, serviceDate, block, itemCount, assignee?{userId, displayName?}, agreedTotalPaisa?, finalAmountDuePaisa?, paymentCollected, failedDeliveryAttempts, issueCount}`. **No customer id or name, phone, address, landmark, instructions or item text.** `meta`: `{total, limit, offset, counts{status: n}}`; `counts` applies every filter except `status`.
+
+### 19.4 Staff detail
+
+The summary plus: `items[]`; `delivery{contactName, contactPhone, block, addressLine, landmark?}`; `instructions?`; `cancelledAt?`; `deliveredAt?`; `updatedAt`; `confirmations[]` (every agreement: `sequence`, the three components, `totalPaisa`, `method`, `pricingNote?`, `consentNote?`, `recordedBy`, `recordedAt`); `payment?{method, amountDuePaisa, amountCollectedPaisa, collectedBy, collectedAt}`; `deliveryAttempts[]` (`attempt`, `dispatchedBy`, `dispatchedAt`, `note?`, `outcome` `in_progress`/`failed`/`delivered`, `outcomeBy?`, `outcomeAt?`, `failureReason?`); `history[]` (with the staff member and reason; the customer's own rows name nobody); `events[]` (claims, releases, reductions with both amounts, issues); `availableActions[]` (a hint; the server decides again).
+
+### 19.5 Pricing and the customer's agreement
+
+Agreement body: `{revision, itemsSubtotalPaisa, serviceFeePaisa?, deliveryFeePaisa?, agreedTotalPaisa, customerAgreed, method, pricingNote?, consentNote?}`.
+
+- Money is a **whole number of paisa** (a float, string or boolean is refused). Items ≥ 1; fees ≥ 0, default 0; **no fee or discount is mandatory**; each amount ≤ 100 000 000.
+- **The server computes the total.** `agreedTotalPaisa` must equal items + fees (`422 total_mismatch`).
+- The total, fees included, may not exceed the setting `maxOrderValuePaisa` (`422 exceeds_order_limit`). Its default is **PKR 20,000 (2 000 000 paisa), the maximum agreed order value the owner approved for the pilot (2026-11-27)**; it stays configurable (§19.9).
+- `customerAgreed` must be `true` (`422 agreement_required`). `method`: `phone_call`, `in_person`, `written_message`. `pricingNote` ≤ 200 and `consentNote` ≤ 500 are **internal** (for example, the substitutions the customer accepted).
+- **This is a staff member's record, not an approval given by the customer in the application.** It stores who recorded it, when, the total, the method and the note; the customer sees `recordedBy: "staff"`.
+- **There is no way into `confirmed` without it.**
+- **A recorded agreement is never changed.** A higher price or a substitution the customer had not accepted needs `reconfirm`: a new agreement; earlier ones stay. **On `reconfirm`, `consentNote` is required** (non-blank, ≤ 500): it records **what** the customer newly agreed to, for example which substitute in place of what, because the amounts alone cannot show it and the total may not change. It stays optional on `confirm`; a substitution agreed on that first call is to be noted there. The server cannot detect a substitution itself (items are never edited) or judge the note. This is the **only** way the amount due can rise. After dispatch, record the failed attempt first.
+- `reduce-amount` only **lowers** the amount due (`422 not_a_reduction` otherwise), always with a reason, and keeps the agreed total. A reduction needs no new consent. A later `reconfirm` replaces both.
+- There is no quotation version, price per line or item edit. The items stay as the customer submitted them.
+
+### 19.6 Assignment
+
+- A Moderator must **hold** the order to change it (`409 order_not_claimed`); `issues` is the exception. A Super Admin need not claim.
+- `claim`: an unassigned active order. Claiming one you hold changes nothing (`200`). Held by someone else: `409 order_already_claimed`.
+- `release`: the holder, or a Super Admin for anyone's.
+- Claim and release **do not change `revision`**, so they never invalidate the customer's cancellation. A Moderator whose access ends stays recorded as holder until a Super Admin releases the order.
+- No scheduling, routing or dispatch system exists.
+
+### 19.7 Cash on delivery, and errors
+
+- Only `cash_on_delivery`. A payment record exists **only** because a staff member completed the order: it is never inferred from a status.
+- `complete` writes the payment (amount due, amount collected, collector, time), `delivered`, the delivery time and the history **in one transaction**. `amountCollectedPaisa` must **equal** the amount due (`422 amount_mismatch`).
+- A shortage, refusal or any other difference stays **unresolved**: the order remains open; record an issue, then reduce the amount, record a failed attempt, or settle it by hand. There is no partial payment, credit, tip or refund record.
+- **No double collection:** one payment row per order (unique), and `delivered` is final. A retried completion answers `409 invalid_state_transition` and changes nothing. There is no `Idempotency-Key` here: re-read the order.
+
+**Order of refusal for a change:** CSRF / Origin → `401` / `403` (route) → `429 rate_limited` (**120 staff changes per 15 minutes per person**, all operations together) → `422` body → *inside the transaction:* lost role `403` → ended session `401 session_expired` → lost scope `403` → `404 not_found` → `403 forbidden` `own_order` (**nobody handles their own order**) → `409 order_not_claimed` → `409 invalid_state_transition` (the status does not allow it) → `403 super_admin_required` (a Moderator cancelling from `preparing`) → `409 order_conflict` (`revision`/`stale_revision`) → `422` (`total_mismatch`, `exceeds_order_limit`, `not_a_reduction`, `amount_mismatch`, `acknowledgement_required`). A refusal changes nothing.
+
+Issue kinds: `payment_discrepancy`, `item_shortage`, `delivery_problem`, `customer_unreachable`, `other` (`cancelled_after_procurement` is written by the system only: `422 system_only`). Issues are a log; they have **no resolve action** yet. Other new detail codes: `invalid_assignee` (queue). New error codes: `order_already_claimed`, `order_not_claimed` (409).
+
+### 19.8 What the customer sees (changes to §18.5)
+
+- Summary adds `finalAmountDuePaisa?`, `deliveredAt?`.
+- Detail adds `cancelledBy?` (`customer`/`staff`), `agreedTotalPaisa?`, `agreements[]` (`sequence`, components, `totalPaisa`, `method`, `recordedBy: "staff"`, `recordedAt`) and `payment?{method, status: due|collected, amountDuePaisa, amountCollectedPaisa?, collectedAt?}` (absent before an agreement and on a cancelled order).
+- `history[].actorRole` is `customer` or `staff`; `reason` appears **only** on the customer's own rows.
+- **Never exposed:** staff names or ids, assignment, pricing and consent notes, staff reasons (cancellation, failure, reduction), dispatch notes, issues, events.
+- A customer still cancels **only** a `submitted` order, claimed or not. No customer in-app approval exists.
+
+**Approved pilot policy (owner, 2026-11-27):** internal staff notes and reasons stay private; the customer is given a clear order status, the agreed price and the payment information; **the team tells the customer directly about cancellations, substitutions and failed deliveries.** The application does not say why and sends no e-mail, SMS or notification.
+
+### 19.9 Settings addition
+
+`maxOrderValuePaisa`: default 2 000 000, allowed 100–100 000 000, changed through the existing `PATCH /admin/grocery/settings` (Super Admin; versioned and permanent). A new value affects only agreements recorded afterwards.

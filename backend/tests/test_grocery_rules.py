@@ -25,25 +25,62 @@ def utc(
 # -- lifecycle ------------------------------------------------------------------------------------
 
 
-def test_the_only_transition_is_a_customer_cancelling_a_submitted_order() -> None:
+def test_these_are_the_only_transitions_that_exist() -> None:
     allowed = {
-        (status, action, actor)
+        (status.value, action.value, actor.value): rules.next_status(status, action, actor)
         for status in GroceryOrderStatus
         for action in rules.GroceryAction
         for actor in GroceryActorRole
         if rules.next_status(status, action, actor) is not None
     }
 
-    assert allowed == {
-        (GroceryOrderStatus.SUBMITTED, rules.GroceryAction.CANCEL, GroceryActorRole.CUSTOMER)
+    assert {key: target.value for key, target in allowed.items() if target} == {
+        ("submitted", "cancel", "customer"): "cancelled",
+        ("submitted", "confirm", "staff"): "confirmed",
+        ("confirmed", "start_preparing", "staff"): "preparing",
+        ("preparing", "dispatch", "staff"): "out_for_delivery",
+        ("out_for_delivery", "complete", "staff"): "delivered",
+        ("out_for_delivery", "delivery_failed", "staff"): "preparing",
+        ("submitted", "cancel", "staff"): "cancelled",
+        ("confirmed", "cancel", "staff"): "cancelled",
+        ("preparing", "cancel", "staff"): "cancelled",
     }
 
 
-def test_only_the_intake_states_exist_and_active_is_every_non_terminal_one() -> None:
-    assert [status.value for status in GroceryOrderStatus] == ["submitted", "cancelled"]
-    assert {GroceryOrderStatus.CANCELLED} == rules.TERMINAL_STATUSES
-    assert {GroceryOrderStatus.SUBMITTED} == rules.ACTIVE_STATUSES
+def test_delivered_and_cancelled_are_final_and_every_other_status_is_active() -> None:
+    assert [status.value for status in GroceryOrderStatus] == [
+        "submitted",
+        "confirmed",
+        "preparing",
+        "out_for_delivery",
+        "delivered",
+        "cancelled",
+    ]
+    assert {s.value for s in rules.TERMINAL_STATUSES} == {"delivered", "cancelled"}
     assert set(GroceryOrderStatus) == rules.ACTIVE_STATUSES | rules.TERMINAL_STATUSES
+    assert not rules.ACTIVE_STATUSES & rules.TERMINAL_STATUSES
+    assert not {key for key in rules.TRANSITIONS if key[0] in rules.TERMINAL_STATUSES}
+    # nothing leads into confirmed except recording the customer's agreement
+    assert {key[1] for key, to in rules.TRANSITIONS.items() if to.value == "confirmed"} == {
+        rules.GroceryAction.CONFIRM
+    }
+
+
+def test_the_statuses_for_changing_the_price_and_cancelling_late() -> None:
+    assert {s.value for s in rules.RECONFIRM_STATUSES} == {"confirmed", "preparing"}
+    assert {s.value for s in rules.REDUCE_STATUSES} == {
+        "confirmed",
+        "preparing",
+        "out_for_delivery",
+    }
+    assert {s.value for s in rules.AFTER_PROCUREMENT} == {"preparing"}
+
+
+def test_money_is_whole_paisa_and_the_pilot_cap_includes_the_fees() -> None:
+    assert rules.order_total(185_000, 10_000, 15_000) == 210_000
+    assert rules.order_total(1, 0, 0) == 1
+    assert rules.DEFAULT_MAX_ORDER_VALUE_PAISA == 2_000_000  # PKR 20,000, fees included
+    assert type(rules.order_total(1, 2, 3)) is int
 
 
 # -- quantities -----------------------------------------------------------------------------------

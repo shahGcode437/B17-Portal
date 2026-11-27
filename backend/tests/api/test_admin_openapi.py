@@ -76,10 +76,23 @@ RBAC_D_REQUEST_OPERATIONS = {
     ("POST", "/admin/requests/{request_id}/cancel"),
 }
 RBAC_D_OPERATIONS = RBAC_D_PROVIDER_OPERATIONS | RBAC_D_REQUEST_OPERATIONS
-#: GROCERY-1b: the Super Admin's Grocery operating settings. No staff order route exists yet.
+#: GROCERY-1b: the Super Admin's operating settings. GROCERY-2: the staff order routes.
 GROCERY_OPERATIONS = {
     ("GET", "/admin/grocery/settings"),
     ("PATCH", "/admin/grocery/settings"),
+    ("GET", "/admin/grocery/orders"),
+    ("GET", "/admin/grocery/orders/{order_id}"),
+    ("POST", "/admin/grocery/orders/{order_id}/claim"),
+    ("POST", "/admin/grocery/orders/{order_id}/release"),
+    ("POST", "/admin/grocery/orders/{order_id}/confirm"),
+    ("POST", "/admin/grocery/orders/{order_id}/reconfirm"),
+    ("POST", "/admin/grocery/orders/{order_id}/reduce-amount"),
+    ("POST", "/admin/grocery/orders/{order_id}/start-preparing"),
+    ("POST", "/admin/grocery/orders/{order_id}/dispatch"),
+    ("POST", "/admin/grocery/orders/{order_id}/delivery-failed"),
+    ("POST", "/admin/grocery/orders/{order_id}/complete"),
+    ("POST", "/admin/grocery/orders/{order_id}/cancel"),
+    ("POST", "/admin/grocery/orders/{order_id}/issues"),
 }
 
 

@@ -592,3 +592,37 @@ This **replaces** the earlier statement that GROCERY-1b needs the block list bef
 ---
 
 **Decision (owner, 2026-11-27 — deferred security items).** The five items of `DEPLOYMENT.md` §16 are recorded in the production security backlog and are **not** implemented in this phase. Grocery stays disabled.
+
+---
+
+**Decision (owner, 2026-11-27 — simplified Grocery MVP; GROCERY-2).** The pilot is: the customer submits a list → the team contacts the customer and confirms the price → the team buys from the local market → prepares and delivers → the customer pays **cash on delivery**. **No** supplier management, quotation engine, inventory, catalogue or procurement system. This **replaces** the planned quotation-and-approval flow (planning D7: in-app customer approval is not built; a staff member records the agreement) and folds basic fulfilment and cash (planned GROCERY-4) into GROCERY-2.
+**Deferred, not rejected forever:** supplier and partner-mart records (D9, D16), quotations with versions and expiry, per-line pricing, in-app approval, online payment, refunds, partial payment, issue resolution, notifications, dispatch scheduling, an item catalogue.
+**Revisit when:** the pilot shows that disputes, volume or several suppliers need more structure.
+
+---
+
+**Decision (GROCERY-2 implementation choices — BUILT, awaiting review; migration `0012`; `API_CONTRACT.md` §19).**
+(1) Six statuses and one transition table; no generic "set status" endpoint. (2) `confirmed` is reachable **only** by recording an agreement, which a database `CHECK` backs with a required amount. (3) The server computes totals in integer paisa. Agreements are insert-only; the amount due rises only through a new agreement and falls through a reduction with a reason; no quotation versioning. (4) A failed delivery returns the order to `preparing`; attempts are derived from the history (no attempts table). (5) Staff cancellation from `preparing` is **Super Admin only**, with an acknowledgement and a system issue; none while out for delivery. (6) Delivery and cash are one transaction; one payment per order; collected must equal due. **No `Idempotency-Key` for completion:** the final state and the unique row already prevent a second collection. (7) A Moderator claims before changing an order; claim and release leave `revision` alone so they cannot block the customer's cancellation. (8) **Nobody handles their own order.** (9) All staff free text is internal; the customer sees statuses, amounts and `recordedBy: "staff"`. (10) The PKR 20,000 cap (fees included) is a **versioned setting**, provisional. (11) 120 staff changes per 15 minutes per person.
+**Rejected:** a status field in a `PATCH`; storing money as decimals or floats; a mutable "current quote" row; inferring payment from `delivered`; an attempts or assignment-history table; automatic refunds; a separate Grocery authority system.
+**Owner to confirm at review:** (5), (8), (9), and the limits of a recorded agreement (`AUTH_RBAC.md` §37.5).
+**Revisit when:** GROCERY-3 designs the screens; before the pilot (D5–D9, D13–D18 and `DEPLOYMENT.md` §17).
+
+---
+
+**Decision (owner, 2026-11-27 — final-review approval of the Grocery pilot policies; GROCERY-2).** This answers the "owner to confirm" points of the entry above.
+(1) **Workflow approved:** the customer submits a list → the team confirms with the customer → buys at the local market → prepares and delivers → **cash on delivery only**.
+(2) **Maximum agreed order value PKR 20,000, service and delivery fees included.** It stays configurable. (This replaces "provisional" in earlier entries.)
+(3) Service and delivery fees are set **manually** and may be zero.
+(4) After preparation has started, **only a Super Admin** cancels.
+(5) **Staff never process their own Grocery order.**
+(6) **Internal staff notes stay private.** The customer still gets a clear status, the agreed price and the payment information, and **the team tells the customer directly** about cancellations, substitutions and failed deliveries.
+(7) A **staff-recorded telephone confirmation is sufficient** for the pilot, and staff-recorded consent is **never** represented as independently authenticated customer consent.
+(8) **Deferred, not mandatory for the MVP:** advanced supplier management, inventory and a quotation engine.
+**Pilot launch requirements still unresolved:** refund, privacy, excluded-goods and cash-handling policies, with every other launch blocker of `DEPLOYMENT.md` §15–§17 and the security backlog of §16.
+**Revisit when:** the pilot's experience shows disputes about what was agreed, or the cap or fee handling needs to change.
+
+---
+
+**Decision (final review, approved by the owner 2026-11-27 — a new agreement must say what was agreed).** The review found that `reconfirm` accepted no description, so an approved substitution, possibly with an unchanged total, left no record of what the customer agreed to. **`consentNote` is now required on every `reconfirm`**; it stays optional on the first `confirm`. No schema or migration change. **Rejected:** requiring it on every confirmation (a note typed for every order); structured per-item substitution records (item-level editing is outside the simplified MVP).
+**Limits:** the server cannot detect an unrecorded substitution and cannot judge the note's wording; staff training covers both.
+**Revisit when:** GROCERY-3 designs the confirmation screen (it should ask for the substitution while it is being agreed).

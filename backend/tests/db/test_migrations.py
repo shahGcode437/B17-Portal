@@ -15,7 +15,11 @@ from sqlalchemy.exc import IntegrityError
 
 from app.models.enums import (
     GroceryActorRole,
+    GroceryConfirmationMethod,
+    GroceryEventAction,
+    GroceryIssueKind,
     GroceryOrderStatus,
+    GroceryPaymentMethod,
     GrocerySubstitution,
     GroceryUnit,
     StaffScope,
@@ -39,34 +43,41 @@ def scratch_url(db_engine: Engine, test_database_url: URL) -> Iterator[str]:
     with admin.connect() as connection:
         connection.execute(text(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)'))
         connection.execute(text(f'CREATE DATABASE "{name}"'))
+    url = scratch.render_as_string(hide_password=False)
     try:
-        yield scratch.render_as_string(hide_password=False)
+        yield url
     finally:
+        if (engine := _ENGINES.pop(url, None)) is not None:
+            engine.dispose()
         with admin.connect() as connection:
             connection.execute(text(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)'))
 
 
+#: One engine per scratch database for the query helpers below. A new engine for every query spent
+#: most of a migration test logging in and re-reading server settings. ``scratch_url`` disposes it.
+_ENGINES: dict[str, Engine] = {}
+
+
+def shared_engine(url: str) -> Engine:
+    if url not in _ENGINES:
+        # no server-side prepared statements: the schema changes under these connections
+        _ENGINES[url] = create_engine(url, connect_args={"prepare_threshold": None})
+    return _ENGINES[url]
+
+
 def tables(url: str) -> set[str]:
-    engine = create_engine(url)
-    try:
-        with engine.connect() as connection:
-            return set(
-                connection.execute(
-                    text("SELECT tablename FROM pg_tables WHERE schemaname = 'public'")
-                ).scalars()
-            )
-    finally:
-        engine.dispose()
+    with shared_engine(url).connect() as connection:
+        return set(
+            connection.execute(
+                text("SELECT tablename FROM pg_tables WHERE schemaname = 'public'")
+            ).scalars()
+        )
 
 
 def version(url: str) -> str | None:
-    engine = create_engine(url)
-    try:
-        with engine.connect() as connection:
-            assert_connected_to(connection, engine.url.database or "")
-            return connection.execute(text("SELECT version_num FROM alembic_version")).scalar()
-    finally:
-        engine.dispose()
+    with shared_engine(url).connect() as connection:
+        assert_connected_to(connection, shared_engine(url).url.database or "")
+        return connection.execute(text("SELECT version_num FROM alembic_version")).scalar()
 
 
 def test_a_fresh_database_upgrades_to_head(scratch_url: str) -> None:
@@ -75,7 +86,7 @@ def test_a_fresh_database_upgrades_to_head(scratch_url: str) -> None:
     command.upgrade(alembic_config(scratch_url), "head")
 
     assert tables(scratch_url) == EXPECTED_TABLES | {"alembic_version"}
-    assert version(scratch_url) == "0011"
+    assert version(scratch_url) == "0012"
 
 
 def test_it_downgrades_to_base_and_upgrades_again(scratch_url: str) -> None:
@@ -100,8 +111,9 @@ def test_the_models_and_the_migrations_have_not_drifted(scratch_url: str) -> Non
 def test_there_is_a_single_linear_migration_history(scratch_url: str) -> None:
     script = ScriptDirectory.from_config(alembic_config(scratch_url))
 
-    assert script.get_heads() == ["0011"]
+    assert script.get_heads() == ["0012"]
     assert [revision.revision for revision in script.walk_revisions()] == [
+        "0012",
         "0011",
         "0010",
         "0009",
@@ -134,19 +146,13 @@ def test_the_migration_can_be_rendered_as_sql_without_a_database_connection(
 
 
 def columns(url: str, table: str) -> set[str]:
-    engine = create_engine(url)
-    try:
-        with engine.connect() as connection:
-            return set(
-                connection.execute(
-                    text(
-                        "SELECT column_name FROM information_schema.columns WHERE table_name = :t"
-                    ),
-                    {"t": table},
-                ).scalars()
-            )
-    finally:
-        engine.dispose()
+    with shared_engine(url).connect() as connection:
+        return set(
+            connection.execute(
+                text("SELECT column_name FROM information_schema.columns WHERE table_name = :t"),
+                {"t": table},
+            ).scalars()
+        )
 
 
 def extensions(url: str) -> set[str]:
@@ -180,7 +186,7 @@ def test_0002_downgrades_cleanly_to_0001_and_upgrades_again(scratch_url: str) ->
     assert "search_document" not in columns(scratch_url, "listings")
     assert "pg_trgm" not in extensions(scratch_url)
     command.upgrade(config, "head")
-    assert version(scratch_url) == "0011"
+    assert version(scratch_url) == "0012"
     command.check(config)
 
 
@@ -267,7 +273,7 @@ def test_0003_downgrades_to_0002_and_upgrades_again(scratch_url: str) -> None:
     assert tables(scratch_url).isdisjoint(AUTH_TABLES)
     assert "ck_users_email_normalized" not in user_checks(scratch_url)
     command.upgrade(config, "head")
-    assert version(scratch_url) == "0011"
+    assert version(scratch_url) == "0012"
     assert tables(scratch_url) >= AUTH_TABLES
 
 
@@ -373,7 +379,7 @@ def test_0004_downgrades_to_0003_and_upgrades_again(scratch_url: str) -> None:
         scratch_url, "auth_identities"
     )
     command.upgrade(config, "head")
-    assert version(scratch_url) == "0011" and "oauth_flows" in tables(scratch_url)
+    assert version(scratch_url) == "0012" and "oauth_flows" in tables(scratch_url)
 
 
 def test_0004_refuses_to_run_over_duplicate_provider_identities(scratch_url: str) -> None:
@@ -465,12 +471,8 @@ def seed_legacy_listings(url: str) -> None:
 
 
 def rows(url: str, sql: str) -> list[tuple[object, ...]]:
-    engine = create_engine(url)
-    try:
-        with engine.connect() as connection:
-            return [tuple(row) for row in connection.execute(text(sql))]
-    finally:
-        engine.dispose()
+    with shared_engine(url).connect() as connection:
+        return [tuple(row) for row in connection.execute(text(sql))]
 
 
 def listing_snapshot(url: str) -> list[tuple[object, ...]]:
@@ -582,7 +584,7 @@ def test_0005_downgrades_to_0004_and_reupgrades_without_touching_listings(
     command.upgrade(config, "head")
 
     # Re-upgrading to head also applies 0008, which makes the legacy providers portal-managed.
-    assert version(scratch_url) == "0011"
+    assert version(scratch_url) == "0012"
     assert listing_snapshot(scratch_url) == portal_managed(before)
     command.check(config)
 
@@ -752,7 +754,7 @@ def test_0006_downgrades_to_0005_and_reupgrades_without_touching_existing_data(
     command.upgrade(config, "head")
 
     # Re-upgrading to head also applies 0008, which makes the legacy providers portal-managed.
-    assert version(scratch_url) == "0011"
+    assert version(scratch_url) == "0012"
     expected = {**before, "listings": portal_managed(before["listings"])}
     assert existing_data(scratch_url) == expected
     command.check(config)
@@ -791,21 +793,13 @@ STAFF_FUNCTIONS = {"staff_audit_events_append_only"}
 
 
 def execute(url: str, sql: str, **params: object) -> None:
-    engine = create_engine(url)
-    try:
-        with engine.begin() as connection:
-            connection.execute(text(sql), params)
-    finally:
-        engine.dispose()
+    with shared_engine(url).begin() as connection:
+        connection.execute(text(sql), params)
 
 
 def scalar(url: str, sql: str, **params: object) -> object:
-    engine = create_engine(url)
-    try:
-        with engine.connect() as connection:
-            return connection.execute(text(sql), params).scalar_one()
-    finally:
-        engine.dispose()
+    with shared_engine(url).connect() as connection:
+        return connection.execute(text(sql), params).scalar_one()
 
 
 def trigger_names(url: str) -> set[str]:
@@ -937,7 +931,7 @@ def test_0007_downgrades_an_empty_staff_schema_and_reupgrades(scratch_url: str) 
 
     command.upgrade(config, "head")
 
-    assert version(scratch_url) == "0011" and tables(scratch_url) >= STAFF_TABLES
+    assert version(scratch_url) == "0012" and tables(scratch_url) >= STAFF_TABLES
     command.check(config)
 
 
@@ -1013,10 +1007,10 @@ def test_0007_refuses_to_downgrade_over_live_staff_data_and_changes_nothing(
         command.downgrade(config, "0006")
 
     assert expected in str(refused.value)  # it says exactly what it would have destroyed
-    assert version(scratch_url) == "0011"  # nothing was downgraded...
+    assert version(scratch_url) == "0012"  # nothing was downgraded...
     assert tables(scratch_url) == tables_before  # ...no table was dropped...
     # ...and the protection is still in place (0011, undone with the rest, adds its own triggers)
-    assert trigger_names(scratch_url) == STAFF_TRIGGERS | GROCERY_TRIGGERS
+    assert trigger_names(scratch_url) == STAFF_TRIGGERS | GROCERY_TRIGGERS | GROCERY_0012_TRIGGERS
     for statement in CLEAR_STAFF_DATA:  # the operator removes the data deliberately
         execute(scratch_url, statement)
 
@@ -1425,7 +1419,7 @@ def test_0009_downgrades_to_0008_keeping_every_row_and_upgrades_again(scratch_ur
 
     command.upgrade(config, "head")
 
-    assert version(scratch_url) == "0011"
+    assert version(scratch_url) == "0012"
     assert columns(scratch_url, "listings") >= CONTACT_COLUMNS
     assert rows(scratch_url, UNTOUCHED_SQL) == before
     # Re-upgrading invents nothing either: the numbers are gone with the column that held them.
@@ -1448,7 +1442,7 @@ def test_0009_downgrades_all_the_way_to_base_and_upgrades_again(scratch_url: str
 
     command.upgrade(config, "head")
 
-    assert version(scratch_url) == "0011"
+    assert version(scratch_url) == "0012"
     assert columns(scratch_url, "listings") >= CONTACT_COLUMNS
     command.check(config)
 
@@ -1645,7 +1639,7 @@ def test_0010_downgrades_when_nobody_holds_grocery_and_keeps_audit_history(
 
     command.upgrade(config, "head")
 
-    assert version(scratch_url) == "0011"
+    assert version(scratch_url) == "0012"
     assert scope_check_values(scratch_url) == PREVIOUS_SCOPE_VALUES | {"grocery"}
     command.check(config)
 
@@ -1667,7 +1661,7 @@ def test_0010_refuses_to_downgrade_while_grocery_is_held_and_changes_nothing(
 
     assert "2 grocery staff scope assignment(s)" in str(refused.value)
     assert "roll back the application code" in str(refused.value)  # it says the order
-    assert version(scratch_url) == "0011"  # one transaction: the 0011 step is undone too
+    assert version(scratch_url) == "0012"  # one transaction: the 0011 step is undone too
     assert every_row(scratch_url) == rows_before
     assert all_constraints(scratch_url) == constraints_before
 
@@ -1697,6 +1691,12 @@ def test_0010_is_one_constraint_swap_with_no_data_statement(scratch_url: str) ->
     assert all(s.startswith("ALTER TABLE STAFF_SCOPE_ASSIGNMENTS ") for s in own), own
     assert "DROP CONSTRAINT" in own[0] and "ADD CONSTRAINT" in own[1]
 
+
+GROCERY_0012_TRIGGERS = {
+    "trg_grocery_order_confirmations_append_only",
+    "trg_grocery_payments_append_only",
+    "trg_grocery_order_events_append_only",
+}
 
 # -- 0011: grocery order intake (GROCERY-1b; docs/backend/DATA_MODEL.md §21) ---------------------------
 
@@ -1780,7 +1780,7 @@ def test_0011_adds_only_the_grocery_tables_and_changes_no_existing_row(scratch_u
     before_tables = tables(scratch_url)
     before_columns = {table: columns(scratch_url, table) for table in before_tables}
 
-    command.upgrade(config, "head")
+    command.upgrade(config, "0011")
 
     assert version(scratch_url) == "0011"
     assert tables(scratch_url) == before_tables | GROCERY_TABLES
@@ -1790,11 +1790,12 @@ def test_0011_adds_only_the_grocery_tables_and_changes_no_existing_row(scratch_u
     assert {table for table, _ in set(after) - set(before_constraints)} == GROCERY_TABLES
     after_rows = every_row(scratch_url)
     assert {table: after_rows[table] for table in before_rows} == before_rows
+    command.upgrade(config, "head")  # `check` compares the models with HEAD
     command.check(config)
 
 
 def test_0011_starts_disabled_with_no_block_and_no_order(scratch_url: str) -> None:
-    command.upgrade(alembic_config(scratch_url), "head")
+    command.upgrade(alembic_config(scratch_url), "0011")
 
     assert rows(scratch_url, DEFAULT_SETTINGS_SQL) == [
         (
@@ -1848,10 +1849,17 @@ def test_the_grocery_database_checks_are_exactly_the_application_vocabularies(
     assert check_values(scratch_url, settings, f"ck_{settings}_timezone_valid") == set(
         ALLOWED_TIMEZONES
     )
+    for table, check, values in (
+        ("grocery_order_confirmations", "method_valid", GroceryConfirmationMethod),
+        ("grocery_order_events", "action_valid", GroceryEventAction),
+        ("grocery_order_events", "issue_kind_valid", GroceryIssueKind),
+        ("grocery_payments", "method_valid", GroceryPaymentMethod),
+    ):
+        assert check_values(scratch_url, table, f"ck_{table}_{check}") == {v.value for v in values}
 
 
 def test_0011_refuses_invalid_rows_and_protects_both_histories(scratch_url: str) -> None:
-    command.upgrade(alembic_config(scratch_url), "head")
+    command.upgrade(alembic_config(scratch_url), "0011")
     execute(scratch_url, ADD_USER)
     execute(scratch_url, order_insert())
     execute(scratch_url, item_insert("1.5"))
@@ -1957,7 +1965,7 @@ def test_0011_downgrades_a_never_used_database_and_upgrades_again(scratch_url: s
     before_rows = every_row(scratch_url)
     before_constraints = all_constraints(scratch_url)
     before_shape = schema_shape(scratch_url)
-    command.upgrade(config, "head")
+    command.upgrade(config, "0011")
 
     command.downgrade(config, "0010")
 
@@ -1966,10 +1974,11 @@ def test_0011_downgrades_a_never_used_database_and_upgrades_again(scratch_url: s
     assert all_constraints(scratch_url) == before_constraints
     assert schema_shape(scratch_url) == before_shape  # tables, indexes, triggers and function gone
 
-    command.upgrade(config, "head")
+    command.upgrade(config, "0011")
 
     assert version(scratch_url) == "0011"
     assert len(rows(scratch_url, DEFAULT_SETTINGS_SQL)) == 1
+    command.upgrade(config, "head")  # `check` compares the models with HEAD
     command.check(config)
 
 
@@ -1997,7 +2006,7 @@ def test_0011_refuses_to_downgrade_over_grocery_data_and_changes_nothing(
 ) -> None:
     statements, expected = LIVE_GROCERY_DATA[case]
     config = alembic_config(scratch_url)
-    command.upgrade(config, "head")
+    command.upgrade(config, "0011")
     for statement in statements:
         execute(scratch_url, statement)
     rows_before = every_row(scratch_url)
@@ -2034,3 +2043,202 @@ def test_0011_is_additive_ddl_and_one_default_settings_row(scratch_url: str) -> 
     for statement in own:
         assert statement.split()[0].upper() in {"CREATE", "INSERT"}, statement[:90]
         assert "grocery" in statement, statement[:90]  # nothing touches an existing table
+
+
+# -- 0012: grocery order management (GROCERY-2; docs/backend/DATA_MODEL.md §22) ------------------------
+
+#: An order that staff have taken to ``confirmed``.
+CONFIRMED_ORDER = (
+    "UPDATE grocery_orders SET status = 'confirmed', agreed_total_paisa = 1000, "
+    "final_due_paisa = 1000"
+)
+AGREEMENT = (
+    "INSERT INTO grocery_order_confirmations (id, order_id, sequence, items_subtotal_paisa, "
+    "service_fee_paisa, delivery_fee_paisa, total_paisa, method, recorded_by, recorded_at) "
+    "SELECT gen_random_uuid(), id, 1, 900, 100, 0, {total}, 'phone_call', customer_id, now() "
+    "FROM grocery_orders LIMIT 1"
+)
+PAYMENT = (
+    "INSERT INTO grocery_payments (id, order_id, method, amount_due_paisa, amount_collected_paisa, "
+    "collected_by, collected_at) SELECT gen_random_uuid(), id, 'cash_on_delivery', 1000, "
+    "{collected}, customer_id, now() FROM grocery_orders LIMIT 1"
+)
+ORDER_EVENT = (
+    "INSERT INTO grocery_order_events (id, order_id, action, actor_user_id, subject_user_id, "
+    "amount_before_paisa, amount_after_paisa, issue_kind, note) SELECT gen_random_uuid(), id, "
+    "'{action}', customer_id, {subject}, {before}, {after}, {kind}, {note} "
+    "FROM grocery_orders LIMIT 1"
+)
+NEW_SETTINGS_VERSION = (
+    "INSERT INTO grocery_settings_revisions (revision, enabled, serviceable_blocks, "
+    "operating_days, opens_at, closes_at, timezone, daily_capacity, "
+    "max_active_orders_per_customer, max_items_per_order, actor_user_id, max_order_value_paisa) "
+    "SELECT revision + 1, enabled, serviceable_blocks, operating_days, opens_at, closes_at, "
+    "timezone, daily_capacity, max_active_orders_per_customer, max_items_per_order, "
+    "gen_random_uuid(), {cap} FROM grocery_settings_revisions ORDER BY revision DESC LIMIT 1"
+)
+
+
+def order_event(
+    action: str,
+    subject: str = "NULL",
+    before: str = "NULL",
+    after: str = "NULL",
+    kind: str = "NULL",
+    note: str = "NULL",
+) -> str:
+    return ORDER_EVENT.format(
+        action=action, subject=subject, before=before, after=after, kind=kind, note=note
+    )
+
+
+def seed_intake_order(url: str) -> None:
+    for statement in (ADD_USER, order_insert(), item_insert("1.5"), history_insert()):
+        execute(url, statement)
+
+
+def test_0012_is_additive_and_keeps_every_existing_order(scratch_url: str) -> None:
+    config = alembic_config(scratch_url)
+    command.upgrade(config, "0011")
+    seed_intake_order(scratch_url)
+    before = every_row(scratch_url)
+    old_orders = f"SELECT {ORDER_COLUMNS} FROM grocery_orders"  # noqa: S608
+    old_order = rows(scratch_url, old_orders)
+    old_settings = rows(scratch_url, DEFAULT_SETTINGS_SQL)
+    old_tables = tables(scratch_url)
+
+    command.upgrade(config, "0012")
+
+    assert version(scratch_url) == "0012"
+    assert tables(scratch_url) - old_tables == {
+        "grocery_order_confirmations",
+        "grocery_payments",
+        "grocery_order_events",
+    }
+    assert rows(scratch_url, old_orders) == old_order
+    assert rows(scratch_url, DEFAULT_SETTINGS_SQL) == old_settings  # still disabled, no block
+    assert rows(scratch_url, "SELECT max_order_value_paisa FROM grocery_settings_revisions") == [
+        (2_000_000,)
+    ]
+    assert rows(
+        scratch_url,
+        "SELECT assigned_to, assigned_at, agreed_total_paisa, final_due_paisa, delivered_at "
+        "FROM grocery_orders",
+    ) == [(None, None, None, None, None)]
+    after = every_row(scratch_url)
+    untouched = set(before) - {"grocery_orders", "grocery_settings_revisions"}
+    assert {table: after[table] for table in untouched} == {t: before[t] for t in untouched}
+    assert trigger_names(scratch_url) >= GROCERY_0012_TRIGGERS
+    command.check(config)
+
+
+def test_0012_the_database_itself_refuses_inconsistent_handling(scratch_url: str) -> None:
+    command.upgrade(alembic_config(scratch_url), "head")
+    seed_intake_order(scratch_url)
+    update = "UPDATE grocery_orders SET "
+    priced = "agreed_total_paisa = 10, final_due_paisa = 10"
+    refused = {
+        "agreement_required": f"{update}status = 'confirmed'",
+        "no_amount_when_submitted": f"{update}{priced}",
+        "amounts_together": f"{update}status = 'confirmed', agreed_total_paisa = 10",
+        # more due than was ever agreed
+        "amounts_valid": f"{update}status = 'confirmed', agreed_total_paisa = 10, "
+        "final_due_paisa = 11",
+        "delivered_at_iff_delivered": f"{update}status = 'delivered', {priced}",
+        "assignment_complete": f"{update}assigned_to = customer_id",
+        "total_is_the_sum": AGREEMENT.format(total=1001),
+        "collected_is_the_amount_due": PAYMENT.format(collected=999),
+        "subject_iff_assignment": order_event("claimed"),
+        "amounts_iff_reduction": order_event(
+            "amount_reduced", before="10", after="10", note="'why'"
+        ),
+        "kind_iff_issue": order_event("issue_recorded", note="'why'"),
+        "reason_required": order_event("issue_recorded", kind="'other'"),
+        "action_valid": order_event("refunded"),
+        "max_order_value_range": NEW_SETTINGS_VERSION.format(cap=99),
+    }
+    for constraint, statement in refused.items():
+        with pytest.raises(IntegrityError, match=constraint):
+            execute(scratch_url, statement)
+
+    execute(scratch_url, CONFIRMED_ORDER)
+    execute(scratch_url, AGREEMENT.format(total=1000))
+    execute(scratch_url, PAYMENT.format(collected=1000))
+    execute(scratch_url, order_event("claimed", subject="customer_id"))
+    # one collection per order, one agreement per sequence number
+    for constraint, statement in (
+        ("uq_grocery_payments_order_id", PAYMENT.format(collected=1000)),
+        ("uq_grocery_order_confirmations_order_id_sequence", AGREEMENT.format(total=1000)),
+    ):
+        with pytest.raises(IntegrityError, match=constraint):
+            execute(scratch_url, statement)
+    for table, column in (
+        ("grocery_order_confirmations", "total_paisa"),
+        ("grocery_payments", "amount_collected_paisa"),
+        ("grocery_order_events", "note"),
+    ):
+        for statement in (
+            f"UPDATE {table} SET {column} = {column}",  # noqa: S608
+            f"DELETE FROM {table}",  # noqa: S608
+        ):
+            with pytest.raises(Exception, match="append-only"):
+                execute(scratch_url, statement)
+
+
+def test_0012_downgrades_when_nothing_was_handled_and_upgrades_again(scratch_url: str) -> None:
+    config = alembic_config(scratch_url)
+    command.upgrade(config, "0011")
+    seed_intake_order(scratch_url)
+    shape = schema_shape(scratch_url)
+    constraints = all_constraints(scratch_url)
+    data = every_row(scratch_url)
+    command.upgrade(config, "0012")
+
+    command.downgrade(config, "0011")
+
+    assert version(scratch_url) == "0011"
+    assert schema_shape(scratch_url) == shape
+    assert all_constraints(scratch_url) == constraints
+    assert every_row(scratch_url) == data
+    command.upgrade(config, "head")
+    command.check(config)
+
+
+LIVE_HANDLING: dict[str, tuple[str, str]] = {
+    "a confirmed order": (CONFIRMED_ORDER, "1 orders in a staff-handled status"),
+    "an assignment": (
+        "UPDATE grocery_orders SET assigned_to = customer_id, assigned_at = now()",
+        "1 assigned or priced orders",
+    ),
+    "an agreement": (AGREEMENT.format(total=1000), "1 recorded customer agreements"),
+    "a cash collection": (PAYMENT.format(collected=1000), "1 cash collections"),
+    "a staff event": (order_event("claimed", subject="customer_id"), "1 staff order events"),
+    "a staff history row": (
+        history_insert(from_status="'submitted'", to_status="'cancelled'", role="'staff'"),
+        "1 staff history rows",
+    ),
+    "a changed value cap": (
+        NEW_SETTINGS_VERSION.format(cap=3_000_000),
+        "1 settings versions with a changed value cap",
+    ),
+}
+
+
+@pytest.mark.parametrize("case", list(LIVE_HANDLING))
+def test_0012_refuses_to_downgrade_over_order_handling_and_changes_nothing(
+    scratch_url: str, case: str
+) -> None:
+    statement, expected = LIVE_HANDLING[case]
+    config = alembic_config(scratch_url)
+    command.upgrade(config, "head")
+    seed_intake_order(scratch_url)
+    execute(scratch_url, statement)
+    data, shape = every_row(scratch_url), schema_shape(scratch_url)
+
+    with pytest.raises(RuntimeError, match="Refusing to downgrade 0012") as refused:
+        command.downgrade(config, "0011")
+
+    assert expected in str(refused.value)
+    assert version(scratch_url) == "0012"
+    assert every_row(scratch_url) == data
+    assert schema_shape(scratch_url) == shape

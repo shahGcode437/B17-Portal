@@ -368,12 +368,14 @@ A functional audit of the running product (real browser, real API) found that gr
 
 An independent domain: B-17 Portal manages procurement and fulfilment, local partner marts supply, **cash on delivery only**, **off by default** until the pilot is ready. Each phase is separately approved, reviewed and committed. Decisions and blockers: `DECISIONS.md`. Planned migration numbers may move.
 
+> **Revised 2026-11-27 (owner):** the business is simplified — the team agrees the price with the customer, buys at the local market, delivers, and takes cash; no partner-mart, supplier, quotation, inventory or procurement system. The introduction below is the earlier plan. The original GROCERY-2 was "staff review and quotation (backend; planned `0012`)" and GROCERY-4 "fulfilment, cash and corrections (planned `0013`)".
+
 | Phase | Scope | Status |
 |---|---|---|
 | **GROCERY-0** | Planning and decision register (kept outside the repository) | done |
 | **GROCERY-1a** | Staff authority: `StaffScope`, the `grocery` scope, guards, migration `0010` | **COMPLETE:** committed `e1b566f`, pushed, CI passed |
 | **GROCERY-1b** | Order intake (backend): availability switch, configurable hours / capacity / limits / serviceable blocks, submit, list, detail, cancel, idempotency, privacy (planned `0011`) | **COMPLETE (backend):** committed `d401593`, pushed 2026-11-27, CI passed (`0011`). Disabled; empty block list: **no order can be accepted** until the owner supplies verified blocks and enables it |
-| **GROCERY-2** | Staff review and quotation (backend; planned `0012`) | NOT STARTED; D5–D9 |
-| **GROCERY-3** | Customer and staff screens, staff appointment | NOT STARTED; D10, D11, D13, D14, D18 |
-| **GROCERY-4** | Fulfilment, cash and corrections (planned `0013`) | NOT STARTED; D15–D17 |
+| **GROCERY-2** | **Simple order management and delivery** (backend, `0012`): staff queue, claim, recorded customer agreement, manual pricing, preparation, delivery, cash on delivery, cancellation, history | **BUILT, reviewed and approved** 2026-11-27; committed, **not pushed** (CI pending). Grocery stays disabled |
+| **GROCERY-3** | Customer and staff screens, staff appointment (against `API_CONTRACT.md` §18 and §19) | NOT STARTED; D10, D11, D13, D14, D18 |
+| **GROCERY-4** | Corrections after the pilot's first experience (basic fulfilment and cash moved into GROCERY-2); refunds, issue resolution and reconciliation only if approved | NOT STARTED; D15, D17 |
 | **GROCERY-5** | Hardening and limited pilot | NOT STARTED; D12 and every launch blocker, including the separate durable-e-mail phase. **Required security work:** stop several accounts from using up a day's order capacity (`DECISIONS.md`, GROCERY-1b). **Also before the pilot:** correct the daily submission-limit reset (05:00 PKT) and the other entries of `DEPLOYMENT.md` §15 |

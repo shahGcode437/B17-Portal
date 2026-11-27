@@ -1,10 +1,12 @@
-"""Pure Grocery order-intake rules (GROCERY-1b; docs/backend/API_CONTRACT.md §18,
-DATA_MODEL.md §21).
+"""Pure Grocery order rules (GROCERY-1b and GROCERY-2; docs/backend/API_CONTRACT.md §18 and §19,
+DATA_MODEL.md §21 and §22).
 
 Nothing here touches the database, the web layer or the clock (the caller passes "now"), so every
 rule is unit-testable and the services, the schemas and the tests cannot disagree.
 
-* **Lifecycle.** One table of allowed transitions. Anything not listed is refused.
+* **Lifecycle.** One table of allowed transitions. Anything not listed is refused. The few staff
+  operations that change no status list the statuses they are allowed in.
+* **Money** is whole paisa (``int``). The total is always computed here, never taken from a client.
 * **Quantities** are exact ``Decimal`` values with a per-unit minimum, maximum and step. They are
   never parsed from, or turned into, a binary floating-point number.
 * **Operating window.** Opening time inclusive, closing time exclusive, judged on the calendar and
@@ -29,8 +31,10 @@ from app.models.enums import GroceryActorRole, GroceryOrderStatus, GroceryUnit
 
 # ------------------------------------------------------------------------------ lifecycle
 
-#: A terminal order never changes again. ``delivered`` joins this set when delivery exists.
-TERMINAL_STATUSES: frozenset[GroceryOrderStatus] = frozenset({GroceryOrderStatus.CANCELLED})
+#: A terminal order never changes status again.
+TERMINAL_STATUSES: frozenset[GroceryOrderStatus] = frozenset(
+    {GroceryOrderStatus.DELIVERED, GroceryOrderStatus.CANCELLED}
+)
 #: "Active" is every non-terminal order — the set the per-customer limit counts. A new status is
 #: active unless it is deliberately made terminal.
 ACTIVE_STATUSES: frozenset[GroceryOrderStatus] = frozenset(GroceryOrderStatus) - TERMINAL_STATUSES
@@ -38,18 +42,50 @@ ACTIVE_STATUSES: frozenset[GroceryOrderStatus] = frozenset(GroceryOrderStatus) -
 
 class GroceryAction(StrEnum):
     CANCEL = "cancel"
+    CONFIRM = "confirm"
+    START_PREPARING = "start_preparing"
+    DISPATCH = "dispatch"
+    DELIVERY_FAILED = "delivery_failed"
+    COMPLETE = "complete"
 
+
+_Status = GroceryOrderStatus
+_Action = GroceryAction
+_CUSTOMER = GroceryActorRole.CUSTOMER
+_STAFF = GroceryActorRole.STAFF
 
 #: (current status, action, who acts) -> new status. The COMPLETE list of allowed transitions.
 TRANSITIONS: Mapping[
     tuple[GroceryOrderStatus, GroceryAction, GroceryActorRole], GroceryOrderStatus
 ] = {
-    (
-        GroceryOrderStatus.SUBMITTED,
-        GroceryAction.CANCEL,
-        GroceryActorRole.CUSTOMER,
-    ): GroceryOrderStatus.CANCELLED,
+    (_Status.SUBMITTED, _Action.CANCEL, _CUSTOMER): _Status.CANCELLED,
+    (_Status.SUBMITTED, _Action.CONFIRM, _STAFF): _Status.CONFIRMED,
+    (_Status.CONFIRMED, _Action.START_PREPARING, _STAFF): _Status.PREPARING,
+    (_Status.PREPARING, _Action.DISPATCH, _STAFF): _Status.OUT_FOR_DELIVERY,
+    (_Status.OUT_FOR_DELIVERY, _Action.COMPLETE, _STAFF): _Status.DELIVERED,
+    # a failed attempt: the goods are back, waiting for another delivery or a manual decision
+    (_Status.OUT_FOR_DELIVERY, _Action.DELIVERY_FAILED, _STAFF): _Status.PREPARING,
+    # staff cancellation; from ``preparing`` (goods may be bought) a Super Admin only
+    (_Status.SUBMITTED, _Action.CANCEL, _STAFF): _Status.CANCELLED,
+    (_Status.CONFIRMED, _Action.CANCEL, _STAFF): _Status.CANCELLED,
+    (_Status.PREPARING, _Action.CANCEL, _STAFF): _Status.CANCELLED,
 }
+
+#: Purchasing may have started: cancelling from here needs a Super Admin, an explicit
+#: acknowledgement, and leaves an issue for manual resolution. No refund is ever created.
+AFTER_PROCUREMENT: frozenset[GroceryOrderStatus] = frozenset({GroceryOrderStatus.PREPARING})
+#: A new customer agreement (a changed price or substitution) can be recorded here.
+RECONFIRM_STATUSES: frozenset[GroceryOrderStatus] = frozenset(
+    {GroceryOrderStatus.CONFIRMED, GroceryOrderStatus.PREPARING}
+)
+#: The amount due may be LOWERED here, with a reason.
+REDUCE_STATUSES: frozenset[GroceryOrderStatus] = frozenset(
+    {
+        GroceryOrderStatus.CONFIRMED,
+        GroceryOrderStatus.PREPARING,
+        GroceryOrderStatus.OUT_FOR_DELIVERY,
+    }
+)
 
 
 def next_status(
@@ -57,6 +93,20 @@ def next_status(
 ) -> GroceryOrderStatus | None:
     """The status ``action`` leads to, or ``None`` if it is not allowed."""
     return TRANSITIONS.get((current, action, actor))
+
+
+# ------------------------------------------------------------------------------ money
+
+#: The most any one amount may be (PKR 1,000,000): a sanity bound and the database backstop.
+MAX_AMOUNT_PAISA = 100_000_000
+#: The most an agreed total may be in the pilot, fees included: PKR 20,000, approved by the owner
+#: (2026-11-27). This is the default of a setting, so it stays configurable.
+DEFAULT_MAX_ORDER_VALUE_PAISA = 2_000_000
+MIN_ORDER_VALUE_LIMIT_PAISA = 100
+
+
+def order_total(items_subtotal: int, service_fee: int, delivery_fee: int) -> int:
+    return items_subtotal + service_fee + delivery_fee
 
 
 # ------------------------------------------------------------------------------ quantities

@@ -390,7 +390,11 @@ def send_call(api: AuthApi, call: tuple[str, str, dict[str, Any] | None]) -> Any
 def test_grocery_only_is_refused_on_every_admin_route_and_changes_nothing(env: AuthEnv) -> None:
     world = World(env)
     calls = world.calls()
-    assert set(calls) == set(ADMIN_AUTHORITY), "a new /admin route needs a Grocery decision here"
+    # GROCERY-2 added the one kind of route a Grocery Moderator MAY use (grocery_staff); its
+    # refusals of everyone else are in test_grocery_staff_api.py
+    assert set(calls) == {
+        key for key, value in ADMIN_AUTHORITY.items() if value != "grocery_staff"
+    }, "a new /admin route needs a Grocery decision here"
     grocery = actor(env, moderator_scopes=[GROCERY])
     before = database(env.session)
 

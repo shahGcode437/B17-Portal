@@ -1,8 +1,8 @@
-"""Grocery order intake for the CUSTOMER: availability, submit, history, detail and cancel
-(GROCERY-1b; docs/backend/API_CONTRACT.md §18).
+"""Grocery orders for the CUSTOMER: availability, submit, history, detail and cancel
+(GROCERY-1b, extended by GROCERY-2; docs/backend/API_CONTRACT.md §18 and §19).
 
-The customer is always the session user; no method takes an owner id from a request. There is no
-staff or Super Admin read of an order in this phase.
+The customer is always the session user; no method takes an owner id from a request. Staff work
+on orders through ``grocery_staff_orders``, never through this service.
 
 SUBMIT is one transaction, and its order matters:
 
@@ -37,10 +37,17 @@ from app.models import (
     GroceryOrderStatusHistory,
     GrocerySettingsRevision,
 )
-from app.models.enums import GroceryActorRole, GroceryOrderStatus, GrocerySubstitution, UserStatus
+from app.models.enums import (
+    GroceryActorRole,
+    GroceryOrderStatus,
+    GroceryPaymentMethod,
+    GrocerySubstitution,
+    UserStatus,
+)
 from app.repositories.grocery import GroceryRepository
 from app.schemas.envelope import PageMeta
 from app.schemas.grocery import (
+    GroceryAgreementRead,
     GroceryAvailability,
     GroceryCancelRequest,
     GroceryDeliveryRead,
@@ -51,6 +58,7 @@ from app.schemas.grocery import (
     GroceryOrderDetail,
     GroceryOrdersQuery,
     GroceryOrderSummary,
+    GroceryPaymentRead,
     GrocerySchedule,
     GroceryUnitRead,
     UnavailableReason,
@@ -279,6 +287,11 @@ class GroceryOrderService:
         if order is None:
             raise not_found()  # missing and someone else's are indistinguishable
         items = self._repository.items_of(order.id)
+        history = self._repository.history_of(order.id)
+        cancelled_by = next(
+            (row.actor_role for row in history if row.to_status is GroceryOrderStatus.CANCELLED),
+            None,
+        )
         return GroceryOrderDetail(
             **_summary_fields(order, len(items)),
             items=[
@@ -302,6 +315,22 @@ class GroceryOrderService:
             ),
             instructions=order.instructions,
             cancel_reason=order.cancel_reason,
+            cancelled_by=None if cancelled_by is None else cancelled_by.value,
+            agreed_total_paisa=order.agreed_total_paisa,
+            agreements=[
+                GroceryAgreementRead(
+                    sequence=row.sequence,
+                    items_subtotal_paisa=row.items_subtotal_paisa,
+                    service_fee_paisa=row.service_fee_paisa,
+                    delivery_fee_paisa=row.delivery_fee_paisa,
+                    total_paisa=row.total_paisa,
+                    method=row.method,
+                    recorded_by="staff",
+                    recorded_at=row.recorded_at,
+                )
+                for row in self._repository.confirmations_of(order.id)
+            ],
+            payment=self._payment(order),
             can_cancel=rules.next_status(
                 order.status, rules.GroceryAction.CANCEL, GroceryActorRole.CUSTOMER
             )
@@ -310,13 +339,26 @@ class GroceryOrderService:
                 GroceryHistoryRead(
                     from_status=row.from_status,
                     to_status=row.to_status,
-                    actor_role="customer",
-                    reason=row.reason,
+                    actor_role=row.actor_role.value,
+                    # a staff member's reason or note is internal
+                    reason=row.reason if row.actor_role is GroceryActorRole.CUSTOMER else None,
                     created_at=row.created_at,
                 )
-                for row in self._repository.history_of(order.id)
+                for row in history
             ],
             updated_at=order.updated_at,
+        )
+
+    def _payment(self, order: GroceryOrder) -> GroceryPaymentRead | None:
+        if order.final_due_paisa is None or order.status is GroceryOrderStatus.CANCELLED:
+            return None  # nothing is owed before an agreement, nor on a cancelled order
+        collected = self._repository.payment_of(order.id)
+        return GroceryPaymentRead(
+            method=GroceryPaymentMethod.CASH_ON_DELIVERY,
+            status="due" if collected is None else "collected",
+            amount_due_paisa=order.final_due_paisa,
+            amount_collected_paisa=None if collected is None else collected.amount_collected_paisa,
+            collected_at=None if collected is None else collected.collected_at,
         )
 
     # -- cancel ----------------------------------------------------------------------------------
@@ -414,4 +456,6 @@ def _summary_fields(order: GroceryOrder, item_count: int) -> dict[str, object]:
         "block": order.block,
         "submitted_at": order.submitted_at,
         "cancelled_at": order.cancelled_at,
+        "final_amount_due_paisa": order.final_due_paisa,
+        "delivered_at": order.delivered_at,
     }

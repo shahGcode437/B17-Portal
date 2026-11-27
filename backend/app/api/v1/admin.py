@@ -124,6 +124,10 @@ _MODERATION_ERRORS: dict[int | str, dict[str, Any]] = {
 #: sensitive window plus a per-actor rate limit (``require_staff_mutation``). Every staff-management
 #: mutation. Router: ``admin_staff.sensitive_router``.
 #:
+#: ``grocery_staff`` — GROCERY-2, Grocery order handling: a Super Admin, or a Moderator holding the
+#: ``grocery`` scope, proven again under lock by the service. No listing scope implies it.
+#: Router: ``admin_grocery_orders.router``; changes also pass ``require_grocery_staff_write``.
+#:
 #: A CI test fails when any ``/admin/*`` route has no entry here, sits on the wrong router, or its
 #: runtime dependency is weaker than the entry says.
 ADMIN_AUTHORITY: dict[str, str] = {
@@ -136,6 +140,19 @@ ADMIN_AUTHORITY: dict[str, str] = {
     "POST /admin/providers/{provider_id}/archive": "services_staff",
     "GET /admin/grocery/settings": "super_admin_only",
     "PATCH /admin/grocery/settings": "super_admin_only",
+    "GET /admin/grocery/orders": "grocery_staff",
+    "GET /admin/grocery/orders/{order_id}": "grocery_staff",
+    "POST /admin/grocery/orders/{order_id}/claim": "grocery_staff",
+    "POST /admin/grocery/orders/{order_id}/release": "grocery_staff",
+    "POST /admin/grocery/orders/{order_id}/confirm": "grocery_staff",
+    "POST /admin/grocery/orders/{order_id}/reconfirm": "grocery_staff",
+    "POST /admin/grocery/orders/{order_id}/reduce-amount": "grocery_staff",
+    "POST /admin/grocery/orders/{order_id}/start-preparing": "grocery_staff",
+    "POST /admin/grocery/orders/{order_id}/dispatch": "grocery_staff",
+    "POST /admin/grocery/orders/{order_id}/delivery-failed": "grocery_staff",
+    "POST /admin/grocery/orders/{order_id}/complete": "grocery_staff",
+    "POST /admin/grocery/orders/{order_id}/cancel": "grocery_staff",
+    "POST /admin/grocery/orders/{order_id}/issues": "grocery_staff",
     "GET /admin/requests": "services_staff",
     "GET /admin/requests/{request_id}": "services_staff",
     "POST /admin/requests/{request_id}/accept": "services_staff",
