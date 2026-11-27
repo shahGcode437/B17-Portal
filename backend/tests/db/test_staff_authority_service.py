@@ -38,6 +38,7 @@ from tests.db.staff_helpers import (
     audit_count,
     audit_events,
     auth_event_count,
+    live_session,
     live_sessions,
     open_sessions,
     revoke_reasons,
@@ -632,10 +633,14 @@ def test_hosted_environments_refuse_fixture_demo_and_reserved_identities(
         with refused(StaffCode.TARGET_NOT_ELIGIBLE):
             svc.promote_super_admin(target.email, REASON)
         with refused(StaffCode.TARGET_NOT_ELIGIBLE):
-            svc.appoint_moderator(actor.id, target.email, [FOOD])
+            svc.appoint_moderator(
+                actor.id, target.email, [FOOD], session_id=live_session(auth_env.session, actor.id)
+            )
         assert roles_of(auth_env.session, target.id) == set()
     else:  # local development / throwaway test databases: demo staff are allowed
-        assert svc.appoint_moderator(actor.id, target.email, [FOOD]).changed
+        assert svc.appoint_moderator(
+            actor.id, target.email, [FOOD], session_id=live_session(auth_env.session, actor.id)
+        ).changed
         assert roles_of(auth_env.session, target.id) == {"moderator"}
 
 
@@ -672,7 +677,9 @@ def test_a_super_admin_who_lost_the_role_cannot_complete_a_staff_change(auth_env
     before = snapshot(auth_env.session, target.id)
 
     with refused(StaffCode.ACTOR_NOT_AUTHORISED):
-        svc.appoint_moderator(actor.id, target.email, [FOOD])
+        svc.appoint_moderator(
+            actor.id, target.email, [FOOD], session_id=live_session(auth_env.session, actor.id)
+        )
 
     assert snapshot(auth_env.session, target.id) == before
     assert roles_of(auth_env.session, keeper.id) == {"admin"}
@@ -686,7 +693,9 @@ def test_a_suspended_or_unverified_actor_cannot_complete_a_staff_change(
     target = make_account(auth_env.session, "tt@example.org")
 
     with refused(StaffCode.ACTOR_NOT_AUTHORISED):
-        service(auth_env.session, auth_env.clock).appoint_moderator(actor.id, target.email, [FOOD])
+        service(auth_env.session, auth_env.clock).appoint_moderator(
+            actor.id, target.email, [FOOD], session_id=live_session(auth_env.session, actor.id)
+        )
 
 
 # -- nothing else writes roles -------------------------------------------------------------------------

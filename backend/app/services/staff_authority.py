@@ -7,7 +7,8 @@ if anything does), so the invariants below have exactly one place to hold.
 
 One operation = ONE database transaction that contains every effect:
 
-    advisory lock → target row lock → re-read eligibility → role / scope change
+    advisory lock → (web) the actor and acting session → target row lock → re-read eligibility
+    → role / scope change
     → revoke the target's sessions → auth timeline event (role changes) → durable staff audit
     → COMMIT
 
@@ -17,14 +18,20 @@ committed without its audit row.
 
 LOCK ORDER (binding; frozen in RBAC-B)::
 
-    staff-authority advisory lock  →  users (target, FOR UPDATE)  →  user_roles
+    staff-authority advisory lock  →  [web: users (actor, SHARE)  →  auth_sessions (acting,
+                                       SHARE)]
+                                   →  users (target, FOR UPDATE)  →  user_roles
                                    →  staff_scope_assignments
 
-A staff mutation NEVER locks a listing. A moderation decision takes ``listings → users (KEY SHARE)
-→ user_roles → staff_scope_assignments``; the two walk ``users → user_roles → scopes`` in the same
-direction and share no lock held while waiting for the other, so they cannot deadlock. The
-advisory lock is taken FIRST and is exclusive, so staff mutations run one at a time: that is what
-gives "is this the last usable Super Admin?" one consistent answer even for concurrent mutual
+A web change re-reads under those two locks that the acting session is still usable
+(AUTH_RBAC.md §36). Only staff mutations hold two users' rows, and the advisory lock lets one
+run at a time; when actor and target are one account the second lock upgrades the first.
+
+A staff mutation NEVER locks a listing. A moderation decision takes ``listings → users (SHARE) →
+auth_sessions → user_roles → staff_scope_assignments``; the two walk ``users → user_roles → scopes``
+in the same direction and share no lock held while waiting for the other, so they cannot deadlock.
+The advisory lock is taken FIRST and is exclusive, so staff mutations run one at a time: that is
+what gives "is this the last usable Super Admin?" one consistent answer even for concurrent mutual
 demotions.
 
 WEB operations (a Super Admin; ``source = web``, with the actor) manage MODERATORS only. A Super
@@ -68,8 +75,9 @@ from app.models.enums import (
     UserStatus,
 )
 from app.repositories.auth import RoleRepository, SessionRepository
-from app.repositories.staff import StaffManagementRepository
+from app.repositories.staff import StaffAuthorityRepository, StaffManagementRepository
 from app.services.auth_audit import AuthAuditService
+from app.services.auth_sessions import hold_acting_session
 from app.services.oauth import enabled_login_providers
 from app.services.staff_audit import StaffAuditService
 from app.services.staff_rules import (
@@ -146,13 +154,18 @@ class StaffAuthorityService:
     # ==== web: manage Moderators ==================================================================
 
     def appoint_moderator(
-        self, actor_id: uuid.UUID, email: str, scopes: Collection[StaffScope]
+        self,
+        actor_id: uuid.UUID,
+        email: str,
+        scopes: Collection[StaffScope],
+        *,
+        session_id: uuid.UUID,
     ) -> StaffChange:
         """Make an existing, active, verified account a Moderator with ``scopes`` (at least one,
         assignable). A Professional profile is NOT required."""
         wanted = validate_scopes(scopes)
         with transaction(self._session):
-            self._begin_web(actor_id)
+            self._begin_web(actor_id, session_id)
             user = self._staff.lock_user_by_email(canonical_email(email))
             if user is None or not self._eligible(user):
                 raise self._not_eligible()
@@ -185,14 +198,19 @@ class StaffAuthorityService:
             return StaffChange(user.id, user.email, True, revoked)
 
     def replace_scopes(
-        self, actor_id: uuid.UUID, user_id: uuid.UUID, scopes: Collection[StaffScope]
+        self,
+        actor_id: uuid.UUID,
+        user_id: uuid.UUID,
+        scopes: Collection[StaffScope],
+        *,
+        session_id: uuid.UUID,
     ) -> StaffChange:
         """Replace an ACTIVE Moderator's scope set (replace-set semantics, atomic). An identical
         set changes nothing (no session revocation, no audit). A paused Moderator is resumed, not
         updated, and an empty set is a pause: both have their own operation."""
         wanted = validate_scopes(scopes)
         with transaction(self._session):
-            self._begin_web(actor_id)
+            self._begin_web(actor_id, session_id)
             user, current = self._moderator_target(user_id)
             if not current:
                 raise StaffAuthorityError(
@@ -223,11 +241,13 @@ class StaffAuthorityService:
                     )
             return StaffChange(user.id, user.email, True, revoked)
 
-    def pause_moderator(self, actor_id: uuid.UUID, user_id: uuid.UUID) -> StaffChange:
+    def pause_moderator(
+        self, actor_id: uuid.UUID, user_id: uuid.UUID, *, session_id: uuid.UUID
+    ) -> StaffChange:
         """Keep the ``moderator`` role, delete EVERY scope, revoke every session. A Moderator with
         zero scopes has zero staff authority (``require_staff`` refuses them)."""
         with transaction(self._session):
-            self._begin_web(actor_id)
+            self._begin_web(actor_id, session_id)
             user, current = self._moderator_target(user_id)
             if not current:
                 raise StaffAuthorityError(
@@ -246,14 +266,19 @@ class StaffAuthorityService:
             return StaffChange(user.id, user.email, True, revoked)
 
     def resume_moderator(
-        self, actor_id: uuid.UUID, user_id: uuid.UUID, scopes: Collection[StaffScope]
+        self,
+        actor_id: uuid.UUID,
+        user_id: uuid.UUID,
+        scopes: Collection[StaffScope],
+        *,
+        session_id: uuid.UUID,
     ) -> StaffChange:
         """Give a PAUSED Moderator scopes again (at least one, assignable), after the same
         eligibility checks as an appointment. Recorded as ``scope_granted`` from a paused state:
         ``before.paused = true`` / ``after.paused = false`` makes it unambiguous in the audit."""
         wanted = validate_scopes(scopes)
         with transaction(self._session):
-            self._begin_web(actor_id)
+            self._begin_web(actor_id, session_id)
             user, current = self._moderator_target(user_id)
             if current:
                 raise StaffAuthorityError(
@@ -274,11 +299,13 @@ class StaffAuthorityService:
             )
             return StaffChange(user.id, user.email, True, revoked)
 
-    def remove_moderator(self, actor_id: uuid.UUID, user_id: uuid.UUID) -> StaffChange:
+    def remove_moderator(
+        self, actor_id: uuid.UUID, user_id: uuid.UUID, *, session_id: uuid.UUID
+    ) -> StaffChange:
         """Delete the ``moderator`` role (its scopes cascade) and revoke every session. The account
         itself is untouched: never a user deletion."""
         with transaction(self._session):
-            self._begin_web(actor_id)
+            self._begin_web(actor_id, session_id)
             user, current = self._moderator_target(user_id)
             self._roles.revoke(user.id, RoleName.MODERATOR)
             revoked = self._revoke_sessions(user.id, self._clock())
@@ -421,14 +448,20 @@ class StaffAuthorityService:
 
     # ==== internals ===============================================================================
 
-    def _begin_web(self, actor_id: uuid.UUID) -> None:
-        """Serialise, then re-read that the ACTING Super Admin still is one: a demotion that
-        committed after the request began (or while this waited for the lock) is seen here."""
+    def _begin_web(self, actor_id: uuid.UUID, session_id: uuid.UUID) -> None:
+        """Serialise, lock the actor and the acting session, then re-read that the ACTING Super
+        Admin still is one (``403``) and that the session may still act (``401``): a demotion,
+        reset or sign-out that committed after the request began, or while this waited, is seen
+        here; one that has not committed waits for this change."""
         self._staff.lock_staff_authority()
+        acting = hold_acting_session(
+            StaffAuthorityRepository(self._session), actor_id, session_id, self._clock
+        )
         if not self._staff.is_live_super_admin(actor_id):
             raise StaffAuthorityError(
                 StaffCode.ACTOR_NOT_AUTHORISED, "You do not have permission to do this."
             )
+        acting.require()
 
     def _moderator_target(self, user_id: uuid.UUID) -> tuple[User, frozenset[StaffScope]]:
         """Lock the target and return it with its CURRENT scopes. Not a Moderator (or no such

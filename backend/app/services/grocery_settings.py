@@ -1,9 +1,10 @@
 """The Grocery operating settings, Super Admin only (GROCERY-1b; docs/backend/AUTH_RBAC.md §33).
 
-A change is ONE transaction: the actor's ``admin`` role re-read and locked (a demotion that
-committed is seen; one that has not waits) → the exclusive settings lock (submissions hold it
-shared, so a change waits for those in flight and later ones see it) → the revision check → a
-COMPLETE new row. Nothing is ever updated: the table is the record of who set what, and when.
+A change is ONE transaction: the actor and acting session, then the ``admin`` role, re-read and
+locked (a demotion, reset or sign-out that committed is seen; one that has not waits) → the
+exclusive settings lock (submissions hold it shared, so a change waits for those in flight and later
+ones see it) → the revision check → a COMPLETE new row. Nothing is ever updated: the table is the
+record of who set what, and when.
 
 The Grocery staff scope grants nothing here. Settings authority is the Super Admin role.
 """
@@ -12,6 +13,7 @@ import datetime
 
 from sqlalchemy.orm import Session
 
+from app.core.clock import Clock
 from app.core.errors import AppError, ErrorCode, ErrorDetail
 from app.core.logging import request_id_var
 from app.db.session import transaction
@@ -20,7 +22,7 @@ from app.models.enums import RoleName
 from app.repositories.grocery import GroceryRepository
 from app.repositories.staff import StaffAuthorityRepository
 from app.schemas.grocery import GrocerySettingsActor, GrocerySettingsPatch, GrocerySettingsRead
-from app.services.auth_sessions import Principal
+from app.services.auth_sessions import Principal, hold_acting_session
 from app.services.grocery_errors import private_database_errors
 from app.services.grocery_orders import clock_text
 
@@ -45,8 +47,9 @@ def _unavailable() -> AppError:
 
 
 class GrocerySettingsService:
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: Session, *, clock: Clock) -> None:
         self._session = session
+        self._clock = clock
         self._repository = GroceryRepository(session)
         self._authority = StaffAuthorityRepository(session)
 
@@ -57,14 +60,18 @@ class GrocerySettingsService:
         return self._present(current)
 
     def update(self, principal: Principal, patch: GrocerySettingsPatch) -> GrocerySettingsRead:
-        """Order of refusal: not a Super Admin NOW (``403``) → a stale ``revision`` (``409``) →
+        """Order of refusal: not a Super Admin NOW (``403``) → an ended session (``401``) → a
+        stale ``revision`` (``409``) →
         nothing given, or closing not after opening (``422``). A change equal to the current
         settings writes nothing."""
         actor_id = principal.user_id
         with private_database_errors(), transaction(self._session):
-            self._authority.key_share_user(actor_id)
+            acting = hold_acting_session(
+                self._authority, actor_id, principal.session_id, self._clock
+            )
             if RoleName.ADMIN not in self._authority.share_staff_roles(actor_id):
                 raise AppError(ErrorCode.FORBIDDEN, status_code=403)
+            acting.require()
             self._repository.lock_settings_exclusive()
             current = self._repository.current_settings()
             if current is None:

@@ -20,9 +20,10 @@ a moderation decision and a Provider write: the request-start ``Principal`` is o
 (``require_services_staff``) and is never the authority. Sequence (``BEGIN`` … ``COMMIT``):
 
 1. ``SELECT … FOR UPDATE`` the REQUEST row (the same single row lock the requester's cancel takes);
-2. ``users`` of the actor ``FOR KEY SHARE``, then their staff role in ``user_roles`` ``FOR SHARE`` —
-   no staff role now: ``403`` whatever the id (an existing and a missing request are
-   indistinguishable to someone who just lost authority);
+2. ``users`` of the actor and then the acting session ``FOR SHARE``, then their staff role in
+   ``user_roles`` ``FOR SHARE`` — no staff role now: ``403`` whatever the id (an existing and a
+   missing request are indistinguishable to someone who just lost authority); then an ended
+   session: ``401 session_expired``, likewise whatever the id;
 3. a missing request, and a Moderator without the ``services`` scope — the ONE ``staff_scope_
    assignments`` row locked ``FOR SHARE`` — are the same ``404`` (an out-of-scope id is never
    confirmed). The scope is derived from the request's own target listing (``listing_scope`` of its
@@ -31,15 +32,15 @@ a moderation decision and a Provider write: the request-start ``Principal`` is o
 4. the existing lifecycle: ``403`` for an action the provider side never has, ``409
    invalid_state_transition``, then a guarded ``UPDATE … WHERE status = :from`` and ONE history row.
 
-LOCK ORDER: ``service_requests`` (row) → ``users`` (KEY SHARE) → ``user_roles`` (SHARE) →
-``staff_scope_assignments`` (one row, SHARE). Nothing here takes a listing or taxonomy lock. An
-RBAC-B decision and a Provider write take ``listings`` (not request rows) and then ``users`` →
-``user_roles`` → scopes; a staff-management mutation takes the staff-authority advisory lock →
-``users`` (``FOR UPDATE``) → ``user_roles`` → scopes and never a request or a listing; a request
-create takes the requester's advisory lock → the listing ``FOR SHARE`` and then INSERTS a new
-request row. So no pair of them can wait on each other in a cycle, and a revoke that commits first
-fails the action while one that arrives later waits for it (tested deterministically in both
-orders).
+LOCK ORDER: ``service_requests`` (row) → ``users`` (SHARE) → ``auth_sessions`` (SHARE) →
+``user_roles`` (SHARE) → ``staff_scope_assignments`` (one row, SHARE). Nothing here takes a listing
+or taxonomy lock. An RBAC-B decision and a Provider write take ``listings`` (not request rows) and
+then ``users`` → ``user_roles`` → scopes; a staff-management mutation takes the staff-authority
+advisory lock → ``users`` (``FOR UPDATE``) → ``user_roles`` → scopes and never a request or a
+listing; a request create takes the requester's advisory lock → the listing ``FOR SHARE`` and then
+INSERTS a new request row. So no pair of them can wait on each other in a cycle, and a revoke that
+commits first fails the action while one that arrives later waits for it (tested deterministically
+in both orders).
 
 Reads (the queue, the detail) use the request-start principal: a read is stale for at most its own
 duration and changes nothing. The queue is a COLLECTION that exists only for services authority:
@@ -49,6 +50,7 @@ same ``404`` as a missing one.
 
 from sqlalchemy.orm import Session
 
+from app.core.clock import Clock
 from app.core.errors import AppError, ErrorCode
 from app.db.session import transaction
 from app.models.enums import RequestActorRole, RoleName, StaffScope
@@ -56,7 +58,7 @@ from app.repositories.service_requests import RequestRow, ServiceRequestReposito
 from app.repositories.staff import StaffAuthorityRepository
 from app.schemas.envelope import PageMeta
 from app.schemas.requests import LeadSummary, RequestsQuery, ServiceRequestDetail
-from app.services.auth_sessions import Principal
+from app.services.auth_sessions import Principal, hold_acting_session
 from app.services.request_mappers import map_detail, map_lead
 from app.services.request_rules import (
     RequestAction,
@@ -94,8 +96,9 @@ def may_read(principal: Principal, row: RequestRow) -> bool:
 
 
 class PortalRequestService:
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: Session, *, clock: Clock) -> None:
         self._session = session
+        self._clock = clock
         self._requests = ServiceRequestRepository(session)
         self._authority = StaffAuthorityRepository(session)
 
@@ -137,12 +140,16 @@ class PortalRequestService:
         with transaction(self._session):
             row = self._requests.get(request_id, lock=True)  # 1. the request row
 
-            # 2. the actor's authority, read AND locked (users -> user_roles)
-            self._authority.key_share_user(actor_id)
+            # 2. the actor, session and authority, read AND locked (users -> auth_sessions ->
+            # user_roles)
+            acting = hold_acting_session(
+                self._authority, actor_id, principal.session_id, self._clock
+            )
             roles = self._authority.share_staff_roles(actor_id)
             is_super_admin = RoleName.ADMIN in roles
             if not (is_super_admin or RoleName.MODERATOR in roles):
                 raise _forbidden()  # revoked since the request began: whatever the id
+            acting.require()
             if row is None:
                 raise not_found()
 

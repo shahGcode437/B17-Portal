@@ -42,7 +42,7 @@ from tests.db.auth_helpers import AuthApi, AuthEnv
 from tests.db.staff_helpers import MODERATORS, purge_staff_audit, super_admin
 from tests.db.test_listing_write_concurrency import committed_world
 from tests.db.test_scoped_moderation_concurrency import (
-    KEY_SHARE_LIKE,
+    ACTOR_LOCK_LIKE,
     TIMEOUT,
     USERS_FIRST,
     USERS_FIRST_LIKE,
@@ -280,7 +280,7 @@ def test_a_revoke_committed_before_the_authority_read_fails_the_write(
     resumes → it must fail and change nothing."""
     api, listing_id = world(world_env, actor, operation)
     before = counts(db_engine)
-    gate = gate_at(monkeypatch, "key_share_user", after=False)
+    gate = gate_at(monkeypatch, "share_user", after=False)
 
     write = Write(api, operation, listing_id)
     gate.wait_arrived()
@@ -392,7 +392,7 @@ def test_a_write_arriving_while_a_role_change_holds_users_waits_and_then_fails(
         connection.execute(text(actor.revoke), {"e": actor.email})  # held, uncommitted
 
         write = Write(api, operation, listing_id)
-        wait_until(lambda: waiting_on_a_lock(db_engine, KEY_SHARE_LIKE), "the write to wait")
+        wait_until(lambda: waiting_on_a_lock(db_engine, ACTOR_LOCK_LIKE), "the write to wait")
         assert write.running
         assert counts(db_engine) == before
 
@@ -522,7 +522,7 @@ def test_taxonomy_administration_waits_for_an_in_flight_authoring_write(
     name — and both then complete."""
     try:
         boss = sign_in_account(world_env, "tax-boss@example.org", professional=None, admin=True)
-        gate = gate_at(monkeypatch, "key_share_user", after=False)
+        gate = gate_at(monkeypatch, "share_user", after=False)
 
         create = Write(boss, "create")
         gate.wait_arrived()  # the create holds the shared taxonomy lock, nothing else
@@ -737,7 +737,7 @@ def test_probing_a_non_provider_id_through_a_provider_route_does_not_lock_it(
     assert business.status_code == 201, business.text
     business_id = str(business.json()["data"]["id"])
     boss = sign_in_account(world_env, "probe-boss@example.org", professional=None, admin=True)
-    gate: Gate = gate_at(monkeypatch, "key_share_user", after=False)
+    gate: Gate = gate_at(monkeypatch, "share_user", after=False)
 
     probe = Write(boss, "edit", business_id)
     gate.wait_arrived()  # the probe is as far as it can get without authority

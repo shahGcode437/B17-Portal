@@ -190,7 +190,9 @@ def appoint_moderator(
     revoked: the new authority is usable only after a fresh sign-in. An unknown address and every
     ineligible state answer the same ``target_not_eligible``."""
     with _staff_errors():
-        change = service.appoint_moderator(actor.user_id, payload.email, payload.scopes)
+        change = service.appoint_moderator(
+            actor.user_id, payload.email, payload.scopes, session_id=actor.session_id
+        )
     return StaffMemberEnvelope(data=StaffReadService(session).member(change.user_id))
 
 
@@ -211,7 +213,7 @@ def replace_scopes(
     updated. Any real change revokes the target's sessions."""
     target = _user_id(user_id)
     with _staff_errors():
-        service.replace_scopes(actor.user_id, target, payload.scopes)
+        service.replace_scopes(actor.user_id, target, payload.scopes, session_id=actor.session_id)
     return StaffMemberEnvelope(data=StaffReadService(session).member(target))
 
 
@@ -227,7 +229,7 @@ def pause_moderator(
     authority at all."""
     target = _user_id(user_id)
     with _staff_errors():
-        service.pause_moderator(actor.user_id, target)
+        service.pause_moderator(actor.user_id, target, session_id=actor.session_id)
     return StaffMemberEnvelope(data=StaffReadService(session).member(target))
 
 
@@ -247,7 +249,7 @@ def resume_moderator(
     appointment). Revokes the target's sessions: authority returns after a fresh sign-in."""
     target = _user_id(user_id)
     with _staff_errors():
-        service.resume_moderator(actor.user_id, target, payload.scopes)
+        service.resume_moderator(actor.user_id, target, payload.scopes, session_id=actor.session_id)
     return StaffMemberEnvelope(data=StaffReadService(session).member(target))
 
 
@@ -262,5 +264,5 @@ def remove_moderator(
     """Delete the ``moderator`` role (its scopes go with it) and revoke every session. The account
     itself remains: this is never a user deletion."""
     with _staff_errors():
-        service.remove_moderator(actor.user_id, _user_id(user_id))
+        service.remove_moderator(actor.user_id, _user_id(user_id), session_id=actor.session_id)
     return Response(status_code=204)

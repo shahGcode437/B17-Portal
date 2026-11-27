@@ -567,12 +567,28 @@ This **replaces** the earlier statement that GROCERY-1b needs the block list bef
 
 ---
 
-**Decision (authentication lock order — correction BUILT 2026-11-27, awaiting owner review; no migration).** Authentication writes lock the `users` row **before** any of its sessions; logout and logout-all now take `FOR KEY SHARE` there first. Rejected: retrying or hiding the deadlock; a stronger lock in sign-out (it would make sign-outs wait for order submissions and each other for no gain); weakening the `FOR UPDATE` of the other paths (staff authority checks rely on it).
+**Decision (authentication lock order — correction BUILT, approved and committed `148d7b0`, 2026-11-27; no migration).** Authentication writes lock the `users` row **before** any of its sessions; logout and logout-all now take `FOR KEY SHARE` there first. Rejected: retrying or hiding the deadlock; a stronger lock in sign-out (it would make sign-outs wait for order submissions and each other for no gain); weakening the `FOR UPDATE` of the other paths (staff authority checks rely on it).
 **Reason:** smallest change that removes the cycle without changing what any operation locks out.
 **Revisit when:** an account-suspension feature is added.
 
 ---
 
-**Decision (credential revalidation under lock — security correction BUILT 2026-11-27, owner-approved scope, awaiting review; no migration; `AUTH_RBAC.md` §35).** (1) Verify and hash passwords with no lock; then lock the user, re-read, and write only if the checked credential, session, token, identity and status still hold. (2) The stored password **hash is the credential version**. (3) A changed hash is judged by verifying again against the new one, **at most twice**, so that a mere hash upgrade does not refuse a correct password. (4) One lock order: `users` before tokens, sessions and identities. (5) The same rule covers Google sign-in, link and disconnect, where the review found the same gap (beyond the three reported defects). **Rejected:** hashing while holding the user's lock (Argon2 is deliberately slow and would block orders, sign-ins and staff checks); a credential-version column (needs a migration and every writer to remember it); serializable isolation with retries; catching or retrying deadlocks.
+**Decision (credential revalidation under lock — security correction BUILT, approved with its wider scope and committed `796d110`, 2026-11-27; no migration; `AUTH_RBAC.md` §35).** (1) Verify and hash passwords with no lock; then lock the user, re-read, and write only if the checked credential, session, token, identity and status still hold. (2) The stored password **hash is the credential version**. (3) A changed hash is judged by verifying again against the new one, **at most twice**, so that a mere hash upgrade does not refuse a correct password. (4) One lock order: `users` before tokens, sessions and identities. (5) The same rule covers Google sign-in, link and disconnect, where the review found the same gap (beyond the three reported defects). **Rejected:** hashing while holding the user's lock (Argon2 is deliberately slow and would block orders, sign-ins and staff checks); a credential-version column (needs a migration and every writer to remember it); serializable isolation with retries; catching or retrying deadlocks.
 **Reason:** a completed password reset must end everything that relied on the old credential.
 **Revisit when:** MFA or step-up authentication is added; other writes are required to re-check revocation (§35.4).
+
+---
+
+**Decision (privileged changes re-check the acting session — BUILT and APPROVED by the owner, 2026-11-27; no migration; `AUTH_RBAC.md` §36).** (1) Every staff mutation locks the actor `FOR SHARE` and then the acting session `FOR SHARE` and judges the session after the locks, through **one** function. (2) `FOR SHARE` replaces the earlier `FOR KEY SHARE` of §29 / §31, which did not hold back a sign-out or a suspension; the session lock is what holds back revocation. (3) **Role first, then session:** the established `403` and `404` answers are kept; a lost scope that also ended the session answers `401`. (4) Categories now re-check the Super Admin role. (5) Freshness windows stay a route-guard policy. (6) The web staff-management methods **require** the acting session id, so a new caller cannot omit the check by leaving it out. **Rejected:** a session check without locks (a revocation could commit between it and the change); `FOR UPDATE` on the actor (would serialize one person's decisions and orders and block their sign-ins); re-checking in the route layer (outside the transaction).
+**Reason:** a reset or sign-out must stop a staff change that has not been applied yet.
+**Revisit when:** MFA / step-up authentication is added; a new privileged route is added; the comprehensive review of `DEPLOYMENT.md` §16.
+
+---
+
+**Decision (owner, 2026-11-27 — MANDATORY architecture rule for GROCERY-2 and all subsequent phases).** **Every future privileged mutation, Grocery staff operations included, must use the shared transactional session and authority revalidation mechanism** (`hold_acting_session` plus the locked role and scope reads, inside the applying transaction). **New privileged routes must have regression tests for revoked sessions, lost authority and concurrent mutations.** Resource concealment, authorization and audit guarantees must not be weakened. The full rule: `AUTH_RBAC.md` §36.4.
+**Reason:** a route guard decides before the change's transaction, so it cannot stop a change whose session or authority ends before it is applied.
+**Revisit when:** only by a recorded owner decision, for example when MFA / step-up authentication changes what must be revalidated.
+
+---
+
+**Decision (owner, 2026-11-27 — deferred security items).** The five items of `DEPLOYMENT.md` §16 are recorded in the production security backlog and are **not** implemented in this phase. Grocery stays disabled.

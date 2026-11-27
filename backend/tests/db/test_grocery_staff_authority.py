@@ -63,6 +63,7 @@ from tests.db.staff_helpers import (
     audit_events,
     candidate,
     detail_code,
+    live_session,
     live_sessions,
     open_sessions,
     pause,
@@ -457,6 +458,7 @@ def test_the_services_refuse_a_grocery_only_actor_even_without_the_front_door(
     email = "second-layer@example.org"
     user = make_account(env.session, email, moderator_scopes=[GROCERY])
     now = FakeClock()()
+    acting_session = live_session(env.session, user.id)
     principal = Principal(
         user_id=user.id,
         display_name="Grocery Only",
@@ -464,7 +466,7 @@ def test_the_services_refuse_a_grocery_only_actor_even_without_the_front_door(
         email_verified=True,
         roles=frozenset({RoleName.MODERATOR}),
         plan_code=None,
-        session_id=uuid.uuid4(),
+        session_id=acting_session,
         session_created_at=now,
         session_last_seen_at=now,
         session_expires_at=now,
@@ -478,9 +480,9 @@ def test_the_services_refuse_a_grocery_only_actor_even_without_the_front_door(
         env.session.rollback()
         return raised.value.status_code
 
-    requests = PortalRequestService(env.session)
+    requests = PortalRequestService(env.session, clock=FakeClock())
     providers = ProviderAuthoringService(env.session, localities=["B-17"], clock=FakeClock())
-    moderation = ModerationService(env.session)
+    moderation = ModerationService(env.session, clock=FakeClock())
     assert refusal(lambda: requests.get(principal, world.request)) == 404
     assert refusal(lambda: requests.act(principal, world.request, RequestAction.ACCEPT)) == 404
     for listing_id in world.pending.values():
@@ -766,7 +768,7 @@ def committed(db_engine: Engine) -> Iterator[AuthEnv]:
 def lock_grocery_authority(session: Session, actor_id: uuid.UUID) -> tuple[set[RoleName], bool]:
     """The reads, in order, that a Grocery write must make inside its transaction."""
     repository = StaffAuthorityRepository(session)
-    repository.key_share_user(actor_id)
+    repository.share_user(actor_id)
     roles = set(repository.share_staff_roles(actor_id))
     return roles, repository.share_moderator_scope(actor_id, GROCERY_SCOPE)
 
@@ -777,6 +779,8 @@ class Change:
     def __init__(self, engine: Engine, operation: str, actor_id: uuid.UUID, target: User) -> None:
         self.error: BaseException | None = None
         self.done = threading.Event()
+        with Session(engine, expire_on_commit=False) as setup:
+            self._acting = live_session(setup, actor_id)
         self._thread = threading.Thread(
             target=self._run, args=(engine, operation, actor_id, target.id), daemon=True
         )
@@ -787,11 +791,11 @@ class Change:
             with Session(engine, expire_on_commit=False) as session:
                 service = StaffAuthorityService(session, FakeClock(), policy())
                 if operation == "replace":
-                    service.replace_scopes(actor_id, target, [FOOD])
+                    service.replace_scopes(actor_id, target, [FOOD], session_id=self._acting)
                 elif operation == "pause":
-                    service.pause_moderator(actor_id, target)
+                    service.pause_moderator(actor_id, target, session_id=self._acting)
                 else:
-                    service.remove_moderator(actor_id, target)
+                    service.remove_moderator(actor_id, target, session_id=self._acting)
         except BaseException as error:
             self.error = error
         finally:
@@ -885,17 +889,20 @@ def test_swapping_a_listing_scope_for_grocery_races_a_moderation_decision_safely
 ) -> None:
     """``food`` is replaced with ``grocery`` while that Moderator approves a Food listing. Either
     the decision holds its authority first and wins, or the swap commits first and the decision is
-    ``404`` — holding ``grocery`` never lets it through."""
+    refused — holding ``grocery`` never lets it through. The swap also revokes the Moderator's
+    sessions, so the refusal is ``401`` (it was ``404`` before decisions re-checked the session,
+    AUTH_RBAC.md §36; a scope removed WITHOUT a revocation is still ``404``)."""
     owner = signed_in(committed, "owner-race@example.org")
     listing = owner.request("POST", "/listings", json=food_body(name="Race Cafe")).json()["data"][
         "id"
     ]
     admin = make_account(committed.session, "sa-race@example.org", admin=True)
+    acting = live_session(committed.session, admin.id)
     worker = make_account(committed.session, "swap@example.org", moderator_scopes=[FOOD])
     api = committed.client()
     assert api.login(worker.email).status_code == 200
     # "decision": pause AFTER it holds the scope lock. "swap": pause BEFORE it reads any authority.
-    method = "share_moderator_scope" if first == "decision" else "key_share_user"
+    method = "share_moderator_scope" if first == "decision" else "share_user"
     gate = gate_at(monkeypatch, method, after=first == "decision")
     decision = Decision(api, listing)
     gate.wait_arrived()
@@ -907,7 +914,7 @@ def test_swapping_a_listing_scope_for_grocery_races_a_moderation_decision_safely
         try:
             with Session(db_engine, expire_on_commit=False) as session:
                 StaffAuthorityService(session, FakeClock(), policy()).replace_scopes(
-                    admin.id, worker.id, [GROCERY]
+                    admin.id, worker.id, [GROCERY], session_id=acting
                 )
         except BaseException as error:
             errors.append(error)
@@ -926,7 +933,9 @@ def test_swapping_a_listing_scope_for_grocery_races_a_moderation_decision_safely
     thread.join(TIMEOUT)
 
     assert not errors, errors
-    assert response.status_code == (200 if first == "decision" else 404), response.text
+    assert response.status_code == (200 if first == "decision" else 401), response.text
+    if first == "swap":
+        assert response.json()["error"]["code"] == "session_expired"
     with Session(db_engine) as check:
         stored = check.execute(
             text("SELECT status FROM listings WHERE id = :i"), {"i": uuid.UUID(listing)}

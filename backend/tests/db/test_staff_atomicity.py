@@ -27,6 +27,7 @@ from tests.db.staff_helpers import (
     FOOD,
     REASON,
     candidate,
+    live_session,
     live_sessions,
     open_sessions,
     roles_of,
@@ -49,13 +50,26 @@ class Case:
     writes_timeline: bool
 
 
+def acting_as(actor_id: uuid.UUID) -> uuid.UUID:
+    """The actor's one acting session, created when the actor is (so that no operation under test
+    adds a row of its own to what is compared before and after)."""
+    return _ACTING[actor_id]
+
+
+_ACTING: dict[uuid.UUID, uuid.UUID] = {}
+
+
 def _admin(env: AuthEnv, email: str = "actor@example.org") -> User:
-    return make_account(env.session, email, admin=True)
+    actor = make_account(env.session, email, admin=True)
+    _ACTING[actor.id] = live_session(env.session, actor.id)
+    return actor
 
 
 def _moderator(env: AuthEnv, actor: User, email: str, scopes: Any = (FOOD, DIRECTORY)) -> User:
     user = candidate(env, email)
-    service(env.session, env.clock).appoint_moderator(actor.id, user.email, scopes)
+    service(env.session, env.clock).appoint_moderator(
+        actor.id, user.email, scopes, session_id=acting_as(actor.id)
+    )
     open_sessions(
         env, user.email, 2
     )  # live sessions AFTER the setup operation revoked the old ones
@@ -66,7 +80,7 @@ def appoint(env: AuthEnv) -> tuple[User, Callable[[], object]]:
     actor, user = _admin(env), candidate(env, "t-appoint@example.org")
     open_sessions(env, user.email, 2)
     return user, lambda: service(env.session, env.clock).appoint_moderator(
-        actor.id, user.email, [FOOD]
+        actor.id, user.email, [FOOD], session_id=acting_as(actor.id)
     )
 
 
@@ -74,28 +88,36 @@ def replace(env: AuthEnv) -> tuple[User, Callable[[], object]]:
     actor = _admin(env)
     user = _moderator(env, actor, "t-replace@example.org")
     return user, lambda: service(env.session, env.clock).replace_scopes(
-        actor.id, user.id, [EDUCATION, FOOD]
+        actor.id, user.id, [EDUCATION, FOOD], session_id=acting_as(actor.id)
     )
 
 
 def pause(env: AuthEnv) -> tuple[User, Callable[[], object]]:
     actor = _admin(env)
     user = _moderator(env, actor, "t-pause@example.org")
-    return user, lambda: service(env.session, env.clock).pause_moderator(actor.id, user.id)
+    return user, lambda: service(env.session, env.clock).pause_moderator(
+        actor.id, user.id, session_id=acting_as(actor.id)
+    )
 
 
 def resume(env: AuthEnv) -> tuple[User, Callable[[], object]]:
     actor = _admin(env)
     user = _moderator(env, actor, "t-resume@example.org")
-    service(env.session, env.clock).pause_moderator(actor.id, user.id)
+    service(env.session, env.clock).pause_moderator(
+        actor.id, user.id, session_id=acting_as(actor.id)
+    )
     open_sessions(env, user.email, 2)
-    return user, lambda: service(env.session, env.clock).resume_moderator(actor.id, user.id, [FOOD])
+    return user, lambda: service(env.session, env.clock).resume_moderator(
+        actor.id, user.id, [FOOD], session_id=acting_as(actor.id)
+    )
 
 
 def remove(env: AuthEnv) -> tuple[User, Callable[[], object]]:
     actor = _admin(env)
     user = _moderator(env, actor, "t-remove@example.org")
-    return user, lambda: service(env.session, env.clock).remove_moderator(actor.id, user.id)
+    return user, lambda: service(env.session, env.clock).remove_moderator(
+        actor.id, user.id, session_id=acting_as(actor.id)
+    )
 
 
 def promote(env: AuthEnv) -> tuple[User, Callable[[], object]]:
@@ -111,8 +133,10 @@ def promote_a_moderator(env: AuthEnv) -> tuple[User, Callable[[], object]]:
 
 
 def demote(env: AuthEnv) -> tuple[User, Callable[[], object]]:
-    _admin(env, "keeper@example.org")
-    user = _admin(env, "t-demote@example.org")
+    # neither is an acting web user (demotion is an operator command): no acting session, or the
+    # target would hold a third one
+    make_account(env.session, "keeper@example.org", admin=True)
+    user = make_account(env.session, "t-demote@example.org", admin=True)
     open_sessions(env, user.email, 2)
     return user, lambda: service(env.session, env.clock).demote_super_admin(user.email, REASON)
 
@@ -197,7 +221,9 @@ def test_a_refused_operation_leaves_no_trace_either(auth_env: AuthEnv) -> None:
     before = snapshot(auth_env.session, target.id)
 
     with pytest.raises(Exception, match="cannot be given a staff role"):
-        service(auth_env.session, auth_env.clock).appoint_moderator(actor.id, target.email, [FOOD])
+        service(auth_env.session, auth_env.clock).appoint_moderator(
+            actor.id, target.email, [FOOD], session_id=acting_as(actor.id)
+        )
 
     assert snapshot(auth_env.session, target.id) == before
 

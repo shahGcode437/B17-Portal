@@ -49,7 +49,7 @@ from tests.db.test_provider_authoring_concurrency import (
     gate_first_call,
 )
 from tests.db.test_scoped_moderation_concurrency import (
-    KEY_SHARE_LIKE,
+    ACTOR_LOCK_LIKE,
     TIMEOUT,
     USERS_FIRST,
     USERS_FIRST_LIKE,
@@ -167,7 +167,7 @@ def test_a_revoke_committed_before_the_authority_read_fails_the_action(
     3. the revoke runs and COMMITS; 4. the action resumes → it must fail and change nothing."""
     api, request_id = world(world_env, actor)
     before = request_state(db_engine, request_id)
-    gate = gate_at(monkeypatch, "key_share_user", after=False)
+    gate = gate_at(monkeypatch, "share_user", after=False)
 
     handle = Handle(api, request_id, action)
     gate.wait_arrived()
@@ -275,7 +275,7 @@ def test_an_action_arriving_while_a_role_change_holds_users_waits_and_then_fails
         connection.execute(text(actor.revoke), {"e": actor.email})  # held, uncommitted
 
         handle = Handle(api, request_id, "accept")
-        wait_until(lambda: waiting_on_a_lock(db_engine, KEY_SHARE_LIKE), "the action to wait")
+        wait_until(lambda: waiting_on_a_lock(db_engine, ACTOR_LOCK_LIKE), "the action to wait")
         assert handle.running and request_state(db_engine, request_id) == before
 
         transaction.commit()

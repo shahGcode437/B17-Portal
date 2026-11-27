@@ -62,8 +62,8 @@ def get_provider_authoring_service(
     return ProviderAuthoringService(db, localities=settings.localities, clock=clock)
 
 
-def get_portal_request_service(db: DbSession) -> PortalRequestService:
-    return PortalRequestService(db)
+def get_portal_request_service(db: DbSession, clock: ClockDep) -> PortalRequestService:
+    return PortalRequestService(db, clock=clock)
 
 
 ProviderAuthor = Annotated[Principal, Depends(require_provider_authoring)]

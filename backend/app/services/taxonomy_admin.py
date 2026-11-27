@@ -1,8 +1,10 @@
 """Admin taxonomy writes: create, patch, reorder, list (Phase 12E; API_CONTRACT.md §10.7).
 
 Every write is ONE transaction that starts by taking the taxonomy lock EXCLUSIVE
-(``CategoryRepository.lock_taxonomy_exclusive``). Listing writers that may link a category hold the
-same lock SHARED for their transaction, so:
+(``CategoryRepository.lock_taxonomy_exclusive``) and then re-reads, under lock, that the actor is
+still a Super Admin in a usable session (``users`` → ``auth_sessions`` → ``user_roles``, ``FOR
+SHARE``; AUTH_RBAC.md §36), before any category row. Listing writers that may link a category hold
+the same lock SHARED for their transaction, so:
 
 * a rename + reindex never interleaves with a listing write that read the old name — the rename
   waits for in-flight writes to commit (their documents are then rebuilt by the reindex), and writes
@@ -25,12 +27,15 @@ from typing import Any
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.clock import Clock
 from app.core.errors import AppError, ErrorCode, ErrorDetail
 from app.db.session import transaction
 from app.models import Category
-from app.models.enums import CategoryModule
+from app.models.enums import CategoryModule, RoleName
+from app.repositories.staff import StaffAuthorityRepository
 from app.repositories.taxonomy import CategoryRepository
 from app.schemas.admin import CategoryCreate, CategoryPatch, CategoryReorder
+from app.services.auth_sessions import Principal, hold_acting_session
 from app.services.listing_writes import not_found, validation_error
 from app.services.search_index import SearchIndexer
 from app.services.taxonomy_rules import (
@@ -68,10 +73,24 @@ def _conflict(field: str, message: str) -> AppError:
 
 
 class TaxonomyAdminService:
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: Session, *, clock: Clock) -> None:
         self._session = session
+        self._clock = clock
+        self._authority = StaffAuthorityRepository(session)
         self._categories = CategoryRepository(session)
         self._search_index = SearchIndexer(session)
+
+    # -- authority -----------------------------------------------------------------------------
+
+    def _require_super_admin(self, principal: Principal) -> None:
+        """The route's guard ran before this transaction. Decide again, under lock: no longer a
+        Super Admin → ``403``; then a session that has ended → ``401``."""
+        acting = hold_acting_session(
+            self._authority, principal.user_id, principal.session_id, self._clock
+        )
+        if RoleName.ADMIN not in self._authority.share_staff_roles(principal.user_id):
+            raise AppError(ErrorCode.FORBIDDEN, status_code=403)
+        acting.require()
 
     # -- reads ---------------------------------------------------------------------------------
 
@@ -80,10 +99,11 @@ class TaxonomyAdminService:
 
     # -- create --------------------------------------------------------------------------------
 
-    def create(self, data: CategoryCreate) -> Category:
+    def create(self, principal: Principal, data: CategoryCreate) -> Category:
         try:
             with transaction(self._session):
                 self._categories.lock_taxonomy_exclusive()
+                self._require_super_admin(principal)
                 return self._create(data)
         except IntegrityError as error:
             raise self._integrity(error) from None
@@ -139,7 +159,7 @@ class TaxonomyAdminService:
 
     # -- patch ---------------------------------------------------------------------------------
 
-    def patch(self, raw_id: str, patch: CategoryPatch) -> Category:
+    def patch(self, principal: Principal, raw_id: str, patch: CategoryPatch) -> Category:
         try:
             category_id = uuid.UUID(raw_id)
         except ValueError:
@@ -147,6 +167,7 @@ class TaxonomyAdminService:
         try:
             with transaction(self._session):
                 self._categories.lock_taxonomy_exclusive()
+                self._require_super_admin(principal)
                 return self._patch(category_id, patch)
         except IntegrityError as error:
             raise self._integrity(error) from None
@@ -228,9 +249,10 @@ class TaxonomyAdminService:
 
     # -- reorder -------------------------------------------------------------------------------
 
-    def reorder(self, data: CategoryReorder) -> list[Category]:
+    def reorder(self, principal: Principal, data: CategoryReorder) -> list[Category]:
         with transaction(self._session):
             self._categories.lock_taxonomy_exclusive()
+            self._require_super_admin(principal)
             if data.parent_id is not None:
                 parent = self._categories.get(data.parent_id)
                 if parent is None or parent.module is not data.module:

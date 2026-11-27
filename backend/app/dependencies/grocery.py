@@ -18,8 +18,8 @@ def get_grocery_order_service(db: DbSession, clock: ClockDep) -> GroceryOrderSer
     return GroceryOrderService(db, clock=clock, limiter=PostgresRateLimiter(db, clock))
 
 
-def get_grocery_settings_service(db: DbSession) -> GrocerySettingsService:
-    return GrocerySettingsService(db)
+def get_grocery_settings_service(db: DbSession, clock: ClockDep) -> GrocerySettingsService:
+    return GrocerySettingsService(db, clock=clock)
 
 
 def require_grocery_settings_write(

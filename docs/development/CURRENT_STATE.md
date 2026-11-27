@@ -1068,17 +1068,25 @@ Baseline `e1b566f`. Migration head **`0011`**. No new dependency; no frontend ch
 - **Added to the blocker register (owner, 2026-11-27):** the order history's `TRUNCATE` limitation; **least-privilege database credentials before production**; the daily limit's **05:00 PKT** reset, to correct before the pilot (`DEPLOYMENT.md` §15).
 - **Not production-ready.**
 
-## Authentication correction — sign-out lock order (**COMMITTED** as `148d7b0` 2026-11-27; **not pushed**)
+## Authentication correction — sign-out lock order (**COMMITTED** as `148d7b0` and **PUSHED** 2026-11-27; GitHub CI passed)
 
 - **Fixed:** logout and logout-all could deadlock with password change, password reset, a sign-in at the session cap and staff changes. Both now lock the user before the session (`AUTH_RBAC.md` §34; `BACKEND_ARCHITECTURE.md` §5). No migration; no API change.
 - **Verification:** `TESTING.md` (sign-out lock order).
 
-## Security correction — credential races (BUILT 2026-11-27; **awaiting owner review, not committed**)
+## Security correction — credential races (**COMMITTED** as `796d110` and **PUSHED** 2026-11-27; GitHub CI passed)
 
 - **Fixed:** a password change or sign-in that checked the old password, or relied on a since-revoked session, can no longer defeat a password reset or a Google account claim (the hash upgrade that restored an old password included); Google sign-in, link and disconnect re-check under lock; `verify-email` no longer deadlocks with reset, resend or a claim; one live reset link. No migration, no new error code, no frontend change (`AUTH_RBAC.md` §35).
-- **Still open:** `AUTH_RBAC.md` §35.4 (other in-flight writes, staff changes included, do not re-check a revoked session; the maintenance purge takes no user lock).
-- **Verification:** `TESTING.md` (credential races). GitHub CI has not run either correction.
+- **Verification:** `TESTING.md` (credential races). **GitHub CI on `796d110` passed** (both corrections): backend job 9 min 37 s of its 15-minute limit, its test step 8 min 54 s; frontend 4 min 46 s.
 - Grocery stays disabled; its launch blockers and open business decisions are unchanged.
+
+## Security correction — privileged changes and revoked sessions (BUILT and **APPROVED** 2026-11-27)
+
+- **Fixed:** a staff change already past authentication applied although a password reset, sign-out or suspension had ended its session; category changes did not re-check the Super Admin role. Every staff mutation now locks and re-checks the actor and the acting session (`AUTH_RBAC.md` §36). No migration, no new error code, no frontend change.
+- **MANDATORY for GROCERY-2 and every later phase:** every privileged mutation, Grocery staff operations included, uses the shared transactional session and authority revalidation, and every new privileged route has regression tests for revoked sessions, lost authority and concurrent mutations (`AUTH_RBAC.md` §36.4).
+- **Deferred, still open (production security backlog, `DEPLOYMENT.md` §16):** (1) potential cleanup deadlock; (2) delayed logout-all reaching newer sessions; (3) failed sign-in limit under concurrency; (4) least-privilege database credentials; (5) a comprehensive review of privileged operations, **including the same-session password-change gap and the staff MFA requirement**.
+- **Verification:** `TESTING.md` (privileged changes). Focused run **4,916 passed, 4 failed, 3 skipped**; all four failures were in test code and were corrected; the affected files then passed (**180 passed, 3 skipped**); authentication concurrency **220 passed**; no application code changed after the focused run. **At commit time full backend verification was pending GitHub CI.**
+- **Phase closure:** this bounded authentication hardening (the three corrections above) is complete once GitHub CI passes on this commit. The production security backlog stays open.
+- Grocery stays disabled. GROCERY-2 is not started.
 
 ## VR1 (Visual Redesign) — Glassmorphism + Controlled Maximalism Foundation (in progress, NOT committed)
 

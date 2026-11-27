@@ -7,9 +7,11 @@ API's description of it — so a test cannot pass because a response said what i
 
 from __future__ import annotations
 
+import secrets
 import uuid
 from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
+from datetime import UTC, datetime
 from typing import Any
 
 from httpx import Response
@@ -64,6 +66,24 @@ def service(
     session: Session, clock: FakeClock | None = None, **policy_overrides: Any
 ) -> StaffAuthorityService:
     return StaffAuthorityService(session, clock or FakeClock(), policy(**policy_overrides))
+
+
+def live_session(session: Session, user_id: uuid.UUID) -> uuid.UUID:
+    """A usable session row for a test that calls a privileged SERVICE directly: every such
+    service re-reads the acting session inside its transaction (AUTH_RBAC.md §36)."""
+    forever = datetime(2100, 1, 1, tzinfo=UTC)
+    now = FakeClock()()
+    row = AuthSession(
+        user_id=user_id,
+        token_hash=secrets.token_bytes(32),
+        created_at=now,
+        last_seen_at=now,
+        expires_at=forever,
+        absolute_expires_at=forever,
+    )
+    session.add(row)
+    session.commit()
+    return row.id
 
 
 def super_admin(env: AuthEnv, email: str = "sa@example.org", name: str = "Sam Admin") -> AuthApi:

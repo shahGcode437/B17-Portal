@@ -155,7 +155,7 @@ Every limit is held in PostgreSQL, so it is correct across restarts and any numb
 |---|---|
 | submit | requester advisory lock → `users` `FOR SHARE` → the session `FOR SHARE` → settings advisory lock (**shared**) → the day's capacity row (updated) → inserts |
 | cancel | the order row `FOR UPDATE` → `users` `FOR SHARE` → the session `FOR SHARE` |
-| change settings | `users` `FOR KEY SHARE` → `user_roles` `FOR SHARE` → settings advisory lock (**exclusive**) → insert |
+| change settings | `users` `FOR SHARE` → the acting session `FOR SHARE` → `user_roles` `FOR SHARE` → settings advisory lock (**exclusive**) → insert |
 
 - `users` before `auth_sessions` is the order of password change, password reset and every staff mutation, so none can form a cycle with these.
 - **Logout and logout-all** take `users` `FOR KEY SHARE` and then the session (the authentication order below). That mode does not conflict with the `FOR SHARE` these paths take, and PostgreSQL grants it even while a `FOR UPDATE` request is waiting. Covered by `tests/db/test_auth_concurrency.py`, three-way case included.
@@ -178,11 +178,13 @@ Every limit is held in PostgreSQL, so it is correct across restarts and any numb
 | Google account claim | `users` `FOR UPDATE` | — | identity, revoke sessions, retire tokens, new session |
 | Google link, disconnect | `users` `FOR UPDATE` | the requesting session `FOR UPDATE` | identity |
 | logout, logout-all | `users` `FOR KEY SHARE` | — | the session rows |
-| staff changes (web, operator CLI) | staff-authority advisory lock | target `users` `FOR UPDATE` | roles → scopes → revoke sessions |
-| staff decisions, Grocery settings | (their resource) `users` `FOR KEY SHARE` | roles / scope `FOR SHARE` | no session or token |
+| staff management, web | staff-authority advisory lock, then the **actor's** `users` `FOR SHARE` | the acting session `FOR SHARE` | target `users` `FOR UPDATE` → roles → scopes → revoke the target's sessions |
+| staff changes, operator CLI | staff-authority advisory lock, then target `users` `FOR UPDATE` | — | roles → scopes → revoke sessions |
+| every other privileged change: moderation, Providers, staff request actions, categories, Grocery settings | (its resource or taxonomy lock) the actor's `users` `FOR SHARE` | the acting session `FOR SHARE` | `user_roles` → scope `FOR SHARE`; no token (`AUTH_RBAC.md` §36) |
 | Grocery submit / cancel | (advisory lock / order row) `users` `FOR SHARE` | the session `FOR SHARE` | no token |
 | session refresh (`last_seen`), restoring it after a refused admin call | the one session row, in its own transaction | — | nothing else |
 
+- **Mandatory for every future privileged mutation** (Grocery staff operations included): the shared transactional revalidation and its regression tests, `AUTH_RBAC.md` §36.4.
 - **Tokens and sessions have no order between themselves** (reset touches tokens first, the claim sessions first). That is safe because every transaction touching both holds the user `FOR UPDATE`, so they never run at the same time.
 - **Any audit insert locks the user:** `auth_events` references `users` (`FOR KEY SHARE`). A path that writes sessions and records an event must hold the user's lock **before** the session write (`UserAuthRepository.key_share`).
 - **No password is hashed or verified while a row lock is held.**

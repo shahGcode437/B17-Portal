@@ -30,20 +30,21 @@ and the actor is always the session's user.
 
 Sequence of every operation (``BEGIN`` … ``COMMIT``):
 
-* **create** — taxonomy advisory lock (SHARED) → ``users`` (``FOR KEY SHARE``) → ``user_roles``
-  (``FOR SHARE``) → for a Moderator, the one ``staff_scope_assignments`` row for ``services``
+* **create** — taxonomy advisory lock (SHARED) → ``users`` → the acting session → ``user_roles``
+  (all ``FOR SHARE``) → for a Moderator, the one ``staff_scope_assignments`` row for ``services``
   (``FOR SHARE``) → validate → ``INSERT`` listing + categories + history → search document → staff
   audit. No staff role → ``403``; a Moderator without ``services`` → ``403``.
-* **edit / archive** — (edit only: taxonomy advisory lock, SHARED) → ``listings`` row
-  ``FOR UPDATE`` (restricted to ``kind = 'provider'`` in the locking query) → ``users`` →
-  ``user_roles`` → scope row, then the lifecycle exactly as for any listing. No staff role →
-  ``403`` whatever the id (so an existing and a missing id are indistinguishable to someone who
-  lost authority); a missing id, a non-Provider id and an id a Moderator has no ``services`` scope
-  for are all the same ``404``.
+* **edit / archive** — (edit only: taxonomy advisory lock, SHARED) → ``listings`` row ``FOR UPDATE``
+  (restricted to ``kind = 'provider'`` in the locking query) → ``users`` → acting session →
+  ``user_roles`` → scope row, then the lifecycle exactly as for any listing. No staff role → ``403``
+  whatever the id (so an existing and a missing id are indistinguishable to someone who lost
+  authority); a missing id, a non-Provider id and an id a Moderator has no ``services`` scope for
+  are all the same ``404``.
 
 LOCK ORDER (one global order, ``AUTH_RBAC.md §31``)::
 
-    taxonomy advisory (shared)  →  listings (row)  →  users (KEY SHARE)  →  user_roles (SHARE)
+    taxonomy advisory (shared)  →  listings (row)  →  users (SHARE)  →  auth_sessions (SHARE)
+                                →  user_roles (SHARE)
                                 →  staff_scope_assignments (one row, SHARE)
 
 * RBAC-B moderation takes ``listings → users → user_roles → scopes`` (no taxonomy lock): the same
@@ -92,7 +93,7 @@ from app.repositories.staff import StaffAuthorityRepository
 from app.repositories.taxonomy import CategoryRepository
 from app.schemas.provider_admin import ProviderCreateRequest, ProviderPatchRequest
 from app.schemas.write import ListingPatch, ProviderCreate
-from app.services.auth_sessions import Principal
+from app.services.auth_sessions import Principal, hold_acting_session
 from app.services.listing_state import (
     Change,
     ListingState,
@@ -202,7 +203,7 @@ class ProviderAuthoringService:
         actor_id = principal.user_id
         with transaction(self._session):
             self._categories.lock_taxonomy_shared()  # first: see taxonomy_admin.py
-            authority = self._lock_authority(actor_id)
+            authority = self._lock_authority(principal)
             if not authority.is_super_admin and not self._authority.share_moderator_scope(
                 actor_id, PROVIDER_SCOPE
             ):
@@ -280,12 +281,11 @@ class ProviderAuthoringService:
         ``revision`` the actor read. ``archived`` is terminal (``409 invalid_state_transition``); a
         stale revision is ``409 listing_conflict``; a no-op writes nothing."""
         listing_id = parse_listing_id(raw_id)
-        actor_id = principal.user_id
         patch = _as_patch(payload)
         with transaction(self._session):
             self._categories.lock_taxonomy_shared()  # first: see taxonomy_admin.py
             listing = self._admin.lock_provider_for_write(listing_id)
-            authority = self._authorise_existing(actor_id, listing)
+            authority = self._authorise_existing(principal, listing)
             assert listing is not None  # _authorise_existing raised 404 otherwise
             if listing.status is ListingStatus.ARCHIVED:
                 raise invalid_transition()
@@ -391,7 +391,7 @@ class ProviderAuthoringService:
         actor_id = principal.user_id
         with transaction(self._session):
             listing = self._admin.lock_provider_for_write(listing_id)
-            authority = self._authorise_existing(actor_id, listing)
+            authority = self._authorise_existing(principal, listing)
             assert listing is not None  # _authorise_existing raised 404 otherwise
             if listing.status is ListingStatus.ARCHIVED:
                 raise invalid_transition()
@@ -428,28 +428,30 @@ class ProviderAuthoringService:
 
     # -- authority -------------------------------------------------------------------------------
 
-    def _lock_authority(self, actor_id: uuid.UUID) -> _Authority:
-        """The actor's CURRENT staff role, read and locked (``users`` ``KEY SHARE`` →
-        ``user_roles`` ``SHARE``). No staff role now → ``403``. Held until COMMIT / ROLLBACK, so a
-        revoke or demotion of this actor waits for this transaction."""
-        self._authority.key_share_user(actor_id)
-        roles = self._authority.share_staff_roles(actor_id)
-        if RoleName.ADMIN in roles:
-            return _Authority(is_super_admin=True)
-        if RoleName.MODERATOR in roles:
-            return _Authority(is_super_admin=False)
-        raise _forbidden()
+    def _lock_authority(self, principal: Principal) -> _Authority:
+        """The actor's CURRENT staff role and acting session, read and locked (``users`` →
+        session → ``user_roles``, all ``SHARE``). No staff role now → ``403``; an ended session
+        → ``401``. Held until COMMIT / ROLLBACK, so a revocation, revoke or demotion waits for
+        this transaction."""
+        acting = hold_acting_session(
+            self._authority, principal.user_id, principal.session_id, self._clock
+        )
+        roles = self._authority.share_staff_roles(principal.user_id)
+        if RoleName.ADMIN not in roles and RoleName.MODERATOR not in roles:
+            raise _forbidden()
+        acting.require()
+        return _Authority(is_super_admin=RoleName.ADMIN in roles)
 
-    def _authorise_existing(self, actor_id: uuid.UUID, listing: Listing | None) -> _Authority:
+    def _authorise_existing(self, principal: Principal, listing: Listing | None) -> _Authority:
         """Authority over ONE existing Provider, from the LOCKED row. The staff role is checked
         BEFORE the listing is looked at, so a lost role is ``403`` for an existing and a missing id
         alike; then a missing Provider, and a Provider a Moderator holds no ``services`` scope for,
         are the same ``404`` (an out-of-scope id is never confirmed)."""
-        authority = self._lock_authority(actor_id)
+        authority = self._lock_authority(principal)
         if listing is None:
             raise not_found()
         if not authority.is_super_admin and not self._authority.share_moderator_scope(
-            actor_id, PROVIDER_SCOPE
+            principal.user_id, PROVIDER_SCOPE
         ):
             raise not_found()
         return authority

@@ -1090,7 +1090,7 @@ Before the change, `Principal.is_staff` meant "Super Admin, or a Moderator with 
 - `is_staff` **is removed**. Moderators of unrelated domains share one role, so a guard must name the authority it needs: `Principal.has_listing_authority` or `Principal.has_grocery_authority`.
 - **`require_staff`** (listing staff): Super Admin, or a Moderator with at least one **listing** scope. `services_staff` routes still additionally require `services` in their services, with the same `403` (collection, create) and `404` (an id) answers as before.
 - **`require_grocery_staff`**: Super Admin, or a Moderator whose live scopes include `grocery`; the same verified-account and session-freshness rules. **No production route uses it**; it is tested through a test-only router.
-- **For every future Grocery write:** the guard is only a front door. Inside the transaction, in this order: `key_share_user` → `share_staff_roles` → (unless Super Admin) `share_moderator_scope(actor, GROCERY_SCOPE)`. This is the lock order of §27.4 / §28, so a revocation either waits for the write or is seen by it (tested on separate connections).
+- **For every future Grocery write:** the guard is only a front door. Inside the transaction, in this order: `hold_acting_session` (§36; require it after the role) → `share_staff_roles` → (unless Super Admin) `share_moderator_scope(actor, GROCERY_SCOPE)`. This is the lock order of §27.4 / §28, so a revocation either waits for the write or is seen by it (tested on separate connections).
 - `ScopeFilter.of` keeps listing scopes only, and `scope_filter_for` is empty for a Moderator without one.
 
 ### 32.3 Authorization matrix
@@ -1185,9 +1185,69 @@ Unchanged: Super Admin invariants, the last-usable-Super-Admin guard, role exclu
 
 ### 35.4 Not covered by this correction
 
-- **Other writes do not re-check their session.** Revocation applies to requests authenticated after it commits. A request already past authentication still completes: listing, request and profile writes, and **staff changes**, which re-check the actor's **role** under lock but not their session. A Super Admin session revoked by a reset while a staff change is in flight does not stop it.
+- **Other writes did not re-check their session.** A request already past authentication completed. **For every staff mutation this is fixed by §36**; owners' and customers' own writes (listings, requests, profile) still behave so (Grocery orders re-check).
 - A sign-out already in flight still runs after a reset. It only revokes: at worst a late `logout-all` also ends a session created after the reset.
 - `resend-verification` does not re-check the session; it only mails the account's own address.
 - There is no account-suspension operation in the application (tests change the status in SQL).
 - The maintenance purge (`app.cli.auth_maintenance`) deletes expired sessions and tokens without locking users. By reading only: a reset for a user who still has **both** week-old expired sessions and week-old unused tokens could deadlock with it while it runs.
 - The login failure limit is still checked before and counted after the attempt (unchanged), so a simultaneous burst can exceed it slightly; per-IP limiting stays a proxy requirement.
+
+## 36. Privileged changes re-check the acting session (security correction, 2026-11-27)
+
+**Where this changes §29 / §31:** their lock sequences start `users FOR KEY SHARE`. It is now `users FOR SHARE` → the acting `auth_sessions` row `FOR SHARE`; everything after is unchanged.
+
+### 36.1 Defect (reproduced through the endpoints on a test database)
+
+All **18 state-changing staff routes** were checked: listing approve and reject, category create / patch / reorder, the five staff-management changes, Provider create / edit / archive, the four staff request actions (they share one service decision; `accept` is the one staged) and Grocery settings. No other route exercises staff authority.
+
+- The route guard authenticates **before** the change's transaction, and **none** of the services looked at the session again. A change whose session had been ended by a **password reset, logout or logout-all** in between **still applied**, in all 15 staged operations. A suspension did too, except for staff management, which already required an active account.
+- **`FOR KEY SHARE` on the actor is not enough.** It holds back only `FOR UPDATE`. A reset happened to wait for most decisions; a **sign-out and a suspension never waited**. Staff management and categories locked no actor row at all.
+- **Category changes did not re-check the Super Admin role** inside their transaction: a demotion committed after the guard did not stop them.
+
+### 36.2 What PostgreSQL's row locks hold back (pinned by tests)
+
+| Held on the actor | A reset's `users ... FOR UPDATE` | An update of the `users` row (suspension) | A sign-out's update of the session row |
+|---|---|---|---|
+| `users FOR KEY SHARE` | waits | **passes** | **passes** |
+| `users FOR SHARE` | waits | waits | **passes** |
+| the session row `FOR SHARE` | — | — | waits |
+
+So both rows are locked. A new `FOR SHARE` is granted while a `FOR UPDATE` request is queued, which the cycle analysis relies on (also pinned).
+
+### 36.3 Correction
+
+One function, `hold_acting_session` (`app/services/auth_sessions.py`), called by every privileged change inside its transaction: lock `users` `FOR SHARE`, then the acting session `FOR SHARE`, and judge the session **after** the locks with the one definition of a usable session (not revoked, not expired, account active).
+
+| Change | Order inside its transaction |
+|---|---|
+| moderation | listing → **actor, session** → `user_roles` → scope |
+| staff request action | request → **actor, session** → `user_roles` → scope |
+| Provider create | taxonomy (shared) → **actor, session** → `user_roles` → scope |
+| Provider edit / archive | (edit: taxonomy shared) → listing → **actor, session** → `user_roles` → scope |
+| category create / patch / reorder | taxonomy (exclusive) → **actor, session** → `user_roles` (**new check**) → categories → reindexed listings |
+| staff management (web) | advisory lock → **actor, session** → live Super Admin → target `users FOR UPDATE` → roles → scopes → target sessions |
+| Grocery settings | **actor, session** → `user_roles` → settings lock (exclusive) |
+
+- **Order of refusal is unchanged, with one step added after the role:** no role now → `403`; **then** the session → `401 session_expired`; then the resource → `404`, scope, `409`, as before. Both answers come before any resource is looked at, so neither reveals whether it exists.
+- **One visible difference:** a staff change made through staff management also revokes the target's sessions, so a decision of theirs that it overtakes now answers `401` where a lost **scope** answered `404`. A lost **role** still answers `403`, and a scope row removed without revoking sessions still answers `404`.
+- **Operator CLI** promotion and demotion have no web session and are unchanged.
+- **Freshness windows are not re-evaluated** inside the transaction (2 h idle, 12 h age, and the 15-minute window of staff management stay with the route guards, judged on the request as it arrived). Expiry and revocation of the session **are** judged there.
+- **A refused change leaves nothing:** no row, history, staff audit or auth event. Rate-limit counts made by the route guard stay, as before.
+
+**Why no new cycle.** Everyone who revokes sessions locks the user first, so the order stays `users` → `auth_sessions`. `FOR SHARE` conflicts only with writers of that user row; those are authentication operations, which hold nothing else, and staff management, which runs one at a time under its advisory lock and is the only path that holds two users' rows. When a staff change targets its own actor, the second lock upgrades the first, with a reset already queued (tested). Privileged changes and orders of one person do not wait for each other (tested). A sign-out, or the throttled `last_seen` update of **that** session, now waits for the change in progress.
+
+**Not covered:** recorded in the production security backlog (`DEPLOYMENT.md` §16).
+
+### 36.4 Mandatory rule for every future privileged mutation
+
+**Binding from GROCERY-2 on, in every later phase (owner, 2026-11-27).** A privileged mutation is any state change made with staff authority, **every Grocery staff operation included**. It MUST use the shared transactional session and authority revalidation, inside the transaction that applies the change:
+
+1. `hold_acting_session` (the actor, then the acting session, `FOR SHARE`).
+2. Re-read **and lock** the authority it needs through `StaffAuthorityRepository`: the staff role (`share_staff_roles`), then, for a Moderator, the one scope (`share_moderator_scope`; Grocery: `GROCERY_SCOPE`, §32). A route guard or the request-start principal is never the authority.
+3. Refuse in this order: lost role `403` → ended session `401` (`ActingSession.require`, **never omitted**) → the resource and scope answers that keep existing concealment.
+4. Keep the lock order: the resource or domain lock where §36.3 puts it → actor → session → `user_roles` → scope. A new lock needs a written cycle analysis.
+5. Write history and audit in the same transaction, so that a refused change leaves nothing.
+
+**Every new privileged route MUST come with regression tests**, on real PostgreSQL through the endpoint, for **a revoked session** (both arrival orders), **lost authority** (role and, where it applies, scope) and **concurrent mutations**. For the first two, add the operation to `OPERATIONS` in `tests/db/test_privileged_session_races.py`; scope and same-resource collisions follow the existing moderation, Provider, request and Grocery concurrency suites.
+
+A route that cannot follow this rule needs an explicit recorded decision **before** it is built. **Nothing enforces the rule automatically yet:** the review of every new route must check it.

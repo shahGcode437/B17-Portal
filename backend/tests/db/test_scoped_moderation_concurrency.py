@@ -134,15 +134,18 @@ class Gate:
 def gate_at(monkeypatch: pytest.MonkeyPatch, method: str, *, after: bool) -> Gate:
     """Pause the next ``StaffAuthorityRepository.<method>`` call — BEFORE it runs (``after=False``:
     the decision holds the listing but has read no authority) or right AFTER it returned (it holds
-    the locks that call took). Only the moderation decision calls these methods."""
+    the locks that call took). Only the FIRST call pauses, the one the test started first: staff
+    management takes its actor lock through this repository too (AUTH_RBAC.md §36)."""
     gate = Gate()
     original = getattr(StaffAuthorityRepository, method)
+    first = threading.Lock()
 
     def wrapper(self: StaffAuthorityRepository, *args: Any, **kwargs: Any) -> Any:
-        if not after:
+        mine = first.acquire(blocking=False)
+        if mine and not after:
             gate.pause()
         result = original(self, *args, **kwargs)
-        if after:
+        if mine and after:
             gate.pause()
         return result
 
@@ -299,7 +302,7 @@ def test_a_revoke_committed_between_the_listing_lock_and_the_authority_read_fail
     with committed_world(db_engine) as env:
         api, listing_id = world(env, actor)
         history_before = history_rows(db_engine, listing_id)
-        gate = gate_at(monkeypatch, "key_share_user", after=False)
+        gate = gate_at(monkeypatch, "share_user", after=False)
 
         decision = Decision(api, listing_id)
         gate.wait_arrived()
@@ -362,7 +365,8 @@ def test_a_decision_that_holds_its_authority_makes_the_revoke_wait_until_it_comm
 
 USERS_FIRST = "SELECT id FROM users WHERE email = :e FOR UPDATE"
 USERS_FIRST_LIKE = "SELECT id FROM users WHERE email%FOR UPDATE"
-KEY_SHARE_LIKE = "%FOR KEY SHARE%"
+#: A decision waiting at its FIRST authority lock, the actor's ``users`` row.
+ACTOR_LOCK_LIKE = "%FROM users%FOR SHARE%"
 
 
 @pytest.mark.parametrize("actor", ACTORS, ids=IDS)
@@ -409,7 +413,9 @@ def test_a_decision_arriving_while_a_role_change_holds_users_waits_and_then_fail
             connection.execute(text(actor.revoke), {"e": actor.email})  # held, uncommitted
 
             decision = Decision(api, listing_id)
-            wait_until(lambda: waiting_on_a_lock(db_engine, KEY_SHARE_LIKE), "the decision to wait")
+            wait_until(
+                lambda: waiting_on_a_lock(db_engine, ACTOR_LOCK_LIKE), "the decision to wait"
+            )
             assert decision.running
             assert status_of(db_engine, listing_id) == "pending"
 
@@ -467,11 +473,12 @@ def test_the_decision_takes_its_locks_in_the_documented_order(
     order = seen[start:]
     expected = [
         ("listings", "UPDATE"),
-        ("users", "KEY SHARE"),
+        ("users", "SHARE"),
+        ("auth_sessions", "SHARE"),
         ("user_roles", "SHARE"),
         ("staff_scope_assignments", "SHARE"),
     ]
-    assert order == (expected if actor.role == "moderator" else expected[:3])
+    assert order == (expected if actor.role == "moderator" else expected[:4])
 
 
 # -- an additional safety net: a hammered race ----------------------------------------------------

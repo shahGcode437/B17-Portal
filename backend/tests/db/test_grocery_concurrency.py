@@ -465,7 +465,7 @@ def test_a_super_admin_demoted_during_the_request_changes_nothing(
     db_engine: Engine, world: AuthEnv, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     admin = open_for_orders(world)
-    gate = gate_method(monkeypatch, StaffAuthorityRepository, "key_share_user", after=False)
+    gate = gate_method(monkeypatch, StaffAuthorityRepository, "share_user", after=False)
     change = Running(lambda: disable(admin, 2))
     gate.wait_arrived()  # authenticated as Super Admin; has locked nothing yet
     with db_engine.begin() as connection:

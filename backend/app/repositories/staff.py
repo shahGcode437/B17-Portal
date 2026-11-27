@@ -17,8 +17,9 @@ either**, and a test fails if anything else does.
 ``StaffReadRepository`` serves the Super Admin roster and the audit API: read-only.
 
 Lock order (frozen in RBAC-B, binding here): a decision takes ``listings`` → ``users`` →
-``user_roles`` → ``staff_scope_assignments``; a staff mutation takes the staff-authority advisory
-lock → ``users`` → ``user_roles`` → ``staff_scope_assignments`` and NEVER a listing.
+``auth_sessions`` → ``user_roles`` → ``staff_scope_assignments``; a staff mutation takes the
+staff-authority advisory lock → the ACTOR's ``users`` and session rows ``FOR SHARE`` → the target
+``users`` row → ``user_roles`` → ``staff_scope_assignments`` and NEVER a listing.
 """
 
 import uuid
@@ -30,7 +31,14 @@ from sqlalchemy import and_, case, delete, exists, func, or_, select
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.elements import ColumnElement
 
-from app.models import AuthIdentity, StaffAuditEvent, StaffScopeAssignment, User, UserRole
+from app.models import (
+    AuthIdentity,
+    AuthSession,
+    StaffAuditEvent,
+    StaffScopeAssignment,
+    User,
+    UserRole,
+)
 from app.models.enums import (
     AuthProvider,
     RoleName,
@@ -60,9 +68,17 @@ class StaffAuditRepository:
 class StaffAuthorityRepository:
     """Locking reads of one actor's authority rows. Call them in THIS order, once per decision:
 
-    1. :meth:`key_share_user`     — ``users``                   ``FOR KEY SHARE``
-    2. :meth:`share_staff_roles`  — ``user_roles``              ``FOR SHARE``
-    3. :meth:`share_moderator_scope` — ``staff_scope_assignments`` ``FOR SHARE``
+    1. :meth:`share_user`         — ``users``                   ``FOR SHARE``
+    2. :meth:`share_session`      — ``auth_sessions``           ``FOR SHARE``
+    3. :meth:`share_staff_roles`  — ``user_roles``              ``FOR SHARE``
+    4. :meth:`share_moderator_scope` — ``staff_scope_assignments`` ``FOR SHARE``
+
+    Steps 1 and 2 are taken together by ``auth_sessions.hold_acting_session``.
+
+    WHY ``FOR SHARE`` and not ``FOR KEY SHARE`` on the user: a key-share lock holds back only a
+    ``FOR UPDATE`` (a password reset). An update of the row itself, a suspension, passes it.
+    And neither mode on the user holds back a sign-out, which writes only the session row:
+    revocation is held back by the lock on that row.
 
     That is the same direction every staff mutation takes (``users`` → ``user_roles`` →
     ``staff_scope_assignments``; ``StaffAuthorityService`` takes the staff-authority advisory
@@ -83,13 +99,26 @@ class StaffAuthorityRepository:
     def __init__(self, session: Session) -> None:
         self._session = session
 
-    def key_share_user(self, user_id: uuid.UUID) -> bool:
-        """``SELECT ... FOR KEY SHARE`` on the actor's ``users`` row; whether the user exists.
-        Blocks a role change that holds ``FOR UPDATE`` on it until that change commits."""
-        found = self._session.scalar(
-            select(User.id).where(User.id == user_id).with_for_update(read=True, key_share=True)
-        )
-        return found is not None
+    def share_user(self, user_id: uuid.UUID) -> User | None:
+        """The actor's ``users`` row ``FOR SHARE``, as stored now. Waits for, and then holds
+        back, a role change or password reset (``FOR UPDATE``) and any update of the account.
+        Other privileged changes and orders of the same person run alongside."""
+        return self._session.scalars(
+            select(User)
+            .where(User.id == user_id)
+            .with_for_update(read=True)
+            .execution_options(populate_existing=True)
+        ).one_or_none()
+
+    def share_session(self, user_id: uuid.UUID, session_id: uuid.UUID) -> AuthSession | None:
+        """The actor's acting session ``FOR SHARE``, as stored now: its revocation, rotation
+        or removal waits until this transaction ends. Only after :meth:`share_user`."""
+        return self._session.scalars(
+            select(AuthSession)
+            .where(AuthSession.id == session_id, AuthSession.user_id == user_id)
+            .with_for_update(read=True)
+            .execution_options(populate_existing=True)
+        ).one_or_none()
 
     def share_staff_roles(self, user_id: uuid.UUID) -> frozenset[RoleName]:
         """The actor's CURRENT staff roles (``admin`` and / or ``moderator``), their ``user_roles``

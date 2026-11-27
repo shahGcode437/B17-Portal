@@ -8,8 +8,8 @@ in this order:
 * **submit:** requester advisory lock → ``users`` ``FOR SHARE`` → the session ``FOR SHARE`` →
   settings advisory lock (shared) → the day's capacity row (updated) → inserts;
 * **cancel:** the order row ``FOR UPDATE`` → ``users`` ``FOR SHARE`` → the session ``FOR SHARE``;
-* **settings change:** ``users`` ``FOR KEY SHARE`` → ``user_roles`` ``FOR SHARE`` (the staff
-  authority order) → settings advisory lock (exclusive) → insert.
+* **settings change:** ``users`` → the acting session → ``user_roles``, all ``FOR SHARE`` (the
+  staff authority order) → settings advisory lock (exclusive) → insert.
 
 ``users`` before ``auth_sessions`` is the order password change, password reset and every staff
 mutation use, so none of these can wait on each other in a cycle.

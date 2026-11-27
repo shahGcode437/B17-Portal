@@ -232,7 +232,8 @@ def require_grocery_staff(
 
     No production route uses it yet. It is a FRONT DOOR, answered from the authority read at the
     start of the request. A Grocery WRITE must also read and lock the actor's authority inside its
-    own transaction, through ``StaffAuthorityRepository``: ``key_share_user`` →
+    own transaction: ``hold_acting_session`` (then require it) with ``StaffAuthorityRepository``
+    →
     ``share_staff_roles`` → (unless Super Admin) ``share_moderator_scope(actor, GROCERY_SCOPE)``."""
     if not principal.has_grocery_authority:
         raise AppError(ErrorCode.FORBIDDEN, status_code=403)

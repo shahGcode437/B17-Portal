@@ -28,7 +28,15 @@ from app.repositories.staff import STAFF_AUTHORITY_LOCK_KEY, StaffManagementRepo
 from app.services.staff_authority import StaffAuthorityService
 from app.services.staff_rules import StaffAuthorityError, StaffCode
 from tests.db.auth_helpers import AuthEnv, FakeClock, make_account
-from tests.db.staff_helpers import DIRECTORY, EDUCATION, FOOD, REASON, policy, purge_staff_audit
+from tests.db.staff_helpers import (
+    DIRECTORY,
+    EDUCATION,
+    FOOD,
+    REASON,
+    live_session,
+    policy,
+    purge_staff_audit,
+)
 from tests.db.test_listing_write_concurrency import committed_world
 from tests.db.test_scoped_moderation_concurrency import (
     ACTORS,
@@ -311,12 +319,19 @@ def test_simultaneous_scope_replacements_serialise_into_one_consistent_chain(
     db_engine: Engine, staff_world: AuthEnv
 ) -> None:
     actor = make_account(staff_world.session, "actor@example.org", admin=True)
+    acting = live_session(staff_world.session, actor.id)
     mod = moderator(staff_world)
 
     with staff_lock_held(db_engine):
         calls = [
-            Call(db_engine, lambda s: s.replace_scopes(actor.id, mod.id, [DIRECTORY])),
-            Call(db_engine, lambda s: s.replace_scopes(actor.id, mod.id, [EDUCATION])),
+            Call(
+                db_engine,
+                lambda s: s.replace_scopes(actor.id, mod.id, [DIRECTORY], session_id=acting),
+            ),
+            Call(
+                db_engine,
+                lambda s: s.replace_scopes(actor.id, mod.id, [EDUCATION], session_id=acting),
+            ),
         ]
         queued_behind_the_lock(db_engine, calls)
     for call in calls:
@@ -349,16 +364,20 @@ def test_a_scope_replacement_racing_a_pause_or_removal_ends_in_the_stronger_stat
     db_engine: Engine, staff_world: AuthEnv, racer: str
 ) -> None:
     actor = make_account(staff_world.session, "actor2@example.org", admin=True)
+    acting = live_session(staff_world.session, actor.id)
     mod = moderator(staff_world, "m2@example.org", (FOOD, DIRECTORY))
     operation: Callable[[StaffAuthorityService], Any] = (
-        (lambda s: s.pause_moderator(actor.id, mod.id))
+        (lambda s: s.pause_moderator(actor.id, mod.id, session_id=acting))
         if racer == "pause"
-        else (lambda s: s.remove_moderator(actor.id, mod.id))
+        else (lambda s: s.remove_moderator(actor.id, mod.id, session_id=acting))
     )
 
     with staff_lock_held(db_engine):
         calls = [
-            Call(db_engine, lambda s: s.replace_scopes(actor.id, mod.id, [EDUCATION])),
+            Call(
+                db_engine,
+                lambda s: s.replace_scopes(actor.id, mod.id, [EDUCATION], session_id=acting),
+            ),
             Call(db_engine, operation),
         ]
         queued_behind_the_lock(db_engine, calls)
@@ -388,12 +407,21 @@ def test_two_appointments_of_one_account_create_one_moderator(
     db_engine: Engine, staff_world: AuthEnv
 ) -> None:
     actor = make_account(staff_world.session, "actor3@example.org", admin=True)
+    acting = live_session(staff_world.session, actor.id)
     target = make_account(staff_world.session, "target@example.org")
 
     with staff_lock_held(db_engine):
         calls = [
-            Call(db_engine, lambda s: s.appoint_moderator(actor.id, target.email, [FOOD])),
-            Call(db_engine, lambda s: s.appoint_moderator(actor.id, target.email, [DIRECTORY])),
+            Call(
+                db_engine,
+                lambda s: s.appoint_moderator(actor.id, target.email, [FOOD], session_id=acting),
+            ),
+            Call(
+                db_engine,
+                lambda s: s.appoint_moderator(
+                    actor.id, target.email, [DIRECTORY], session_id=acting
+                ),
+            ),
         ]
         queued_behind_the_lock(db_engine, calls)
     for call in calls:
@@ -409,11 +437,15 @@ def test_a_promotion_racing_an_appointment_never_leaves_two_staff_roles(
     db_engine: Engine, staff_world: AuthEnv
 ) -> None:
     actor = make_account(staff_world.session, "actor4@example.org", admin=True)
+    acting = live_session(staff_world.session, actor.id)
     target = make_account(staff_world.session, "both@example.org")
 
     with staff_lock_held(db_engine):
         calls = [
-            Call(db_engine, lambda s: s.appoint_moderator(actor.id, target.email, [FOOD])),
+            Call(
+                db_engine,
+                lambda s: s.appoint_moderator(actor.id, target.email, [FOOD], session_id=acting),
+            ),
             Call(db_engine, lambda s: s.promote_super_admin(target.email, REASON)),
         ]
         queued_behind_the_lock(db_engine, calls)
@@ -469,13 +501,14 @@ def test_removing_a_moderator_waits_for_a_decision_that_holds_its_authority_and_
     (advisory lock, then users FOR UPDATE) must WAIT at ``users`` — before it holds anything the
     decision needs — and complete once the decision commits."""
     actor = make_account(staff_world.session, "remover@example.org", admin=True)
+    acting = live_session(staff_world.session, actor.id)
     api, listing_id = world(staff_world, ACTORS[0])  # a Food Moderator and a pending Food listing
     mod_id = scalar(db_engine, "SELECT id FROM users WHERE email = :e", e=ACTORS[0].email)
     gate = gate_at(monkeypatch, "share_moderator_scope", after=True)
 
     decision = Decision(api, listing_id)
     gate.wait_arrived()
-    removal = Call(db_engine, lambda s: s.remove_moderator(actor.id, mod_id))
+    removal = Call(db_engine, lambda s: s.remove_moderator(actor.id, mod_id, session_id=acting))
 
     wait_until(lambda: waiters(db_engine, "%FROM users%FOR UPDATE%") == 1, "the removal to wait")
     assert not removal.finished.is_set() and decision.running
@@ -507,15 +540,16 @@ def test_a_decision_arriving_while_a_removal_holds_the_user_lock_waits_then_is_r
     ``require_staff``, locks its listing and then WAITS at its ``users`` key-share (holding no
     authority row); when the removal commits it finds no staff role and fails: ``403``."""
     actor = make_account(staff_world.session, "remover2@example.org", admin=True)
+    acting = live_session(staff_world.session, actor.id)
     api, listing_id = world(staff_world, ACTORS[0])
     mod_id = scalar(db_engine, "SELECT id FROM users WHERE email = :e", e=ACTORS[0].email)
     gate = gate_on(monkeypatch, StaffManagementRepository, "staff_roles_of", after=True)
 
-    removal = Call(db_engine, lambda s: s.remove_moderator(actor.id, mod_id))
+    removal = Call(db_engine, lambda s: s.remove_moderator(actor.id, mod_id, session_id=acting))
     gate.wait_arrived()  # the removal now holds the advisory lock AND users FOR UPDATE
     decision = Decision(api, listing_id)
 
-    wait_until(lambda: waiters(db_engine, "%FOR KEY SHARE%") == 1, "the decision to wait")
+    wait_until(lambda: waiters(db_engine, "%FROM users%FOR SHARE%") == 1, "the decision to wait")
     assert decision.running and not removal.finished.is_set()
     gate.release.set()
     removal.wait()
@@ -533,11 +567,15 @@ def test_a_moderation_decision_never_waits_on_the_staff_authority_lock(
     """Moderation does not take the advisory lock, so holding it blocks staff MUTATIONS only: the
     two cannot form a cycle through it."""
     actor = make_account(staff_world.session, "actor5@example.org", admin=True)
+    acting = live_session(staff_world.session, actor.id)
     api, listing_id = world(staff_world, ACTORS[0])
     other = make_account(staff_world.session, "victim@example.org")
 
     with staff_lock_held(db_engine):
-        blocked = Call(db_engine, lambda s: s.appoint_moderator(actor.id, other.email, [FOOD]))
+        blocked = Call(
+            db_engine,
+            lambda s: s.appoint_moderator(actor.id, other.email, [FOOD], session_id=acting),
+        )
         queued_behind_the_lock(db_engine, [blocked])
         decision = Decision(api, listing_id).finish()  # completes while the lock is held
         assert decision.status_code == 200, decision.text
@@ -576,10 +614,11 @@ def test_a_staff_mutation_takes_the_advisory_lock_first_then_users_and_never_a_l
     db_engine: Engine, staff_world: AuthEnv, operation: str
 ) -> None:
     actor = make_account(staff_world.session, "actor6@example.org", admin=True)
+    acting = live_session(staff_world.session, actor.id)
     mod = moderator(staff_world, "lock-mod@example.org")
     plain = make_account(staff_world.session, "lock-plain@example.org")
     calls: dict[str, Callable[[StaffAuthorityService], Any]] = {
-        "remove": lambda s: s.remove_moderator(actor.id, mod.id),
+        "remove": lambda s: s.remove_moderator(actor.id, mod.id, session_id=acting),
         "promote": lambda s: s.promote_super_admin(plain.email, REASON),
         "demote": lambda s: s.demote_super_admin(actor.email, REASON),
     }
@@ -590,5 +629,8 @@ def test_a_staff_mutation_takes_the_advisory_lock_first_then_users_and_never_a_l
         Call(db_engine, calls[operation]).wait()
 
     assert seen[0] == ("advisory", "")  # BEFORE any row lock
-    assert ("users", "UPDATE") in seen and seen.index(("users", "UPDATE")) == 1
+    if operation == "remove":  # web: the acting Super Admin and session are held first
+        assert seen[1:3] == [("users", "SHARE"), ("auth_sessions", "SHARE")]
+    assert ("users", "UPDATE") in seen
+    assert seen.index(("users", "UPDATE")) == (3 if operation == "remove" else 1)
     assert not [lock for lock in seen if lock[0] == "listings"]  # NEVER a listing

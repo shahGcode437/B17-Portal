@@ -36,7 +36,9 @@ from fastapi import APIRouter, Depends, Query, Response
 from app.api.routing import ContractRoute
 from app.core.errors import ErrorResponse
 from app.dependencies.auth import (
+    ClockDep,
     StaffUser,
+    SuperAdminUser,
     require_staff,
     require_super_admin,
 )
@@ -199,13 +201,17 @@ def moderation_detail(
     responses=_MODERATION_ERRORS,
 )
 def approve_listing(
-    listing_id: str, payload: ApproveRequest, staff: StaffUser, session: DbSession
+    listing_id: str,
+    payload: ApproveRequest,
+    staff: StaffUser,
+    session: DbSession,
+    clock: ClockDep,
 ) -> AdminListingEnvelope:
     """``pending -> approved`` at the ``revision`` the actor reviewed. The revision is unchanged;
     a stale one is ``409 listing_conflict``, any other status ``409 invalid_state_transition``.
     Approving a listing the actor personally OWNS is ``403 self_moderation_forbidden`` — there is
     no override. A Provider has no owner, so it is never refused for that reason."""
-    listing = ModerationService(session).decide(
+    listing = ModerationService(session, clock=clock).decide(
         staff, listing_id, ModerationAction.APPROVE, payload.revision
     )
     return AdminListingEnvelope(data=AdminListingReadService(session, staff).present(listing))
@@ -218,12 +224,16 @@ def approve_listing(
     responses=_MODERATION_ERRORS,
 )
 def reject_listing(
-    listing_id: str, payload: RejectRequest, staff: StaffUser, session: DbSession
+    listing_id: str,
+    payload: RejectRequest,
+    staff: StaffUser,
+    session: DbSession,
+    clock: ClockDep,
 ) -> AdminListingEnvelope:
     """``pending -> rejected`` and the takedown ``approved -> rejected``, with a ``reason`` of at
     least 10 characters shown to the owner. Reject or takedown of one's own listing is
     ``403 self_moderation_forbidden`` — there is no override."""
-    listing = ModerationService(session).decide(
+    listing = ModerationService(session, clock=clock).decide(
         staff, listing_id, ModerationAction.REJECT, payload.revision, reason=payload.reason
     )
     return AdminListingEnvelope(data=AdminListingReadService(session, staff).present(listing))
@@ -238,9 +248,9 @@ def reject_listing(
     summary="Every category, inactive included (Super Admin only)",
 )
 def list_categories(
-    session: DbSession, query: Annotated[CategoriesQuery, Query()]
+    session: DbSession, clock: ClockDep, query: Annotated[CategoriesQuery, Query()]
 ) -> AdminCategoriesEnvelope:
-    rows = TaxonomyAdminService(session).list_all(query.module)
+    rows = TaxonomyAdminService(session, clock=clock).list_all(query.module)
     return AdminCategoriesEnvelope(data=[_category(row) for row in rows])
 
 
@@ -255,9 +265,14 @@ def list_categories(
     },
 )
 def create_category(
-    payload: CategoryCreate, response: Response, session: DbSession
+    payload: CategoryCreate,
+    response: Response,
+    admin: SuperAdminUser,
+    session: DbSession,
+    clock: ClockDep,
 ) -> AdminCategoryEnvelope:
-    return AdminCategoryEnvelope(data=_category(TaxonomyAdminService(session).create(payload)))
+    created = TaxonomyAdminService(session, clock=clock).create(admin, payload)
+    return AdminCategoryEnvelope(data=_category(created))
 
 
 @router.post(
@@ -266,8 +281,10 @@ def create_category(
     summary="Renumber one sibling group (Super Admin only)",
     responses={422: {"model": ErrorResponse, "description": "validation_error"}},
 )
-def reorder_categories(payload: CategoryReorder, session: DbSession) -> AdminCategoriesEnvelope:
-    rows = TaxonomyAdminService(session).reorder(payload)
+def reorder_categories(
+    payload: CategoryReorder, admin: SuperAdminUser, session: DbSession, clock: ClockDep
+) -> AdminCategoriesEnvelope:
+    rows = TaxonomyAdminService(session, clock=clock).reorder(admin, payload)
     return AdminCategoriesEnvelope(data=[_category(row) for row in rows])
 
 
@@ -282,8 +299,11 @@ def reorder_categories(payload: CategoryReorder, session: DbSession) -> AdminCat
     },
 )
 def patch_category(
-    category_id: str, payload: CategoryPatch, session: DbSession
+    category_id: str,
+    payload: CategoryPatch,
+    admin: SuperAdminUser,
+    session: DbSession,
+    clock: ClockDep,
 ) -> AdminCategoryEnvelope:
-    return AdminCategoryEnvelope(
-        data=_category(TaxonomyAdminService(session).patch(category_id, payload))
-    )
+    patched = TaxonomyAdminService(session, clock=clock).patch(admin, category_id, payload)
+    return AdminCategoryEnvelope(data=_category(patched))

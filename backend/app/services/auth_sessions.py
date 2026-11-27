@@ -33,6 +33,7 @@ from app.models.enums import (
     UserStatus,
 )
 from app.repositories.auth import SessionRepository, UserAuthRepository
+from app.repositories.staff import StaffAuthorityRepository
 from app.services.auth_audit import AuthAuditService
 from app.services.staff_scopes import (
     GROCERY_SCOPE,
@@ -54,6 +55,37 @@ def _is_usable(auth_session: AuthSession, user: User, now: datetime) -> bool:
         and now < auth_session.absolute_expires_at
         and user.status == UserStatus.ACTIVE
     )
+
+
+@dataclass(frozen=True)
+class ActingSession:
+    """A privileged change's view of the session making it, held by locks until the change
+    commits or rolls back. The verdict is separate from the locking so that a caller answers a
+    lost ROLE first (the same ``403`` as ever) and an ended session after it."""
+
+    usable: bool
+
+    def require(self) -> None:
+        if not self.usable:
+            raise AppError(ErrorCode.SESSION_EXPIRED, status_code=401)
+
+
+def hold_acting_session(
+    authority: StaffAuthorityRepository,
+    user_id: uuid.UUID,
+    session_id: uuid.UUID,
+    clock: Clock,
+) -> ActingSession:
+    """Lock the actor (``users`` then the acting session, both ``FOR SHARE``) inside the
+    change's own transaction and judge the session NOW. The route guard authenticated before
+    this transaction began: a password reset, sign-out or suspension may have committed since
+    (it is seen here), and one that has not committed waits for the change.
+
+    The staff freshness windows are NOT re-evaluated: they measure the request as it arrived
+    and stay with the route guards (AUTH_RBAC.md §36)."""
+    user = authority.share_user(user_id)
+    held = None if user is None else authority.share_session(user_id, session_id)
+    return ActingSession(user is not None and held is not None and _is_usable(held, user, clock()))
 
 
 @dataclass(frozen=True)

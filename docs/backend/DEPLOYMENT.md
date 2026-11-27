@@ -406,6 +406,18 @@ Windows PowerShell, from `backend/`, with the API stopped. **Rehearsed on 2026-1
 - **Required before production: least-privilege application database credentials.** The runtime role of the two-role design above must be used: data reads and writes only, **no `TRUNCATE`, no schema changes, and not the owner of any table** (an owner can disable a trigger). Migrations run under the separate migration role. Verify the grants on the deployed database.
 - **Before the pilot: correct the daily submission-limit reset.** The 4-per-day limit resets at **05:00 PKT** (midnight UTC), while capacity uses the Karachi date. With the default hours it has no effect; opening hours that start before 05:00 would let an account get a second daily allowance on one Karachi date.
 
-**Authentication concurrency (2026-11-27):** the token / user deadlocks and the password-reset bypasses are corrected (`AUTH_RBAC.md` §35). Still open there (§35.4): other in-flight writes, staff changes included, do not re-check a session revoked meanwhile; and the maintenance purge takes no user lock. Review both before public production.
+**Authentication concurrency (2026-11-27):** the token / user deadlocks, the password-reset bypasses (`AUTH_RBAC.md` §35) and staff changes surviving a revoked session (§36) are corrected. What remains is in §16.
 
 There is **no deployment-level switch**: the database setting is the only one (planning had suggested an additional `GROCERY_ENABLED` setting; it was not approved).
+
+## 16. Production security backlog
+
+Recorded 2026-11-27 by the owner's decision. **Deferred: none of these is implemented.** Each needs a decision before public production. It adds to, and does not replace, the pilot and launch blockers of §15 and the earlier sections.
+
+| # | Item | What is known |
+|---|---|---|
+| 1 | **Expired-data cleanup deadlock** (potential) | `app.cli.auth_maintenance purge` deletes sessions and tokens without locking users. By reading only, not reproduced: a password reset for a user who still has both week-old expired sessions and week-old unused tokens could deadlock with it. |
+| 2 | **A delayed logout-all reaches newer sessions** | A `logout-all` authenticated before a password reset, and applied after it, also revokes sessions created since. It grants no access. |
+| 3 | **Failed sign-in limit under concurrency** | The limit is checked before an attempt and counted after it, so simultaneous attempts can slightly exceed it. Per-IP limiting at the proxy is still required. |
+| 4 | **Least-privilege database credentials** | Required before production (§15): no `TRUNCATE`, no schema changes, not the owner of any table. |
+| 5 | **Comprehensive review of privileged operations** | `AUTH_RBAC.md` §36 covers revocation, expiry, account status and role for the staff mutations that exist today. Open for the review: a password change **in the same session** rotates its token without revoking it, so a request already past authentication with the old token is still applied; freshness windows are judged only as the request arrives; staff **reads** use the request-start authority; owners' and customers' own writes do not re-check their session (Grocery orders do); **MFA for every Super Admin and Moderator is required before production** (`AUTH_RBAC.md` §27.13) and does not exist; and every **new** privileged route must follow the mandatory rule of `AUTH_RBAC.md` §36.4 (nothing yet fails automatically if one does not). |
