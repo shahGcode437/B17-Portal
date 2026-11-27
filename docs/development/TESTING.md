@@ -254,7 +254,31 @@ Needs: Docker (the lane asserts on PostgreSQL through `docker exec <container> p
 
 **Verification (local).** Focused run — authentication, sessions, OAuth, e-mail events, staff and RBAC, Grocery, every concurrency file, the sign-out security and external-I/O files, and the tests that need no database: **3,294 passed, 3 skipped** (the existing `test_staff_atomicity.py` skips) in 18 min 29 s. ruff check and format and mypy (267 files) passed. **The full backend suite was not run**; GitHub CI is the full-suite check once a commit is approved. No frontend file changed.
 
-**Not covered:** Google account claim against a sign-out (it takes the same `FOR UPDATE` as the tested paths). The open defects of `AUTH_RBAC.md` §34 were reproduced with a temporary probe that was then deleted; **no regression test exists for them yet**.
+**Not covered:** Google account claim against a sign-out (it takes the same `FOR UPDATE` as the tested paths). The further defects found then were first reproduced with a temporary probe (deleted); their regression tests are in the next section.
+
+## Credential races (security correction, 2026-11-27)
+
+**What is pinned.** `tests/db/test_auth_credential_races.py` (53 tests; real endpoints, separate connections, committed rows). Two stagings, neither by timing: **overtaken** (the slow request is paused after its check, *before any lock*, while the other commits) and **queued** (the first is paused holding its locks and the second is observed waiting). Covered: password reset against a stale change and a stale sign-in, in both orders, the hash-upgrade case included; two legitimate hash upgrades; two changes from two sessions and from one; a session ending during a change (logout, logout-all, session cap, staff role removal, suspension, expiry); status changes during sign-in; `verify-email` against reset and resend; the same token used twice, expiring or replaced while waiting; `forgot-password` against reset and against itself; the Google claim against the previous holder's sign-in and password change, and against verification, reset and forgot-password; Google sign-in, link and disconnect against a removed identity or a reset. The assertions check which password works, live sessions and tokens, audit events, cookies and mail, not only status codes.
+
+**Before and after.** On the code of `148d7b0`: **39 failed, 14 passed**. With the correction all pass.
+
+| Why they failed before | Tests |
+|---|---|
+| a request that must be refused **succeeded** (the hash-upgrade tests showed the old password working again; the claim tests showed a password back on the claimed account) | 28 |
+| PostgreSQL deadlock (`500`) | 5 |
+| two working reset links | 1 |
+| a token that expired while the request waited was accepted (minor: it was valid when first checked) | 2 |
+| **staging, not a defect:** the old code locked the token first, so "paused before any lock" could not be staged and the other request hung | 3 |
+
+The 14 that passed before are orders that were already safe and legitimate flows that must stay allowed.
+
+**One Task A expectation changed, deliberately:** a password change queued behind a **logout-all** was accepted before, on a session just revoked; it is now `401` and changes nothing.
+
+**Runs.** The two race files together (75 tests): **three runs in a row, all passed, no deadlock reported.** **Mutation check:** 13 protections removed one at a time (each re-check in sign-in, change, Google sign-in / link / disconnect; the second pass; the re-reading user lock; the user-before-token order in reset and in verification; post-lock expiry; the `forgot-password` lock): **each made a test fail**; files restored byte for byte. For the order inside reset, the failing test is the one that requires nothing to be locked before the user.
+
+**Focused verification (local).** The set of the sign-out correction plus the new race file and the developer-verification tests: **3,356 passed, 3 skipped** (the existing `test_staff_atomicity.py` skips) in 19 min 2 s. ruff check and format and mypy (268 files) passed. **The full backend suite was not run**; GitHub CI is the full-suite check once pushed. No frontend file, endpoint, schema or error code changed, so no frontend check was run. No Google or Resend service was contacted (the in-process fake provider and memory mailbox only).
+
+**Not covered:** the open items of `AUTH_RBAC.md` §35.4; the token or identity being changed by an operator's SQL; more than two or three requests at once; behaviour at production Argon2 timings (tests use cheap parameters, which does not affect lock order).
 
 ## Known intermittent failure in the mocked browser lane
 

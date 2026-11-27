@@ -1068,11 +1068,17 @@ Baseline `e1b566f`. Migration head **`0011`**. No new dependency; no frontend ch
 - **Added to the blocker register (owner, 2026-11-27):** the order history's `TRUNCATE` limitation; **least-privilege database credentials before production**; the daily limit's **05:00 PKT** reset, to correct before the pilot (`DEPLOYMENT.md` §15).
 - **Not production-ready.**
 
-## Authentication correction — sign-out lock order (BUILT 2026-11-27; **awaiting owner review, not committed**)
+## Authentication correction — sign-out lock order (**COMMITTED** as `148d7b0` 2026-11-27; **not pushed**)
 
 - **Fixed:** logout and logout-all could deadlock with password change, password reset, a sign-in at the session cap and staff changes. Both now lock the user before the session (`AUTH_RBAC.md` §34; `BACKEND_ARCHITECTURE.md` §5). No migration; no API change.
-- **Open, reproduced, not fixed:** deadlocks between `verify-email` and password reset or resend; a password change, or a sign-in, that checked the **old** password can defeat a password reset that commits meanwhile (`AUTH_RBAC.md` §34).
 - **Verification:** `TESTING.md` (sign-out lock order).
+
+## Security correction — credential races (BUILT 2026-11-27; **awaiting owner review, not committed**)
+
+- **Fixed:** a password change or sign-in that checked the old password, or relied on a since-revoked session, can no longer defeat a password reset or a Google account claim (the hash upgrade that restored an old password included); Google sign-in, link and disconnect re-check under lock; `verify-email` no longer deadlocks with reset, resend or a claim; one live reset link. No migration, no new error code, no frontend change (`AUTH_RBAC.md` §35).
+- **Still open:** `AUTH_RBAC.md` §35.4 (other in-flight writes, staff changes included, do not re-check a revoked session; the maintenance purge takes no user lock).
+- **Verification:** `TESTING.md` (credential races). GitHub CI has not run either correction.
+- Grocery stays disabled; its launch blockers and open business decisions are unchanged.
 
 ## VR1 (Visual Redesign) — Glassmorphism + Controlled Maximalism Foundation (in progress, NOT committed)
 

@@ -569,4 +569,10 @@ This **replaces** the earlier statement that GROCERY-1b needs the block list bef
 
 **Decision (authentication lock order — correction BUILT 2026-11-27, awaiting owner review; no migration).** Authentication writes lock the `users` row **before** any of its sessions; logout and logout-all now take `FOR KEY SHARE` there first. Rejected: retrying or hiding the deadlock; a stronger lock in sign-out (it would make sign-outs wait for order submissions and each other for no gain); weakening the `FOR UPDATE` of the other paths (staff authority checks rely on it).
 **Reason:** smallest change that removes the cycle without changing what any operation locks out.
-**Revisit when:** the token and stale-password defects of `AUTH_RBAC.md` §34 are addressed, or an account-suspension feature is added.
+**Revisit when:** an account-suspension feature is added.
+
+---
+
+**Decision (credential revalidation under lock — security correction BUILT 2026-11-27, owner-approved scope, awaiting review; no migration; `AUTH_RBAC.md` §35).** (1) Verify and hash passwords with no lock; then lock the user, re-read, and write only if the checked credential, session, token, identity and status still hold. (2) The stored password **hash is the credential version**. (3) A changed hash is judged by verifying again against the new one, **at most twice**, so that a mere hash upgrade does not refuse a correct password. (4) One lock order: `users` before tokens, sessions and identities. (5) The same rule covers Google sign-in, link and disconnect, where the review found the same gap (beyond the three reported defects). **Rejected:** hashing while holding the user's lock (Argon2 is deliberately slow and would block orders, sign-ins and staff checks); a credential-version column (needs a migration and every writer to remember it); serializable isolation with retries; catching or retrying deadlocks.
+**Reason:** a completed password reset must end everything that relied on the old credential.
+**Revisit when:** MFA or step-up authentication is added; other writes are required to re-check revocation (§35.4).

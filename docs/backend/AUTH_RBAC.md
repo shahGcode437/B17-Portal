@@ -1143,10 +1143,51 @@ Unchanged: Super Admin invariants, the last-usable-Super-Admin guard, role exclu
 
 **Correction.** Both sign-outs first take `FOR KEY SHARE` on the user (`UserAuthRepository.key_share`). It is the lock the audit insert already took, only earlier: no stronger lock, no retry, no change to what is revoked, recorded or answered. Sign-outs do not block each other, and the staff decisions that rely on `FOR KEY SHARE` (§29, §31) are unaffected. A sign-out can now briefly **wait** for an operation that holds the user `FOR UPDATE`. One visible consequence: `logout-all` and a sign-in that is already holding that lock now run one after the other, so the new session is revoked too. The lock order is in `BACKEND_ARCHITECTURE.md` §5.
 
-**Found in the same review, reproduced the same way, NOT fixed (awaiting the owner's decision):**
+**Also found in that review:** deadlocks between one-time tokens and the user, and two password-reset bypasses. **Fixed by §35.**
 
-1. **Tokens and the user are locked in both orders.** `verify-email` locks its token row, then the user. `reset-password` and `resend-verification` hold the user, then retire that verification token. Either pair deadlocks (the verification answered `500`). By reading only, not reproduced: the Google account claim has the same shape against `verify-email`, `reset-password` and `forgot-password`.
-2. **A password change can overwrite a password reset (security).** `change-password` verifies the current password **before** locking the user and does not check again. If a reset commits in between, the change still succeeds: the password set by the reset stops working and the one chosen by the late request works. Anyone who knows the old password and holds a session could use this against an owner who is recovering the account. The late request's session stays revoked. It also does not re-check that its session is still valid under lock.
-3. **A sign-in with the old password can survive a password reset (security).** `login` has the same gap: it verified the old password before the reset committed, then created a session **after** the reset had revoked all of them, and that session works.
+## 35. Credential revalidation under lock (security correction, 2026-11-27)
 
-2 and 3 need the credential (and, for 2, the session) re-checked under the user lock. That adds a refusal to both endpoints, so it is not part of this correction. They should be closed before any public production.
+### 35.1 Root causes (each reproduced through the endpoints on a test database)
+
+1. **Check, then lock, never check again.** `change-password` and `login` verified a password with nothing locked (Argon2 is slow) and then wrote. A password reset, another change, a revocation, a status change or a Google account claim that committed in between was ignored: a stale change **overwrote a reset**; a stale sign-in **created a session after** the reset had revoked them all; on a claimed account the previous holder could **put their password back or open a session**.
+2. **A hash upgrade wrote the old password back.** When stored hash parameters are outdated, `login` stores a new hash of the password it verified. Run late, that **restored the old password** over a reset.
+3. **Stale ORM objects.** Authentication loads the user into the request's database session. The `SELECT ... FOR UPDATE` helpers returned that **cached copy**, so a check made "under the lock" could read values from before it (a resend after a verification issued a new token for a verified account).
+4. **Google decisions made before the lock.** A sign-in used an identity that had since been disconnected; link and disconnect accepted a session that a reset had since revoked (a stolen session could **add its own Google account** while the owner reset the password).
+5. **Tokens and the user locked in both orders** (deadlocks, answered `500`): `verify-email` locked token → user, while reset, resend and the Google account claim locked user → token. `forgot-password` locked no user and could leave **two** working reset links.
+
+### 35.2 The rule
+
+**A check made before a lock authorizes nothing.** Passwords are verified and hashed with no row lock held. The write then happens in one transaction that locks `users` first, re-reads it, and proceeds only if what was checked still holds.
+
+| Operation | Re-checked under the user's lock before any write | If it no longer holds |
+|---|---|---|
+| `login` | the stored hash is the one verified; account active | verify again (below) → `401 invalid_credentials`, or `403 account_disabled` |
+| `change-password` | requesting session not revoked or expired, account active; then the stored hash is the one verified | `401 session_expired`; or verify again → `401 invalid_credentials` |
+| `reset-password` | token (locked, re-read; expiry judged **after** the lock); account not deleted | `400 token_invalid` / `token_expired` |
+| `verify-email` | token, the same way; the account still has the token's address | `400 token_invalid` / `token_expired` |
+| `resend-verification` | still unverified (read from the locked row) | `204`, nothing sent |
+| `forgot-password` | account active | the usual `202`, nothing sent |
+| Google sign-in (linked identity) | the identity still exists on this account | the sign-in is resolved again from the start |
+| Google link | account active; requesting session usable | `account_disabled` / `oauth_failed` |
+| Google disconnect | requesting session usable | `401 session_expired` |
+
+- **The stored password hash is the credential's version.** Every reset or change writes a new salted hash and a claim sets it to null, so an unchanged hash means an unchanged credential. No column or migration was added.
+- **The second pass.** A changed hash does not prove a changed password: a concurrent sign-in may only have upgraded the hash. `login` and `change-password` therefore verify **once more, against what is stored then** (at most two passes, never under a lock). A reset makes the second pass fail; an upgrade lets it succeed. It is not a retry of a failed transaction: nothing was written, and a changed state is being judged. If both passes are overtaken, the request is refused and counted as a failed attempt.
+- **"Usable session" has one definition** (`auth_sessions._is_usable`), used by authentication and by the re-check (`SessionService.require_live`).
+- Reset now hashes the new password **before** its transaction. A dead token is still refused first, and a weak password still does not spend the token.
+
+### 35.3 Guarantees, and what did not change
+
+- After a password reset commits, no request that relied on the old password or on a revoked session can set a password, create a session, or add or remove a Google identity.
+- One-time tokens are single-use and cannot be redeemed after expiry or replacement, however requests interleave; `forgot-password` and resend leave one live token per purpose.
+- Unchanged: error codes and messages (no new code), the one answer for unknown address, wrong password and password-less account, `forgot-password`'s uniform `202`, Google resolution and claiming rules, hashing parameters, rate-limit policies, CSRF / Origin, cookies, audit event types, session lifetimes and the cap.
+- **New refusals** are only for requests whose credential, session, token or identity stopped being valid while they were in flight.
+
+### 35.4 Not covered by this correction
+
+- **Other writes do not re-check their session.** Revocation applies to requests authenticated after it commits. A request already past authentication still completes: listing, request and profile writes, and **staff changes**, which re-check the actor's **role** under lock but not their session. A Super Admin session revoked by a reset while a staff change is in flight does not stop it.
+- A sign-out already in flight still runs after a reset. It only revokes: at worst a late `logout-all` also ends a session created after the reset.
+- `resend-verification` does not re-check the session; it only mails the account's own address.
+- There is no account-suspension operation in the application (tests change the status in SQL).
+- The maintenance purge (`app.cli.auth_maintenance`) deletes expired sessions and tokens without locking users. By reading only: a reset for a user who still has **both** week-old expired sessions and week-old unused tokens could deadlock with it while it runs.
+- The login failure limit is still checked before and counted after the attempt (unchanged), so a simultaneous burst can exceed it slightly; per-IP limiting stays a proxy requirement.

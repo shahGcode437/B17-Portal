@@ -5,6 +5,12 @@ transaction** of each operation (``with transaction(session)``): register, login
 session-cap revocations), logout, logout-all, token redemption, password reset and change each
 commit exactly once, atomically, or not at all. Repositories only query/add/flush.
 
+A CHECK MADE BEFORE A LOCK AUTHORIZES NOTHING (AUTH_RBAC.md §35). Passwords are verified and
+hashed with no row lock held, because Argon2 is deliberately slow. Each operation then locks
+the ``users`` row, re-reads it, and writes only if what it checked is still true: the same
+password hash (a new password, reset or account claim always changes it), the same account
+status, a still-usable session, a still-redeemable token.
+
 Email is deliberately *not* sent here: operations return the ``EmailMessage`` objects to send and
 the router dispatches them **after** the commit (a mail outage must never undo an account).
 
@@ -14,6 +20,7 @@ reveals whether the account exists; ``register`` reveals an existing email expli
 documented, rate-limited trade-off (AUTH_RBAC.md §13.1).
 """
 
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
@@ -58,6 +65,10 @@ from app.services.login_notices import login_notices
 
 VERIFICATION_TTL = timedelta(hours=24)
 PASSWORD_RESET_TTL = timedelta(minutes=60)
+#: How often a password check may be made for one request. The second pass happens only when the
+#: stored hash or status changed between the check and the lock, and it checks the password
+#: again against what is stored THEN: a reset makes it fail, a mere hash upgrade does not.
+_CREDENTIAL_PASSES = 2
 
 
 @dataclass(frozen=True)
@@ -182,31 +193,37 @@ class AuthService:
         if not decision.allowed:
             raise _rate_limited(decision)
 
-        user = self._users.get_by_email(key) if key else None
-        stored_hash = user.password_hash if user is not None else None
-        if stored_hash is None:
-            self._passwords.dummy_verify(password)  # comparable work for unknown/password-less
-            verified = False
-        else:
-            verified = self._passwords.verify_password(stored_hash, password)
+        for _pass in range(_CREDENTIAL_PASSES):
+            user = self._users.get_by_email(key) if key else None
+            stored_hash = user.password_hash if user is not None else None
+            if stored_hash is None:
+                self._passwords.dummy_verify(password)  # comparable work: unknown/password-less
+                verified = False
+            else:
+                verified = self._passwords.verify_password(stored_hash, password)
 
-        if not verified or user is None or user.status == UserStatus.DELETED:
-            self._record_login_failure(key, user)
+            if (
+                not verified
+                or user is None
+                or stored_hash is None
+                or user.status == UserStatus.DELETED
+            ):
+                self._record_login_failure(key, user)
+                raise _invalid_credentials()
+            if user.status == UserStatus.SUSPENDED:
+                raise AppError(ErrorCode.ACCOUNT_DISABLED, status_code=403)
+
+            upgraded_hash: str | None = None
+            if self._passwords.needs_rehash(stored_hash):
+                upgraded_hash = self._passwords.hash_password(password)
+            opened = self._open_session(user.id, stored_hash, upgraded_hash, user_agent)
+            if opened is not None:
+                break
+        else:  # the account changed under both passes: never sign in on a stale check
+            self._record_login_failure(key, self._users.get_by_email(key))
             raise _invalid_credentials()
-        if user.status == UserStatus.SUSPENDED:
-            raise AppError(ErrorCode.ACCOUNT_DISABLED, status_code=403)
 
-        upgraded_hash: str | None = None
-        if stored_hash is not None and self._passwords.needs_rehash(stored_hash):
-            upgraded_hash = self._passwords.hash_password(password)
-        now = self._clock()
-        with transaction(self._session):
-            if upgraded_hash is not None:
-                user.password_hash = upgraded_hash
-            user.last_login_at = now
-            raw_session, auth_session = self._sessions.create(user.id, user_agent)
-            self._audit.record(AuthEventType.LOGIN_SUCCESS, user_id=user.id)
-            principal = self._sessions.principal_for_new(auth_session, user)
+        principal, raw_session, now = opened
         notices = login_notices(  # after the commit; never raises
             self._settings,
             self._limiter,
@@ -218,6 +235,32 @@ class AuthService:
             occurred_at=now,
         )
         return IssuedSession(principal, raw_session, notices)
+
+    def _open_session(
+        self,
+        user_id: uuid.UUID,
+        verified_hash: str,
+        upgraded_hash: str | None,
+        user_agent: str | None,
+    ) -> tuple[Principal, str, datetime] | None:
+        """One transaction: lock the account and create the session ONLY if the password that
+        was verified is still the account's and it is still active. ``None``: something
+        changed, nothing was written."""
+        with transaction(self._session):
+            user = self._users.lock(user_id)
+            if (
+                user is None
+                or user.status != UserStatus.ACTIVE
+                or user.password_hash != verified_hash
+            ):
+                return None
+            now = self._clock()
+            if upgraded_hash is not None:
+                user.password_hash = upgraded_hash
+            user.last_login_at = now
+            raw_session, auth_session = self._sessions.create(user.id, user_agent)
+            self._audit.record(AuthEventType.LOGIN_SUCCESS, user_id=user.id)
+            return self._sessions.principal_for_new(auth_session, user), raw_session, now
 
     def _record_login_failure(self, key: str, user: User | None) -> None:
         self._limiter.hit(key, LOGIN_FAILURES)  # its own transaction: failures always count
@@ -243,10 +286,10 @@ class AuthService:
 
     def verify_email(self, raw_token: str) -> None:
         digest = self._digest_or_invalid(raw_token)
-        now = self._clock()
+        seen = self._peek_token(digest, AuthTokenPurpose.EMAIL_VERIFICATION)
         with transaction(self._session):
-            token = self._redeemable_token(digest, AuthTokenPurpose.EMAIL_VERIFICATION, now)
-            user = self._users.lock(token.user_id)
+            user = self._users.lock(seen.user_id)  # users before auth_tokens
+            token, now = self._redeemable_token(digest, AuthTokenPurpose.EMAIL_VERIFICATION)
             if user is None or user.email != token.email:
                 raise AppError(ErrorCode.TOKEN_INVALID, status_code=400)
             self._consume(token, now)
@@ -278,8 +321,13 @@ class AuthService:
         user = self._users.get_by_email(key) if key else None
         if user is None or user.status != UserStatus.ACTIVE:
             return ()
-        now = self._clock()
         with transaction(self._session):
+            # Locked before any token is touched, which also serializes two requests: the
+            # second retires the first one's link instead of leaving two that work.
+            user = self._users.lock(user.id)
+            if user is None or user.status != UserStatus.ACTIVE:
+                return ()
+            now = self._clock()
             token = self._issue_token(
                 user, AuthTokenPurpose.PASSWORD_RESET, PASSWORD_RESET_TTL, now
             )
@@ -288,15 +336,19 @@ class AuthService:
 
     def reset_password(self, *, raw_token: str, new_password: str) -> tuple[EmailMessage, ...]:
         digest = self._digest_or_invalid(raw_token)
-        now = self._clock()
+        # First look, nothing locked: refuse a dead token or a weak password (which must not
+        # burn the token), then hash. Everything about the token and account is decided again.
+        seen = self._peek_token(digest, AuthTokenPurpose.PASSWORD_RESET)
+        user = self._users.get_by_id(seen.user_id)
+        if user is None or user.status == UserStatus.DELETED:
+            raise AppError(ErrorCode.TOKEN_INVALID, status_code=400)
+        self._check_password(new_password, email=user.email, display_name=user.display_name)
+        new_hash = self._passwords.hash_password(new_password)
         with transaction(self._session):
-            token = self._redeemable_token(digest, AuthTokenPurpose.PASSWORD_RESET, now)
-            user = self._users.lock(token.user_id)
+            user = self._users.lock(seen.user_id)  # users before auth_tokens
+            token, now = self._redeemable_token(digest, AuthTokenPurpose.PASSWORD_RESET)
             if user is None or user.status == UserStatus.DELETED:
                 raise AppError(ErrorCode.TOKEN_INVALID, status_code=400)
-            # Policy first: a weak password must not burn the one-time token (the error rolls back).
-            self._check_password(new_password, email=user.email, display_name=user.display_name)
-            new_hash = self._passwords.hash_password(new_password)
             self._consume(token, now)
             user.password_hash = new_hash
             self._tokens.invalidate_unconsumed(
@@ -324,29 +376,30 @@ class AuthService:
         decision = self._limiter.blocked(principal.email, LOGIN_FAILURES)
         if not decision.allowed:
             raise _rate_limited(decision)
-        user = self._users.get_by_id(principal.user_id)
-        if user is None:
-            raise AppError(ErrorCode.UNAUTHENTICATED, status_code=401)
-        if user.password_hash is None or not self._passwords.verify_password(
-            user.password_hash, current_password
-        ):
-            if user.password_hash is None:
-                self._passwords.dummy_verify(current_password)
-            self._limiter.hit(principal.email, LOGIN_FAILURES)  # a stolen session cannot guess
+        new_hash: str | None = None
+        for _pass in range(_CREDENTIAL_PASSES):
+            user = self._users.get_by_id(principal.user_id)
+            if user is None:
+                raise AppError(ErrorCode.UNAUTHENTICATED, status_code=401)
+            verified_hash = user.password_hash
+            if verified_hash is None or not self._passwords.verify_password(
+                verified_hash, current_password
+            ):
+                if verified_hash is None:
+                    self._passwords.dummy_verify(current_password)
+                self._limiter.hit(principal.email, LOGIN_FAILURES)  # no guessing by session
+                raise _invalid_credentials()
+            if new_hash is None:
+                self._check_password(new_password, email=user.email, display_name=user.display_name)
+                new_hash = self._passwords.hash_password(new_password)
+            changed = self._apply_password_change(principal, verified_hash, new_hash)
+            if changed is not None:
+                break
+        else:  # the password changed under both passes
+            self._limiter.hit(principal.email, LOGIN_FAILURES)
             raise _invalid_credentials()
-        self._check_password(new_password, email=user.email, display_name=user.display_name)
-        new_hash = self._passwords.hash_password(new_password)
-        with transaction(self._session):
-            locked = self._users.lock(user.id)
-            assert locked is not None
-            locked.password_hash = new_hash
-            self._sessions.revoke_all(
-                user.id,
-                SessionRevokeReason.PASSWORD_CHANGE,
-                except_session_id=principal.session_id,
-            )
-            raw_session, expires_at = self._sessions.rotate(principal.session_id)
-            self._audit.record(AuthEventType.PASSWORD_CHANGED, user_id=user.id)
+
+        raw_session, expires_at, email = changed
         rotated = Principal(
             user_id=principal.user_id,
             display_name=principal.display_name,
@@ -360,8 +413,30 @@ class AuthService:
             session_expires_at=expires_at,
             staff_scopes=principal.staff_scopes,
         )
-        notice = password_changed_notice(self._settings, user.email, self._clock())
+        notice = password_changed_notice(self._settings, email, self._clock())
         return IssuedSession(rotated, raw_session, (notice,))
+
+    def _apply_password_change(
+        self, principal: Principal, verified_hash: str, new_hash: str
+    ) -> tuple[str, datetime, str] | None:
+        """One transaction: lock the account and the requesting session, and write ONLY if the
+        session may still act and the verified password is still the account's. A session that
+        ended raises ``401 session_expired``; ``None`` means the stored hash changed."""
+        with transaction(self._session):
+            user = self._users.lock(principal.user_id)
+            self._sessions.require_live(user, principal.session_id)
+            assert user is not None  # require_live refused a missing account
+            if user.password_hash != verified_hash:
+                return None
+            user.password_hash = new_hash
+            self._sessions.revoke_all(
+                user.id,
+                SessionRevokeReason.PASSWORD_CHANGE,
+                except_session_id=principal.session_id,
+            )
+            raw_session, expires_at = self._sessions.rotate(principal.session_id)
+            self._audit.record(AuthEventType.PASSWORD_CHANGED, user_id=user.id)
+            return raw_session, expires_at, user.email
 
     # -- token redemption internals ----------------------------------------------------------
 
@@ -371,16 +446,29 @@ class AuthService:
             raise AppError(ErrorCode.TOKEN_INVALID, status_code=400)
         return hash_token(raw_token)
 
-    def _redeemable_token(
-        self, digest: bytes, purpose: AuthTokenPurpose, now: datetime
-    ) -> AuthToken:
-        """The locked token row if it can still be redeemed; otherwise the stable token errors.
+    def _peek_token(self, digest: bytes, purpose: AuthTokenPurpose) -> AuthToken:
+        """An unlocked first look (it names the user to lock). It authorizes nothing."""
+        return self._require_redeemable(self._tokens.find_by_hash(digest), purpose, self._clock())
 
-        ``token_invalid`` covers unknown, already-used and wrong-purpose tokens alike (they must
-        not be distinguishable); ``token_expired`` is only for a known, unused, right-purpose
-        token past its expiry — possession of the secret already proves the caller owns it.
-        """
+    def _redeemable_token(
+        self, digest: bytes, purpose: AuthTokenPurpose
+    ) -> tuple[AuthToken, datetime]:
+        """The locked token row if it can still be redeemed NOW, and that "now" (read after the
+        lock, so a token that expired while this request waited is refused). The caller already
+        holds the user's lock."""
         token = self._tokens.lock_by_hash(digest)
+        now = self._clock()
+        return self._require_redeemable(token, purpose, now), now
+
+    @staticmethod
+    def _require_redeemable(
+        token: AuthToken | None, purpose: AuthTokenPurpose, now: datetime
+    ) -> AuthToken:
+        """``token_invalid`` covers unknown, already-used and wrong-purpose tokens alike (they
+        must not be distinguishable); ``token_expired`` is only for a known, unused,
+        right-purpose token past its expiry — possession of the secret already proves the caller
+        owns it.
+        """
         if token is None or token.purpose is not purpose or token.consumed_at is not None:
             raise AppError(ErrorCode.TOKEN_INVALID, status_code=400)
         if token.expires_at <= now:

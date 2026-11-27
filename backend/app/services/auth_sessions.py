@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from app.core.clock import Clock
 from app.core.config import Settings
+from app.core.errors import AppError, ErrorCode
 from app.core.security.tokens import hash_token, is_well_formed_token, new_token
 from app.db.session import transaction
 from app.models import AuthSession, User
@@ -42,6 +43,17 @@ from app.services.staff_scopes import (
 #: ``last_seen_at`` (and the sliding idle expiry) is written at most this often per session.
 LAST_SEEN_INTERVAL = timedelta(minutes=5)
 _USER_AGENT_LENGTH = 200
+
+
+def _is_usable(auth_session: AuthSession, user: User, now: datetime) -> bool:
+    """The one definition of a session that may still act: not revoked, not expired, and its
+    account active."""
+    return (
+        auth_session.revoked_at is None
+        and now < auth_session.expires_at
+        and now < auth_session.absolute_expires_at
+        and user.status == UserStatus.ACTIVE
+    )
 
 
 @dataclass(frozen=True)
@@ -170,6 +182,19 @@ class SessionService:
         self._sessions.add(auth_session)
         return raw, auth_session
 
+    # -- re-validation (caller's transaction) -----------------------------------------------
+
+    def require_live(self, user: User | None, session_id: uuid.UUID) -> None:
+        """For a change to how an account signs in, decided INSIDE its transaction.
+
+        Authentication happened before this transaction, so the session may have been revoked
+        since. The caller has just locked and re-read ``user`` (``FOR UPDATE``); this locks the
+        requesting session too and insists it is still usable now, else ``401
+        session_expired``."""
+        found = None if user is None else self._sessions.lock_one(session_id, user.id)
+        if user is None or found is None or not _is_usable(found, user, self._clock()):
+            raise AppError(ErrorCode.SESSION_EXPIRED, status_code=401)
+
     # -- revocation (caller's transaction) ---------------------------------------------------
 
     def revoke(self, session_id: uuid.UUID, reason: SessionRevokeReason) -> None:
@@ -263,12 +288,7 @@ class SessionService:
             return Authentication(None, "unknown")
         auth_session, user, plan_code, roles = found
         now = self._clock()
-        if (
-            auth_session.revoked_at is not None
-            or now >= auth_session.expires_at
-            or now >= auth_session.absolute_expires_at
-            or user.status != UserStatus.ACTIVE
-        ):
+        if not _is_usable(auth_session, user, now):
             return Authentication(None, "expired")
 
         last_seen_before = auth_session.last_seen_at

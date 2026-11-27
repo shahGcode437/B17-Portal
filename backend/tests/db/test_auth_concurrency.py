@@ -263,8 +263,15 @@ def test_an_operation_arriving_during_a_sign_out_waits_and_both_finish(
     blocked(db_engine, 1)
     gate.release.set()
 
+    # A logout-all also ends the session a password change was requested from, so a change that
+    # arrives behind it is refused and changes nothing (AUTH_RBAC.md §35).
+    refused = (operation, sign_out) == ("password change", "logout-all")
     statuses = (first.finish().status_code, second.finish().status_code)
-    assert statuses == (204, case.done)
+    assert statuses == (204, 401 if refused else case.done)
+    if refused:
+        assert world.client().login(EMAIL, PASSWORD).status_code == 200
+        assert world.client().login(EMAIL, OTHER_PASSWORD).status_code == 401
+        return
     assert case.leaving.me().status_code == 401
     # the sign-out committed first
     assert revoke_reason(db_engine, leaving) == sign_out.replace("-", "_")

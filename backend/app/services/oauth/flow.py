@@ -87,6 +87,11 @@ class Rejected(Exception):
         super().__init__(code)
 
 
+class _IdentityRemoved(Exception):
+    """The Google identity was removed while the sign-in waited for the account's lock: resolve
+    the sign-in again from the start, as if it had arrived afterwards."""
+
+
 @dataclass(frozen=True)
 class StartedFlow:
     authorization_url: str
@@ -306,8 +311,9 @@ class OAuthService:
                 return self._with_login_notice(outcome)  # committed: now the notice
             except Rejected as rejected:
                 return _failure(rejected.code)
-            except IntegrityError:
-                # Lost a race on (provider, subject) or the email: re-resolve with the winner.
+            except (IntegrityError, _IdentityRemoved):
+                # Lost a race on (provider, subject) or the email, or the identity was removed:
+                # rolled back; re-resolve against what is stored now.
                 continue
         return _failure("oauth_failed")
 
@@ -348,6 +354,10 @@ class OAuthService:
             user = self._users.lock(existing.user_id)
             if user is None:
                 raise Rejected("oauth_failed")
+            # The identity was read before the lock; a disconnect may have removed it since.
+            current = self._identities.get_by_subject(identity.provider, identity.subject)
+            if current is None or current.user_id != user.id:
+                raise _IdentityRemoved
             if user.status != UserStatus.ACTIVE:
                 raise Rejected("account_disabled")
             existing.provider_email = email  # informational only; never moves ownership
@@ -509,20 +519,26 @@ class OAuthService:
         for _attempt in range(2):
             try:
                 with transaction(self._session):
-                    return self._link(flow, identity)
+                    return self._link(flow, identity, principal.session_id)
             except Rejected as rejected:
                 return _failure(rejected.code)
             except IntegrityError:
                 continue  # raced with another link of the same identity: re-evaluate ownership
         return _failure("identity_conflict")
 
-    def _link(self, flow: OAuthFlow, identity: OAuthIdentity) -> CallbackOutcome:
+    def _link(
+        self, flow: OAuthFlow, identity: OAuthIdentity, session_id: uuid.UUID
+    ) -> CallbackOutcome:
         assert flow.user_id is not None
         user = self._users.lock(flow.user_id)
         if user is None:
             raise Rejected("oauth_failed")
         if user.status != UserStatus.ACTIVE:
             raise Rejected("account_disabled")
+        try:  # a reset or sign-out since authentication: it may not add a way to sign in
+            self._sessions.require_live(user, session_id)
+        except AppError:
+            raise Rejected("oauth_failed") from None
         owner = self._identities.get_by_subject(identity.provider, identity.subject)
         if owner is not None:
             if owner.user_id == user.id:  # already connected to this very account: idempotent
@@ -557,6 +573,7 @@ class OAuthService:
             user = self._users.lock(principal.user_id)
             if user is None:
                 raise AppError(ErrorCode.UNAUTHENTICATED, status_code=401)
+            self._sessions.require_live(user, principal.session_id)
             identity = self._identities.get_for_user(user.id, provider)
             if identity is None:
                 raise AppError(ErrorCode.NOT_FOUND, status_code=404)

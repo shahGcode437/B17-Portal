@@ -406,6 +406,6 @@ Windows PowerShell, from `backend/`, with the API stopped. **Rehearsed on 2026-1
 - **Required before production: least-privilege application database credentials.** The runtime role of the two-role design above must be used: data reads and writes only, **no `TRUNCATE`, no schema changes, and not the owner of any table** (an owner can disable a trigger). Migrations run under the separate migration role. Verify the grants on the deployed database.
 - **Before the pilot: correct the daily submission-limit reset.** The 4-per-day limit resets at **05:00 PKT** (midnight UTC), while capacity uses the Karachi date. With the default hours it has no effect; opening hours that start before 05:00 would let an account get a second daily allowance on one Karachi date.
 
-**Open authentication defects** (found 2026-11-27, not fixed, `AUTH_RBAC.md` §34): token / user deadlocks, and a password reset that an in-flight password change or sign-in with the old password can defeat. Recommended closed before any public production.
+**Authentication concurrency (2026-11-27):** the token / user deadlocks and the password-reset bypasses are corrected (`AUTH_RBAC.md` §35). Still open there (§35.4): other in-flight writes, staff changes included, do not re-check a session revoked meanwhile; and the maintenance purge takes no user lock. Review both before public production.
 
 There is **no deployment-level switch**: the database setting is the only one (planning had suggested an additional `GROCERY_ENABLED` setting; it was not approved).

@@ -164,21 +164,31 @@ Every limit is held in PostgreSQL, so it is correct across restarts and any numb
 - **Settings** cannot change under a submission: it holds the settings lock shared until commit. A waiting change queues later submissions behind it.
 - The current time is read **after** the locks, so waiting never extends the opening hours.
 
-### Authentication writes: `users` before `auth_sessions`
+### Authentication writes: `users` first
 
-**A transaction that writes both a user's row (or a row that references it) and that user's sessions locks the `users` row first.**
+**The order is `users` → `auth_tokens` / `auth_sessions` / `auth_identities`.** A transaction that touches a user's tokens, sessions or identities locks the `users` row first, and re-reads under that lock whatever it checked earlier (`AUTH_RBAC.md` §35).
 
-| Path | Lock on `users`, taken first | Then |
-|---|---|---|
-| logout, logout-all | `FOR KEY SHARE` | the session rows; audit event |
-| password change, password reset | `FOR UPDATE` | revoke sessions (reset locks its **token** row before the user) |
-| sign-in that creates a session (cap eviction), Google sign-in and account claim | `FOR UPDATE` | delete / revoke / insert sessions |
-| staff changes (web and operator CLI) | advisory lock, then `FOR UPDATE` on the target | roles, scopes, revoke sessions |
+| Path | 1st | 2nd | Then |
+|---|---|---|---|
+| sign-in (password or Google) | `users` `FOR UPDATE` | — | delete expired / revoke over the cap / insert session |
+| password change | `users` `FOR UPDATE` | the requesting session `FOR UPDATE` | revoke the others, rotate |
+| password reset | `users` `FOR UPDATE` | its token `FOR UPDATE` | retire other tokens, revoke sessions |
+| e-mail verification | `users` `FOR UPDATE` | its token `FOR UPDATE` | consume |
+| resend verification, forgot password, operator verification link | `users` `FOR UPDATE` | — | retire older tokens, insert one |
+| Google account claim | `users` `FOR UPDATE` | — | identity, revoke sessions, retire tokens, new session |
+| Google link, disconnect | `users` `FOR UPDATE` | the requesting session `FOR UPDATE` | identity |
+| logout, logout-all | `users` `FOR KEY SHARE` | — | the session rows |
+| staff changes (web, operator CLI) | staff-authority advisory lock | target `users` `FOR UPDATE` | roles → scopes → revoke sessions |
+| staff decisions, Grocery settings | (their resource) `users` `FOR KEY SHARE` | roles / scope `FOR SHARE` | no session or token |
+| Grocery submit / cancel | (advisory lock / order row) `users` `FOR SHARE` | the session `FOR SHARE` | no token |
+| session refresh (`last_seen`), restoring it after a refused admin call | the one session row, in its own transaction | — | nothing else |
 
-- **Any audit insert locks the user.** `auth_events` references `users`, so inserting an event takes `FOR KEY SHARE` there. A path that writes sessions and records an event must hold that lock **before** the session write (`UserAuthRepository.key_share`). Sign-out did it the other way round and deadlocked with every path above (fixed 2026-11-27).
-- Single-statement session writes with no event (the `last_seen` touch) hold one row and cannot form a cycle.
+- **Tokens and sessions have no order between themselves** (reset touches tokens first, the claim sessions first). That is safe because every transaction touching both holds the user `FOR UPDATE`, so they never run at the same time.
+- **Any audit insert locks the user:** `auth_events` references `users` (`FOR KEY SHARE`). A path that writes sessions and records an event must hold the user's lock **before** the session write (`UserAuthRepository.key_share`).
+- **No password is hashed or verified while a row lock is held.**
+- **Locks that re-read:** `UserAuthRepository.lock` / `lock_by_email`, `lock_one` and `lock_by_hash` use `populate_existing`, because the request may already hold an older copy.
 - There is **no account-suspension path** in the application. One added later must lock the user before the sessions.
-- **Known exception, not fixed:** one-time **tokens** and the user are locked in both orders (`AUTH_RBAC.md` §34).
+- **Outside the order:** the maintenance purge locks no user (`AUTH_RBAC.md` §35.4).
 
 ## 6. Concurrency and consistency (no distributed locking)
 

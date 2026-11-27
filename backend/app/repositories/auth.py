@@ -41,21 +41,37 @@ class UserAuthRepository:
         self._session = session
 
     def get_by_email(self, email: str) -> User | None:
-        """The account whose normalized email is ``email`` (served by ``uq_users_email_lower``)."""
-        return self._session.scalars(select(User).where(func.lower(User.email) == email)).first()
+        """The account whose normalized email is ``email`` (served by ``uq_users_email_lower``),
+        read from the database even if this session already holds a copy."""
+        return self._session.scalars(
+            select(User)
+            .where(func.lower(User.email) == email)
+            .execution_options(populate_existing=True)
+        ).first()
 
     def get_by_id(self, user_id: uuid.UUID) -> User | None:
-        return self._session.get(User, user_id)
+        """The account as stored now (never the copy authentication loaded earlier)."""
+        return self._session.get(User, user_id, populate_existing=True)
 
     def lock(self, user_id: uuid.UUID) -> User | None:
-        """``SELECT ... FOR UPDATE`` — serializes concurrent session/role changes for one user."""
+        """``SELECT ... FOR UPDATE`` — serializes concurrent session/role changes for one user.
+
+        ``populate_existing``: the request has often loaded this user already, and SQLAlchemy
+        would otherwise keep that older copy. What is decided under the lock must be decided
+        on the row as locked."""
         return self._session.scalars(
-            select(User).where(User.id == user_id).with_for_update()
+            select(User)
+            .where(User.id == user_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
         ).one_or_none()
 
     def lock_by_email(self, email: str) -> User | None:
         return self._session.scalars(
-            select(User).where(func.lower(User.email) == email).with_for_update()
+            select(User)
+            .where(func.lower(User.email) == email)
+            .with_for_update()
+            .execution_options(populate_existing=True)
         ).first()
 
     def key_share(self, user_id: uuid.UUID) -> None:
@@ -126,6 +142,15 @@ class SessionRepository:
                 select(StaffScopeAssignment.scope).where(StaffScopeAssignment.user_id == user_id)
             )
         )
+
+    def lock_one(self, session_id: uuid.UUID, user_id: uuid.UUID) -> AuthSession | None:
+        """This user's session ``FOR UPDATE``, as stored now. Only after the user's own lock."""
+        return self._session.scalars(
+            select(AuthSession)
+            .where(AuthSession.id == session_id, AuthSession.user_id == user_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        ).one_or_none()
 
     def active_for_user(self, user_id: uuid.UUID, now: datetime) -> list[AuthSession]:
         """Active sessions, oldest first. Ties on ``created_at`` break on ``id`` (deterministic)."""
@@ -230,10 +255,23 @@ class TokenRepository:
         assert isinstance(result, CursorResult)
         return result.rowcount
 
-    def lock_by_hash(self, token_hash: bytes) -> AuthToken | None:
-        """The token row, locked so a concurrent redemption waits for this transaction."""
+    def find_by_hash(self, token_hash: bytes) -> AuthToken | None:
+        """An UNLOCKED look: it names the user to lock and refuses a dead token early. It
+        authorizes nothing; :meth:`lock_by_hash` decides."""
         return self._session.scalars(
-            select(AuthToken).where(AuthToken.token_hash == token_hash).with_for_update()
+            select(AuthToken)
+            .where(AuthToken.token_hash == token_hash)
+            .execution_options(populate_existing=True)
+        ).one_or_none()
+
+    def lock_by_hash(self, token_hash: bytes) -> AuthToken | None:
+        """The token row, locked and re-read. Only after its user's lock (``users`` before
+        ``auth_tokens``)."""
+        return self._session.scalars(
+            select(AuthToken)
+            .where(AuthToken.token_hash == token_hash)
+            .with_for_update()
+            .execution_options(populate_existing=True)
         ).one_or_none()
 
     def consume(self, token_hash: bytes, purpose: AuthTokenPurpose, now: datetime) -> bool:
