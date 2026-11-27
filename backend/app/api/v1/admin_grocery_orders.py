@@ -78,7 +78,8 @@ def grocery_order_queue(
 ) -> GroceryStaffOrdersEnvelope:
     """Oldest first unless ``sort=newest``. Filters: ``status``, ``reference`` (or its beginning),
     ``submittedOn`` (Karachi day), ``assigned`` (``me``, ``unassigned`` or a staff id).
-    ``meta.counts`` is per status under the other filters. No customer details."""
+    ``meta.counts`` is per status under the other filters. No customer details. The caller's own
+    orders are never listed or counted."""
     items, meta = service.queue(staff, query)
     return GroceryStaffOrdersEnvelope(data=items, meta=meta)
 

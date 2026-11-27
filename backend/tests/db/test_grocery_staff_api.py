@@ -365,7 +365,85 @@ def test_nobody_handles_their_own_order(auth_env: AuthEnv, role: str) -> None:
         refused = staff_post(me, order, action, body_for(action))
         assert problem(refused) == (403, "forbidden", {("order", "own_order")}), action
 
-    assert staff_order(me, order)["availableActions"] == []
+    assert problem(me.get(f"{STAFF_ORDERS}/{order}")) == (
+        403,
+        "forbidden",
+        {("order", "own_order")},
+    )
+    assert everything(auth_env) == before
+
+
+INTERNAL = (
+    "SECRET-pricing",
+    "SECRET-consent",
+    "SECRET-courier",
+    "SECRET-nobody-home",
+    "SECRET-issue",
+)
+
+
+@pytest.mark.parametrize("role", ["grocery moderator", "super admin"])
+def test_staff_never_see_the_internal_side_of_their_own_order(auth_env: AuthEnv, role: str) -> None:
+    admin = open_for_orders(auth_env)
+    account: dict[str, Any] = (
+        {"admin": True} if role == "super admin" else {"moderator_scopes": [StaffScope.GROCERY]}
+    )
+    me = customer(auth_env, "self", **account)
+    mine = submitted(me)
+    auth_env.clock.advance(minutes=1)
+    others = [submitted(customer(auth_env, name))["id"] for name in ("one", "two")]
+    # another staff member handles my order and writes every kind of internal note on it
+    detail = staff_post(admin, mine["id"], "claim").json()["data"]
+    for action, body in (
+        ("confirm", agreement(pricingNote="SECRET-pricing", consentNote="SECRET-consent")),
+        ("start-preparing", {}),
+        ("dispatch", {"note": "SECRET-courier"}),
+        ("delivery-failed", {"reason": "SECRET-nobody-home"}),
+    ):
+        done = staff_post(admin, mine["id"], action, {**body, "revision": detail["revision"]})
+        assert done.status_code == 200, done.text
+        detail = done.json()["data"]
+    issue = {"kind": "other", "note": "SECRET-issue"}
+    assert staff_post(admin, mine["id"], "issues", issue).status_code == 200
+    before = everything(auth_env)
+
+    refused = me.get(f"{STAFF_ORDERS}/{mine['id']}")
+
+    assert problem(refused) == (403, "forbidden", {("order", "own_order")})
+    assert refused.headers["cache-control"] == "no-store"
+    assert not any(secret in refused.text for secret in (*INTERNAL, mine["reference"]))
+    admin_id = admin.me().json()["data"]["id"]
+    for query, expected in (
+        ("", set(others)),
+        ("sort=newest", set(others)),
+        (f"submittedOn={TODAY.isoformat()}", set(others)),
+        (f"reference={mine['reference']}", set()),
+        ("status=preparing", set()),  # the only such order is mine
+        ("assigned=unassigned", set(others)),
+        (f"assigned={admin_id}", set()),  # held by someone else, but still mine
+        ("assigned=me", set()),
+    ):
+        response = me.get(f"{STAFF_ORDERS}?{query}")
+        data, meta = response.json()["data"], response.json()["meta"]
+        assert {o["id"] for o in data} == expected, query
+        assert meta["total"] == len(expected), query
+        assert meta["counts"]["preparing"] == 0, query  # not even counted
+        assert mine["id"] not in response.text and mine["reference"] not in response.text
+    # pages stay whole: my order leaves no gap and is not in the total
+    pages = [me.get(f"{STAFF_ORDERS}?limit=1&offset={offset}").json() for offset in range(3)]
+    assert [len(page["data"]) for page in pages] == [1, 1, 0]
+    assert {page["meta"]["total"] for page in pages} == {2}
+    # everyone else still sees it
+    colleague = admin.get(STAFF_ORDERS).json()
+    assert colleague["meta"]["total"] == 3 and colleague["meta"]["counts"]["preparing"] == 1
+    assert "SECRET-consent" in admin.get(f"{STAFF_ORDERS}/{mine['id']}").text
+    # and I follow my order as any customer does, without the internal side
+    seen = me.get(f"/grocery/orders/{mine['id']}")
+    assert seen.status_code == 200 and seen.json()["data"]["status"] == "preparing"
+    assert seen.json()["data"]["finalAmountDuePaisa"] == TOTAL_PAISA
+    assert mine["id"] in me.get("/grocery/orders").text
+    assert not any(secret in seen.text for secret in INTERNAL)
+    assert outcome(me.get(f"{STAFF_ORDERS}/{uuid.uuid4()}")) == (404, "not_found")
     assert everything(auth_env) == before
 
 
@@ -381,7 +459,11 @@ def test_confirming_records_who_said_the_customer_agreed_and_to_what(auth_env: A
         runner,
         order,
         "confirm",
-        agreement(pricingNote="Market rate today", consentNote="Brown eggs are fine"),
+        agreement(
+            pricingNote="Market rate today",
+            substitutionsAgreed=True,
+            consentNote="Brown eggs are fine",
+        ),
     )
 
     detail = response.json()["data"]
@@ -389,6 +471,7 @@ def test_confirming_records_who_said_the_customer_agreed_and_to_what(auth_env: A
     assert (detail["agreedTotalPaisa"], detail["finalAmountDuePaisa"]) == (210_000, 210_000)
     (record,) = detail["confirmations"]
     assert record["totalPaisa"] == 210_000 and record["method"] == "phone_call"
+    assert record["substitutionsAgreed"] is True
     assert record["recordedBy"]["displayName"] == "Runner" and record["recordedAt"]
     assert (record["pricingNote"], record["consentNote"]) == (
         "Market rate today",
@@ -441,6 +524,8 @@ def test_an_agreement_that_is_not_exact_is_refused_and_stores_nothing(auth_env: 
     no_agreement = agreement()
     del no_agreement["customerAgreed"]
     cap = 2_000_000
+    undeclared = agreement()
+    del undeclared["substitutionsAgreed"]
     cases: list[tuple[dict[str, Any], str, str]] = [
         (agreement(agreedTotalPaisa=TOTAL_PAISA - 1), "agreedTotalPaisa", "total_mismatch"),
         (agreement(customerAgreed=False), "customerAgreed", "agreement_required"),
@@ -452,6 +537,15 @@ def test_an_agreement_that_is_not_exact_is_refused_and_stores_nothing(auth_env: 
         (agreement(deliveryFeePaisa=-1), "deliveryFeePaisa", "too_small"),
         (agreement(serviceFeePaisa=100_000_001), "serviceFeePaisa", "too_big"),
         (agreement(method="app_approval"), "method", "invalid_value"),
+        (undeclared, "substitutionsAgreed", "required"),
+        (agreement(substitutionsAgreed=None), "substitutionsAgreed", "invalid_type"),
+        (agreement(substitutionsAgreed="false"), "substitutionsAgreed", "invalid_type"),
+        (agreement(substitutionsAgreed=True), "consentNote", "substitution_note_required"),
+        (
+            agreement(substitutionsAgreed=True, consentNote="   "),
+            "consentNote",
+            "substitution_note_required",
+        ),
         ({**agreement(), "totalPaisa": 1}, "totalPaisa", "not_allowed"),
         ({**agreement(), "recordedBy": str(uuid.uuid4())}, "recordedBy", "not_allowed"),
         # the cap includes the fees: items alone are under it
@@ -467,6 +561,12 @@ def test_an_agreement_that_is_not_exact_is_refused_and_stores_nothing(auth_env: 
         assert (status, code) == (422, "validation_error"), (field, response.text)
         assert field in {d[0] for d in details}, (field, details)
 
+    # the wire name and the code, whether the note is absent, null or blank
+    for note in ({}, {"consentNote": None}, {"consentNote": "   "}):
+        body = {**agreement(substitutionsAgreed=True), **note}
+        assert problem(staff_post(admin, order, "confirm", body))[2] == {
+            ("consentNote", "substitution_note_required")
+        }, note
     mismatch = staff_post(admin, order, "confirm", cases[0][0])
     assert problem(mismatch)[2] == {("agreedTotalPaisa", "total_mismatch")}
     over = staff_post(admin, order, "confirm", cases[-1][0])
@@ -563,12 +663,14 @@ def test_an_approved_substitution_is_recorded_even_when_the_price_is_unchanged(
     assert "consentNote" not in detail["confirmations"][0]
     note = "Brown eggs instead of white eggs, same price: agreed on the phone."
 
-    response = staff_post(
-        admin, order, "reconfirm", reagreement(detail["revision"], consentNote=note)
-    )
+    body = reagreement(detail["revision"], substitutionsAgreed=True, consentNote=note)
+
+    response = staff_post(admin, order, "reconfirm", body)
 
     first, second = response.json()["data"]["confirmations"]
     assert (first["totalPaisa"], second["totalPaisa"]) == (210_000, 210_000)
+    assert (first["substitutionsAgreed"], second["substitutionsAgreed"]) == (False, True)
+    assert first == detail["confirmations"][0]  # the earlier agreement is exactly as it was
     assert second["consentNote"] == note and second["recordedBy"]["userId"]
     seen = buyer.get(f"/grocery/orders/{order}")
     assert "Brown eggs" not in seen.text  # internal: the team tells the customer itself

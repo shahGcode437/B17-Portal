@@ -1275,7 +1275,7 @@ Inside one transaction (`GroceryStaffOrderService._change`): the order row `FOR 
 
 ### 37.3 Additional rules
 
-- **Nobody handles their own order** (`403 own_order`), a Super Admin included. Another staff member must.
+- **Nobody handles or sees their own order on the staff side**, a Super Admin included. Every change and the staff detail answer `403 own_order` (the detail before any internal record is read), and the queue, its total and its status counts leave it out whatever the filter. Another staff member must handle it; the owner follows it through the customer routes, which carry no staff identity, note or reason. An unknown id stays `404`, so the refusal tells a staff member nothing they did not know: that the order is their own.
 - A Moderator changes only an order they **hold**; any Grocery staff member may record an issue.
 - **Cancelling from `preparing` is Super Admin only** (`403 super_admin_required`).
 - A per-person limit of 120 changes per 15 minutes stops a runaway client. It is not an authorization control.

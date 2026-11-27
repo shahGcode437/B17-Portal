@@ -183,6 +183,7 @@ def upgrade() -> None:
         sa.Column("delivery_fee_paisa", sa.BigInteger(), nullable=False),
         sa.Column("total_paisa", sa.BigInteger(), nullable=False),
         sa.Column("method", sa.String(length=32), nullable=False),
+        sa.Column("substitutions_agreed", sa.Boolean(), nullable=False),
         sa.Column("pricing_note", sa.String(length=200), nullable=True),
         sa.Column("consent_note", sa.String(length=500), nullable=True),
         sa.Column("recorded_by", sa.Uuid(), nullable=False),
@@ -200,6 +201,12 @@ def upgrade() -> None:
             f"AND total_paisa <= {MAX_PAISA}",
         ),
         _check(table, "method_valid", f"method IN ({METHODS})"),
+        _check(
+            table,
+            "substitution_note_required",
+            "NOT substitutions_agreed "
+            "OR (consent_note IS NOT NULL AND char_length(btrim(consent_note)) >= 1)",
+        ),
         _fk(table, "order_id", ORDERS),
         _fk(table, "recorded_by", "users"),
         sa.PrimaryKeyConstraint("id", name=op.f(f"pk_{table}")),

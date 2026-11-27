@@ -33,6 +33,8 @@ from app.repositories.search import LIKE_ESCAPE, escape_like
 
 @dataclass(frozen=True)
 class QueueFilter:
+    #: Who is looking. THEIR OWN orders are never listed or counted. Required on purpose.
+    viewer_id: uuid.UUID
     status: GroceryOrderStatus | None = None
     #: A normalized reference prefix (``GRC-…``).
     reference_prefix: str | None = None
@@ -140,7 +142,7 @@ class GroceryStaffRepository(GroceryRepository):
 
     @staticmethod
     def _conditions(wanted: QueueFilter) -> list[ColumnElement[bool]]:
-        conditions: list[ColumnElement[bool]] = []
+        conditions: list[ColumnElement[bool]] = [GroceryOrder.customer_id != wanted.viewer_id]
         if wanted.reference_prefix is not None:
             conditions.append(
                 GroceryOrder.reference.like(

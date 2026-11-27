@@ -147,6 +147,7 @@ def agreement(revision: int = 1, **changes: Any) -> dict[str, Any]:
         "agreedTotalPaisa": TOTAL_PAISA,
         "customerAgreed": True,
         "method": "phone_call",
+        "substitutionsAgreed": False,
     }
     body.update(changes)
     return body

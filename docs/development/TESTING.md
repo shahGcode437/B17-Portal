@@ -333,6 +333,20 @@ The 14 that passed before are orders that were already safe and legitimate flows
 
 **One defect found and fixed:** `reconfirm` accepted no `consentNote`, so an approved substitution could leave no record of what was agreed (reproduced: `200`). The note is now required there. Reruns for that executable change: `tests/api` + staff API + staff concurrency **179 passed** (3 min 53 s); the `reconfirm` cases of the race matrix **9 passed**. Without the requirement, 4 of the 5 new refusal cases fail (the over-length one is refused by the length limit). Afterwards only comments, docstrings and one test name changed (the cap is no longer “provisional”); a comparison of syntax trees confirmed no other code change, and the lifecycle rules file passed (**163 passed**). ruff and mypy passed on the final code. **The expensive runs in the table above were not repeated.**
 
+**Final correction before the push (2026-11-27).** Two changes (own-order privacy; the substitution declaration). New tests, for a Grocery Moderator and a Super Admin: their own order, with every kind of internal note written on it by a colleague, is absent from the queue, total, status counts and pages under every filter, and its staff detail is `403 own_order`, while their customer view works and shows no note; and the agreement refusals cover a missing, null or non-boolean declaration and a declared substitution with an absent, null or blank note. `0012` gained one column and one `CHECK`, tested with the other database refusals.
+
+Affected runs, one after another:
+
+| Run | Result |
+|---|---|
+| `tests/api`, Grocery rules, schema, staff API, customer orders API, Grocery staff authority, staff route authority | **504 passed, 1 failed** (6 min 51 s) |
+| staff concurrency and intake concurrency | **49 passed** |
+| race matrix, every Grocery case | **108 passed** |
+| `0012` and the related migration, drift and schema-vocabulary tests | **16 passed** |
+| after the fix: the staff API file | **49 passed** |
+
+**The failure was a real defect in the new rule:** with the note **left out**, the error named `consent_note` instead of `consentNote`. It was fixed; all 24 combinations of declaration and note were then checked directly, and only the failed file was run again. Removing each of the three new protections (queue exclusion; own detail refusal; the note rule) made a test fail; files restored byte for byte. ruff check and format and mypy passed. The full suite was not run locally.
+
 **Not covered:** no frontend or browser test (no screen exists); no load test; nothing ran against a hosted environment; the race matrix stages the Super Admin as the actor (a Moderator's lost scope and competing changes are in the concurrency file).
 
 ## Known intermittent failure in the mocked browser lane

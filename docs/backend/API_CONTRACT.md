@@ -749,7 +749,7 @@ Cancel body: `{"revision": n, "reason"?: "…"}` (reason ≤ 200, one line). All
 
 ### 19.1 Endpoints
 
-**Who:** a Super Admin, or a verified, active Moderator holding the `grocery` scope, with a fresh staff session (`AUTH_RBAC.md` §37). Everyone else (residents, professionals, listing Moderators, a paused Moderator) gets `403 forbidden` on every route here, before the body or id is examined. Anonymous `401`; unverified `403 email_not_verified`; stale session `401 session_expired`.
+**Who:** a Super Admin, or a verified, active Moderator holding the `grocery` scope, with a fresh staff session (`AUTH_RBAC.md` §37). Everyone else (residents, professionals, listing Moderators, a paused Moderator) gets `403 forbidden` on every route here, before the body or id is examined. Anonymous `401`; unverified `403 email_not_verified`; stale session `401 session_expired`. **Nobody sees their own order here** (a Super Admin included): it is not listed or counted, and its detail and every change answer `403 forbidden` with `own_order` (§19.3, §19.4). They follow it through the customer routes.
 
 | Method and path (under `/api/v1/admin/grocery/orders`) | From status | Body | Result |
 |---|---|---|---|
@@ -792,17 +792,20 @@ Exactly six statuses: `submitted`, `confirmed`, `preparing`, `out_for_delivery`,
 
 ### 19.3 Queue
 
-Query: `status?`, `reference?` (3–16; a reference or its beginning, with or without `GRC-`, any case), `submittedOn?` (a Karachi calendar day), `assigned?` (`me`, `unassigned` or a staff user id), `sort` (`oldest` default, `newest`), `limit` (12, max 50), `offset`.
+Query: `status?`, `reference?` (3–16; a reference or its beginning, with or without `GRC-`, any case), `submittedOn?` (a Karachi calendar day), `assigned?` (`me`, `unassigned` or a staff user id), `sort` (`oldest` default, `newest`), `limit` (12, max 50), `offset`. **The caller's own orders are never listed, counted or findable** by any filter; `total`, `counts` and the pages describe only the others.
 
 Summary: `{id, reference, status, revision, submittedAt, serviceDate, block, itemCount, assignee?{userId, displayName?}, agreedTotalPaisa?, finalAmountDuePaisa?, paymentCollected, failedDeliveryAttempts, issueCount}`. **No customer id or name, phone, address, landmark, instructions or item text.** `meta`: `{total, limit, offset, counts{status: n}}`; `counts` applies every filter except `status`.
 
 ### 19.4 Staff detail
 
-The summary plus: `items[]`; `delivery{contactName, contactPhone, block, addressLine, landmark?}`; `instructions?`; `cancelledAt?`; `deliveredAt?`; `updatedAt`; `confirmations[]` (every agreement: `sequence`, the three components, `totalPaisa`, `method`, `pricingNote?`, `consentNote?`, `recordedBy`, `recordedAt`); `payment?{method, amountDuePaisa, amountCollectedPaisa, collectedBy, collectedAt}`; `deliveryAttempts[]` (`attempt`, `dispatchedBy`, `dispatchedAt`, `note?`, `outcome` `in_progress`/`failed`/`delivered`, `outcomeBy?`, `outcomeAt?`, `failureReason?`); `history[]` (with the staff member and reason; the customer's own rows name nobody); `events[]` (claims, releases, reductions with both amounts, issues); `availableActions[]` (a hint; the server decides again).
+The summary plus: `items[]`; `delivery{contactName, contactPhone, block, addressLine, landmark?}`; `instructions?`; `cancelledAt?`; `deliveredAt?`; `updatedAt`; `confirmations[]` (every agreement: `sequence`, `substitutionsAgreed`, the three components, `totalPaisa`, `method`, `pricingNote?`, `consentNote?`, `recordedBy`, `recordedAt`); `payment?{method, amountDuePaisa, amountCollectedPaisa, collectedBy, collectedAt}`; `deliveryAttempts[]` (`attempt`, `dispatchedBy`, `dispatchedAt`, `note?`, `outcome` `in_progress`/`failed`/`delivered`, `outcomeBy?`, `outcomeAt?`, `failureReason?`); `history[]` (with the staff member and reason; the customer's own rows name nobody); `events[]` (claims, releases, reductions with both amounts, issues); `availableActions[]` (a hint; the server decides again). **The caller's own order: `403 forbidden` (`order`/`own_order`)**, before any internal record is read; an unknown id stays `404`.
 
 ### 19.5 Pricing and the customer's agreement
 
-Agreement body: `{revision, itemsSubtotalPaisa, serviceFeePaisa?, deliveryFeePaisa?, agreedTotalPaisa, customerAgreed, method, pricingNote?, consentNote?}`.
+Agreement body: `{revision, itemsSubtotalPaisa, serviceFeePaisa?, deliveryFeePaisa?, agreedTotalPaisa, customerAgreed, method, substitutionsAgreed, pricingNote?, consentNote?}`.
+
+- **`substitutionsAgreed` is required** on `confirm` and `reconfirm` (a boolean, with **no default**): the staff member declares whether the customer accepted any substitute. When it is `true`, `consentNote` must be non-blank (`422`, `consentNote`/`substitution_note_required`).
+- `consentNote` is **optional on a first confirmation without substitutions**, and **required on every `reconfirm`**, with or without substitutions.
 
 - Money is a **whole number of paisa** (a float, string or boolean is refused). Items ≥ 1; fees ≥ 0, default 0; **no fee or discount is mandatory**; each amount ≤ 100 000 000.
 - **The server computes the total.** `agreedTotalPaisa` must equal items + fees (`422 total_mismatch`).
@@ -810,7 +813,7 @@ Agreement body: `{revision, itemsSubtotalPaisa, serviceFeePaisa?, deliveryFeePai
 - `customerAgreed` must be `true` (`422 agreement_required`). `method`: `phone_call`, `in_person`, `written_message`. `pricingNote` ≤ 200 and `consentNote` ≤ 500 are **internal** (for example, the substitutions the customer accepted).
 - **This is a staff member's record, not an approval given by the customer in the application.** It stores who recorded it, when, the total, the method and the note; the customer sees `recordedBy: "staff"`.
 - **There is no way into `confirmed` without it.**
-- **A recorded agreement is never changed.** A higher price or a substitution the customer had not accepted needs `reconfirm`: a new agreement; earlier ones stay. **On `reconfirm`, `consentNote` is required** (non-blank, ≤ 500): it records **what** the customer newly agreed to, for example which substitute in place of what, because the amounts alone cannot show it and the total may not change. It stays optional on `confirm`; a substitution agreed on that first call is to be noted there. The server cannot detect a substitution itself (items are never edited) or judge the note. This is the **only** way the amount due can rise. After dispatch, record the failed attempt first.
+- **A recorded agreement is never changed.** A higher price or a substitution the customer had not accepted needs `reconfirm`: a new agreement; earlier ones stay. On `reconfirm` the note records **what** the customer newly agreed to, because the amounts alone cannot show it and the total may not change. The declaration is stored with each agreement; the database also refuses a declared substitution without a note. The server cannot detect an undeclared substitution (items are never edited) or judge the note. The declaration and notes are staff-only. This is the **only** way the amount due can rise. After dispatch, record the failed attempt first.
 - `reduce-amount` only **lowers** the amount due (`422 not_a_reduction` otherwise), always with a reason, and keeps the agreed total. A reduction needs no new consent. A later `reconfirm` replaces both.
 - There is no quotation version, price per line or item edit. The items stay as the customer submitted them.
 

@@ -10,10 +10,18 @@ item text; only the one-order detail does.
 
 import datetime
 import uuid
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import Field, StrictBool, StrictInt, StringConstraints, field_validator
+from pydantic import (
+    Field,
+    StrictBool,
+    StrictInt,
+    StringConstraints,
+    field_validator,
+    model_validator,
+)
 from pydantic_core import PydanticCustomError
+from pydantic_core.core_schema import ValidationInfo
 
 from app.models.enums import (
     GroceryConfirmationMethod,
@@ -66,12 +74,39 @@ class GroceryAgreementRequest(StrictRequest):
     #: Must be ``true``: "the customer explicitly agreed to these items and this total".
     customer_agreed: StrictBool
     method: GroceryConfirmationMethod
+    #: Required, with no default: did the customer accept any substitute? Declared BEFORE the
+    #: note, whose rule depends on it.
+    substitutions_agreed: StrictBool
     #: INTERNAL.
     pricing_note: ShortNote | None = None
-    #: INTERNAL: e.g. the substitutions the customer accepted.
+    #: INTERNAL: what the customer accepted. Required when substitutions were agreed.
     consent_note: LongNote | None = None
 
-    _optional = field_validator("pricing_note", "consent_note")(_blank_is_none)
+    _optional = field_validator("pricing_note")(_blank_is_none)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _judge_an_absent_note(cls, data: Any) -> Any:
+        """A declared substitution with NO note must reach the check below. Checking a default
+        would name the field ``consent_note``; an explicit null is reported as ``consentNote``.
+        (Where the note is required anyway, its absence stays ``required``.)"""
+        if (
+            isinstance(data, dict)
+            and data.get("substitutionsAgreed") is True
+            and "consentNote" not in data
+            and not cls.model_fields["consent_note"].is_required()
+        ):
+            return {**data, "consentNote": None}
+        return data
+
+    @field_validator("consent_note")
+    @classmethod
+    def _substitutions_need_a_note(cls, value: str | None, info: ValidationInfo) -> str | None:
+        if not value and info.data.get("substitutions_agreed"):
+            raise PydanticCustomError(
+                "substitution_note_required", "Say which substitutions the customer agreed to."
+            )
+        return value or None
 
     @field_validator("customer_agreed")
     @classmethod
@@ -182,6 +217,7 @@ class GroceryStaffConfirmationRead(ApiModel):
     delivery_fee_paisa: int
     total_paisa: int
     method: GroceryConfirmationMethod
+    substitutions_agreed: bool
     pricing_note: str | None = None
     consent_note: str | None = None
     #: The staff member who RECORDED the customer's agreement. Not a customer's own action.

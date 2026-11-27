@@ -2054,8 +2054,9 @@ CONFIRMED_ORDER = (
 )
 AGREEMENT = (
     "INSERT INTO grocery_order_confirmations (id, order_id, sequence, items_subtotal_paisa, "
-    "service_fee_paisa, delivery_fee_paisa, total_paisa, method, recorded_by, recorded_at) "
-    "SELECT gen_random_uuid(), id, 1, 900, 100, 0, {total}, 'phone_call', customer_id, now() "
+    "service_fee_paisa, delivery_fee_paisa, total_paisa, method, substitutions_agreed, "
+    "recorded_by, recorded_at) "
+    "SELECT gen_random_uuid(), id, 1, 900, 100, 0, {total}, 'phone_call', false, customer_id, now() "
     "FROM grocery_orders LIMIT 1"
 )
 PAYMENT = (
@@ -2147,6 +2148,10 @@ def test_0012_the_database_itself_refuses_inconsistent_handling(scratch_url: str
         "delivered_at_iff_delivered": f"{update}status = 'delivered', {priced}",
         "assignment_complete": f"{update}assigned_to = customer_id",
         "total_is_the_sum": AGREEMENT.format(total=1001),
+        # substitutions declared, with no note saying what was agreed
+        "substitution_note_required": AGREEMENT.format(total=1000).replace(
+            "'phone_call', false", "'phone_call', true"
+        ),
         "collected_is_the_amount_due": PAYMENT.format(collected=999),
         "subject_iff_assignment": order_event("claimed"),
         "amounts_iff_reduction": order_event(

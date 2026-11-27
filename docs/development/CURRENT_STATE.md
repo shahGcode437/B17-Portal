@@ -1090,7 +1090,7 @@ Baseline `e1b566f`. Migration head **`0011`**. No new dependency; no frontend ch
 
 **Update (2026-11-27):** the third correction was committed as `f2d5b0f` and pushed, and **GitHub CI passed on it**: backend job **11 min 17 s of its 15-minute limit** (test step 10 min 23 s; Docker build 23 s); frontend 4 min 31 s (Playwright 3 min 1 s). **This is the latest successful CI and the bounded authentication hardening is closed.** The security backlog stays open. (The statements above that CI was pending describe the time of the commit.)
 
-## GROCERY-2 Result — simple order management and delivery, backend only (BUILT, **REVIEWED and APPROVED** 2026-11-27; committed, **NOT pushed; CI pending**)
+## GROCERY-2 Result — simple order management and delivery, backend only (BUILT, **REVIEWED, CORRECTED and APPROVED for push** 2026-11-27; **disabled**)
 
 Baseline `f2d5b0f`. Migration head **`0012`** (run only on isolated test databases). No new dependency; no frontend change.
 
@@ -1098,7 +1098,7 @@ Baseline `f2d5b0f`. Migration head **`0012`** (run only on isolated test databas
 - **Built:** staff queue and detail, claim / release, the recorded customer agreement and re-agreement, price reduction, preparation, dispatch, failed delivery, cash-on-delivery completion, staff cancellation, issues, immutable history, and the customer's view of status, price and payment. 13 routes (`API_CONTRACT.md` §19), tables `DATA_MODEL.md` §22, authority `AUTH_RBAC.md` §37, locks `BACKEND_ARCHITECTURE.md` §5, rollout and rollback `DEPLOYMENT.md` §17.
 - **Approved pilot policies (owner, 2026-11-27):** maximum agreed value **PKR 20,000 including fees** (configurable); manual fees, which may be zero; cash on delivery only; only a Super Admin cancels once preparation has started; staff never process their own order; internal notes stay private; the team tells customers directly about cancellations, substitutions and failed deliveries; a staff-recorded phone confirmation is sufficient and is **never** presented as authenticated customer consent. Supplier management, inventory and quotations are **deferred**, not part of the MVP.
 - **Final-review fix:** a new agreement (`reconfirm`) now **requires** a note of what the customer agreed to.
-- **Known limit:** a staff member who is also the customer cannot change their own order, but the **staff** detail would still show them its internal notes.
+- **Final correction (owner, before the push):** (1) staff, Super Admins included, can no longer **see** their own order on the staff side: it is left out of the queue and counts and its staff detail is refused; customer access is unchanged. (This closes the limitation recorded at the first commit.) (2) Every agreement now **declares whether substitutions were agreed**; if so, a note is required. Results: `TESTING.md` (GROCERY-2, final correction). **CI results are those of the GitHub run on the pushed commit.**
 - **Backend CI limit:** raised from 15 to 25 minutes in its own commit (`TESTING.md`, CI).
 - **States:** `submitted`, `confirmed`, `preparing`, `out_for_delivery`, `delivered`, `cancelled`.
 - **MANDATORY rule applied:** every one of the 11 staff changes uses the shared transactional session and authority revalidation (`AUTH_RBAC.md` §36.4), with tests for revoked sessions, a removed role or scope and concurrent changes. The rule stays binding for every later phase.

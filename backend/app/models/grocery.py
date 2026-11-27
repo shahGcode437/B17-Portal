@@ -333,6 +333,8 @@ class GroceryOrderConfirmation(UUIDPrimaryKeyMixin, Base):
     method: Mapped[GroceryConfirmationMethod] = mapped_column(
         str_enum(GroceryConfirmationMethod), nullable=False
     )
+    #: What the staff member declared: did the customer accept any substitute?
+    substitutions_agreed: Mapped[bool] = mapped_column(nullable=False)
     #: Both INTERNAL.
     pricing_note: Mapped[str | None] = mapped_column(String(200))
     consent_note: Mapped[str | None] = mapped_column(String(500))
@@ -356,6 +358,11 @@ class GroceryOrderConfirmation(UUIDPrimaryKeyMixin, Base):
             name="total_is_the_sum",
         ),
         in_values("method", GroceryConfirmationMethod, name="method_valid"),
+        CheckConstraint(
+            "NOT substitutions_agreed "
+            "OR (consent_note IS NOT NULL AND char_length(btrim(consent_note)) >= 1)",
+            name="substitution_note_required",
+        ),
     )
 
 

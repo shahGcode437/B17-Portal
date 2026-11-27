@@ -626,3 +626,12 @@ This **replaces** the earlier statement that GROCERY-1b needs the block list bef
 **Decision (final review, approved by the owner 2026-11-27 — a new agreement must say what was agreed).** The review found that `reconfirm` accepted no description, so an approved substitution, possibly with an unchanged total, left no record of what the customer agreed to. **`consentNote` is now required on every `reconfirm`**; it stays optional on the first `confirm`. No schema or migration change. **Rejected:** requiring it on every confirmation (a note typed for every order); structured per-item substitution records (item-level editing is outside the simplified MVP).
 **Limits:** the server cannot detect an unrecorded substitution and cannot judge the note's wording; staff training covers both.
 **Revisit when:** GROCERY-3 designs the confirmation screen (it should ask for the substitution while it is being agreed).
+
+---
+
+**Decision (owner, 2026-11-27 — own-order privacy and the substitution declaration; GROCERY-2 final correction).**
+(1) **No Grocery staff member, Super Admin included, sees the staff side of their own order:** not in the queue, its total or its counts, and not as a detail (`403 own_order`, as changes already answer). Their access as a customer is unchanged.
+(2) **Every agreement declares whether substitutions were agreed** (`substitutionsAgreed`, required, no default). A declared substitution requires a non-blank note, in the API and as a database `CHECK`. The note stays optional on a first confirmation without substitutions and required on every re-agreement. Earlier agreements are never changed.
+**Implementation:** one column in `0012` (not yet pushed or applied to any application database, so no `0013`). **Rejected:** a default of "no substitutions" (a silent answer is not a declaration); per-item substitution records; hiding only the notes on one's own staff detail (a partial view is easier to get wrong than none); `404` for one's own order (the owner already knows it exists, and changes already answer `403`).
+**Limit:** the declaration is the staff member's word; the server cannot detect an undeclared substitution.
+**Revisit when:** GROCERY-3 designs the confirmation screen, which must ask the question explicitly with no preselected answer.

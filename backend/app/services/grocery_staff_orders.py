@@ -21,6 +21,10 @@ EVERY change is one transaction, in this order (AUTH_RBAC.md §36.4):
 The route guard is only a front door. Reads use the request-start principal: a read is stale for at
 most its own duration and changes nothing.
 
+NOBODY SEES THEIR OWN ORDER ON THE STAFF SIDE, a Super Admin included: it is left out of the
+queue, the total and the counts, and its detail is refused like a change (``403 own_order``).
+They follow it as any customer does.
+
 WHAT A STAFF MEMBER RECORDS IS NEVER PRESENTED AS THE CUSTOMER'S OWN ACTION. An agreement row says
 that a named staff member states the customer agreed, how, and when.
 """
@@ -150,6 +154,7 @@ class GroceryStaffOrderService:
         row = self._repository.queue_row(parse_id(raw_id))
         if row is None:
             raise not_found()
+        self._refuse_own(row.order, principal.user_id)  # before any internal record is read
         return self._present(principal, row)
 
     # -- assignment ------------------------------------------------------------------------------
@@ -370,8 +375,7 @@ class GroceryStaffOrderService:
             actor = self._authorise(principal)
             if order is None:
                 raise not_found()
-            if order.customer_id == actor.user_id:
-                raise _forbidden("own_order", "Another staff member must handle your own order.")
+            self._refuse_own(order, actor.user_id)
             yield order, actor
 
     def _authorise(self, principal: Principal) -> _Actor:
@@ -386,6 +390,11 @@ class GroceryStaffOrderService:
         if not is_super_admin and not self._authority.share_moderator_scope(user_id, GROCERY_SCOPE):
             raise _forbidden()  # one scope covers every order, so this conceals nothing
         return _Actor(user_id, is_super_admin)
+
+    @staticmethod
+    def _refuse_own(order: GroceryOrder, user_id: uuid.UUID) -> None:
+        if order.customer_id == user_id:
+            raise _forbidden("own_order", "Another staff member must handle your own order.")
 
     @staticmethod
     def _require_holder(order: GroceryOrder, actor: _Actor) -> None:
@@ -462,6 +471,7 @@ class GroceryStaffOrderService:
                 delivery_fee_paisa=payload.delivery_fee_paisa,
                 total_paisa=total,
                 method=payload.method,
+                substitutions_agreed=payload.substitutions_agreed,
                 pricing_note=payload.pricing_note,
                 consent_note=payload.consent_note,
                 recorded_by=actor.user_id,
@@ -536,6 +546,7 @@ class GroceryStaffOrderService:
                 text if text.startswith(rules.REFERENCE_PREFIX) else rules.REFERENCE_PREFIX + text
             )
         return QueueFilter(
+            viewer_id=principal.user_id,
             status=query.status,
             reference_prefix=reference,
             submitted_on=query.submitted_on,
@@ -592,6 +603,7 @@ class GroceryStaffOrderService:
                     delivery_fee_paisa=c.delivery_fee_paisa,
                     total_paisa=c.total_paisa,
                     method=c.method,
+                    substitutions_agreed=c.substitutions_agreed,
                     pricing_note=c.pricing_note,
                     consent_note=c.consent_note,
                     recorded_by=member(c.recorded_by),
@@ -639,9 +651,8 @@ class GroceryStaffOrderService:
 
 
 def available_actions(principal: Principal, order: GroceryOrder) -> list[GroceryStaffAction]:
-    """A hint for the screen; every request is decided again under lock."""
-    if order.customer_id == principal.user_id:
-        return []
+    """A hint for the screen; every request is decided again under lock. (A viewer's own order
+    never gets here: its staff detail is refused.)"""
     status = order.status
     active = status in rules.ACTIVE_STATUSES
     holder = principal.is_super_admin or order.assigned_to == principal.user_id
