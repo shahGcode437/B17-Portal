@@ -138,6 +138,8 @@ The Playwright **MCP** browser is an exploratory tool for a human-in-the-loop / 
 
 `.github/workflows/frontend-ci.yml` runs on push and pull request to `master`: `npm ci` → `tsc -b --force` → lint → Vitest → build → install Chromium → Playwright E2E, then uploads the report (and traces/screenshots on failure). No secrets, no deployment, read-only token.
 
+**Backend CI time limit (2026-11-27, owner approved).** The `verify` job of `.github/workflows/backend-ci.yml` has `timeout-minutes: 25` (before: 15). **Why:** the regression suite keeps growing against real PostgreSQL. The job took 8 min 43 s on `d401593`, 9 min 37 s on `796d110` and **11 min 17 s on `f2d5b0f`** (test step 10 min 23 s), and the next phase's tests were projected, not measured, to bring it to about 13.8–14.8 minutes. **Only that number changed:** no command, test selection, assertion, type check, migration check, seed check, Docker build check, retry or failure handling; the Docker build job and the frontend workflow are untouched. The higher limit is headroom, not a target: watch the job's duration, and prefer running migration tests in their own job, or the suite in parallel with one database per worker, before raising it again.
+
 ## How to add tests
 
 - **Pure logic** (service, builders, schemas, selectors): a colocated `*.test.ts` — assert real outputs, not implementation.
