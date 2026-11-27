@@ -85,6 +85,22 @@ const entries: RouteEntry[] = [
     seo: { title: pageTitle("News"), description: "A local news item for B-17, Islamabad.", indexing: "index", ogType: "article" },
   },
 
+  {
+    // Not indexed while ordering is switched off by default (GROCERY-3A): it must not look like a live shop.
+    path: routes.grocery,
+    seo: {
+      title: pageTitle("Grocery by request"),
+      description: "Send a grocery list in B-17, Islamabad. The team agrees the price by phone, shops locally and delivers; cash on delivery.",
+      indexing: "noindex,follow",
+    },
+  },
+  { path: routes.groceryNew, seo: privatePage("Your grocery list") },
+  { path: routes.groceryDelivery, seo: privatePage("Grocery delivery details") },
+  { path: routes.groceryReview, seo: privatePage("Review your grocery order") },
+  { path: routes.grocerySubmitted, seo: privatePage("Grocery order sent") },
+  { path: routes.groceryOrder, seo: privatePage("Grocery order") },
+  { path: routes.profileGrocery, seo: privatePage("My Grocery Orders") },
+
   { path: routes.login, seo: privatePage("Log In") },
   { path: routes.register, seo: privatePage("Create Account") },
   { path: routes.forgotPassword, seo: privatePage("Forgot Password") },

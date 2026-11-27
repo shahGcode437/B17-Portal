@@ -57,6 +57,10 @@ describe("service worker and the API", () => {
     ["an auth write", "https://app.example.org/api/v1/auth/login", "cors"],
     ["the OAuth callback navigation", "https://app.example.org/api/v1/auth/oauth/google/callback?code=x&state=y", "navigate"],
     ["any other API path", "https://app.example.org/api/v1/search?q=a", "cors"],
+    // GROCERY-3A: private order data must never be stored or answered by the worker
+    ["my grocery orders", "https://app.example.org/api/v1/grocery/orders?limit=10&offset=0", "cors"],
+    ["one grocery order", "https://app.example.org/api/v1/grocery/orders/22222222-2222-4222-8222-000000000001", "cors"],
+    ["grocery availability", "https://app.example.org/api/v1/grocery/availability", "cors"],
     ["the bare /api path", "https://app.example.org/api", "navigate"],
   ])("never touches %s (no cache, no offline shell substitution)", (_label, url, mode) => {
     caches.open.mockClear()

@@ -4,6 +4,7 @@ import { router } from "@/app/router"
 import { ToastProvider } from "@/components/feedback/ToastProvider"
 import { PwaStatus } from "@/components/pwa/PwaStatus"
 import { AuthProvider } from "@/features/auth/AuthProvider"
+import { GroceryDraftSession } from "@/features/grocery/GroceryDraftSession"
 
 function App() {
   return (
@@ -11,6 +12,7 @@ function App() {
       <ToastProvider>
         <AuthProvider>
           <RouterProvider router={router} />
+          <GroceryDraftSession />
           <PwaStatus />
         </AuthProvider>
       </ToastProvider>

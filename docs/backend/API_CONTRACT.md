@@ -745,6 +745,8 @@ Cancel body: `{"revision": n, "reason"?: "…"}` (reason ≤ 200, one line). All
 
 ## 19. GROCERY-2 — order handling, delivery and cash on delivery (as built, backend only)
 
+> **GROCERY-3A (2026-11-27):** the **customer** routes of §18 and §19.8 now have a frontend (`docs/product/GROCERY.md`). Nothing in the frontend calls the staff or settings routes yet. No API change.
+
 **The business, deliberately simple (owner, 2026-11-27):** the customer sends a list; the team contacts them and agrees a price; the team buys from the local market, prepares and delivers; the customer pays **cash on delivery**. There is **no** supplier management, quotation engine, inventory, catalogue, procurement system or online payment. All conventions of §18 apply (`no-store` on every response, errors included; exact `Origin` and `X-CSRF-Token` on unsafe calls).
 
 ### 19.1 Endpoints

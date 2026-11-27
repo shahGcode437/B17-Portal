@@ -142,3 +142,46 @@ test('the API is network-only: with the worker in control and no network, /api r
 
   expect(outcome).toBe('network-error') // never the cached index.html (200 text/html)
 })
+
+test('private grocery orders are never cached: offline they fail visibly instead of showing old data', async ({ page, context, authMock }) => {
+  authMock.addAccount({ email: 'ayesha@example.org', displayName: 'Ayesha Khan' })
+  const order = authMock.grocery.seed('ayesha@example.org')
+  authMock.session = { email: 'ayesha@example.org', csrf: 'csrf-pwa' }
+  await openApp(page, '/')
+  await waitForControl(page)
+  await page.reload() // as in the tests above: the app's files are cached once the worker serves the page
+  await expectPage(page, 'B-17 Portal')
+  await navigateInApp(page, '/profile/grocery', 'My Grocery Orders')
+  await expect(page.getByText(order.reference)).toBeVisible()
+  await navigateInApp(page, `/profile/grocery/${order.id}`, `Order ${order.reference}`)
+
+  const cached = await page.evaluate(async () => {
+    const found: string[] = []
+    for (const name of await caches.keys()) {
+      const cache = await caches.open(name)
+      for (const request of await cache.keys()) {
+        const body = await (await cache.match(request))!.clone().text()
+        if (request.url.includes('/api/') || body.includes('House 17, Street 4') || body.includes('+923001234567')) {
+          found.push(request.url)
+        }
+      }
+    }
+    return found
+  })
+  expect(cached).toEqual([]) // no API response, and no delivery detail anywhere in a cache
+
+  authMock.offline = true
+  await context.setOffline(true)
+  await page.getByRole('button', { name: 'Refresh status' }).click()
+  await expect(page.getByText(/Couldn't refresh/)).toBeVisible()
+  await page.reload()
+  // The cached app starts (so the next line proves something) and has no stored order to show.
+  await expectPage(page, "We can't reach the server")
+  await expect(page.getByText(order.reference)).toHaveCount(0)
+  await expect(page.getByText('House 17, Street 4')).toHaveCount(0)
+  authMock.offline = false
+  await context.setOffline(false)
+  // The app re-checks the session by itself on reconnect: wait for that to finish, so no request is still
+  // on its way while the page closes (one that is can slip past the mock).
+  await expectPage(page, `Order ${order.reference}`)
+})

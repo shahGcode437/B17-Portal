@@ -349,6 +349,42 @@ Affected runs, one after another:
 
 **Not covered:** no frontend or browser test (no screen exists); no load test; nothing ran against a hosted environment; the race matrix stages the Super Admin as the actor (a Moderator's lost scope and competing changes are in the concurrency file).
 
+## GROCERY-3A (customer Grocery frontend)
+
+**CI before it.** On `e70c651`: Backend CI passed (`verify` 12 min 43 s of 25; tests 11 min 55 s; Docker 29 s); Frontend CI passed (5 min 45 s; Playwright 3 min 28 s).
+
+**The fake backend.** `src/test/fixtures/groceryBackend.ts` is the customer Grocery contract in memory (order of refusal, key replay / reuse, ownership, revision, what a customer sees); its `staff*` methods only change what the customer reads. Vitest uses it over `fetch`; the mocked browser lane over `page.route` (`authMock.grocery`, with `grocerySubmitFaults` — answer lost before or after storing, or `500` after storing — and `holdGrocerySubmit`). The mock starts **enabled** with two **test** blocks; the real default is disabled with none. The five Grocery endpoints are listed in `mockedEndpoints.ts`; API isolation is unchanged. Account ids in the mock are now distinct per account.
+
+**What is pinned.**
+
+| File | What |
+|---|---|
+| `features/grocery/groceryRules.test.ts` | exact quantities against every unit rule; paisa; schedule and availability copy; form rules; the exact request body; the status timeline (failed delivery, cancellation); error copy from codes |
+| `features/grocery/groceryDraftStore.test.ts` | one request per double submit; unknown outcomes (lost before / after, `500`, timeout) lock and retry with the same key and body: **one order**; a `401`/`403`/`429` retry proves nothing; refusal vs discard keys; a late answer after reset; the draft's owner across logout, account switch and expiry; nothing in web storage |
+| `features/grocery/groceryPages.test.tsx` | every screen: availability states, list editing and limits, sign-in and verification gates, delivery validation, send and unknown outcome, history filters / paging / states with no personal detail, order details, price wording, cancellation and stale revision, refresh |
+| `pwa/serviceWorkerApi.test.ts` | the worker never handles the Grocery API paths |
+| `e2e/grocery.spec.ts`, `e2e/mobile/grocery.spec.ts` (375 px and 320 px) | the journey from visitor to tracked order; double click; navigate-away-and-resend; expiry, logout, account switch; private routes; price and payment; cancellation; keyboard entry; no sideways scroll, 44 px targets, nothing under the bottom bar; messages on screen |
+| `e2e/pwa/pwa.spec.ts` | after viewing orders no cache holds an API answer or a delivery detail; offline, a reload starts the app and shows no stored order |
+
+**Separate fix (offline after a first visit, `DEPLOYMENT.md` §18).** The new `e2e/pwa/first-visit.spec.ts` goes offline with **no** online reload (the older offline tests all reloaded first, which hid the defect) and requires every precached file to be served; it failed before the fix. `src/pwa/serviceWorkerPrecache.test.ts` runs the worker template against a cache that honours `Vary`; its two asset cases fail without the fix.
+
+**Found by these tests and by screenshots, and fixed:** focus did not return to the item name after adding by keyboard; a refused or unconfirmed submission appeared **off screen** on a phone; a see-through sticky bar; two phone layouts that squeezed headings. **A test of mine was vacuous:** the offline cache test passed on a **blank** page; it now requires the app to start first.
+
+**Results (local, mocked; no backend, database or real API was used).**
+
+| Check | Result |
+|---|---|
+| `tsc -b --force`; production build | passed |
+| `npm run lint` (oxlint) | passed, with the 7 warnings that existed before; none in a new or changed file |
+| Vitest, whole suite, caches cleared | **1,408 passed** (81 files) |
+| Playwright, whole mocked suite (desktop, mobile, PWA) | **203 passed**, no request escaped the mock (final run, with the separate offline fix in) |
+
+**Earlier runs, recorded as they happened.** The first run of the new browser tests failed 10 (an ambiguous locator in the tests), then 2 (one real focus bug; one wrong expectation about where signing out lands). The first full run: **201 passed, 1 failed** (a mobile Search test that this change does not touch; it then passed 6 of 6 alone and in both later full runs; cause not proven) **and one `GET /api/v1/auth/me` reached the API tripwire**, which refused it. The escape was logged before the new PWA test had run, while an existing test that ends right after reconnecting was finishing; that is the likely, **unproven** cause. It did not recur in two later full runs. The new PWA test, which ended the same way, now waits for the re-check. **That existing test was not changed.**
+
+**Mutation check:** ten protections removed one at a time (what a retry proves; same key; unknown vs refused; in-flight sharing; account switch; logout; hidden draft; locked draft; the delivered line in the history list; the quantity step). Nine failed a Vitest test at once; the delivered line was caught only by a browser test, so a Vitest test was added and it now fails too. Files restored byte for byte.
+
+**Not run:** the real-stack lane (`e2e-real/`, which has no Grocery spec); backend tests (no backend file changed); any real device.
+
 ## Known intermittent failure in the mocked browser lane
 
 **2026-11-27, local, once.** In a full mocked run (184 passed, 1 failed), `e2e/write-journeys.spec.ts`, *"rejected → the owner sees the reason → edits a real field → PATCH → pending …"*, failed at the heading check **after `page.reload()`**: the "Listings" heading did not appear within the 10 s assertion timeout. The page snapshot taken just afterwards showed the heading and the updated card. The test then passed 30 of 30 repeats alone, its file passed 72 of 72 over three repeats, and the next full run passed 185 of 185. **The cause is not proven**; slowness under a parallel local run is the likely explanation. Nothing was changed: no timeout, retry or test. The GitHub run on `e1b566f` reported 185 passed (CI allows one retry per test; its summary listed no flaky test). **If it recurs, keep the trace and investigate; do not just raise the timeout.**

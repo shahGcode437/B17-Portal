@@ -31,6 +31,8 @@ export type WriteOperation =
   | "category-patch"
   | "category-reorder"
   | "create-professional-profile"
+  | "grocery-submit"
+  | "grocery-cancel"
 
 interface Copy {
   title: string
@@ -90,6 +92,9 @@ const RATE_LIMITED: Copy = {
 }
 
 function rateLimitedCopy(op: WriteOperation): Copy {
+  if (op === "grocery-submit") {
+    return { title: "You've sent several grocery orders recently", description: "Your list is still here. Please wait a while before sending it." }
+  }
   if (op === "create-request") {
     return {
       title: "You've sent too many requests",
@@ -129,6 +134,8 @@ function notFoundCopy(op: WriteOperation): Copy {
     case "patch-listing":
     case "archive-listing":
       return { title: "Listing not found", description: "This listing is no longer in your account." }
+    case "grocery-cancel":
+      return { title: "Order not found", description: "It may belong to another account. Check My Grocery Orders." }
     case "admin-approve":
     case "admin-reject":
       return { title: "Listing not found", description: "It may have been removed. Reload the queue to see what is current." }
@@ -154,6 +161,9 @@ function conflictCopy(op: WriteOperation): Copy {
 }
 
 function invalidStateCopy(op: WriteOperation): Copy {
+  if (op === "grocery-cancel") {
+    return { title: "This order can no longer be cancelled", description: "It has moved on. Check its latest status below." }
+  }
   if (op === "request-action") {
     return {
       title: "The request has already moved on",
@@ -191,6 +201,11 @@ const FIELD_NOUN: Record<string, string> = {
   "location.block": "The block",
   "location.address": "The address",
   "location.landmark": "The landmark",
+  "delivery.contactName": "The contact name",
+  "delivery.contactPhone": "The phone number",
+  "delivery.block": "The block",
+  "delivery.addressLine": "The address",
+  "delivery.landmark": "The landmark",
 }
 
 function nounFor(field: string | undefined): string {
@@ -210,6 +225,12 @@ function nounFor(field: string | undefined): string {
  */
 export function describeDetail(detail: ApiErrorDetail): string | null {
   const field = detail.field ?? ""
+  // A grocery list line: say WHICH line, counting from one as the list on screen does.
+  const line = /^items\.(\d+)\./.exec(field)
+  if (line) {
+    const text = describeDetail({ ...detail, field: field.slice(line[0].length) })
+    return text ? `Item ${Number(line[1]) + 1}: ${text}` : null
+  }
   const noun = nounFor(field)
   switch (detail.code) {
     case "unknown_locality":
@@ -235,6 +256,17 @@ export function describeDetail(detail: ApiErrorDetail): string | null {
       return `${noun} can't be left empty.`
     case "unknown_category":
       return "Choose a category from the list."
+    case "invalid_quantity":
+    case "quantity_too_small":
+    case "quantity_too_large":
+    case "quantity_precision":
+      return "The quantity isn't allowed for that unit. Edit the item and check it."
+    case "not_serviceable":
+      return "Grocery delivery isn't available in that block. Choose a block from the list."
+    case "too_many_items":
+      return "Your list has more items than one order allows. Remove some and try again."
+    case "invalid_block":
+      return "Choose a block from the list."
     case "invalid_media_reference":
       return "Images can't be uploaded yet. Remove the image and try again."
     case "not_allowed":
@@ -312,6 +344,18 @@ export function userMessageFor(error: unknown, op: WriteOperation): Copy {
       return CSRF_FAILED
     case "professional_profile_required":
       return PROFESSIONAL_REQUIRED
+    case "grocery_unavailable":
+      return { title: "Grocery ordering isn't available right now", description: "No order was placed. Your list is still here." }
+    case "grocery_closed":
+      return { title: "Grocery ordering is closed right now", description: "No order was placed. Send it during opening hours." }
+    case "grocery_capacity_reached":
+      return { title: "Today's grocery order places are full", description: "No order was placed. Try again tomorrow during opening hours." }
+    case "grocery_active_order_limit":
+      return { title: "You have the most open grocery orders allowed", description: "Wait until one is delivered or cancelled. See My Grocery Orders." }
+    case "idempotency_key_reused":
+      return { title: "This order couldn't be matched safely", description: "Check My Grocery Orders before sending it again." }
+    case "order_conflict":
+      return { title: "This order changed since you opened it", description: "Check the latest version below, then decide again." }
     case "email_not_verified":
       return emailNotVerified()
     case "listing_conflict":

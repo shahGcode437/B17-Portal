@@ -1,6 +1,7 @@
 import type { Page, Route } from '@playwright/test'
 import { routeRead } from '../../src/test/fixtures/readRouter'
 import { publicApprovedListings, resetWriteState, routeWrite, savedRows, writeState } from '../../src/test/fixtures/writeRouter'
+import { GroceryBackend } from '../../src/test/fixtures/groceryBackend'
 import { isMocked } from './mockedEndpoints'
 
 /**
@@ -34,6 +35,8 @@ export interface RecordedCall {
   path: string
   body: unknown
   csrf: string | null
+  /** The `Idempotency-Key` header, when sent. */
+  idempotencyKey?: string
 }
 
 const GOOGLE_CONSENT_PATH = '/__fake-google/consent'
@@ -52,6 +55,15 @@ export class AuthMock {
   /** The "server session": which account is signed in, and its CSRF token. */
   session: { email: string; csrf: string } | null = null
   googleEnabled = true
+  /** The customer Grocery API (GROCERY-3A). It starts ENABLED with two test blocks; the real default is disabled. */
+  readonly grocery = new GroceryBackend()
+  /**
+   * What happens to the next grocery submissions, one entry each: the answer is lost before or after the order
+   * is stored, or the server answers 500 after storing it. Empty: answered normally.
+   */
+  readonly grocerySubmitFaults: ('lost-before' | 'lost-after' | 'error-after')[] = []
+  /** While set, a grocery submission waits for it (see `holdGrocerySubmit`). */
+  private submitGate: Promise<void> | null = null
   /**
    * How the server says it handles e-mail (EMAIL-1). Unset by default: the field is then left out, as an older
    * backend would, and the screens keep their cautious wording.
@@ -113,6 +125,19 @@ export class AuthMock {
     return full
   }
 
+  /** Holds grocery submissions unanswered until the returned function is called. */
+  holdGrocerySubmit(): () => void {
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    this.submitGate = gate
+    return () => {
+      if (this.submitGate === gate) this.submitGate = null
+      release()
+    }
+  }
+
   /** The routes the frontend uses, answered from this object's state. */
   async install(page: Page): Promise<void> {
     resetWriteState()
@@ -126,7 +151,8 @@ export class AuthMock {
 
   private me(account: MockAccount, csrf: string) {
     return {
-      id: `00000000-0000-4000-8000-${String(this.accounts.size).padStart(12, '0')}`,
+      // distinct per account: switching accounts must look like a different person
+      id: `00000000-0000-4000-8000-${String([...this.accounts.keys()].indexOf(account.email) + 1).padStart(12, '0')}`,
       displayName: account.displayName,
       email: account.email,
       emailVerified: account.emailVerified,
@@ -155,7 +181,8 @@ export class AuthMock {
     const path = new URL(request.url()).pathname.replace(/^.*\/api\/v1/, '')
     const body = request.postData() ? (JSON.parse(request.postData()!) as Record<string, string>) : undefined
     const csrf = request.headers()['x-csrf-token'] ?? null
-    this.calls.push({ method, path, body, csrf })
+    const idempotencyKey = request.headers()['idempotency-key']
+    this.calls.push({ method, path, body, csrf, ...(idempotencyKey && { idempotencyKey }) })
 
     const reply = (status: number, payload?: unknown) =>
       route.fulfill({
@@ -173,6 +200,29 @@ export class AuthMock {
       return error(501, 'e2e_unmocked_request')
     }
     if (!isMocked(method, path)) return refuseUnmocked()
+
+    if (path.startsWith('/grocery/')) {
+      const account = this.current()
+      if (method !== 'GET') {
+        if (!account) return error(401, 'unauthenticated')
+        if (csrf !== this.session!.csrf) return error(403, 'csrf_failed')
+      }
+      const submitting = method === 'POST' && path === '/grocery/orders'
+      if (submitting && this.submitGate) await this.submitGate
+      const fault = submitting ? this.grocerySubmitFaults.shift() : undefined
+      if (fault === 'lost-before') return route.abort('connectionreset')
+      const answer = this.grocery.route(
+        method,
+        path,
+        new URL(request.url()).searchParams,
+        body,
+        idempotencyKey ?? null,
+        account ? { key: account.email, emailVerified: account.emailVerified } : null
+      )
+      if (fault === 'lost-after') return route.abort('connectionreset')
+      if (fault === 'error-after') return error(500, 'internal_error')
+      return answer ? reply(answer.status, answer.body) : refuseUnmocked()
+    }
 
     // Authenticated unsafe calls need the session AND its CSRF token (the backend middleware's rule).
     const sessionBound = new Set(['/auth/logout', '/auth/resend-verification'])

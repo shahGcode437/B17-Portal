@@ -1,5 +1,6 @@
 import { Hero } from "@/features/home/sections/Hero"
 import { QuickCategories } from "@/features/home/sections/QuickCategories"
+import { GroceryPromo } from "@/features/home/sections/GroceryPromo"
 import { ConstructionServices } from "@/features/home/sections/ConstructionServices"
 import { FeaturedProviders } from "@/features/home/sections/FeaturedProviders"
 import { BusinessPreview } from "@/features/home/sections/BusinessPreview"
@@ -13,7 +14,7 @@ import { useResultPreview } from "@/hooks/useResultPreview"
 
 /**
  * B-17 Portal Home (Prototype Scope §7, UI/UX Spec §7). Section order
- * follows the documented homepage hierarchy: Hero → Quick Categories →
+ * follows the documented homepage hierarchy: Hero → Quick Categories → Grocery (GROCERY-3A) →
  * Construction Services → Featured Providers → Directory → Education →
  * Property → News → Future Modules → Final CTA.
  */
@@ -24,6 +25,7 @@ function HomePage() {
     <>
       <Hero />
       <QuickCategories />
+      <GroceryPromo />
       <ConstructionServices />
       <FeaturedProviders onSelect={preview.open} />
       <BusinessPreview onSelect={preview.open} />

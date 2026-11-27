@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import { motion } from "motion/react"
-import { Heart, ClipboardList, Activity, LogOut, ShieldCheck, UserRound } from "lucide-react"
+import { Heart, ClipboardList, Activity, LogOut, ShieldCheck, ShoppingBasket, UserRound } from "lucide-react"
 import { Container } from "@/components/foundation/Container"
 import { Grid } from "@/components/foundation/Grid"
 import { Stack } from "@/components/foundation/Stack"
@@ -108,6 +108,22 @@ function ResidentOverviewPage() {
               <MetricTile label="All requests" value={requests.loading || requests.error ? "—" : requests.total} icon={ClipboardList} to={routes.profileRequests} className="p-3 sm:p-4" />
             </Grid>
           </WorkspaceSection>
+
+          <SelectableCard to={routes.profileGrocery}>
+            <div className="flex items-center gap-3">
+              <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-foreground">
+                <ShoppingBasket className="size-4.5" aria-hidden="true" />
+              </span>
+              <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <Typography as="span" variant="label" className="text-base">
+                  My Grocery Orders
+                </Typography>
+                <Typography as="span" variant="body-sm" className="text-muted-foreground">
+                  Status, agreed price and cash on delivery for each order.
+                </Typography>
+              </div>
+            </div>
+          </SelectableCard>
 
           <WorkspaceSection title="Recent requests" actionLabel="View all" actionTo={routes.profileRequests}>
             {requests.loading ? (

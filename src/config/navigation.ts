@@ -9,6 +9,7 @@ import {
   Newspaper,
   User,
   PlusCircle,
+  ShoppingBasket,
 } from "lucide-react"
 import type { NavItem } from "@/types/navigation"
 import { routes } from "@/config/routes"
@@ -21,6 +22,7 @@ export const desktopNav: NavItem[] = [
   { label: "Education", path: routes.education, icon: GraduationCap },
   { label: "Property", path: routes.property, icon: KeyRound },
   { label: "News & Updates", path: routes.news, icon: Newspaper },
+  { label: "Grocery", path: routes.grocery, icon: ShoppingBasket },
 ]
 
 /** Mobile bottom navigation (UI/UX Spec §6): condensed, does not mirror desktop 1:1 */
@@ -39,6 +41,7 @@ export const footerNav: NavItem[] = [
   { label: "Education", path: routes.education },
   { label: "Property", path: routes.property },
   { label: "News & Daily Updates", path: routes.news },
+  { label: "Grocery", path: routes.grocery },
 ]
 
 export const footerFutureModules: NavItem[] = [

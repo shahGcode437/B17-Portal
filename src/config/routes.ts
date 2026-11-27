@@ -13,6 +13,12 @@ export const routes = {
   news: "/news",
   newsArticle: "/news/:id",
 
+  /** Grocery by request (customer side). The landing page and the list are public; sending needs an account. */
+  grocery: "/grocery",
+  groceryNew: "/grocery/new",
+  groceryDelivery: "/grocery/new/delivery",
+  groceryReview: "/grocery/new/review",
+
   login: "/login",
   register: "/register",
   forgotPassword: "/forgot-password",
@@ -22,6 +28,9 @@ export const routes = {
   profile: "/profile",
   profileSaved: "/profile/saved",
   profileRequests: "/profile/requests",
+  profileGrocery: "/profile/grocery",
+  groceryOrder: "/profile/grocery/:orderId",
+  grocerySubmitted: "/profile/grocery/:orderId/submitted",
 
   providerProfile: "/providers/:id",
   businessProfile: "/businesses/:id",
@@ -53,6 +62,16 @@ export type AppRoute = (typeof routes)[keyof typeof routes]
 /** Builds a concrete link to a provider's public profile (e.g. "/providers/provider-solar-01"). */
 export function providerProfilePath(id: string): string {
   return `/providers/${id}`
+}
+
+/** The signed-in customer's own grocery order. */
+export function groceryOrderPath(id: string): string {
+  return `/profile/grocery/${encodeURIComponent(id)}`
+}
+
+/** The confirmation shown right after an order was sent. */
+export function grocerySubmittedPath(id: string): string {
+  return `${groceryOrderPath(id)}/submitted`
 }
 
 /** Builds a concrete link to a news article/update detail page (e.g. "/news/news-01"). */

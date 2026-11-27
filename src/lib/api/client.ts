@@ -20,6 +20,8 @@ export interface RequestOptions {
   signal?: AbortSignal
   /** An authenticated call: CSRF header, one csrf_failed retry, session-loss handling. */
   session?: boolean
+  /** Extra request headers an endpoint requires (e.g. `Idempotency-Key`). Re-sent unchanged by the CSRF retry. */
+  headers?: Record<string, string>
 }
 
 const UNSAFE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"])
@@ -53,7 +55,7 @@ interface Envelope<T> {
 
 async function execute<T>(method: string, path: string, options: RequestOptions, retried: boolean): Promise<Envelope<T>> {
   const unsafe = UNSAFE_METHODS.has(method)
-  const headers = new Headers({ Accept: "application/json" })
+  const headers = new Headers({ ...options.headers, Accept: "application/json" })
   if (options.body !== undefined) headers.set("Content-Type", "application/json")
   if (options.session && unsafe) {
     const token = getCsrfToken()

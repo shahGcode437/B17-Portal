@@ -33,6 +33,13 @@ const PropertyPage = lazyPage(() => import("@/features/property/PropertyPage"), 
 const PropertyDetailsPage = lazyPage(() => import("@/features/property/PropertyDetailsPage"), "PropertyDetailsPage")
 const NewsListPage = lazyPage(() => import("@/features/news/NewsListPage"), "NewsListPage")
 const NewsArticlePage = lazyPage(() => import("@/features/news/NewsArticlePage"), "NewsArticlePage")
+const GroceryLandingPage = lazyPage(() => import("@/features/grocery/GroceryLandingPage"), "GroceryLandingPage")
+const GroceryListPage = lazyPage(() => import("@/features/grocery/GroceryListPage"), "GroceryListPage")
+const GroceryDeliveryPage = lazyPage(() => import("@/features/grocery/GroceryDeliveryPage"), "GroceryDeliveryPage")
+const GroceryReviewPage = lazyPage(() => import("@/features/grocery/GroceryReviewPage"), "GroceryReviewPage")
+const GrocerySubmittedPage = lazyPage(() => import("@/features/grocery/GrocerySubmittedPage"), "GrocerySubmittedPage")
+const MyGroceryOrdersPage = lazyPage(() => import("@/features/grocery/MyGroceryOrdersPage"), "MyGroceryOrdersPage")
+const GroceryOrderPage = lazyPage(() => import("@/features/grocery/GroceryOrderPage"), "GroceryOrderPage")
 const LoginRegisterPage = lazyPage(() => import("@/features/auth/LoginRegisterPage"), "LoginRegisterPage")
 const ForgotPasswordPage = lazyPage(() => import("@/features/auth/ForgotPasswordPage"), "ForgotPasswordPage")
 const ResetPasswordPage = lazyPage(() => import("@/features/auth/ResetPasswordPage"), "ResetPasswordPage")
@@ -79,6 +86,10 @@ const appRoutes: RouteObject[] = [
       { path: routes.propertyDetails, element: <PropertyDetailsPage /> },
       { path: routes.news, element: <NewsListPage /> },
       { path: routes.newsArticle, element: <NewsArticlePage /> },
+      { path: routes.grocery, element: <GroceryLandingPage /> },
+      { path: routes.groceryNew, element: <GroceryListPage /> },
+      { path: routes.groceryDelivery, element: <GroceryDeliveryPage /> },
+      { path: routes.groceryReview, element: <GroceryReviewPage /> },
       { path: routes.login, element: <LoginRegisterPage /> },
       { path: routes.register, element: <LoginRegisterPage /> },
       { path: routes.forgotPassword, element: <ForgotPasswordPage /> },
@@ -91,6 +102,9 @@ const appRoutes: RouteObject[] = [
           { path: routes.profile, element: <ResidentOverviewPage /> },
           { path: routes.profileSaved, element: <SavedPage /> },
           { path: routes.profileRequests, element: <MyRequestsPage /> },
+          { path: routes.profileGrocery, element: <MyGroceryOrdersPage /> },
+          { path: routes.groceryOrder, element: <GroceryOrderPage /> },
+          { path: routes.grocerySubmitted, element: <GrocerySubmittedPage /> },
         ],
       },
       { path: routes.comingSoon, element: <ComingSoonPage /> },
