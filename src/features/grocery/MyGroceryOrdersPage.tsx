@@ -120,7 +120,8 @@ function OrderHistory({ userId }: { userId: string }) {
             Refresh
           </Button>
           <Button asChild className="h-11">
-            <Link to={routes.grocery}>
+            {/* Straight to the order form. If ordering is switched off, the form says so itself. */}
+            <Link to={routes.groceryNew}>
               <Plus />
               New order
             </Link>

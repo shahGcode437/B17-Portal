@@ -470,6 +470,8 @@ describe("My Grocery Orders", () => {
     const list = await screen.findByRole("list", { name: "Your grocery orders" })
     expect(within(list).getAllByRole("listitem")).toHaveLength(10)
     expect(screen.getByText("12 orders")).toBeInTheDocument()
+    // "New order" opens the order form itself, not the information page about Grocery.
+    expect(screen.getByRole("link", { name: "New order" })).toHaveAttribute("href", "/grocery/new")
     expect(within(list).getByText("Rs 2,100 to pay")).toBeInTheDocument()
     expect(within(list).getAllByText("Price to be confirmed")).toHaveLength(9)
     for (const secret of ["+92300", "0300", "House 17", "Ayesha", "Blue gate"]) {
