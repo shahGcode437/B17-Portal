@@ -57,9 +57,17 @@ describe("browser auth source audit", () => {
     }
   })
 
-  it("localStorage / sessionStorage are used directly only by the install-prompt dismissal", () => {
+  it("localStorage / sessionStorage are used directly only by the install-prompt dismissal and the grocery send reminder", () => {
     const users = sources.filter(({ code }) => /localStorage|sessionStorage/.test(code)).map(({ file }) => file).sort()
-    expect(users).toEqual(["pwa/install.ts"])
+    expect(users).toEqual(["features/grocery/submissionMarker.ts", "pwa/install.ts"])
+  })
+
+  it("the grocery send reminder is this tab's only, and can hold an account id and a time: nothing of an order or a sign-in", () => {
+    const code = sources.find(({ file }) => file === "features/grocery/submissionMarker.ts")!.code
+    expect(code).not.toMatch(/localStorage|csrf|token|password|cookie|phone|address|items|delivery|idempotency|attempt/i)
+    // The one write names its two fields; the type holds nothing else.
+    expect(code.match(/setItem\(/g)).toHaveLength(1)
+    expect(code).toContain("JSON.stringify({ owner: marker.owner, sentAt: marker.sentAt })")
   })
 
   it("no Zustand `persist(` call exists in production code (the demo stores were retired in Phase 12H)", () => {

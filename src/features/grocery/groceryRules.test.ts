@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { availabilityMessage, canWriteAnOrder } from "@/features/grocery/availabilityCopy"
-import { formatClock, formatDays, formatPaisa } from "@/features/grocery/format"
+import { formatClock, formatClosing, formatDays, formatPaisa, formatSchedule } from "@/features/grocery/format"
 import { EMPTY_DELIVERY, buildOrderRequest, deliverySchema, itemSchema, type DraftItem } from "@/features/grocery/orderRequest"
 import { failedDeliveries, timelineOf } from "@/features/grocery/orderStatus"
 import { checkQuantity, formatAmount, fromThousandths, toThousandths } from "@/features/grocery/quantity"
@@ -61,11 +61,18 @@ describe("grocery money and hours", () => {
     expect(formatDays([1, 2, 3, 4, 5, 6])).toBe("Monday to Saturday")
     expect(formatDays([5, 1])).toBe("Monday, Friday")
     expect([formatClock("10:00"), formatClock("20:30"), formatClock("00:15"), formatClock("12:00")]).toEqual([
-      "10:00 am",
-      "8:30 pm",
-      "12:15 am",
-      "12:00 pm",
+      "10:00 AM",
+      "8:30 PM",
+      "12:15 AM",
+      "12:00 PM",
     ])
+  })
+
+  it("writes a midnight CLOSING as midnight, and an ordinary one as a time", () => {
+    const schedule = { timezone: "Asia/Karachi", operatingDays: [1, 2, 3, 4, 5, 6, 7], opensAt: "08:00", closesAt: "00:00" }
+    expect(formatSchedule(schedule)).toBe("Every day — 8:00 AM to 12:00 Midnight (Pakistan time).")
+    expect([formatClosing("00:00"), formatClosing("23:59")]).toEqual(["12:00 Midnight", "11:59 PM"])
+    expect(formatClock("00:00")).toBe("12:00 AM") // as an opening or a plain time it stays a time
   })
 
   it("says why ordering is not open, and when a list may still be written", () => {

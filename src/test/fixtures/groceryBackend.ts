@@ -68,6 +68,8 @@ const DELIVERY_KEYS = ["contactName", "contactPhone", "block", "addressLine", "l
 
 export class GroceryBackend {
   enabled = true
+  /** What availability reports. The database's own default is 10:00 to 20:00. */
+  schedule = { timezone: "Asia/Karachi", operatingDays: [1, 2, 3, 4, 5, 6, 7], opensAt: "10:00", closesAt: "20:00" }
   /** Outside opening hours. */
   closed = false
   /** Today's capacity is used up. */
@@ -96,7 +98,7 @@ export class GroceryBackend {
       acceptingOrders: reason === undefined,
       ...(reason ? { unavailableReason: reason } : {}),
       serviceableBlocks: [...this.blocks],
-      schedule: { timezone: "Asia/Karachi", operatingDays: [1, 2, 3, 4, 5, 6, 7], opensAt: "10:00", closesAt: "20:00" },
+      schedule: { ...this.schedule, operatingDays: [...this.schedule.operatingDays] },
       limits: { maxItemsPerOrder: this.maxItems, maxActiveOrders: this.maxActive },
       units: UNIT_RULES,
       substitutionOptions: ["allow", "ask", "none"],

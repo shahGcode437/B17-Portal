@@ -130,7 +130,7 @@ function ResidentOverviewPage() {
                   My Grocery Orders
                 </Typography>
                 <Typography as="span" variant="body-sm" className="text-muted-foreground">
-                  Status, agreed price and cash on delivery for each order.
+                  Status, price and payment for each order.
                 </Typography>
               </div>
             </div>

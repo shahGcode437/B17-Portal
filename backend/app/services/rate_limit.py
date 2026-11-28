@@ -7,6 +7,7 @@ are stored, so the table never contains an email address.
 
 import hashlib
 from datetime import UTC, datetime
+from zoneinfo import ZoneInfo
 
 from sqlalchemy.orm import Session
 
@@ -21,6 +22,9 @@ def _key_hash(identifier: str) -> bytes:
 
 
 def _window_start(now: datetime, policy: RatePolicy) -> datetime:
+    if policy.calendar_day_timezone is not None:
+        local = now.astimezone(ZoneInfo(policy.calendar_day_timezone))
+        return local.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(UTC)
     seconds = int(now.timestamp())
     return datetime.fromtimestamp(seconds - seconds % policy.window_seconds, tz=UTC)
 

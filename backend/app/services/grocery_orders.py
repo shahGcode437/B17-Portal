@@ -138,7 +138,7 @@ class GroceryOrderService:
                 timezone=settings.timezone,
                 operating_days=list(settings.operating_days),
                 opens_at=clock_text(settings.opens_at),
-                closes_at=clock_text(settings.closes_at),
+                closes_at=rules.closing_time_text(settings.closes_at),
             ),
             limits=GroceryLimits(
                 max_items_per_order=settings.max_items_per_order,

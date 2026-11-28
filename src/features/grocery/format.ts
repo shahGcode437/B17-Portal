@@ -39,10 +39,10 @@ export function formatDays(days: number[]): string {
   return names.join(", ")
 }
 
-/** `"20:00"` → `"8:00 pm"`. Text only: no time-zone arithmetic. */
+/** `"20:00"` → `"8:00 PM"`. Text only: no time-zone arithmetic. */
 export function formatClock(clock: string): string {
   const [hours, minutes] = clock.split(":").map(Number)
-  const suffix = hours < 12 ? "am" : "pm"
+  const suffix = hours < 12 ? "AM" : "PM"
   return `${hours % 12 === 0 ? 12 : hours % 12}:${String(minutes).padStart(2, "0")} ${suffix}`
 }
 
@@ -50,8 +50,18 @@ export function timeZoneLabel(timezone: string): string {
   return timezone === "Asia/Karachi" ? "Pakistan time" : timezone
 }
 
+/** A CLOSING time. `"00:00"` is midnight at the end of the day, never its start. */
+export function formatClosing(clock: string): string {
+  return clock === "00:00" ? "12:00 Midnight" : formatClock(clock)
+}
+
 export function formatHours(schedule: GroceryScheduleDto): string {
-  return `${formatClock(schedule.opensAt)} to ${formatClock(schedule.closesAt)} (${timeZoneLabel(schedule.timezone)})`
+  return `${formatClock(schedule.opensAt)} to ${formatClosing(schedule.closesAt)} (${timeZoneLabel(schedule.timezone)})`
+}
+
+/** The whole schedule in one line, from the server's settings: "Every day — 8:00 AM to …". */
+export function formatSchedule(schedule: GroceryScheduleDto): string {
+  return `${formatDays(schedule.operatingDays)} — ${formatHours(schedule)}.`
 }
 
 export const SUBSTITUTION_LABEL: Record<GrocerySubstitutionDto, string> = {

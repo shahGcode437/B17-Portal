@@ -13,6 +13,7 @@ from tests.db.grocery_helpers import (
     AVAILABILITY,
     BLOCKS,
     SETTINGS,
+    TODAY,
     configure,
     customer,
     detail_pairs,
@@ -143,6 +144,84 @@ def test_the_opening_and_closing_boundaries_in_karachi(
     expected = (201, None) if open_ else (409, "grocery_closed")
     assert outcome(submit(buyer)) == expected
     assert places(auth_env.session) == (1 if open_ else 0)
+
+
+# -- every day, 08:00 to midnight (GROCERY-4B) ------------------------------------------------------
+
+
+def test_midnight_can_be_saved_as_the_closing_time(auth_env: AuthEnv) -> None:
+    admin = open_for_orders(auth_env, opensAt="08:00", closesAt="00:00")
+    revision = admin.get(SETTINGS).json()["data"]["revision"]
+
+    saved = admin.get(SETTINGS).json()["data"]
+    schedule = available(auth_env.client())["schedule"]
+
+    assert (saved["opensAt"], saved["closesAt"]) == ("08:00", "00:00")
+    assert schedule == {
+        "timezone": "Asia/Karachi",
+        "operatingDays": [1, 2, 3, 4, 5, 6, 7],
+        "opensAt": "08:00",
+        "closesAt": "00:00",
+    }
+    assert settings_revisions(auth_env.session)[-1].closes_at > datetime.time(23, 59)
+    # Saving what is already there writes nothing, midnight included.
+    assert configure(admin, closesAt="00:00")["revision"] == revision
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [{"opensAt": "00:00", "closesAt": "00:00"}, {"opensAt": "00:00"}],
+    ids=["both-at-once", "opening-moved-under-a-midnight-closing"],
+)
+def test_a_whole_day_is_never_saved_by_accident(auth_env: AuthEnv, changes: dict[str, str]) -> None:
+    admin = open_for_orders(auth_env, opensAt="08:00", closesAt="00:00")
+    revision = admin.get(SETTINGS).json()["data"]["revision"]
+
+    refused = admin.request("PATCH", SETTINGS, json={"revision": revision, **changes})
+
+    assert outcome(refused) == (422, "validation_error")
+    assert detail_pairs(refused) == {("closesAt", "closes_before_opens")}
+    assert admin.get(SETTINGS).json()["data"]["revision"] == revision
+
+
+@pytest.mark.parametrize(
+    ("day", "clock", "open_"),
+    [
+        (17, (2, 59, 59), False),
+        (17, (3, 0, 0), True),
+        (17, (18, 59, 59), True),
+        (17, (19, 0, 0), False),
+    ],
+    ids=["07:59:59", "08:00:00", "23:59:59", "00:00:00"],
+)
+def test_the_approved_hours_at_their_boundaries(
+    auth_env: AuthEnv, day: int, clock: tuple[int, int, int], open_: bool
+) -> None:
+    open_for_orders(auth_env, opensAt="08:00", closesAt="00:00")
+    at(auth_env, *clock, day=day)
+    buyer = customer(auth_env)
+
+    assert available(buyer)["acceptingOrders"] is open_
+    expected = (201, None) if open_ else (409, "grocery_closed")
+    assert outcome(submit(buyer)) == expected
+    assert places(auth_env.session) == (1 if open_ else 0)
+
+
+def test_the_days_places_last_until_midnight_and_start_again_with_the_new_day(
+    auth_env: AuthEnv,
+) -> None:
+    open_for_orders(auth_env, opensAt="08:00", closesAt="00:00", dailyCapacity=1)
+    at(auth_env, 18, 59, 59)  # 23:59:59 on the 17th in Karachi
+    first, second = customer(auth_env, "first"), customer(auth_env, "second")
+    assert submit(first).status_code == 201
+    assert outcome(submit(second)) == (409, "grocery_capacity_reached")
+
+    at(auth_env, 3, 0, 0, day=18)  # 08:00 on the 18th
+    second = customer(auth_env, "second-next-day")
+
+    assert submit(second).status_code == 201
+    assert places(auth_env.session) == 1
+    assert places(auth_env.session, TODAY + datetime.timedelta(days=1)) == 1
 
 
 def test_only_configured_operating_days_accept_orders(auth_env: AuthEnv) -> None:

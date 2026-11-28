@@ -22,6 +22,7 @@ from app.models.enums import RoleName
 from app.repositories.grocery import GroceryRepository
 from app.repositories.staff import StaffAuthorityRepository
 from app.schemas.grocery import GrocerySettingsActor, GrocerySettingsPatch, GrocerySettingsRead
+from app.services import grocery_rules as rules
 from app.services.auth_sessions import Principal, hold_acting_session
 from app.services.grocery_errors import private_database_errors
 from app.services.grocery_orders import clock_text
@@ -39,7 +40,6 @@ SETTING_FIELDS: tuple[str, ...] = (
     "max_active_orders_per_customer",
     "max_items_per_order",
 )
-_TIME_FIELDS = ("opens_at", "closes_at")
 _MAX_REQUEST_ID = 64
 
 
@@ -103,10 +103,14 @@ class GrocerySettingsService:
             values = {name: getattr(current, name) for name in SETTING_FIELDS}
             for name in given:
                 value = getattr(patch, name)
-                if name in _TIME_FIELDS:
+                if name == "closes_at":
+                    value = rules.parse_closing_time(value)
+                elif name == "opens_at":
                     value = datetime.time.fromisoformat(value)
                 values[name] = value
-            if values["opens_at"] >= values["closes_at"]:
+            if values["opens_at"] >= values["closes_at"] or rules.is_whole_day(
+                values["opens_at"], values["closes_at"]
+            ):
                 raise AppError(
                     ErrorCode.VALIDATION_ERROR,
                     status_code=422,
@@ -139,7 +143,7 @@ class GrocerySettingsService:
             serviceable_blocks=list(row.serviceable_blocks),
             operating_days=list(row.operating_days),
             opens_at=clock_text(row.opens_at),
-            closes_at=clock_text(row.closes_at),
+            closes_at=rules.closing_time_text(row.closes_at),
             timezone=row.timezone,
             daily_capacity=row.daily_capacity,
             max_order_value_paisa=row.max_order_value_paisa,

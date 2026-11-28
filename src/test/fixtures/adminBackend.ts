@@ -238,7 +238,9 @@ export class AdminBackend {
     const { revision: _revision, ...change } = body
     if (Object.keys(change).length === 0) return invalid("body", "no_changes")
     const next = { ...this.settings, ...(change as Partial<GrocerySettingsDto>) }
-    if (next.opensAt >= next.closesAt) return invalid("closesAt", "closes_before_opens")
+    // "00:00" closes at the END of the day; with a "00:00" opening that would be a whole day: refused.
+    const ordered = next.closesAt === "00:00" ? next.opensAt !== "00:00" : next.opensAt < next.closesAt
+    if (!ordered) return invalid("closesAt", "closes_before_opens")
     if (JSON.stringify(next) !== JSON.stringify(this.settings)) {
       this.store(next, { userId: viewer.id, displayName: viewer.displayName })
     }

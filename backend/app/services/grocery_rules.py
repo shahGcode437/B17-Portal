@@ -10,7 +10,8 @@ rule is unit-testable and the services, the schemas and the tests cannot disagre
 * **Quantities** are exact ``Decimal`` values with a per-unit minimum, maximum and step. They are
   never parsed from, or turned into, a binary floating-point number.
 * **Operating window.** Opening time inclusive, closing time exclusive, judged on the calendar and
-  clock of the configured time zone — never the server's.
+  clock of the configured time zone — never the server's. A closing time written ``00:00`` means
+  midnight at the END of the day (:data:`END_OF_DAY`); the window never runs into the next day.
 * **Idempotency.** The key and the validated payload are stored only as SHA-256 hashes. The payload
   hash depends on the payload ALONE, never on current settings, so a retry still matches after the
   configuration changes.
@@ -181,6 +182,28 @@ def format_quantity(quantity: Decimal) -> str:
 ALLOWED_TIMEZONES: tuple[str, ...] = ("Asia/Karachi",)
 
 
+#: How "closes at midnight, at the end of the day" is stored: the day's last instant. The database
+#: keeps ``opens_at < closes_at`` (so no migration), and on the wire it is written ``00:00``. No
+#: other value can be saved with seconds, so nothing else reads as this.
+END_OF_DAY = datetime.time(23, 59, 59, 999999)
+MIDNIGHT_TEXT = "00:00"
+
+
+def parse_closing_time(text: str) -> datetime.time:
+    """A validated ``HH:MM`` closing time; ``00:00`` is the END of the day, not its start."""
+    return END_OF_DAY if text == MIDNIGHT_TEXT else datetime.time.fromisoformat(text)
+
+
+def closing_time_text(value: datetime.time) -> str:
+    return MIDNIGHT_TEXT if value == END_OF_DAY else f"{value.hour:02d}:{value.minute:02d}"
+
+
+def is_whole_day(opens_at: datetime.time, closes_at: datetime.time) -> bool:
+    """``00:00`` to ``00:00``. Refused: read one way it is empty, the other it never closes, and
+    neither must be saved by accident."""
+    return opens_at == datetime.time(0, 0) and closes_at == END_OF_DAY
+
+
 def local_moment(now: datetime.datetime, timezone: str) -> datetime.datetime:
     """``now`` (timezone-aware) on the clock of ``timezone``."""
     if now.tzinfo is None:
@@ -202,9 +225,12 @@ def is_open(
     timezone: str,
 ) -> bool:
     """Whether new submissions are accepted at ``now``: an operating ISO weekday (1 = Monday), from
-    the opening time INCLUDED until the closing time EXCLUDED."""
+    the opening time INCLUDED until the closing time EXCLUDED. Closing at the end of the day
+    excludes midnight itself, which already belongs to the next day."""
     local = local_moment(now, timezone)
-    return local.isoweekday() in operating_days and opens_at <= local.time() < closes_at
+    clock = local.time()
+    before_closing = closes_at == END_OF_DAY or clock < closes_at
+    return local.isoweekday() in operating_days and opens_at <= clock and before_closing
 
 
 # ------------------------------------------------------------------------------ service blocks

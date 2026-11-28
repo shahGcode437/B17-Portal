@@ -10,9 +10,11 @@ import { ReadError } from "@/components/feedback/ReadError"
 import { AvailabilityStatus } from "@/features/grocery/AvailabilityStatus"
 import { canWriteAnOrder } from "@/features/grocery/availabilityCopy"
 import { SentNotice } from "@/features/grocery/GroceryNotices"
+import { RecoveryNotice } from "@/features/grocery/RecoveryNotice"
 import { useGroceryAvailability } from "@/features/grocery/useGroceryAvailability"
 import { isDraftHidden, useGroceryDraft } from "@/features/grocery/groceryDraftStore"
-import { formatDays, formatHours } from "@/features/grocery/format"
+import { formatSchedule } from "@/features/grocery/format"
+import { PAYMENT_COPY } from "@/features/grocery/paymentCopy"
 import { useAuth } from "@/hooks/useAuth"
 import { routes } from "@/config/routes"
 import { fadeUp, staggerContainer, staggerItem } from "@/lib/motion"
@@ -22,22 +24,23 @@ const HOW_IT_WORKS: { icon: LucideIcon; title: string; text: string }[] = [
   {
     icon: ListPlus,
     title: "Send your list",
-    text: "Write what you need, with quantities, a preferred brand and whether a substitute is fine.",
+    text: "Tell us what groceries you need, including quantities, preferred brands and any special instructions.",
   },
   {
     icon: PhoneCall,
-    title: "We call about the price",
-    text: "Our team agrees the price with you by phone before buying anything. There is no price list in the app.",
+    title: "Confirm your order",
+    text: "Our team confirms availability, order details and the total price with you.",
   },
   {
     icon: Truck,
-    title: "We shop and deliver",
-    text: "We buy your items from local shops and bring them to your door in the areas we serve.",
+    title: "Get it delivered",
+    // Not "anywhere in B-17": delivery is only as wide as the blocks a Super Admin has listed.
+    text: "Receive your groceries conveniently at your doorstep in our B-17 delivery areas.",
   },
   {
     icon: Banknote,
-    title: "Pay cash on delivery",
-    text: "Pay in cash when your order arrives. Nothing is paid online.",
+    title: PAYMENT_COPY.stepTitle,
+    text: PAYMENT_COPY.howToPay,
   },
 ]
 
@@ -92,29 +95,32 @@ function ServiceDetails({ availability }: { availability: GroceryAvailabilityDto
   return (
     <section aria-label="Opening hours, areas and payment" className="grid grid-cols-1 gap-3 md:grid-cols-3">
       <Detail icon={Clock} title="Opening hours">
-        <Typography variant="body-sm">{formatDays(availability.schedule.operatingDays)}</Typography>
-        <Typography variant="body-sm">{formatHours(availability.schedule)}</Typography>
+        <Typography variant="body-sm">{formatSchedule(availability.schedule)}</Typography>
       </Detail>
       <Detail icon={MapPin} title="Delivery areas">
         {availability.serviceableBlocks.length > 0 ? (
-          <ul aria-label="Blocks we deliver to" className="flex flex-wrap gap-1.5">
-            {availability.serviceableBlocks.map((block) => (
-              <li key={block} className="rounded-full bg-secondary px-3 py-1 text-sm">
-                {block}
-              </li>
-            ))}
-          </ul>
+          <>
+            <Typography variant="body-sm">We deliver in B-17, Islamabad, to:</Typography>
+            <ul aria-label="Blocks we deliver to" className="flex flex-wrap gap-1.5">
+              {availability.serviceableBlocks.map((block) => (
+                <li key={block} className="rounded-full bg-secondary px-3 py-1 text-sm">
+                  {block}
+                </li>
+              ))}
+            </ul>
+          </>
         ) : (
           <Typography variant="body-sm" className="text-muted-foreground">
-            No delivery areas are set up at the moment.
+            Delivery areas aren't set up yet, so orders can't be placed.
           </Typography>
         )}
       </Detail>
       <Detail icon={Banknote} title="Price and payment">
-        <Typography variant="body-sm">
-          Our team confirms the full price with you before preparing your order, including any service or delivery fee.
+        <Typography variant="body-sm">{PAYMENT_COPY.priceConfirmed}</Typography>
+        <Typography variant="body-sm">{PAYMENT_COPY.howToPay}</Typography>
+        <Typography variant="body-sm" className="text-muted-foreground">
+          {PAYMENT_COPY.ifThingsChange}
         </Typography>
-        <Typography variant="body-sm">Cash on delivery only.</Typography>
       </Detail>
     </section>
   )
@@ -151,8 +157,8 @@ function GroceryLandingPage() {
             </span>
             <Typography variant="h1">Grocery</Typography>
             <Typography variant="body-lg" className="text-muted-foreground">
-              Send us your grocery list. We agree the price with you by phone, buy it from local shops, deliver it and
-              take cash.
+              Send us your grocery list. We confirm availability and your total price with you, then deliver to your door
+              in B-17.
             </Typography>
             <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
               {writable && (
@@ -180,6 +186,7 @@ function GroceryLandingPage() {
         </motion.div>
 
         <SentNotice />
+        <RecoveryNotice />
 
         {data ? (
           <AvailabilityStatus availability={data} onRefresh={availability.refresh} refreshing={availability.refreshing} />

@@ -16,6 +16,7 @@ function GroceryDraftSession() {
   useEffect(() => {
     syncDraftWithAuth(decided.current, status, userId, notice)
     if (status === "authenticated" || status === "anonymous") decided.current = status
+    if (status === "authenticated" && userId) useGroceryDraft.getState().loadRecovery(userId)
   }, [status, userId, notice])
 
   useEffect(() => {

@@ -21,8 +21,8 @@ function GroceryPromo() {
             Grocery by request
           </Typography>
           <Typography variant="body-sm" className="text-muted-foreground">
-            Send your grocery list. Our team agrees the price with you by phone, buys it locally and delivers. Cash on
-            delivery.
+            Send your grocery list. Our team confirms availability and the total price with you, then delivers to your
+            door. Pay in cash on delivery.
           </Typography>
         </div>
         <Button asChild size="lg" className="h-11 shrink-0 px-5">

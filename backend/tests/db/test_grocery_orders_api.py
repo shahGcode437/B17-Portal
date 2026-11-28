@@ -285,6 +285,29 @@ def test_one_account_cannot_use_up_a_days_capacity_by_cancelling(auth_env: AuthE
     assert places(auth_env.session) == 4
 
 
+def test_the_daily_submission_limit_starts_again_at_karachi_midnight(auth_env: AuthEnv) -> None:
+    """It used to start again at 00:00 UTC, which is 05:00 in Karachi: a customer blocked in the
+    evening stayed blocked into the new day, while the day's capacity had already started again."""
+    open_for_orders(auth_env, opensAt="00:00", closesAt="23:59")
+
+    def clock(day: int, hour: int, minute: int = 0) -> None:
+        auth_env.clock.now = datetime.datetime(2026, 10, day, hour, minute, tzinfo=datetime.UTC)
+
+    clock(17, 15)  # 20:00 in Karachi
+    buyer = customer(auth_env)
+    for hour in (15, 15, 15, 16):  # three in one hour, the fourth in the next
+        clock(17, hour)
+        assert cancel(buyer, submitted(buyer)["id"]).status_code == 200
+    clock(17, 18, 30)  # 23:30: the day's four are used
+    refused = submit(buyer)
+    assert outcome(refused) == (429, "rate_limited")
+    assert int(refused.headers["retry-after"]) == 30 * 60 + 1  # until Karachi midnight
+
+    clock(17, 19, 30)  # 00:30 on the 18th in Karachi, still the 17th in UTC
+
+    assert submit(buyer).status_code == 201
+
+
 def test_a_refused_submission_is_not_counted_against_the_rate_limit(auth_env: AuthEnv) -> None:
     open_for_orders(auth_env)
     buyer = customer(auth_env)

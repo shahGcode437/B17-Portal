@@ -1,10 +1,10 @@
 # Grocery by request — the frontend (customer: GROCERY-3A; staff: GROCERY-3B; administration: GROCERY-3C)
 
-**Built:** the customer's side (GROCERY-3A), the staff order workspace (GROCERY-3B, below) and the Super Admin's Grocery settings and portal staff management (GROCERY-3C, at the end). **All of it has been tested only against fakes, never a running backend. Grocery is disabled by default with no serviceable block, and is not production-ready** (`docs/backend/DEPLOYMENT.md` §15–§17).
+**Built:** the customer's side (GROCERY-3A), the staff order workspace (GROCERY-3B, below), the Super Admin's Grocery settings and portal staff management (GROCERY-3C), account isolation (4A) and GROCERY-4B (the approved wording, hours to midnight, reload recovery, the daily limit; at the end). GROCERY-3A to 3C were first tested against fakes only; 4A and 4B added real-backend runs on throwaway databases (`TESTING.md`). **Grocery is disabled by default with no serviceable block, and is not production-ready** (`docs/backend/DEPLOYMENT.md` §15–§17, §20). Where a phase's own section below says "never run against a real backend", it records that phase as it was.
 
 ## The service, as the app describes it
 
-The customer sends a list → the team agrees the price **by phone** → buys from local shops → delivers → **cash on delivery**. No catalogue, cart, inventory, price in the app, online payment or live tracking.
+**What the customer is told (GROCERY-4B, owner-approved):** send your list → **our team confirms availability, order details and the total price with you** → it is delivered → pay. The total, including any delivery or service charge, is confirmed before preparation. **How the team gets the goods is internal** and not customer content. **Payment: only cash on delivery exists**, and only it is named; all payment wording comes from `features/grocery/paymentCopy.ts`. Delivery is described as "our B-17 delivery areas" with the configured list: the app can't know whether a list covers all of B-17 (see the proposal below). Opening hours are written from the settings, a midnight closing as "12:00 Midnight". No catalogue, cart, inventory, price list, card or online payment, or live tracking.
 
 ## Routes
 
@@ -56,11 +56,13 @@ Messages come from the error `code` and `details[].code`, never from server text
 - Editing instead needs a confirmation that tells the customer to check My Grocery Orders first.
 - While a send is unresolved, the browser asks before a reload or tab close.
 
-**Limit:** the attempt lives in memory. If the tab is closed or reloaded while the outcome is unknown, the key is lost; a rewritten order would then be a second one if the first had arrived. The server's active-order limit bounds this; the screen tells the customer to check their orders.
+**After a reload (GROCERY-4B).** The order and its key live in memory only, so a reload loses them and nothing can be resent. What survives, in this tab's `sessionStorage`, is **only that a send was unfinished: the account id and the time** (`submissionMarker.ts`; no item, name, phone, address, key or token). The same account then sees "Check your last order before sending another" on the Grocery home, list and review screens: the app reads **its own** recent orders and points to one received around that time, or says it doesn't see one yet. **Sending stays disabled until the customer says they have checked**, which is only offered once the orders were read. The marker goes when the outcome is known, on that confirmation, on choosing to edit, on signing out, when another account is seen, and after a day.
+
+**Limits:** closing the tab removes the reminder with the tab; it can't say for certain that an order it finds is the one that was being sent; and after checking, a rewritten order is a new order (the server's active-order limit bounds mistakes).
 
 ## Privacy
 
-- The draft (list, name, phone, address) is **in memory only**: never `localStorage`, `sessionStorage` or IndexedDB. A full reload empties it.
+- The draft (list, name, phone, address) is **in memory only**: never `localStorage`, `sessionStorage` or IndexedDB. A full reload empties it. The only thing stored is the unfinished-send marker above.
 - It belongs to the account that wrote it. Signing out clears it; another account clears it; an **expired** session keeps it **hidden** until the same account signs in. A list written while signed out is adopted by whoever signs in next in that tab.
 - Order lists show no name, phone or address. Private reads are keyed by account and held only by the screen showing them.
 - The service worker never handles `/api/…`, so no order is cached by it; the API also sends `no-store`.
@@ -238,7 +240,7 @@ All three sit behind the **existing `admin` gate** (Super Admin only). `/admin/g
 | `GET /admin/grocery/settings` | the page | — |
 | `PATCH /admin/grocery/settings` | "Save settings" | `revision` and **only the changed** fields |
 
-Editable (every field the API takes with more than one allowed value): ordering on / off, delivery blocks, operating days, opening and closing time, orders per day, open orders per customer, items per order, largest order total. **The time zone is shown, not editable** (the API allows only `Asia/Karachi`). Field bounds are the API's (blocks: up to 100 of up to 40 characters; capacity 1–200; items 1–100; open orders 1–10; total Rs 1 to Rs 1,000,000; closing after opening, no overnight hours). No block name is suggested.
+Editable (every field the API takes with more than one allowed value): ordering on / off, delivery blocks, operating days, opening and closing time (a closing of 12:00 AM is midnight at the end of the day), orders per day, open orders per customer, items per order, largest order total. **The time zone is shown, not editable** (the API allows only `Asia/Karachi`). Field bounds are the API's (blocks: up to 100 of up to 40 characters; capacity 1–200; items 1–100; open orders 1–10; total Rs 1 to Rs 1,000,000; closing after opening, no overnight hours). No block name is suggested.
 
 - Saved and unsaved are shown apart: each changed field names the saved value; a bar counts the changes.
 - Every save goes through a review listing old → new and what it means. **Switching ordering on or off also needs its own tick.** One send; nothing shown as saved before the server answers.
@@ -304,24 +306,58 @@ Settings history; settings or order actions in the audit; a one-person staff rea
 - Block-name comparison in the browser is close to, not identical with, the server's.
 - No real-device or screen-reader testing; English only.
 
+## Proposed, NOT BUILT: card and online payments, and an "all of B-17" setting (needs the owner's approval)
+
+One additive migration (`0014`) would cover both. Nothing below exists yet, and **no screen may name a method until it does and is switched on**.
+
+### Today
+
+`grocery_payments`: **one row per order** (unique), `method` limited to `cash_on_delivery`, `amount_collected = amount_due`, insert-only, written **only** by `complete`, in the same transaction as `delivered`. The amount due can still be lowered (`reduce_amount`) or re-agreed (`reconfirm`) before delivery.
+
+### Minimal design: payments
+
+No gateway, wallet or refund feature. **Card** means a card machine or other approved external facility; **online transfer** means money a staff member has **seen arrive** in the business account. The app records that a staff member verified it. It never handles card numbers, CVV or banking credentials.
+
+| Change | Detail |
+|---|---|
+| Settings | `payment_methods text[] NOT NULL DEFAULT '{cash_on_delivery}'`, a subset of `cash_on_delivery`, `card`, `online_transfer` that **always contains cash**. Super Admin only, versioned like every setting |
+| `grocery_payments` | widen the `method` check; add `reference varchar(64)`, required unless cash. The API refuses a value holding a 13 to 19 digit card number (spaces and dashes removed, Luhn check). Still one row per order, amount equal to the amount due, insert-only |
+| Event and issue kinds | `payment_recorded`; `paid_order_cancelled` |
+| Availability | additive `paymentMethods[]`: customer text names only these |
+| New staff call | `POST /admin/grocery/orders/{id}/payment` `{revision, method, amountPaisa, reference}`: `confirmed`, `preparing` or `out_for_delivery`; holder or Super Admin; never one's own order; amount must equal the amount due; the method must be enabled. It records the payment and **does not change the status**, so an order paid early is not delivered |
+| `complete` | unpaid: as today (cash, `amountCollectedPaisa` required). Already paid: no amount, and none accepted |
+| After a payment exists | `reconfirm` and `reduce_amount` are refused (`409 payment_recorded`), since the money no longer would match. A staff cancellation needs a **Super Admin** with an explicit "the money must be returned by hand", and writes a `paid_order_cancelled` issue |
+| Customer | `payment.status` stays `due` or `collected`; `collected` only ever means **staff verified it**. A customer's claim records nothing; there is no "I have paid" button |
+
+**Order of work:** migration `0014` → backend → frontend (an older frontend would not understand a new method). A downgrade would refuse while a non-cash payment exists.
+
+**Questions only the owner can answer first:** (1) Which methods will really operate at launch, and whose account or card machine? (2) May an online payment be taken before preparation, or only verified then or at the door? (3) Who may verify a transfer: any grocery Moderator on the order, or a Super Admin only? (4) An order paid early that can't be fully supplied or is cancelled: who returns the money, how, and how is it recorded (the design blocks price changes after payment because there are no refunds)? (5) Are payment details told on the phone (assumed), or shown in the app?
+
+### Minimal design: delivery coverage
+
+The settings hold a **list of blocks**; customers choose one and the server refuses any other. That already serves all of B-17 **if the verified list is complete**. But the app can't tell that a list is complete, so it can't truthfully write "all sectors and blocks".
+
+- **Recommended (with `0014`):** `covers_all_b17 boolean NOT NULL DEFAULT false`, set by a Super Admin and shown in availability. Only when true, `/grocery` says **"Delivering across all sectors and blocks of B-17, Islamabad."** and step 3 says "anywhere in B-17". The block list stays required, so address checks don't change.
+- **Alternative, no migration:** show those sentences whenever any block is listed, on the owner's undertaking that the list is complete. Not recommended: a partial list would make the page untrue.
+
 ## GROCERY-4A: account isolation (applies to every Grocery screen)
 
 Customer, staff and Super Admin screens follow `AUTH_RBAC.md` §23.2: a private answer is shown only once confirmed as this account's; other tabs are told when the sign-in changes and are covered while they check; a replaced screen shows no later message. The customer's draft, idempotency key and "unconfirmed" handling are unchanged. **Backend closure (§38, §39; migration `0013`):** the server refuses a private read whose named session is not the cookie's, no longer re-sends the session cookie, and refuses a staff change made from an outdated revision, so one Super Admin can't silently overwrite another's. Asking who is signed in no longer keeps an idle staff session alive (§38.4). **Still open:** clients that send no session name, and a late sign-out or `401` clearing a newer cookie (§38.2, §38.5).
 
-## GROCERY-4B scope (foundation approved 2026-11-28; NOT started)
+## GROCERY-4B (BUILT, awaiting the owner's review; 2026-11-28)
 
-**Approved by the owner: integration verification is the foundation of GROCERY-4B** (the list below).
+The owner's brief of this date replaces the earlier proposed 4B scopes. **No migration; Grocery stays disabled.**
 
-**To be added after their exact requirements are reviewed with the owner (not yet defined or approved in detail):** previously discussed customer-facing Grocery **wording**, **order reliability** and **simple payment flexibility**. **No complex payment gateway.** Today the schema and rules allow only cash on delivery, with the amount collected equal to the amount due (`DATA_MODEL.md` §22), so any payment change needs its requirements, and possibly a migration, approved first.
+| Approved decision | State |
+|---|---|
+| Customer wording: send your list, confirm your order, get it delivered, pay; nothing about how the team gets the goods; necessary disclosures kept (availability, substitution choice, charges, a higher total is confirmed again) | Built |
+| Every day, 8:00 AM to 12:00 midnight, Pakistan time, from the settings | Built: midnight can be saved. **The owner sets it** (`DEPLOYMENT.md` §21.1) |
+| Delivery to all of B-17 | Served by the Super Admin's block list, once the owner enters the verified blocks. **The "all sectors and blocks" / "anywhere in B-17" sentences are not shown** until the system can know the list is complete (proposal above) |
+| Total confirmed before preparation | Built (the order can't be prepared without a recorded agreement) |
+| Cash, card and online payment; before delivery or at the door | **Only cash on delivery exists and only it is named.** Card and online recording need approval (proposal above) |
+| Reliability | Double and lost submissions already used one idempotency key; added: the check after a reload |
+| Capacity and daily reset | The daily submission limit now resets at midnight in Karachi (was 05:00). Capacity already counted Karachi days. **Unchanged, by the owner's earlier decision:** a cancelled order keeps its place |
 
-**Not part of GROCERY-4B:** pilot corrections (failed delivery and returns, D15; cash handling, D17; refunds, issue resolution and reconciliation only if approved). They need pilot experience, and the pilot is GROCERY-5.
-
-**Verification foundation:**
-
-1. A **throwaway** database migrated to head by the owner's process (`b17_dev` only if the owner decides to).
-2. Real-stack browser specs. A first one exists (`e2e-real/18-grocery.spec.ts`, GROCERY-4A; run on a throwaway database): enable with a test block → customer sends → a grocery Moderator claims, agrees, prepares, dispatches and collects cash → customer sees it; another customer can't read it; a paused Moderator changes nothing. **Still to cover:** a failed delivery, cancellation by customer and staff, recorded issues, a reduced amount, releasing the orders of a paused or removed Moderator, and enabling and appointing through the screens.
-3. Compare every fake with the real answers: shapes (absent fields), error codes and `details`, order of refusal, `401` / `403` kinds, rate limits, session ages.
-4. Decide on a settings-history read (backend approval needed). The staff revision (`AUTH_RBAC.md` §39) and the server read binding (§38) are built.
-5. A real-device pass of the customer, staff and admin screens.
+**Still not covered:** real devices and screen readers; a settings-history read; a list written before Google sign-in is still lost; no notifications.
 
 **Launch blockers (all still open):** the mandatory pre-pilot security review of `DEPLOYMENT.md` §20; everything in `DEPLOYMENT.md` §15–§17, including verified serviceable blocks; refund, privacy / retention, excluded-goods and cash-handling policies; rules for failed deliveries and bought goods; routines for telling customers about changes and for **noticing new orders** (no notifications); several accounts filling a day's capacity; the 05:00 PKT limit reset; **staff MFA**; per-IP rate limiting at the proxy; tested backups; monitoring; least-privilege database credentials; production Google OAuth.

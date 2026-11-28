@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ReadError } from "@/components/feedback/ReadError"
 import { useGroceryDraft } from "@/features/grocery/groceryDraftStore"
+import { PAYMENT_COPY } from "@/features/grocery/paymentCopy"
 import { useRead } from "@/hooks/useRead"
 import { useRequireAuth } from "@/hooks/useRequireAuth"
 import { fetchMyGroceryOrder } from "@/lib/api/reads/grocery"
@@ -15,9 +16,9 @@ import { groceryOrderPath, routes } from "@/config/routes"
 import { fadeUp } from "@/lib/motion"
 
 const NEXT = [
-  { icon: PhoneCall, text: "Our team calls the number you gave to agree the price before buying anything." },
-  { icon: Truck, text: "We buy your items from local shops and deliver them." },
-  { icon: Banknote, text: "You pay in cash when your order arrives." },
+  { icon: PhoneCall, text: "Our team calls the number you gave to confirm availability, your order and the total price." },
+  { icon: Truck, text: "We prepare your order and deliver it to your door." },
+  { icon: Banknote, text: PAYMENT_COPY.howToPay },
 ]
 
 /** The confirmation of a sent order (GROCERY-3A). It shows what the SERVER holds, read again. */
@@ -69,7 +70,7 @@ function GrocerySubmittedPage() {
               </Typography>
               <p className="select-all font-heading text-2xl font-semibold tracking-wide">{read.data.reference}</p>
               <Typography variant="body-sm" className="text-muted-foreground">
-                {read.data.itemCount === 1 ? "1 item" : `${read.data.itemCount} items`}. No price yet.
+                {read.data.itemCount === 1 ? "1 item" : `${read.data.itemCount} items`}. Total price to be confirmed.
               </Typography>
             </div>
             <ul aria-label="What happens next" className="flex w-full flex-col gap-3 text-left">

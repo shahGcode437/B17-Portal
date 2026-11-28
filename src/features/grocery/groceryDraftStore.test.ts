@@ -54,7 +54,10 @@ beforeEach(() => {
   draft().reset()
   setCsrfToken("csrf-1")
 })
-afterEach(() => vi.useRealTimers())
+afterEach(() => {
+  vi.useRealTimers()
+  vi.restoreAllMocks()
+})
 
 describe("sending a grocery order", () => {
   it("sends one request with a key and the CSRF token, then clears the draft", async () => {
@@ -231,11 +234,120 @@ describe("the draft belongs to an account", () => {
     expect(draft().items).toEqual([])
   })
 
-  it("keeps nothing in web storage", async () => {
+  it("keeps nothing of the order in web storage: only that a send was unfinished, whose and when", async () => {
     server(new GroceryBackend(), ["lost-before"])
+    syncDraftWithAuth(null, "authenticated", "u1", null)
     fill()
     await failure(draft().submit(request()))
+
     expect(window.localStorage).toHaveLength(0)
-    expect(window.sessionStorage).toHaveLength(0)
+    expect(window.sessionStorage).toHaveLength(1)
+    const stored = window.sessionStorage.getItem("b17:grocery-unconfirmed")!
+    expect(Object.keys(JSON.parse(stored)).sort()).toEqual(["owner", "sentAt"])
+    expect(JSON.parse(stored).owner).toBe("u1")
+    for (const secret of ["Rice", "Ayesha", "House 17", "3001234567", "csrf-1", draft().attempt!.key]) {
+      expect(stored).not.toContain(secret)
+    }
+  })
+})
+
+describe("what survives a reload", () => {
+  const KEY = "b17:grocery-unconfirmed"
+  const marker = () => JSON.parse(window.sessionStorage.getItem(KEY) ?? "null") as { owner: string; sentAt: number } | null
+  /** What a reload does: memory is lost, this tab's session storage is not. */
+  const reload = () =>
+    useGroceryDraft.setState({ ownerId: null, items: [], delivery: EMPTY_DELIVERY, phase: "idle", attempt: null, problem: null, sentOrderId: null, recovery: null })
+
+  async function sent(faults: Parameters<typeof server>[1], backend = new GroceryBackend()) {
+    server(backend, faults)
+    syncDraftWithAuth(null, "authenticated", "u1", null)
+    fill()
+    await draft()
+      .submit(request())
+      .catch(() => undefined)
+  }
+
+  it("an unknown outcome is remembered for the same account after a reload, and resends nothing", async () => {
+    const backend = new GroceryBackend()
+    const calls = server(backend, ["lost-after"]).calls
+    syncDraftWithAuth(null, "authenticated", "u1", null)
+    fill()
+    await failure(draft().submit(request()))
+    reload()
+
+    syncDraftWithAuth(null, "authenticated", "u1", null)
+    draft().loadRecovery("u1")
+
+    expect(draft().recovery).toEqual(marker())
+    expect(draft().recovery?.owner).toBe("u1")
+    expect(draft().attempt).toBeNull()
+    expect(calls).toHaveLength(1)
+    expect(backend.orders).toHaveLength(1)
+  })
+
+  it.each([
+    ["an order that was confirmed", []],
+    ["an order the server refused", [{ status: 409, body: { error: { code: "grocery_closed", message: "x" } } } as MockReply]],
+  ])("%s leaves nothing behind", async (_what, faults) => {
+    await sent(faults)
+    expect(window.sessionStorage.getItem(KEY)).toBeNull()
+  })
+
+  it("a retry keeps the time of the first send, which is when the order may have arrived", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] })
+    const first = Date.now()
+    await sent(["lost-after", "lost-before"])
+    vi.setSystemTime(first + 10 * 60_000)
+
+    await draft().retry().catch(() => undefined)
+
+    expect(marker()).toEqual({ owner: "u1", sentAt: first })
+  })
+
+  it.each([
+    ["choosing to edit after checking", () => draft().discardAttempt()],
+    ["signing out", () => syncDraftWithAuth("authenticated", "anonymous", null, null)],
+    ["another account signing in", () => syncDraftWithAuth("authenticated", "authenticated", "u2", null)],
+  ])("%s removes it", async (_what, act) => {
+    await sent(["lost-after"])
+    act()
+    expect(window.sessionStorage.getItem(KEY)).toBeNull()
+  })
+
+  it("an ended session keeps it for the same person", async () => {
+    await sent(["lost-after"])
+    syncDraftWithAuth("authenticated", "anonymous", null, "expired")
+    expect(marker()?.owner).toBe("u1")
+  })
+
+  it("after a reload another account never sees it, and it is removed", async () => {
+    await sent(["lost-after"])
+    reload()
+    draft().loadRecovery("u2")
+    expect(draft().recovery).toBeNull()
+    expect(window.sessionStorage.getItem(KEY)).toBeNull()
+  })
+
+  it("it lasts a day, and a damaged one is thrown away", () => {
+    window.sessionStorage.setItem(KEY, JSON.stringify({ owner: "u1", sentAt: Date.now() - 24 * 60 * 60_000 }))
+    draft().loadRecovery("u1")
+    expect(draft().recovery).toBeNull()
+    expect(window.sessionStorage.getItem(KEY)).toBeNull()
+    for (const damaged of ["not json", JSON.stringify({ owner: "", sentAt: Date.now() }), JSON.stringify({ sentAt: "x" })]) {
+      window.sessionStorage.setItem(KEY, damaged)
+      draft().loadRecovery("u1")
+      expect(draft().recovery).toBeNull()
+      expect(window.sessionStorage.getItem(KEY)).toBeNull()
+    }
+  })
+
+  it("storage that refuses changes nothing about sending", async () => {
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("denied", "QuotaExceededError")
+    })
+    const backend = new GroceryBackend()
+    await sent([], backend)
+    expect(backend.orders).toHaveLength(1)
+    expect(draft().phase).toBe("idle")
   })
 })

@@ -3,6 +3,7 @@ import {
   changedFields,
   checkBlock,
   consequences,
+  describeValue,
   draftOf,
   parseDraft,
   patchOf,
@@ -46,6 +47,14 @@ describe("block labels", () => {
 })
 
 describe("the settings draft", () => {
+  it("closes at midnight as 00:00, sends it as that, and writes it as midnight", () => {
+    const midnight = draft({ opensAt: "08:00", closesAt: "00:00" })
+    expect(parseDraft(midnight).problems).toEqual({})
+    expect(patchOf(saved, midnight)).toEqual({ revision: 1, opensAt: "08:00", closesAt: "00:00" })
+    expect(describeValue("closesAt", "00:00")).toBe("12:00 Midnight")
+    expect(describeValue("opensAt", "08:00")).toBe("8:00 AM")
+  })
+
   it("the safe defaults round-trip with nothing changed", () => {
     expect(saved).toMatchObject({ enabled: false, serviceableBlocks: [] })
     expect(parseDraft(draft()).problems).toEqual({})
@@ -59,6 +68,7 @@ describe("the settings draft", () => {
     [{ closesAt: "" }, "closesAt", /closing time/],
     [{ opensAt: "20:00", closesAt: "20:00" }, "closesAt", /after the opening time/],
     [{ opensAt: "22:00", closesAt: "02:00" }, "closesAt", /past midnight/],
+    [{ opensAt: "00:00", closesAt: "00:00" }, "closesAt", /after the opening time/],
     [{ dailyCapacity: "0" }, "dailyCapacity", /1 to 200/],
     [{ dailyCapacity: "201" }, "dailyCapacity", /1 to 200/],
     [{ dailyCapacity: "2.5" }, "dailyCapacity", /whole number/],

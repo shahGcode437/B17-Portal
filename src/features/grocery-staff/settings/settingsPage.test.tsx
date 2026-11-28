@@ -260,7 +260,7 @@ describe("another Super Admin changes the settings", () => {
     const { server, panel } = await conflicted()
     expect(await screen.findByText(/Someone else changed the settings/)).toBeInTheDocument()
     expect(panel).toHaveTextContent("Orders per day: 10 → 30")
-    expect(panel).toHaveTextContent("Opens at: 10:00 am → 9:00 am")
+    expect(panel).toHaveTextContent("Opens at: 10:00 AM → 9:00 AM")
     expect(panel).toHaveTextContent("Orders per day: 15 (also changed on the server: keeping yours would replace it)")
     expect(panel).toHaveTextContent("Items per order: 20")
     noBar()

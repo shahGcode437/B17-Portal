@@ -84,7 +84,7 @@ test('a visitor writes a list, signs in without losing it, sends it and follows 
   await expect(page.getByText('2 items on your list.')).toBeVisible()
   await expect(page.getByLabel('Contact name')).toHaveValue('Ayesha Khan')
   await fillDelivery(page)
-  await expect(page.getByText('There is no price yet.')).toBeVisible()
+  await expect(page.getByText('Your total is confirmed before preparation')).toBeVisible()
   await page.getByRole('button', { name: 'Send my order' }).click()
 
   await expectPage(page, 'Order sent')

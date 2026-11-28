@@ -31,7 +31,7 @@ const PAGE = 10
  */
 function amountLine(order: GroceryOrderSummaryDto): string | null {
   if (order.status === "cancelled") return null
-  if (order.finalAmountDuePaisa === undefined) return "Price to be agreed"
+  if (order.finalAmountDuePaisa === undefined) return "Price to be confirmed"
   if (order.status === "delivered") return `Total ${formatPaisa(order.finalAmountDuePaisa)}`
   return `${formatPaisa(order.finalAmountDuePaisa)} to pay in cash`
 }

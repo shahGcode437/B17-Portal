@@ -578,6 +578,34 @@ What it protects: `AUTH_RBAC.md` §38, §38.4, §38.5, §39.
 
 **Not repeated** (owner's instruction): the full unit and mocked-browser suites, the backend suite, the real-backend lane and the mutation checks. The full-suite counts in the table above were taken **before** this correction. The earlier mutation `reconnecting reloads staff data` targeted code that no longer exists; the new queue test asserts that reconnecting loads nothing, and was not mutated.
 
+## GROCERY-4B (wording, hours to midnight, reload recovery, daily limit)
+
+| File | What it adds |
+|---|---|
+| `backend/tests/test_grocery_rules.py` | 08:00 to midnight at each boundary (the last microsecond included), the weekday never carrying over, `00:00` round trips, the daily limit's window on Karachi days, other limits unchanged |
+| `backend/tests/db/test_grocery_settings_api.py`, `test_grocery_orders_api.py` | midnight saved and read through the API; `00:00`–`00:00` refused; real submissions at 07:59:59, 08:00, 23:59:59 and 00:00; the day's capacity across midnight; the submission limit freeing at Karachi midnight with the right `Retry-After` |
+| `groceryPages`, `groceryDraftStore`, `groceryRules`, `settingsForm`, `settingsPage`, `authSafety` | approved wording and what must not appear; hours from the settings; the reload marker (contents, account isolation, expiry, damage, refused storage); sending held until checked; the storage audit now names this one marker |
+| `e2e-real/19-grocery-reliability.spec.ts` | React → FastAPI → PostgreSQL: hours and coverage; one key, one order; a lost answer (no automatic resend); a reload during it, and another account; a race for the last place; lower amount, failed delivery, second try, issue, cash once; cancellation rules; releasing a paused Moderator's order; **field-by-field parity of the fakes with the API** |
+
+**Before the fix** (new backend tests against an untouched copy of `5b680e7`): **28 failed, 273 passed**. Through the API: midnight refused (`422 closes_before_opens`); a customer blocked at 23:30 told to wait 19,801 s, that is until 05:00.
+
+| Check, on the final code | Result |
+|---|---|
+| All 8 Grocery backend test files, real PostgreSQL (`b17_test`), concurrency files included | **456 passed** (455 + 1 after fixing a missing import in a new test; the three changed files rerun: 301 passed) |
+| The 20 other backend test files that use the rate limiter | **1,137 passed** |
+| `ruff check`, `ruff format --check`, `mypy` | passed (280 source files) |
+| `tsc -b`, e2e `tsc`; `npm run build` | passed |
+| `npm run lint` | passed, with the 7 older warnings |
+| Full unit / component suite, once | **2,028 passed, 4 failed** of 2,032; after the fixes `features/grocery` and `authSafety`: **328 passed** (10 files). The full suite was not rerun |
+| Full mocked browser suite, once | **239 passed, 1 failed** (old wording); after the fixes and a rebuild, every Grocery browser spec: **40 passed**. The full suite was not rerun |
+| Real-backend lane, specs `18` and `19`, throwaway `b17_g4b_lane` | **13 of 13**: `18` (4) in the first run, `19` (9) in the second. Temporary copy on ports 5273 / 8001 with a guard, because the developer's app was on 5173 / 8000; database dropped; `b17_dev` unchanged (read-only check of version, users, orders, settings, roles) |
+
+**What failed along the way.** The first backend run tested the old code (the change script had not been run) and was stopped. The four unit failures: two old-wording expectations (one of them the storage audit's allow-list, a deliberate guard), one wrong new test (the fake's `seed` returns a copy), and **one real defect**: two buttons named "Check again" on one screen (the new one is now "Check my orders again"). The first type check and the first real-backend run each found a mistake in the new spec (an unused line; the real refusal is `403 forbidden` with detail `super_admin_required`, which the fake already matched).
+
+**Reused, not repeated:** GROCERY-4A's evidence for session binding, cookies, staff idle and staff revision (that code is unchanged), including spec `17`. **No mutation check** was run.
+
+**Not run:** the full backend suite (changes are confined to Grocery hours and one rate policy); the other real-backend specs; exact second boundaries through the real stack (its clock is not faked; the backend tests cover them); Safari, Firefox, real devices, a screen reader.
+
 ## Rule for mutation checks (owner, 2026-11-28)
 
 A mutation check deliberately breaks code. **No running development server may be able to load it.** On 2026-11-28 a check that edited the working tree did so while a developer's `uvicorn --reload` was running, and that server loaded broken copies for a few minutes.

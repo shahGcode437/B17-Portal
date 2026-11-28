@@ -16,6 +16,7 @@ import { GrocerySteps } from "@/features/grocery/GrocerySteps"
 import { GroceryUnavailable } from "@/features/grocery/GroceryUnavailable"
 import { ItemForm } from "@/features/grocery/ItemForm"
 import { ItemRow } from "@/features/grocery/ItemRow"
+import { RecoveryNotice } from "@/features/grocery/RecoveryNotice"
 import { useGroceryAvailability } from "@/features/grocery/useGroceryAvailability"
 import { isDraftHidden, useGroceryDraft } from "@/features/grocery/groceryDraftStore"
 import { useAuth } from "@/hooks/useAuth"
@@ -190,7 +191,7 @@ function ListBuilder({ availability, onRefresh, refreshing }: { availability: Gr
         )}
         <div className="flex items-center justify-between gap-3">
           <Typography variant="body-sm" className="min-w-0 text-muted-foreground">
-            Price agreed by phone.
+            Total price confirmed before preparation.
           </Typography>
           {locked ? (
             <Button asChild className="h-11 shrink-0 px-4">
@@ -228,6 +229,7 @@ function GroceryListPage() {
           meta={<GrocerySteps current={1} />}
         />
         <SentNotice />
+        <RecoveryNotice />
         {hidden && status === "loading" ? (
           <Skeleton className="h-64 rounded-2xl" />
         ) : hidden ? (

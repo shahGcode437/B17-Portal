@@ -2,13 +2,16 @@ import { create } from "zustand"
 import { submitGroceryOrder } from "@/lib/api/writes/grocery"
 import { ApiError, NETWORK_ERROR_CODE, isApiError } from "@/lib/api/errors"
 import { EMPTY_DELIVERY, type DeliveryValues, type DraftItem, type ItemValues } from "@/features/grocery/orderRequest"
+import { clearMarker, readMarker, writeMarker, type SubmissionMarker } from "@/features/grocery/submissionMarker"
 import type { GroceryOrderCreateDto } from "@/lib/api/dto/grocery"
 import type { AuthNotice, AuthStatus } from "@/types/auth"
 
 /**
  * The grocery order being written, and its submission. It is CLIENT state only, held in memory:
  * never localStorage, sessionStorage or IndexedDB (it holds a name, a phone number and an address),
- * so a full page reload starts empty. No server data is kept here.
+ * so a full page reload starts empty. No server data is kept here. The one thing stored is that a
+ * send was unfinished, with nothing of the order in it (`submissionMarker`), so that after a reload
+ * the customer is asked to check before sending another.
  *
  * WHOSE IT IS. A draft written while signed in belongs to that account. Signing out clears it;
  * another account signing in clears it. If the session merely ENDS (expired), it is kept but hidden
@@ -48,6 +51,11 @@ interface DraftState {
   problem: SubmissionProblem | null
   /** The id of an order this draft just became, until the customer has seen its confirmation. */
   sentOrderId: string | null
+  /** A send that a reload cut off, until its owner says they have checked their orders. */
+  recovery: SubmissionMarker | null
+  /** The signed-in account is known: pick up its unfinished send, if the page was reloaded. */
+  loadRecovery: (userId: string) => void
+  dismissRecovery: () => void
   addItem: (values: ItemValues) => void
   updateItem: (id: string, values: ItemValues) => void
   removeItem: (id: string) => void
@@ -114,6 +122,7 @@ const CLEARED = {
   attempt: null,
   problem: null,
   sentOrderId: null,
+  recovery: null as SubmissionMarker | null,
 }
 
 export const useGroceryDraft = create<DraftState>()((set, get) => {
@@ -124,6 +133,9 @@ export const useGroceryDraft = create<DraftState>()((set, get) => {
     if (inFlight) return inFlight
     const startedIn = epoch
     set({ phase: "sending", attempt, problem: null })
+    // A retry keeps the time of the FIRST send: that is when the order may have arrived.
+    const owner = get().ownerId
+    if (!retrying && owner) writeMarker({ owner, sentAt: Date.now() })
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), SUBMIT_TIMEOUT_MS)
     const promise = (async () => {
@@ -134,12 +146,14 @@ export const useGroceryDraft = create<DraftState>()((set, get) => {
         }
         if (startedIn !== epoch) throw new SubmissionSuperseded()
         // The order exists: the draft is finished with. (The owner stays the owner.)
+        clearMarker()
         set({ ...CLEARED, ownerId: get().ownerId, sentOrderId: order.id })
         return order.id
       } catch (cause) {
         if (cause instanceof SubmissionSuperseded) throw cause
         if (startedIn !== epoch) throw new SubmissionSuperseded()
         const problem = judge(isApiError(cause) ? cause : unreachable(), retrying)
+        if (problem.kind === "refused") clearMarker() // the server stored nothing
         set(
           problem.kind === "unknown"
             ? { phase: "unconfirmed", attempt, problem }
@@ -188,7 +202,22 @@ export const useGroceryDraft = create<DraftState>()((set, get) => {
     },
     discardAttempt: () => {
       if (get().phase !== "unconfirmed") return
+      clearMarker()
       set({ phase: "idle", attempt: null, problem: null })
+    },
+    loadRecovery: (userId) => {
+      if (get().attempt || get().phase !== "idle") return // this page still holds the attempt itself
+      const marker = readMarker()
+      if (marker && marker.owner !== userId) {
+        clearMarker() // somebody else's: never shown, and not kept for a shared browser
+        set({ recovery: null })
+        return
+      }
+      set({ recovery: marker })
+    },
+    dismissRecovery: () => {
+      clearMarker()
+      set({ recovery: null })
     },
     clearProblem: () => {
       if (get().phase === "idle") set({ problem: null })
@@ -197,6 +226,7 @@ export const useGroceryDraft = create<DraftState>()((set, get) => {
     reset: () => {
       epoch += 1
       inFlight = null
+      clearMarker()
       set({ ...CLEARED })
     },
   }

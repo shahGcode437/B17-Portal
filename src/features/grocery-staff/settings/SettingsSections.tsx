@@ -196,7 +196,12 @@ function ScheduleSection({ id, draft, saved, changed, problems, disabled, onChan
       <div className="grid grid-cols-2 gap-3">
         {(["opensAt", "closesAt"] as const).map((key) => (
           <div key={key} className="flex min-w-0 flex-col gap-1.5">
-            <GroceryField id={`${id}-${key}`} label={key === "opensAt" ? "Opens at" : "Closes at"} error={problems[key]}>
+            <GroceryField
+              id={`${id}-${key}`}
+              label={key === "opensAt" ? "Opens at" : "Closes at"}
+              hint={key === "closesAt" ? "12:00 AM means midnight, at the end of the day." : undefined}
+              error={problems[key]}
+            >
               <Input
                 id={`${id}-${key}`}
                 type="time"
@@ -205,7 +210,7 @@ function ScheduleSection({ id, draft, saved, changed, problems, disabled, onChan
                 onChange={(event) => onChange({ [key]: event.target.value })}
                 className={groceryInputClass}
                 aria-invalid={problems[key] ? true : undefined}
-                aria-describedby={describedBy(`${id}-${key}`, problems[key])}
+                aria-describedby={describedBy(`${id}-${key}`, problems[key], key === "closesAt")}
               />
             </GroceryField>
             <Saved field={key} saved={saved} changed={changed} />

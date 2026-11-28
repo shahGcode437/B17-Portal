@@ -8,10 +8,16 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
+from app.core.rate_limit import (
+    GROCERY_SUBMIT_DAY,
+    GROCERY_SUBMIT_HOUR,
+    RESEND_VERIFICATION_DAY,
+)
 from app.models.enums import GroceryActorRole, GroceryOrderStatus, GroceryUnit
 from app.schemas.grocery import GroceryOrderCreate, GrocerySettingsPatch
 from app.services import grocery_rules as rules
 from app.services.listing_state import _valid_block
+from app.services.rate_limit import _window_start
 
 UTC = datetime.UTC
 
@@ -244,6 +250,83 @@ def test_the_capacity_day_rolls_over_at_karachi_midnight(
 def test_a_naive_time_is_refused_not_guessed() -> None:
     with pytest.raises(ValueError, match="timezone-aware"):
         rules.service_date(datetime.datetime(2026, 11, 27, 12, 0), "Asia/Karachi")
+
+
+# -- closing at midnight (GROCERY-4B: every day, 08:00 to 12:00 midnight, Karachi) -------------------
+
+
+#: What "closes at 00:00" is saved as. Built through the rules, so the tests state behaviour.
+def _to_midnight(opens: datetime.time = datetime.time(8, 0)) -> dict[str, Any]:
+    return {**WINDOW, "opens_at": opens, "closes_at": rules.parse_closing_time("00:00")}
+
+
+@pytest.mark.parametrize(
+    ("moment", "expected"),
+    [  # Karachi is UTC+5; the day in question is 27 November there
+        (utc(2026, 11, 27, 2, 59, 59), False),  # 07:59:59
+        (utc(2026, 11, 27, 3, 0, 0), True),  # 08:00:00, opening is INCLUDED
+        (utc(2026, 11, 27, 18, 59, 0), True),  # 23:59:00
+        (utc(2026, 11, 27, 18, 59, 59), True),  # 23:59:59
+        (datetime.datetime(2026, 11, 27, 18, 59, 59, 999999, tzinfo=datetime.UTC), True),
+        (utc(2026, 11, 27, 19, 0, 0), False),  # 00:00:00, midnight is the NEXT day, still closed
+        (utc(2026, 11, 27, 19, 0, 1), False),
+        (utc(2026, 11, 28, 2, 59, 59), False),  # 07:59:59 the next morning
+    ],
+    ids=[
+        "07:59:59", "08:00", "23:59", "23:59:59", "last-instant",
+        "midnight", "00:00:01", "next-07:59:59",
+    ],
+)  # fmt: skip
+def test_a_day_that_closes_at_midnight(moment: datetime.datetime, expected: bool) -> None:
+    assert rules.is_open(moment, **_to_midnight()) is expected
+
+
+def test_closing_at_midnight_never_carries_into_the_next_day() -> None:
+    # Friday only (ISO 5): the minute after Friday's midnight is Saturday, and closed.
+    window = {**_to_midnight(), "operating_days": [5]}
+
+    assert rules.is_open(utc(2026, 11, 27, 18, 59, 59), **window) is True
+    assert rules.is_open(utc(2026, 11, 27, 19, 0, 0), **window) is False
+
+
+def test_the_capacity_day_changes_exactly_when_a_midnight_closing_ends_the_day() -> None:
+    last = utc(2026, 11, 27, 18, 59, 59)
+    assert rules.service_date(last, "Asia/Karachi") == datetime.date(2026, 11, 27)
+    after = last + datetime.timedelta(seconds=1)
+    assert rules.service_date(after, "Asia/Karachi") == datetime.date(2026, 11, 28)
+
+
+@pytest.mark.parametrize("text", ["00:00", "00:01", "08:00", "20:00", "23:59"])
+def test_a_closing_time_reads_back_as_it_was_written(text: str) -> None:
+    assert rules.closing_time_text(rules.parse_closing_time(text)) == text
+
+
+def test_only_midnight_means_the_end_of_the_day() -> None:
+    assert rules.parse_closing_time("00:00") == rules.END_OF_DAY > datetime.time(23, 59)
+    assert rules.parse_closing_time("23:59") == datetime.time(23, 59)
+
+
+@pytest.mark.parametrize(
+    ("moment", "start"),
+    [
+        (utc(2026, 11, 27, 18, 59, 59), utc(2026, 11, 26, 19, 0)),  # 23:59:59 on the 27th
+        (utc(2026, 11, 27, 19, 0, 0), utc(2026, 11, 27, 19, 0)),  # midnight: a new day
+        (utc(2026, 11, 27, 23, 59, 59), utc(2026, 11, 27, 19, 0)),  # 04:59:59: the same day
+        (utc(2026, 11, 28, 0, 0, 0), utc(2026, 11, 27, 19, 0)),  # 05:00, where it used to reset
+    ],
+    ids=["before-midnight", "midnight", "04:59:59", "05:00"],
+)
+def test_the_daily_submission_limit_counts_karachi_days(
+    moment: datetime.datetime, start: datetime.datetime
+) -> None:
+    assert _window_start(moment, GROCERY_SUBMIT_DAY) == start
+
+
+def test_other_limits_keep_their_fixed_windows() -> None:
+    moment = utc(2026, 11, 27, 22, 30)
+
+    assert _window_start(moment, RESEND_VERIFICATION_DAY) == utc(2026, 11, 27, 0, 0)
+    assert _window_start(moment, GROCERY_SUBMIT_HOUR) == utc(2026, 11, 27, 22, 0)
 
 
 # -- blocks, references, keys -----------------------------------------------------------------------

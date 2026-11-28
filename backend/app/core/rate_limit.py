@@ -17,6 +17,9 @@ class RatePolicy:
     name: str
     limit: int
     window_seconds: int
+    #: For a window of one day: count CALENDAR days of this time zone (midnight to midnight there)
+    #: instead of fixed windows counted from the Unix epoch, whose "day" starts at 00:00 UTC.
+    calendar_day_timezone: str | None = None
 
 
 @dataclass(frozen=True)
@@ -70,7 +73,14 @@ PROVIDER_WRITE = RatePolicy("provider_write", limit=60, window_seconds=15 * 60)
 #: nothing. Deliberately low: cancelled orders keep their daily capacity slot, so without these
 #: one account could submit, cancel and resubmit until the whole day's capacity was gone.
 GROCERY_SUBMIT_HOUR = RatePolicy("grocery_submit_hour", limit=3, window_seconds=60 * 60)
-GROCERY_SUBMIT_DAY = RatePolicy("grocery_submit_day", limit=4, window_seconds=24 * 60 * 60)
+#: The day is the business day, as the daily capacity counts it: it starts at midnight in Karachi
+#: (GROCERY-4B; before, it started at 00:00 UTC, which is 05:00 there).
+GROCERY_SUBMIT_DAY = RatePolicy(
+    "grocery_submit_day",
+    limit=4,
+    window_seconds=24 * 60 * 60,
+    calendar_day_timezone="Asia/Karachi",
+)
 #: Grocery STAFF order changes per acting staff member (GROCERY-2): a pilot day of 10 orders is
 #: far below it, so it only stops a runaway or stuck client. Not an authorization boundary.
 GROCERY_STAFF_WRITE = RatePolicy("grocery_staff_write", limit=120, window_seconds=15 * 60)

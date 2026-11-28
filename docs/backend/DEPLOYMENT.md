@@ -406,7 +406,7 @@ Windows PowerShell, from `backend/`, with the API stopped. **Rehearsed on 2026-1
 
 - **Order history can be emptied by `TRUNCATE`.** `grocery_order_status_history` refuses only `UPDATE` and `DELETE` by trigger. This limitation stays open until production controls it.
 - **Required before production: least-privilege application database credentials.** The runtime role of the two-role design above must be used: data reads and writes only, **no `TRUNCATE`, no schema changes, and not the owner of any table** (an owner can disable a trigger). Migrations run under the separate migration role. Verify the grants on the deployed database.
-- **Before the pilot: correct the daily submission-limit reset.** The 4-per-day limit resets at **05:00 PKT** (midnight UTC), while capacity uses the Karachi date. With the default hours it has no effect; opening hours that start before 05:00 would let an account get a second daily allowance on one Karachi date.
+- **Corrected in GROCERY-4B (§21): the daily submission-limit reset.** The 4-per-day limit used to reset at **05:00 PKT** (midnight UTC), while capacity uses the Karachi date; it now counts Karachi calendar days.
 
 **Authentication concurrency (2026-11-27):** the token / user deadlocks, the password-reset bypasses (`AUTH_RBAC.md` §35) and staff changes surviving a revoked session (§36) are corrected. What remains is in §16.
 
@@ -506,3 +506,23 @@ GROCERY-4A was accepted as a **development checkpoint only**. **Every item below
 | 9 | **A new flow that waits before sending must check the identity stamp** | A convention: nothing fails automatically if one doesn't | §23.1 |
 | 10 | **The database does not force `staff_revision` to advance** | A hand-written change to roles or scopes bypasses it; least-privilege credentials (§16 item 4) apply | `DATA_MODEL.md` §23 |
 | 11 | **Verification gaps** | Deferred real-backend specs; only part of the Grocery staff journey on a real backend; no late-response reordering in a real browser; no Safari, Firefox, real device or screen reader | `TESTING.md` |
+
+## 21. Opening hours to midnight and the daily limit (GROCERY-4B)
+
+- **No migration, configuration or environment change.** Alembic head stays `0013`.
+- **Deploy the backend, then the frontend.** The new frontend against an older backend can't save midnight (the older code refuses `00:00`). The older frontend against the new backend works, but writes a midnight closing as `12:00 am` and its settings form rejects it.
+- **Daily submission limit:** the day now starts at midnight in Karachi. The counters are keyed by the window's start, so **at deployment each account's count for the current day starts again once**.
+- **Rolling back:** older code reads a stored midnight closing as `23:59` and closes at the day's last instant, so ordering keeps working; its settings screen shows `23:59`, and saving the closing time there replaces midnight with that.
+
+### 21.1 Owner: set the approved hours and delivery coverage (after this version is running)
+
+1. Sign in as a Super Admin (staff sign-in), within the last 12 hours.
+2. Open **Grocery** → **Grocery settings**.
+3. **Delivery blocks:** add each block or sector from **your verified list** of B-17, one at a time, spelled as customers should read it (up to 100, 40 characters each). Customers choose from exactly this list, and the server refuses any other. The application ships with no block names and suggests none.
+4. **Operating days:** all seven. **Opens at:** `8:00 AM`. **Closes at:** `12:00 AM` (midnight at the end of the day).
+5. Check **Orders per day** (default 10), **Largest order total** (default Rs 20,000), open orders per customer (2) and items per order (50).
+6. **Review changes** → check the list → **Save settings**.
+7. **Leave "Accept new grocery orders" off** until the launch blockers (§15–§17, §20) are cleared. Switching it on needs its own tick.
+8. Check `/grocery`: it should read "Every day — 8:00 AM to 12:00 Midnight (Pakistan time)." and list your blocks.
+
+**Payment methods:** nothing to configure. Only cash on delivery exists.

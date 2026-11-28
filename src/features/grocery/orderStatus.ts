@@ -8,19 +8,19 @@ export const STATUS_META: Record<GroceryStatusDto, { label: string; tone: Status
     label: "Submitted",
     tone: "info",
     icon: Send,
-    summary: "We have your list. Our team will call you to agree the price before buying anything.",
+    summary: "We have your list. Our team will confirm availability and the total price with you before preparing it.",
   },
   confirmed: {
     label: "Confirmed",
     tone: "success",
     icon: ClipboardCheck,
-    summary: "Our team has recorded the price for your order. Buying has not started yet.",
+    summary: "Our team has recorded the total price for your order. Preparation hasn't started yet.",
   },
   preparing: {
     label: "Preparing",
     tone: "warning",
     icon: PackageCheck,
-    summary: "Your items are being bought and prepared.",
+    summary: "Your order is being prepared.",
   },
   out_for_delivery: {
     label: "Out for delivery",

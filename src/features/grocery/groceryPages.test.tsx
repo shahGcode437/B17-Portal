@@ -80,16 +80,56 @@ function fillDraft(owner: string | null = USER.id) {
 beforeEach(() => draft().reset())
 
 describe("Grocery landing page", () => {
-  it("shows the server's availability, areas, hours, cash on delivery and both ways in", async () => {
+  it("shows the server's availability, areas, hours, payment and both ways in", async () => {
     open("/grocery")
 
     expect(await screen.findByText("Accepting orders now")).toBeInTheDocument()
     expect(screen.getByRole("link", { name: "Start your grocery list" })).toHaveAttribute("href", "/grocery/new")
     expect(screen.getByRole("link", { name: "My Grocery Orders" })).toHaveAttribute("href", "/profile/grocery")
     expect(within(screen.getByRole("list", { name: "Blocks we deliver to" })).getAllByRole("listitem").map((li) => li.textContent)).toEqual(TEST_BLOCKS)
-    expect(screen.getByText("Cash on delivery only.")).toBeInTheDocument()
-    expect(screen.getByText("10:00 am to 8:00 pm (Pakistan time)")).toBeInTheDocument()
-    expect(screen.getByText(/agrees the price with you by phone before buying/i)).toBeInTheDocument()
+    expect(screen.getByText("Every day — 10:00 AM to 8:00 PM (Pakistan time).")).toBeInTheDocument()
+    const steps = within(screen.getByRole("region", { name: "How it works" })).getAllByRole("heading", { level: 3 })
+    expect(steps.map((step) => step.textContent)).toEqual([
+      "Step 1: Send your list",
+      "Step 2: Confirm your order",
+      "Step 3: Get it delivered",
+      "Step 4: Pay on delivery",
+    ])
+    expect(screen.getByText("Our team confirms availability, order details and the total price with you.")).toBeInTheDocument()
+    expect(
+      screen.getByText("Your total price, including any applicable delivery or service charges, is confirmed before your order is prepared.")
+    ).toBeInTheDocument()
+    expect(screen.getAllByText("Pay in cash when your order arrives.")).toHaveLength(2)
+    expect(screen.getByText(/we follow your substitution choice.*we confirm it with you again/)).toBeInTheDocument()
+    expect(screen.getByText("We deliver in B-17, Islamabad, to:")).toBeInTheDocument()
+  })
+
+  it("says nothing about procurement, offers no payment it can't take, and claims no wider delivery than is listed", async () => {
+    const { container } = open("/grocery")
+    await screen.findByText("Accepting orders now")
+    const words = container.textContent ?? ""
+    expect(words).not.toMatch(/local (shops|markets?)|\bwe (shop|buy)\b|buying|price list|paid online|cash on delivery only/i)
+    expect(words).not.toMatch(/\bcard\b|online (payment|transfer)|bank|wallet|easypaisa|jazzcash/i)
+    // Two test blocks are listed, so neither "all of B-17" claim may appear.
+    expect(words).not.toMatch(/all sectors|anywhere in B-17/i)
+  })
+
+  it("shows the approved hours from the server's settings, midnight as the end of the day", async () => {
+    const backend = new GroceryBackend()
+    backend.schedule = { ...backend.schedule, opensAt: "08:00", closesAt: "00:00" }
+    open("/grocery", { backend })
+
+    expect(await screen.findByText("Every day — 8:00 AM to 12:00 Midnight (Pakistan time).")).toBeInTheDocument()
+    expect(screen.getByText("Send your list before 12:00 Midnight (Pakistan time).")).toBeInTheDocument()
+  })
+
+  it("with no area listed it says orders can't be placed, not an empty list", async () => {
+    const backend = new GroceryBackend()
+    backend.blocks = []
+    open("/grocery", { backend })
+
+    expect(await screen.findByText("Delivery areas aren't set up yet, so orders can't be placed.")).toBeInTheDocument()
+    expect(screen.queryByRole("list", { name: "Blocks we deliver to" })).not.toBeInTheDocument()
   })
 
   it("switched off: no way to start, but existing orders stay reachable", async () => {
@@ -101,7 +141,7 @@ describe("Grocery landing page", () => {
     expect(await screen.findByText("Grocery ordering is switched off")).toBeInTheDocument()
     expect(screen.queryByRole("link", { name: /start your grocery list|prepare a list/i })).not.toBeInTheDocument()
     expect(screen.getByRole("link", { name: "My Grocery Orders" })).toBeInTheDocument()
-    expect(screen.getByText("No delivery areas are set up at the moment.")).toBeInTheDocument()
+    expect(screen.getByText("Delivery areas aren't set up yet, so orders can't be placed.")).toBeInTheDocument()
   })
 
   it.each([
@@ -267,7 +307,7 @@ describe("review and send", () => {
 
   it("sends the order once and shows the confirmation with its reference", async () => {
     const { user, calls, backend } = open("/grocery/new/review")
-    expect(await screen.findByText("There is no price yet.")).toBeInTheDocument()
+    expect(await screen.findByText("Your total is confirmed before preparation")).toBeInTheDocument()
 
     const send = screen.getByRole("button", { name: "Send my order" })
     await user.dblClick(send)
@@ -347,6 +387,77 @@ describe("review and send", () => {
   })
 })
 
+describe("after a reload in the middle of sending", () => {
+  const KEY = "b17:grocery-unconfirmed"
+  const interrupted = (owner: string = USER.id, sentAt = Date.now() - 5_000) => {
+    window.sessionStorage.setItem(KEY, JSON.stringify({ owner, sentAt }))
+    draft().loadRecovery(USER.id)
+  }
+  const notice = () => screen.queryByRole("region", { name: "Check your last order before sending another" })
+
+  it("finds the order that did arrive, and stays until the customer says they've checked", async () => {
+    const backend = new GroceryBackend()
+    const order = backend.seed(USER.id)
+    backend.orders[0].detail.submittedAt = new Date().toISOString() // `seed` returns a copy
+    interrupted()
+    const { user, calls } = open("/grocery", { backend })
+
+    expect(await screen.findByText(new RegExp(`We found an order received around then: ${order.reference}`))).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: `See order ${order.reference}` })).toHaveAttribute("href", `/profile/grocery/${order.id}`)
+    expect(calls.filter((call) => call.method !== "GET")).toEqual([]) // nothing is ever sent by itself
+
+    await user.click(screen.getByRole("button", { name: "I've checked my orders" }))
+    expect(notice()).not.toBeInTheDocument()
+    expect(window.sessionStorage.getItem(KEY)).toBeNull()
+  })
+
+  it("an older order is not taken for it", async () => {
+    const backend = new GroceryBackend()
+    backend.seed(USER.id)
+    backend.orders[0].detail.submittedAt = new Date(Date.now() - 60 * 60_000).toISOString()
+    interrupted()
+    open("/grocery/new", { backend })
+
+    expect(await screen.findByText("We don't see it in your orders yet, so it may not have reached us.")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Check my orders again" })).toBeInTheDocument()
+  })
+
+  it("the next order can't be sent until it has been checked", async () => {
+    fillDraft()
+    interrupted()
+    const { user, backend } = open("/grocery/new/review")
+
+    const send = await screen.findByRole("button", { name: "Send my order" })
+    expect(send).toBeDisabled()
+    expect(screen.getByText("Check your last order above before sending this one.")).toBeInTheDocument()
+    await user.click(await screen.findByRole("button", { name: "I've checked my orders" }))
+    await waitFor(() => expect(send).toBeEnabled())
+    await user.click(send)
+    expect(await h1("Order sent")).toBeInTheDocument()
+    expect(backend.orders).toHaveLength(1)
+  })
+
+  it("if the orders can't be read it can't be waved away", async () => {
+    interrupted()
+    const { user } = open("/grocery", { faults: { "GET /grocery/orders": ["network"] } })
+
+    expect(await screen.findByText("We couldn't check your orders just now.")).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "I've checked my orders" })).not.toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: "Check my orders again" }))
+    expect(await screen.findByRole("button", { name: "I've checked my orders" })).toBeInTheDocument()
+  })
+
+  it("another account's unfinished send is never shown, and is removed", async () => {
+    interrupted("someone-else")
+    const { calls } = open("/grocery")
+
+    await screen.findByText("Accepting orders now")
+    expect(notice()).not.toBeInTheDocument()
+    expect(window.sessionStorage.getItem(KEY)).toBeNull()
+    expect(calls.map((call) => call.path)).not.toContain("/grocery/orders")
+  })
+})
+
 describe("My Grocery Orders", () => {
   it("lists my orders with status and price, without personal details, and loads more", async () => {
     const backend = new GroceryBackend()
@@ -360,7 +471,7 @@ describe("My Grocery Orders", () => {
     expect(within(list).getAllByRole("listitem")).toHaveLength(10)
     expect(screen.getByText("12 orders")).toBeInTheDocument()
     expect(within(list).getByText("Rs 2,100 to pay in cash")).toBeInTheDocument()
-    expect(within(list).getAllByText("Price to be agreed")).toHaveLength(9)
+    expect(within(list).getAllByText("Price to be confirmed")).toHaveLength(9)
     for (const secret of ["+92300", "0300", "House 17", "Ayesha", "Blue gate"]) {
       expect(list.textContent).not.toContain(secret)
     }
@@ -423,7 +534,7 @@ describe("one order", () => {
 
   it("a submitted order has no price and can be cancelled with the revision on screen", async () => {
     const { view, backend } = setUp()
-    expect(await screen.findByText("No price yet. Our team will call you to agree it before buying anything.")).toBeInTheDocument()
+    expect(await screen.findByText("No price yet. Our team will confirm the total with you before preparing your order.")).toBeInTheDocument()
     expect(screen.getByRole("list", { name: "Order progress" }).querySelector('[aria-current="step"]')).toHaveTextContent("Submitted")
 
     await view.user.click(screen.getByRole("button", { name: "Cancel order" }))

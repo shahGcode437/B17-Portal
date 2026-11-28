@@ -210,6 +210,12 @@ export class AuthMock {
     this.admin.onSettings = (settings) => {
       this.grocery.enabled = settings.enabled
       this.grocery.blocks = [...settings.serviceableBlocks]
+      this.grocery.schedule = {
+        timezone: settings.timezone,
+        operatingDays: [...settings.operatingDays],
+        opensAt: settings.opensAt,
+        closesAt: settings.closesAt,
+      }
       this.grocery.maxItems = settings.maxItemsPerOrder
       this.grocery.maxActive = settings.maxActiveOrdersPerCustomer
       this.groceryStaff.maxOrderValuePaisa = settings.maxOrderValuePaisa

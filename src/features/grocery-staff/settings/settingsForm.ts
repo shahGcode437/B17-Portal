@@ -1,4 +1,4 @@
-import { formatClock, formatDays, formatPaisa } from "@/features/grocery/format"
+import { formatClock, formatClosing, formatDays, formatPaisa } from "@/features/grocery/format"
 import { MAX_FIELD_PAISA, paisaToInput, parsePkr } from "@/features/grocery-staff/money"
 import type { GrocerySettingsDto, GrocerySettingsField, GrocerySettingsPatchDto } from "@/lib/api/dto/grocerySettings"
 
@@ -104,6 +104,14 @@ export type SettingsProblems = Partial<Record<DraftKey, string>>
 
 type Values = Pick<GrocerySettingsDto, GrocerySettingsField>
 
+/**
+ * The API's rule. As a CLOSING time `00:00` is midnight at the end of the day, so it is after every
+ * opening time except `00:00` itself: a whole day can't be saved that way.
+ */
+export function closesAfterOpening(opensAt: string, closesAt: string): boolean {
+  return closesAt === "00:00" ? opensAt !== "00:00" : closesAt > opensAt
+}
+
 /** The draft as API values, with what is wrong. A field with a problem has no value. */
 export function parseDraft(draft: SettingsDraft): { values: Partial<Values>; problems: SettingsProblems } {
   const problems: SettingsProblems = {}
@@ -119,8 +127,9 @@ export function parseDraft(draft: SettingsDraft): { values: Partial<Values>; pro
   if (!clock.test(draft.opensAt)) problems.opensAt = "Enter the opening time."
   else values.opensAt = draft.opensAt
   if (!clock.test(draft.closesAt)) problems.closesAt = "Enter the closing time."
-  else if (clock.test(draft.opensAt) && draft.closesAt <= draft.opensAt) {
-    problems.closesAt = "The closing time must be after the opening time. Hours can't run past midnight."
+  else if (clock.test(draft.opensAt) && !closesAfterOpening(draft.opensAt, draft.closesAt)) {
+    problems.closesAt =
+      "The closing time must be after the opening time. To close at midnight enter 12:00 AM. Hours can't run past midnight."
   } else values.closesAt = draft.closesAt
 
   for (const key of ["dailyCapacity", "maxItemsPerOrder", "maxActiveOrdersPerCustomer"] as const) {
@@ -175,8 +184,9 @@ export function describeValue(field: GrocerySettingsField, value: Values[Grocery
     case "operatingDays":
       return formatDays(value as number[])
     case "opensAt":
-    case "closesAt":
       return formatClock(value as string)
+    case "closesAt":
+      return formatClosing(value as string)
     case "maxOrderValuePaisa":
       return formatPaisa(value as number)
     default:

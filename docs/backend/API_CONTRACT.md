@@ -709,7 +709,7 @@ Quantities are `NUMERIC(10,3)` in the database, `Decimal` in Python and strings 
 
 **Order of refusal:** CSRF / Origin → `401` / `403 email_not_verified` → `422` (everything in the table above that does not depend on settings) → `400 idempotency_key_required` / `idempotency_key_invalid` → the live account re-check (`401 session_expired`, `403 email_not_verified`) → **the idempotency key** (`200` replay, or `409 idempotency_key_reused`) → `429 rate_limited` → `503 grocery_unavailable` (disabled, or no serviceable block) → `409 grocery_closed` → `422` (`items.too_many_items`, `delivery.block.not_serviceable`) → `409 grocery_active_order_limit` → `409 grocery_capacity_reached`. A refused submission stores nothing, takes no capacity place, binds no key and is not counted against the submission limits.
 
-**Rate limits** (per account, counted only when an order is created): **3 per hour and 4 per day** (fixed windows, not rolling: the clock hour and the UTC day, which resets at 05:00 in Karachi), `429` with `Retry-After`. They are deliberately low because a cancelled order keeps its capacity place.
+**Rate limits** (per account, counted only when an order is created): **3 per hour and 4 per day** (fixed windows, not rolling: the clock hour, and the **Karachi calendar day**, midnight to midnight, like the daily capacity; until GROCERY-4B the day was the UTC day, which reset at 05:00 in Karachi), `429` with `Retry-After`. They are deliberately low because a cancelled order keeps its capacity place.
 
 ### 18.4 Idempotency
 
@@ -736,7 +736,7 @@ Cancel body: `{"revision": n, "reason"?: "…"}` (reason ≤ 200, one line). All
 | `enabled` | `false` | boolean |
 | `serviceableBlocks` | **empty** | up to 100 labels, unique ignoring case and spacing |
 | `operatingDays` | all seven | 1–7 distinct days |
-| `opensAt` / `closesAt` | `10:00` / `20:00` | `HH:MM`, closing after opening (no overnight window). Orders are accepted from opening **included** to closing **excluded** |
+| `opensAt` / `closesAt` | `10:00` / `20:00` | `HH:MM`, closing after opening (no overnight window). Orders are accepted from opening **included** to closing **excluded**. **As `closesAt`, `00:00` means midnight at the END of the day** (GROCERY-4B): open until the day's last instant, closed from `00:00:00`, which belongs to the next day. `00:00` to `00:00` is refused (`closes_before_opens`), so no whole day is saved by accident; `24:00` is `invalid_time`. The same text appears in `schedule.closesAt` of the availability answer |
 | `timezone` | `Asia/Karachi` | `Asia/Karachi` only |
 | `dailyCapacity` | 10 | 1–200 |
 | `maxActiveOrdersPerCustomer` | 2 | 1–10 |

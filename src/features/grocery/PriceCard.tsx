@@ -42,7 +42,7 @@ function PriceCard({ order }: { order: GroceryOrderDetailDto }) {
         <Typography variant="body-sm" className="text-muted-foreground">
           {cancelled
             ? "No price was recorded for this order."
-            : "No price yet. Our team will call you to agree it before buying anything."}
+            : "No price yet. Our team will confirm the total with you before preparing your order."}
         </Typography>
       ) : (
         <>

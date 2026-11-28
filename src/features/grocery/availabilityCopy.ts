@@ -1,4 +1,4 @@
-import { formatClock, timeZoneLabel } from "@/features/grocery/format"
+import { formatClosing, timeZoneLabel } from "@/features/grocery/format"
 import type { GroceryAvailabilityDto } from "@/lib/api/dto/grocery"
 
 export interface AvailabilityMessage {
@@ -14,7 +14,7 @@ export function availabilityMessage(availability: GroceryAvailabilityDto): Avail
     return {
       tone: "open",
       title: "Accepting orders now",
-      description: `Send your list before ${formatClock(schedule.closesAt)} (${timeZoneLabel(schedule.timezone)}).`,
+      description: `Send your list before ${formatClosing(schedule.closesAt)} (${timeZoneLabel(schedule.timezone)}).`,
       showHours: true,
     }
   }

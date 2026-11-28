@@ -701,3 +701,13 @@ This **replaces** the earlier statement that GROCERY-1b needs the block list bef
 **Decision (owner, 2026-11-28 — closing correction of GROCERY-4A, and the GROCERY-4B foundation).**
 (1) **Returning to a staff tab no longer reloads staff data**; the identity is still checked automatically and Refresh still loads (`AUTH_RBAC.md` §38.4). **Consequence:** an expired staff screen is no longer closed by the return itself; it stays until the next staff request. (2) Requests refused after the staff guard still count as staff activity: documented, not changed. (3) All unresolved security limitations are **mandatory pre-pilot review items** (`DEPLOYMENT.md` §20). (4) **GROCERY-4B: integration verification is the approved foundation.** Customer-facing Grocery wording, order reliability and simple payment flexibility will be added after their exact requirements are reviewed. **No complex payment gateway. 4B is not started.**
 **Rejected for now:** a server-reported staff freshness that doesn't count as activity (a new contract, not requested).
+
+---
+
+**Decision (owner, 2026-11-28 — GROCERY-4B: the intended Grocery business).**
+Delivery service, **every day 8:00 AM to 12:00 midnight (Asia/Karachi)**, **all of B-17**, total price confirmed before preparation, **cash, card and supported online payment** after confirmation or on delivery, how the goods are obtained kept internal, simple and secure payment infrastructure (no gateway, wallet or automated refunds). This replaces every earlier proposed 4B scope. It supersedes D3's hours (10:00–20:00) as the **intended** hours; the stored settings and database defaults are unchanged until a Super Admin sets them.
+
+**Implementation choices made while building (for the owner to confirm):**
+(1) **Midnight is `00:00` as a closing time**, stored as the day's last instant: no migration, and an older backend reads it as `23:59`. `00:00` to `00:00` is refused. This is a small additive change to the settings contract. (2) The **daily submission limit counts Karachi days**. (3) Customer text **names only payment and coverage the system can stand behind**: cash on delivery; "our B-17 delivery areas" with the configured list. (4) After a reload, only **"an order was being sent", the account id and the time** are kept in the tab; sending is held until the customer has checked. (5) Times are written `8:00 AM` throughout.
+**Waiting for approval:** migration `0014` with card / online payment recording and the "all of B-17" setting (`docs/product/GROCERY.md`).
+**Unchanged:** a cancelled order keeps its capacity place (D3); 3 submissions an hour and 4 a day; no new cancellation, refund or fulfilment policy.

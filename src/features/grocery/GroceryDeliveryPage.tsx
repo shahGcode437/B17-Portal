@@ -69,7 +69,7 @@ function DeliveryForm({ blocks, user }: { blocks: string[]; user: CurrentUser })
         <GroceryField
           id={`${id}-contactPhone`}
           label="Phone number"
-          hint={`Our team calls this number about the price. For example ${PHONE_EXAMPLE}.`}
+          hint={`Our team calls this number to confirm your order and its price. For example ${PHONE_EXAMPLE}.`}
           error={errors.contactPhone?.message}
         >
           <Input

@@ -14,6 +14,9 @@ import { ItemDetails } from "@/features/grocery/ItemRow"
 import { AuthUnreachable, VerifyToOrder } from "@/features/grocery/SignInGatePanel"
 import { RefusedAlert, UnconfirmedPanel } from "@/features/grocery/SubmissionStatus"
 import { buildOrderRequest, deliverySchema } from "@/features/grocery/orderRequest"
+import { PAYMENT_COPY } from "@/features/grocery/paymentCopy"
+import { RecoveryNotice } from "@/features/grocery/RecoveryNotice"
+import { useUncheckedSubmission } from "@/features/grocery/useUncheckedSubmission"
 import { useGroceryAvailability } from "@/features/grocery/useGroceryAvailability"
 import { SubmissionFailed, SubmissionSuperseded, isDraftHidden, useGroceryDraft } from "@/features/grocery/groceryDraftStore"
 import { useAuth } from "@/hooks/useAuth"
@@ -55,6 +58,7 @@ function GroceryReviewPage() {
   const hidden = isDraftHidden(draft.ownerId, user?.id ?? null)
   const locked = draft.phase !== "idle"
   const data = availability.data
+  const unchecked = useUncheckedSubmission()
 
   // The order this page just sent: on to its confirmation (the draft is already cleared).
   if (draft.sentOrderId && draft.items.length === 0) return <Navigate to={grocerySubmittedPath(draft.sentOrderId)} replace />
@@ -84,6 +88,8 @@ function GroceryReviewPage() {
     void run(() => (draft.attempt ? draft.retry() : draft.submit(buildOrderRequest(draft.items, draft.delivery))))
   const sending = draft.phase === "sending"
   const verified = Boolean(user?.emailVerified)
+  // A send a reload cut off must be checked before another order can go.
+  const mustCheck = unchecked !== null && draft.phase === "idle"
   const closed = Boolean(data && !data.acceptingOrders)
   const delivery = draft.attempt?.request.delivery
   const shownDelivery = delivery ?? buildOrderRequest(draft.items, draft.delivery).delivery
@@ -120,6 +126,7 @@ function GroceryReviewPage() {
                 <RefusedAlert problem={draft.problem} />
               </AttentionRegion>
             )}
+            {mustCheck && <RecoveryNotice />}
             <VerifyToOrder />
 
             <Summary title={`Your list (${draft.items.length === 1 ? "1 item" : `${draft.items.length} items`})`} editTo={routes.groceryNew} editLabel="Edit list" locked={locked}>
@@ -160,10 +167,9 @@ function GroceryReviewPage() {
             <section aria-label="Price and payment" className="flex items-start gap-3 rounded-2xl bg-info/10 p-4 ring-1 ring-info/25">
               <PhoneCall className="mt-0.5 size-5 shrink-0 text-info-text" aria-hidden="true" />
               <div className="flex flex-col gap-1 text-sm">
-                <p className="font-semibold">There is no price yet.</p>
+                <p className="font-semibold">Your total is confirmed before preparation</p>
                 <p>
-                  Our team calls you to agree the final price, including any fee, before buying anything. You pay in cash
-                  when it's delivered. You can cancel here until the price is confirmed.
+                  {PAYMENT_COPY.priceConfirmed} {PAYMENT_COPY.howToPay} You can cancel here until the price is confirmed.
                 </p>
               </div>
             </section>
@@ -180,7 +186,7 @@ function GroceryReviewPage() {
                     Back
                   </Link>
                 </Button>
-                <Button type="button" className="h-12 text-base sm:px-8" onClick={send} disabled={sending || !verified || closed}>
+                <Button type="button" className="h-12 text-base sm:px-8" onClick={send} disabled={sending || !verified || closed || mustCheck}>
                   {sending ? <Loader2 className="animate-spin" /> : <Send />}
                   {sending ? "Sending your order…" : "Send my order"}
                 </Button>
@@ -189,6 +195,11 @@ function GroceryReviewPage() {
             <p role="status" className="sr-only">
               {sending ? "Sending your order." : ""}
             </p>
+            {mustCheck && (
+              <Typography variant="body-sm" className="text-muted-foreground sm:text-right">
+                Check your last order above before sending this one.
+              </Typography>
+            )}
             {!verified && (
               <Typography variant="body-sm" className="text-muted-foreground sm:text-right">
                 Verify your email address to send the order.

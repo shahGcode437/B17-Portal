@@ -1178,9 +1178,19 @@ Owner-approved on top of the uncommitted 4A frontend (baseline `badbe44`). **Bac
 - **Behaviour changes:** staff writes **require** `revision` (breaking); `/auth/me` and non-staff requests no longer extend the 2-hour staff clock and **returning to a staff tab no longer reloads staff data** (identity check only; Refresh loads), so an expired staff screen stays visible until the next staff request (`AUTH_RBAC.md` §38.4); the session cookie is set only at sign-in, for the absolute lifetime.
 - **Verification** (details and what was not run: `TESTING.md`): backend 5,889 passed / 3 skipped on real PostgreSQL; 2,011 frontend unit / component tests; 240 mocked browser tests; 41 priority real-backend browser tests on a throwaway database, including a first Grocery customer-to-cash journey. The other real-backend specs were deferred.
 - **Mandatory pre-pilot review:** every item of `DEPLOYMENT.md` §20.
-- **GROCERY-4B:** verification foundation approved; further items await a requirements review; not started.
+- **GROCERY-4B:** see its own section below (its scope was later replaced by the owner's brief).
 - **Still open:** clients that send no session name are not protected; a late `401` or logout can clear a newer cookie (signs out, never grants); staff MFA and the other launch blockers.
 - **Grocery stays disabled.** **Not production-ready, and not pilot-ready.**
+
+## GROCERY-4B — customer experience, hours, reliability and the daily limit (BUILT; **awaiting the owner's review, NOT committed**)
+
+Baseline `5b680e7` (clean, pushed; the owner reported Backend CI #28 and Frontend CI #49 passed, and `b17_dev` at `0013`). **No migration or configuration change.** Detail: `docs/product/GROCERY.md` (GROCERY-4B); tests: `TESTING.md`; decisions: `DECISIONS.md`.
+
+- **Fixed:** a closing time of midnight could not be saved; the daily submission limit reset at 05:00 Pakistan time.
+- **Changed:** approved customer wording with no procurement content; one source for payment wording (cash on delivery only); hours shown from the settings ("12:00 Midnight"); a check after a reload during an unfinished send.
+- **Not built, waiting for approval:** card and online payment, and the "all of B-17" statement (one migration, `0014`).
+- **Owner's steps:** set hours and verified blocks (`DEPLOYMENT.md` §21.1). **Grocery stays disabled**; no local setting or account was changed.
+- **Not production-ready, not pilot-ready** (`DEPLOYMENT.md` §15–§17, §20).
 
 ## VR1 (Visual Redesign) — Glassmorphism + Controlled Maximalism Foundation (in progress, NOT committed)
 
