@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom"
-import { Banknote, ChevronRight, Flag, PackageX, UserRound, UserRoundCheck } from "lucide-react"
+import { Banknote, ChevronRight, Flag, PackageX, Undo2, UserRound, UserRoundCheck } from "lucide-react"
 import { Typography } from "@/components/foundation/Typography"
 import { OrderStatusBadge } from "@/features/grocery/OrderStatusBadge"
 import { formatPaisa, formatStamp } from "@/features/grocery/format"
@@ -21,6 +21,8 @@ function Flagged({ icon: Icon, children }: { icon: typeof Flag; children: string
 function StaffQueueRow({ order, viewerId, queue }: { order: GroceryStaffOrderSummaryDto; viewerId: string; queue: string }) {
   const due = order.finalAmountDuePaisa
   const mine = order.assignee?.userId === viewerId
+  const refunded = order.paymentStatus === "refunded"
+  const money = refunded ? "refunded" : order.paymentCollected ? "paid" : order.status === "cancelled" ? "on record" : "due"
   return (
     <Link
       to={adminGroceryOrderPath(order.id)}
@@ -39,7 +41,7 @@ function StaffQueueRow({ order, viewerId, queue }: { order: GroceryStaffOrderSum
         </Typography>
         <Typography as="span" variant="body-sm" className="break-words">
           {order.block} · {order.itemCount === 1 ? "1 item" : `${order.itemCount} items`} ·{" "}
-          {due === undefined ? "No price yet" : order.paymentCollected ? `${formatPaisa(due)} collected` : `${formatPaisa(due)} due`}
+          {due === undefined ? "No price yet" : `${formatPaisa(due)} ${money}`}
         </Typography>
         <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
           <span className={cn("inline-flex items-center gap-1", mine ? "font-semibold text-primary" : "text-muted-foreground")}>
@@ -49,7 +51,13 @@ function StaffQueueRow({ order, viewerId, queue }: { order: GroceryStaffOrderSum
           {order.paymentCollected && (
             <span className="inline-flex items-center gap-1 text-muted-foreground">
               <Banknote className="size-3.5" aria-hidden="true" />
-              Cash recorded
+              Paid
+            </span>
+          )}
+          {refunded && (
+            <span className="inline-flex items-center gap-1 text-muted-foreground">
+              <Undo2 className="size-3.5" aria-hidden="true" />
+              Refunded
             </span>
           )}
           {order.failedDeliveryAttempts > 0 && (

@@ -145,6 +145,8 @@ def test_openapi_document_loads_and_describes_the_health_endpoint(client: TestCl
         "/api/v1/admin/grocery/orders/{order_id}/delivery-failed",
         "/api/v1/admin/grocery/orders/{order_id}/complete",
         "/api/v1/admin/grocery/orders/{order_id}/cancel",
+        "/api/v1/admin/grocery/orders/{order_id}/record-payment",
+        "/api/v1/admin/grocery/orders/{order_id}/refund",
         "/api/v1/admin/grocery/orders/{order_id}/issues",
         "/api/v1/news",
         "/api/v1/news/{article_id}",

@@ -12,7 +12,12 @@ export function checkedSettings(settings: GrocerySettingsDto | undefined): Groce
   ) {
     throw new ApiError({ status: 200, code: "invalid_response", message: "The server returned an unexpected response." })
   }
-  return settings
+  // A server from before §21 sends neither: cash only, and no all-of-B-17 claim.
+  return {
+    ...settings,
+    paymentMethods: settings.paymentMethods ?? ["cash_on_delivery"],
+    coversAllB17: settings.coversAllB17 ?? false,
+  }
 }
 
 /** `GET /admin/grocery/settings` — Super Admin only. The current version; there is no history to read. */

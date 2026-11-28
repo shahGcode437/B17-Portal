@@ -2,10 +2,12 @@ import {
   BadgeCheck,
   Banknote,
   CircleOff,
+  CreditCard,
   Flag,
   Hand,
   PackageCheck,
   PackageX,
+  ReceiptText,
   TrendingDown,
   Truck,
   Undo2,
@@ -27,13 +29,24 @@ const BUTTONS: Record<GroceryStaffActionDto, { label: string; icon: LucideIcon }
   delivery_failed: { label: "Record failed delivery", icon: PackageX },
   reconfirm: { label: "Record new agreement", icon: BadgeCheck },
   reduce_amount: { label: "Lower amount due", icon: TrendingDown },
+  record_payment: { label: "Record payment", icon: CreditCard },
+  record_refund: { label: "Record refund", icon: ReceiptText },
   record_issue: { label: "Record issue", icon: Flag },
   cancel: { label: "Cancel order", icon: CircleOff },
 }
 
 /** The one step that moves an order forward from where it is. */
 const NEXT_STEP: GroceryStaffActionDto[] = ["claim", "confirm", "start_preparing", "dispatch", "complete"]
-const OTHER: GroceryStaffActionDto[] = ["delivery_failed", "reconfirm", "reduce_amount", "release", "record_issue", "cancel"]
+const OTHER: GroceryStaffActionDto[] = [
+  "record_payment",
+  "delivery_failed",
+  "reconfirm",
+  "reduce_amount",
+  "release",
+  "record_issue",
+  "record_refund",
+  "cancel",
+]
 
 interface StaffActionsPanelProps {
   order: GroceryStaffOrderDetailDto
@@ -58,7 +71,8 @@ function StaffActionsPanel({ order, viewerId, superAdmin, pending, locked, onAct
   const notes = actionNotes(order, viewerId, superAdmin)
 
   function button(action: GroceryStaffActionDto, primary: boolean) {
-    const { label, icon: Icon } = BUTTONS[action]
+    const { icon: Icon } = BUTTONS[action]
+    const label = action === "complete" && order.payment ? "Record delivery" : BUTTONS[action].label
     return (
       <Button
         key={action}

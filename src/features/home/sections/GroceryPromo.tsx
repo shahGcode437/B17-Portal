@@ -22,7 +22,7 @@ function GroceryPromo() {
           </Typography>
           <Typography variant="body-sm" className="text-muted-foreground">
             Send your grocery list. Our team confirms availability and the total price with you, then delivers to your
-            door. Pay in cash on delivery.
+            door.
           </Typography>
         </div>
         <Button asChild size="lg" className="h-11 shrink-0 px-5">

@@ -7,6 +7,8 @@ import type {
   GroceryDispatchBodyDto,
   GroceryIssueBodyDto,
   GroceryReagreementBodyDto,
+  GroceryRecordPaymentBodyDto,
+  GroceryRefundBodyDto,
   GroceryReduceAmountBodyDto,
   GroceryRevisionBodyDto,
   GroceryStaffCancelBodyDto,
@@ -14,7 +16,7 @@ import type {
 } from "@/lib/api/dto/groceryStaff"
 
 /**
- * The eleven staff changes (`docs/backend/API_CONTRACT.md` §19). Each is sent ONCE: nothing here, and
+ * The thirteen staff changes (`docs/backend/API_CONTRACT.md` §19, §21). Each is sent ONCE: nothing here, and
  * nothing in the client (which never sends any request twice), sends it again. Every one answers
  * with the order as it now is.
  */
@@ -53,6 +55,12 @@ export const completeGroceryOrder = (id: string, body: GroceryCompleteBodyDto, s
 
 export const cancelGroceryOrderAsStaff = (id: string, body: GroceryStaffCancelBodyDto, signal?: AbortSignal) =>
   change(id, "cancel", signal, body)
+
+export const recordGroceryPayment = (id: string, body: GroceryRecordPaymentBodyDto, signal?: AbortSignal) =>
+  change(id, "record-payment", signal, body)
+
+export const recordGroceryRefund = (id: string, body: GroceryRefundBodyDto, signal?: AbortSignal) =>
+  change(id, "refund", signal, body)
 
 export const recordGroceryIssue = (id: string, body: GroceryIssueBodyDto, signal?: AbortSignal) =>
   change(id, "issues", signal, body)

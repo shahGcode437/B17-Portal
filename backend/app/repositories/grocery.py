@@ -31,6 +31,7 @@ from app.models import (
     GroceryOrderItem,
     GroceryOrderStatusHistory,
     GroceryPayment,
+    GroceryRefund,
     GrocerySettingsRevision,
     User,
 )
@@ -203,8 +204,8 @@ class GroceryRepository:
         status: GroceryOrderStatus | None,
         limit: int,
         offset: int,
-    ) -> tuple[int, list[tuple[GroceryOrder, int]]]:
-        """The customer's orders, newest first, each with its number of items."""
+    ) -> tuple[int, list[tuple[GroceryOrder, int, bool, bool]]]:
+        """The customer's orders, newest first: ``(order, items, paid, refunded)``."""
         conditions = [GroceryOrder.customer_id == customer_id]
         if status is not None:
             conditions.append(GroceryOrder.status == status)
@@ -219,14 +220,29 @@ class GroceryRepository:
             .correlate(GroceryOrder)
             .scalar_subquery()
         )
+        paid = (
+            select(GroceryPayment.id)
+            .where(GroceryPayment.order_id == GroceryOrder.id)
+            .correlate(GroceryOrder)
+            .exists()
+        )
+        refunded = (
+            select(GroceryRefund.id)
+            .where(GroceryRefund.order_id == GroceryOrder.id)
+            .correlate(GroceryOrder)
+            .exists()
+        )
         rows = self._session.execute(
-            select(GroceryOrder, count)
+            select(GroceryOrder, count, paid, refunded)
             .where(*conditions)
             .order_by(GroceryOrder.submitted_at.desc(), GroceryOrder.id.desc())
             .limit(limit)
             .offset(offset)
         ).all()
-        return total, [(order, int(items)) for order, items in rows]
+        return total, [
+            (order, int(items), bool(was_paid), bool(was_refunded))
+            for order, items, was_paid, was_refunded in rows
+        ]
 
     def confirmations_of(self, order_id: uuid.UUID) -> list[GroceryOrderConfirmation]:
         return list(
@@ -240,6 +256,11 @@ class GroceryRepository:
     def payment_of(self, order_id: uuid.UUID) -> GroceryPayment | None:
         return self._session.scalars(
             select(GroceryPayment).where(GroceryPayment.order_id == order_id)
+        ).one_or_none()
+
+    def refund_of(self, order_id: uuid.UUID) -> GroceryRefund | None:
+        return self._session.scalars(
+            select(GroceryRefund).where(GroceryRefund.order_id == order_id)
         ).one_or_none()
 
     def items_of(self, order_id: uuid.UUID) -> list[GroceryOrderItem]:

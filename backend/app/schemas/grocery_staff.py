@@ -29,6 +29,7 @@ from app.models.enums import (
     GroceryIssueKind,
     GroceryOrderStatus,
     GroceryPaymentMethod,
+    GroceryRefundMethod,
 )
 from app.schemas.envelope import ApiModel, PageMeta
 from app.schemas.grocery import GroceryDeliveryRead, GroceryItemRead, Revision
@@ -147,8 +148,100 @@ class GroceryDeliveryFailedRequest(StrictRequest):
 
 class GroceryCompleteRequest(StrictRequest):
     revision: Revision
-    #: The cash actually received. It must equal the amount due.
-    amount_collected_paisa: PositivePaisa
+    #: The cash actually received: required for an unpaid order, equal to the amount due. Left
+    #: out for an order already paid, so nothing is collected twice.
+    amount_collected_paisa: PositivePaisa | None = None
+
+
+def _checked_reference(value: str) -> str:
+    """Normalized, and refused if it could be a card or account number. The message never
+    repeats what was sent."""
+    reference = rules.normalize_reference(value)
+    problem = rules.reference_problem(reference)
+    if problem is not None:
+        raise PydanticCustomError(*problem)
+    return reference
+
+
+TransactionReference = Annotated[str, StringConstraints(strip_whitespace=True, max_length=100)]
+
+
+class GroceryRecordPaymentRequest(StrictRequest):
+    """A card or external payment a staff member has VERIFIED (money received, or approved on
+    the business's card machine). A customer's word alone is never recorded."""
+
+    revision: Revision
+    method: GroceryPaymentMethod
+    #: The money received: exactly the amount due.
+    amount_paisa: PositivePaisa
+    reference: TransactionReference
+    #: Must be ``true``: "I checked that this money was received".
+    money_verified: StrictBool
+
+    _reference = field_validator("reference")(_checked_reference)
+
+    @field_validator("method")
+    @classmethod
+    def _not_cash(cls, value: GroceryPaymentMethod) -> GroceryPaymentMethod:
+        if value not in rules.RECORDABLE_METHODS:
+            raise PydanticCustomError("cash_at_delivery", "Cash is recorded with the delivery.")
+        return value
+
+    @field_validator("money_verified")
+    @classmethod
+    def _must_be_verified(cls, value: bool) -> bool:
+        if value is not True:
+            raise PydanticCustomError(
+                "verification_required", "Record a payment only after checking it was received."
+            )
+        return value
+
+
+class GroceryRefundRequest(StrictRequest):
+    """A Super Admin's record that the WHOLE payment has already been returned outside the
+    application. The application returns no money itself."""
+
+    revision: Revision
+    #: Must equal the payment: partial refunds are not supported.
+    amount_paisa: PositivePaisa
+    #: How the money went back. Declared before ``reference``, whose rule depends on it.
+    method: GroceryRefundMethod
+    #: Required unless returned in cash.
+    reference: TransactionReference | None = None
+    #: INTERNAL.
+    reason: RequiredReason
+    #: Must be ``true``: "the money has been returned".
+    money_returned: StrictBool
+    #: Required (``true``) when this cancels an order that is being prepared.
+    procurement_acknowledged: StrictBool = False
+
+    @model_validator(mode="before")
+    @classmethod
+    def _judge_an_absent_reference(cls, data: Any) -> Any:
+        """So that a missing reference is reported on ``reference``, not on the whole body."""
+        if isinstance(data, dict) and data.get("method") != "cash" and "reference" not in data:
+            return {**data, "reference": None}
+        return data
+
+    @field_validator("reference")
+    @classmethod
+    def _reference_by_method(cls, value: str | None, info: ValidationInfo) -> str | None:
+        if value:
+            return _checked_reference(value)
+        if info.data.get("method") is not GroceryRefundMethod.CASH:
+            raise PydanticCustomError(
+                "reference_required", "Give the reference of the money you sent back."
+            )
+        return None
+
+    @field_validator("money_returned")
+    @classmethod
+    def _must_be_returned(cls, value: bool) -> bool:
+        if value is not True:
+            raise PydanticCustomError(
+                "return_required", "Record a refund only after the money has been returned."
+            )
+        return value
 
 
 class GroceryStaffCancelRequest(StrictRequest):
@@ -205,7 +298,10 @@ class GroceryStaffOrderSummary(ApiModel):
     assignee: GroceryStaffMemberRef | None = None
     agreed_total_paisa: int | None = None
     final_amount_due_paisa: int | None = None
+    #: Money is held for this order: paid and not refunded.
     payment_collected: bool
+    #: Absent until a price is agreed, and on an order cancelled unpaid.
+    payment_status: Literal["unpaid", "paid", "refunded"] | None = None
     failed_delivery_attempts: int
     issue_count: int
 
@@ -229,8 +325,20 @@ class GroceryStaffPaymentRead(ApiModel):
     method: GroceryPaymentMethod
     amount_due_paisa: int
     amount_collected_paisa: int
+    #: The external transaction reference of a non-cash payment. Grocery staff only.
+    reference: str | None = None
+    #: Who collected the cash or verified the payment, and when.
     collected_by: GroceryStaffMemberRef
     collected_at: datetime.datetime
+
+
+class GroceryStaffRefundRead(ApiModel):
+    amount_paisa: int
+    method: GroceryRefundMethod
+    reference: str | None = None
+    reason: str
+    refunded_by: GroceryStaffMemberRef
+    refunded_at: datetime.datetime
 
 
 class GroceryDeliveryAttemptRead(ApiModel):
@@ -276,6 +384,8 @@ GroceryStaffAction = Literal[
     "delivery_failed",
     "complete",
     "cancel",
+    "record_payment",
+    "record_refund",
     "record_issue",
 ]
 
@@ -288,6 +398,9 @@ class GroceryStaffOrderDetail(GroceryStaffOrderSummary):
     delivered_at: datetime.datetime | None = None
     confirmations: list[GroceryStaffConfirmationRead]
     payment: GroceryStaffPaymentRead | None = None
+    refund: GroceryStaffRefundRead | None = None
+    #: The non-cash methods switched on now, for recording a payment. Empty once paid.
+    recordable_methods: list[GroceryPaymentMethod]
     delivery_attempts: list[GroceryDeliveryAttemptRead]
     history: list[GroceryStaffHistoryRead]
     events: list[GroceryStaffEventRead]

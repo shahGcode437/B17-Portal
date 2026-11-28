@@ -51,10 +51,12 @@ from tests.db.auth_helpers import (
     make_account,
 )
 from tests.db.grocery_helpers import (
+    ALL_METHODS,
     BLOCKS,
     SETTINGS,
     advance,
     configure,
+    payment_body,
     purge_grocery,
     staff_order,
     staff_post,
@@ -106,6 +108,7 @@ FINGERPRINT = (
     "SELECT * FROM grocery_order_status_history ORDER BY id",
     "SELECT * FROM grocery_order_confirmations ORDER BY id",
     "SELECT * FROM grocery_payments ORDER BY id",
+    "SELECT * FROM grocery_refunds ORDER BY id",
     "SELECT * FROM grocery_order_events ORDER BY id",
 )
 
@@ -309,10 +312,18 @@ def _grocery_change(action: str, needs: str | None) -> Callable[[AuthEnv, Engine
 
     def prepare(env: AuthEnv, engine: Engine) -> Prepared:
         boss = _boss(env)
-        configure(boss, enabled=True, serviceableBlocks=BLOCKS)
+        configure(boss, enabled=True, serviceableBlocks=BLOCKS, paymentMethods=ALL_METHODS)
         make_account(env.session, "customer@example.org")
         order = submitted(browser(env, "customer@example.org"))["id"]
-        if needs is not None:
+        if needs == "paid":  # confirmed, with a verified payment recorded
+            detail = advance(boss, order, "confirmed")
+            assert (
+                staff_post(
+                    boss, order, "record-payment", payment_body(detail["revision"])
+                ).status_code
+                == 200
+            )
+        elif needs is not None:
             advance(boss, order, needs)
         body = body_for(action, staff_order(boss, order)["revision"])
         return Prepared(
@@ -334,6 +345,8 @@ GROCERY_CHANGES: dict[str, str | None] = {
     "delivery-failed": "out_for_delivery",
     "complete": "out_for_delivery",
     "cancel": "preparing",
+    "record-payment": "confirmed",
+    "refund": "paid",
     "issues": "submitted",
 }
 

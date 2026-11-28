@@ -1,5 +1,7 @@
 import { formatClock, formatClosing, formatDays, formatPaisa } from "@/features/grocery/format"
 import { MAX_FIELD_PAISA, paisaToInput, parsePkr } from "@/features/grocery-staff/money"
+import { PAYMENT_METHOD_NAME } from "@/features/grocery/paymentCopy"
+import type { GroceryPaymentMethodDto } from "@/lib/api/dto/grocery"
 import type { GrocerySettingsDto, GrocerySettingsField, GrocerySettingsPatchDto } from "@/lib/api/dto/grocerySettings"
 
 /**
@@ -16,6 +18,12 @@ export const LIMITS = {
   blockLength: 40,
 } as const
 
+/** Every method, in the server's order. Cash can't be switched off. */
+export const PAYMENT_METHODS: GroceryPaymentMethodDto[] = ["cash_on_delivery", "card", "bank_transfer", "easypaisa", "jazzcash"]
+
+const orderedMethods = (methods: GroceryPaymentMethodDto[]) =>
+  PAYMENT_METHODS.filter((method) => method === "cash_on_delivery" || methods.includes(method))
+
 /** The one time zone the server supports. It is shown, never edited. */
 export const SUPPORTED_TIMEZONE = "Asia/Karachi"
 
@@ -30,6 +38,8 @@ export interface SettingsDraft {
   maxOrderValue: string
   maxActiveOrdersPerCustomer: string
   maxItemsPerOrder: string
+  coversAllB17: boolean
+  paymentMethods: GroceryPaymentMethodDto[]
 }
 
 export type DraftKey = keyof SettingsDraft
@@ -38,6 +48,7 @@ export type DraftKey = keyof SettingsDraft
 const DRAFT_KEY: Record<GrocerySettingsField, DraftKey> = {
   enabled: "enabled",
   serviceableBlocks: "serviceableBlocks",
+  coversAllB17: "coversAllB17",
   operatingDays: "operatingDays",
   opensAt: "opensAt",
   closesAt: "closesAt",
@@ -45,6 +56,7 @@ const DRAFT_KEY: Record<GrocerySettingsField, DraftKey> = {
   maxOrderValuePaisa: "maxOrderValue",
   maxActiveOrdersPerCustomer: "maxActiveOrdersPerCustomer",
   maxItemsPerOrder: "maxItemsPerOrder",
+  paymentMethods: "paymentMethods",
 }
 
 /** In the order the form shows them. */
@@ -53,6 +65,7 @@ export const SETTING_FIELDS = Object.keys(DRAFT_KEY) as GrocerySettingsField[]
 export const FIELD_LABEL: Record<GrocerySettingsField, string> = {
   enabled: "Grocery ordering",
   serviceableBlocks: "Delivery blocks",
+  coversAllB17: "All of B-17 confirmation",
   operatingDays: "Operating days",
   opensAt: "Opens at",
   closesAt: "Closes at",
@@ -60,6 +73,7 @@ export const FIELD_LABEL: Record<GrocerySettingsField, string> = {
   maxOrderValuePaisa: "Largest order total",
   maxActiveOrdersPerCustomer: "Open orders per customer",
   maxItemsPerOrder: "Items per order",
+  paymentMethods: "Payment methods",
 }
 
 export function draftOf(settings: GrocerySettingsDto): SettingsDraft {
@@ -73,6 +87,8 @@ export function draftOf(settings: GrocerySettingsDto): SettingsDraft {
     maxOrderValue: paisaToInput(settings.maxOrderValuePaisa),
     maxActiveOrdersPerCustomer: String(settings.maxActiveOrdersPerCustomer),
     maxItemsPerOrder: String(settings.maxItemsPerOrder),
+    coversAllB17: settings.coversAllB17,
+    paymentMethods: orderedMethods(settings.paymentMethods),
   }
 }
 
@@ -80,6 +96,24 @@ const collapseSpaces = (text: string) => text.trim().split(/\s+/).join(" ")
 const blockKey = (text: string) => collapseSpaces(text).toLocaleLowerCase("en")
 // Letters and numbers of any script, spaces, "-", "/" and "."; it starts with a letter or number.
 const BLOCK = /^[\p{L}\p{N}][\p{L}\p{N} \-/.]*$/u
+
+/** The same list, whatever the order, spacing or capitals (the server's rule). */
+export function sameBlocks(a: string[], b: string[]): boolean {
+  const keys = (blocks: string[]) => JSON.stringify(blocks.map(blockKey).sort())
+  return keys(a) === keys(b)
+}
+
+/**
+ * The block list and the confirmation that goes with it. "All of B-17" is a statement about one
+ * list: a different list is unconfirmed until someone ticks it again. Going back to the saved list
+ * brings back what was saved.
+ */
+export function withBlocks(
+  serviceableBlocks: string[],
+  saved: Pick<GrocerySettingsDto, "serviceableBlocks" | "coversAllB17">
+): Pick<SettingsDraft, "serviceableBlocks" | "coversAllB17"> {
+  return { serviceableBlocks, coversAllB17: sameBlocks(serviceableBlocks, saved.serviceableBlocks) && saved.coversAllB17 }
+}
 
 /** What is wrong with a new block label, or the label as it will be stored. */
 export function checkBlock(text: string, existing: string[]): { ok: true; label: string } | { ok: false; message: string } {
@@ -118,7 +152,12 @@ export function parseDraft(draft: SettingsDraft): { values: Partial<Values>; pro
   const values: Partial<Values> = {
     enabled: draft.enabled,
     serviceableBlocks: draft.serviceableBlocks,
+    paymentMethods: orderedMethods(draft.paymentMethods),
   }
+
+  if (draft.coversAllB17 && draft.serviceableBlocks.length === 0) {
+    problems.coversAllB17 = "List the blocks before confirming they cover all of B-17."
+  } else values.coversAllB17 = draft.coversAllB17
 
   if (draft.operatingDays.length === 0) problems.operatingDays = "Choose at least one day."
   else values.operatingDays = [...draft.operatingDays].sort((a, b) => a - b)
@@ -170,6 +209,11 @@ export function patchOf(saved: GrocerySettingsDto, draft: SettingsDraft): Grocer
   for (const field of changedFields(saved, draft)) {
     Object.assign(patch, { [field]: values[field] })
   }
+  // The server drops the confirmation when the list changes, unless it is made again in the same
+  // change: so a ticked box over a new list is sent even though its value didn't change.
+  if (draft.coversAllB17 && patch.serviceableBlocks && !sameBlocks(patch.serviceableBlocks, saved.serviceableBlocks)) {
+    patch.coversAllB17 = true
+  }
   return patch
 }
 
@@ -181,6 +225,10 @@ export function describeValue(field: GrocerySettingsField, value: Values[Grocery
       const blocks = value as string[]
       return blocks.length ? blocks.join(", ") : "None"
     }
+    case "coversAllB17":
+      return value ? "Confirmed" : "Not confirmed"
+    case "paymentMethods":
+      return (value as GroceryPaymentMethodDto[]).map((method) => PAYMENT_METHOD_NAME[method]).join(", ")
     case "operatingDays":
       return formatDays(value as number[])
     case "opensAt":
@@ -223,6 +271,26 @@ export function consequences(saved: GrocerySettingsDto, patch: GrocerySettingsPa
       notes.push(`New orders for ${removed.join(", ")} will be refused. Existing orders keep their block.`)
     }
   }
+  if (patch.coversAllB17 === true) {
+    notes.push(
+      "Customers will be told you deliver across all sectors and blocks of B-17. They can still only choose a listed block, so check that every block is listed."
+    )
+  } else if (saved.coversAllB17 && (patch.coversAllB17 === false || (patch.serviceableBlocks && !sameBlocks(patch.serviceableBlocks, saved.serviceableBlocks)))) {
+    notes.push("The all-of-B-17 statement is removed: customers see the listed blocks instead.")
+  }
+  if (patch.paymentMethods) {
+    const named = (methods: GroceryPaymentMethodDto[]) => methods.map((method) => PAYMENT_METHOD_NAME[method]).join(", ")
+    const added = patch.paymentMethods.filter((method) => !saved.paymentMethods.includes(method))
+    const removed = saved.paymentMethods.filter((method) => !patch.paymentMethods!.includes(method))
+    if (added.length) {
+      notes.push(
+        `Customers will be offered ${named(added)}. Switch a method on only when the business account or card machine for it is ready.`
+      )
+    }
+    if (removed.length) {
+      notes.push(`${named(removed)} will no longer be offered or recorded. Payments already recorded are kept.`)
+    }
+  }
   if (patch.operatingDays || patch.opensAt || patch.closesAt) {
     notes.push("The new days and hours decide when new orders are accepted.")
   }
@@ -254,6 +322,10 @@ export function rebase(base: GrocerySettingsDto, draft: SettingsDraft, newer: Gr
   for (const field of mine) {
     const key = DRAFT_KEY[field]
     Object.assign(next, { [key]: draft[key] })
+  }
+  // A tick made over one list never confirms another: it has to be given again for what is shown.
+  if (next.coversAllB17 && !sameBlocks(next.serviceableBlocks, draft.serviceableBlocks)) {
+    next.coversAllB17 = withBlocks(next.serviceableBlocks, newer).coversAllB17
   }
   const stillDiffers = new Set(changedFields(newer, next))
   return { draft: next, clashes: mine.filter((field) => theirs.has(field) && stillDiffers.has(field)) }

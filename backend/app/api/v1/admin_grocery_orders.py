@@ -25,7 +25,9 @@ from app.schemas.grocery_staff import (
     GroceryIssueRequest,
     GroceryQueueQuery,
     GroceryReagreementRequest,
+    GroceryRecordPaymentRequest,
     GroceryReduceAmountRequest,
+    GroceryRefundRequest,
     GroceryRevisionRequest,
     GroceryStaffCancelRequest,
     GroceryStaffOrderEnvelope,
@@ -48,7 +50,7 @@ _CHANGE: dict[int | str, dict[str, Any]] = {
     409: {
         "model": ErrorResponse,
         "description": "order_already_claimed | order_not_claimed | invalid_state_transition | "
-        "order_conflict",
+        "order_conflict | payment_recorded",
     },
     422: {"model": ErrorResponse, "description": "validation_error"},
     429: {"model": ErrorResponse, "description": "rate_limited"},
@@ -227,7 +229,7 @@ def record_failed_grocery_delivery(
 @router.post(
     f"{_ORDER}/complete",
     response_model=GroceryStaffOrderEnvelope,
-    summary="Record delivery and the cash collected",
+    summary="Record delivery, with the cash collected if unpaid",
     responses=_CHANGE,
 )
 def complete_grocery_order(
@@ -236,8 +238,8 @@ def complete_grocery_order(
     staff: GroceryStaffWriter,
     service: GroceryStaffOrderServiceDep,
 ) -> GroceryStaffOrderEnvelope:
-    """``amountCollectedPaisa`` must equal the amount due. Delivery and payment are recorded
-    together, once."""
+    """An unpaid order: ``amountCollectedPaisa`` is required and must equal the amount due;
+    delivery and cash are recorded together, once. A paid order: leave it out."""
     changed = service.complete(staff, order_id, payload)
     return GroceryStaffOrderEnvelope(data=service.detail(staff, str(changed)))
 
@@ -255,8 +257,46 @@ def cancel_grocery_order_as_staff(
     service: GroceryStaffOrderServiceDep,
 ) -> GroceryStaffOrderEnvelope:
     """From ``submitted`` or ``confirmed``. From ``preparing``: Super Admin only, with
-    ``procurementAcknowledged``; an issue is left for manual resolution. No refund is created."""
+    ``procurementAcknowledged``; an issue is left for manual resolution. A paid order is
+    refused (``409 payment_recorded``): see ``refund``."""
     changed = service.cancel(staff, order_id, payload)
+    return GroceryStaffOrderEnvelope(data=service.detail(staff, str(changed)))
+
+
+@router.post(
+    f"{_ORDER}/record-payment",
+    response_model=GroceryStaffOrderEnvelope,
+    summary="Record a verified card or external payment",
+    responses=_CHANGE,
+)
+def record_grocery_order_payment(
+    order_id: str,
+    payload: GroceryRecordPaymentRequest,
+    staff: GroceryStaffWriter,
+    service: GroceryStaffOrderServiceDep,
+) -> GroceryStaffOrderEnvelope:
+    """Only after the money was received (``moneyVerified: true``), by a switched-on method, for
+    exactly the amount due, once. Delivery is not recorded by it. The application charges
+    nothing and stores no card or account number."""
+    changed = service.record_payment(staff, order_id, payload)
+    return GroceryStaffOrderEnvelope(data=service.detail(staff, str(changed)))
+
+
+@router.post(
+    f"{_ORDER}/refund",
+    response_model=GroceryStaffOrderEnvelope,
+    summary="Record that a payment was refunded (Super Admin)",
+    responses=_CHANGE,
+)
+def record_grocery_order_refund(
+    order_id: str,
+    payload: GroceryRefundRequest,
+    staff: GroceryStaffWriter,
+    service: GroceryStaffOrderServiceDep,
+) -> GroceryStaffOrderEnvelope:
+    """Super Admin only, after the whole payment has been returned (``moneyReturned: true``). An
+    undelivered order is cancelled in the same change. The application returns no money."""
+    changed = service.record_refund(staff, order_id, payload)
     return GroceryStaffOrderEnvelope(data=service.detail(staff, str(changed)))
 
 

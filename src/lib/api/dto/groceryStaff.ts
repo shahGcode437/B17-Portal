@@ -11,8 +11,15 @@ import type {
   GroceryConfirmationMethodDto,
   GroceryDeliveryDto,
   GroceryItemDto,
+  GroceryPaymentMethodDto,
+  GroceryPaymentStatusDto,
   GroceryStatusDto,
 } from "@/lib/api/dto/grocery"
+
+/** Cash is recorded with the delivery; these are recorded once staff have verified the money. */
+export type GroceryRecordableMethodDto = Exclude<GroceryPaymentMethodDto, "cash_on_delivery">
+/** How a refund went back, outside this application. */
+export type GroceryRefundMethodDto = "cash" | "card" | "bank_transfer" | "easypaisa" | "jazzcash"
 
 export type GroceryStaffActionDto =
   | "claim"
@@ -25,6 +32,8 @@ export type GroceryStaffActionDto =
   | "delivery_failed"
   | "complete"
   | "cancel"
+  | "record_payment"
+  | "record_refund"
   | "record_issue"
 
 /** The kinds a person may record. */
@@ -59,7 +68,9 @@ export interface GroceryStaffOrderSummaryDto {
   assignee?: GroceryStaffMemberDto
   agreedTotalPaisa?: number
   finalAmountDuePaisa?: number
+  /** Money is held for the order: paid and not refunded. */
   paymentCollected: boolean
+  paymentStatus?: GroceryPaymentStatusDto
   failedDeliveryAttempts: number
   issueCount: number
 }
@@ -80,11 +91,24 @@ export interface GroceryStaffConfirmationDto {
 }
 
 export interface GroceryStaffPaymentDto {
-  method: "cash_on_delivery"
+  method: GroceryPaymentMethodDto
   amountDuePaisa: number
   amountCollectedPaisa: number
+  /** The external transaction reference (never a card or account number). Absent for cash. */
+  reference?: string
+  /** Who collected the cash or verified the payment. */
   collectedBy: GroceryStaffMemberDto
   collectedAt: string
+}
+
+/** A Super Admin's record that the whole payment was returned outside the application. */
+export interface GroceryStaffRefundDto {
+  amountPaisa: number
+  method: GroceryRefundMethodDto
+  reference?: string
+  reason: string
+  refundedBy: GroceryStaffMemberDto
+  refundedAt: string
 }
 
 export interface GroceryDeliveryAttemptDto {
@@ -127,6 +151,9 @@ export interface GroceryStaffOrderDetailDto extends GroceryStaffOrderSummaryDto 
   deliveredAt?: string
   confirmations: GroceryStaffConfirmationDto[]
   payment?: GroceryStaffPaymentDto
+  refund?: GroceryStaffRefundDto
+  /** The non-cash methods switched on now. Empty once paid; absent from a server before §21. */
+  recordableMethods?: GroceryRecordableMethodDto[]
   deliveryAttempts: GroceryDeliveryAttemptDto[]
   history: GroceryStaffHistoryDto[]
   events: GroceryStaffEventDto[]
@@ -173,7 +200,26 @@ export interface GroceryDeliveryFailedBodyDto extends GroceryRevisionBodyDto {
 }
 
 export interface GroceryCompleteBodyDto extends GroceryRevisionBodyDto {
-  amountCollectedPaisa: number
+  /** The cash received for an unpaid order. Left out for one already paid. */
+  amountCollectedPaisa?: number
+}
+
+export interface GroceryRecordPaymentBodyDto extends GroceryRevisionBodyDto {
+  method: GroceryRecordableMethodDto
+  amountPaisa: number
+  reference: string
+  moneyVerified: true
+}
+
+export interface GroceryRefundBodyDto extends GroceryRevisionBodyDto {
+  amountPaisa: number
+  method: GroceryRefundMethodDto
+  /** Required unless returned in cash. */
+  reference?: string
+  reason: string
+  moneyReturned: true
+  /** Required when this cancels an order that is being prepared. */
+  procurementAcknowledged?: boolean
 }
 
 export interface GroceryStaffCancelBodyDto extends GroceryRevisionBodyDto {

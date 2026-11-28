@@ -1453,3 +1453,17 @@ Each staff change was atomic and serialized but took **no statement of what the 
 ### 39.5 Tests (real PostgreSQL)
 
 `tests/db/test_staff_revision_concurrency.py` uses **independent connections** on committed rows, with contenders observed waiting on a lock before release: two Super Admins deciding each operation on one revision (exactly one wins); a revision committed while a change waits on the target row (refused, nothing changed); a failure at the audit write (the revision rolls back with everything); the operator CLI racing a web change. `tests/db/test_staff_revision_api.py` covers ABA for scopes, pause/resume and removal/re-appointment, validation, order of refusal, audit and the CLI. Migration up/down and drift: `test_migrations.py`. The mocked frontend tests show what the screens do with these answers and prove nothing about the database.
+
+## 40. GROCERY-4C — authority over payments and refunds (as built)
+
+Two new privileged changes, both through the same gate as every Grocery staff change (§36.4, §37): the order row is locked, then the **acting session** is held and re-checked, then the roles and scope are read under lock, then **one's own order is refused**.
+
+| Change | Who | Further rule |
+|---|---|---|
+| `record-payment` | the holding `grocery` Moderator, or a Super Admin | a staff statement that money was received (`moneyVerified: true`); records the verifier and time |
+| `refund` | **Super Admin only** (`403 super_admin_required`) | a statement that money was already returned (`moneyReturned: true`); records who, when, why |
+
+- A customer has no route that records, claims or changes a payment. A transaction reference and a refund reason are served only on the staff detail (Grocery staff and Super Admins); never in a queue row or any customer response, and a refused reference is not echoed.
+- Revocation of the acting session during either change is covered by the same real-PostgreSQL race tests as the other staff changes (`test_privileged_session_races.py`).
+- Switching methods and confirming coverage are Super Admin settings changes with the existing session, rate-limit and `revision` rules.
+- **Not added:** a second approver, an amount limit by role, or a re-authentication prompt for refunds. **Staff MFA is still absent**, so one stolen Super Admin session could record a false refund; it moves no money, but it is a record the business relies on (GROCERY-5).

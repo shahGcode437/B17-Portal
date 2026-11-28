@@ -8,7 +8,8 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ReadError } from "@/components/feedback/ReadError"
 import { useGroceryDraft } from "@/features/grocery/groceryDraftStore"
-import { PAYMENT_COPY } from "@/features/grocery/paymentCopy"
+import { offeredMethods, paymentCopy } from "@/features/grocery/paymentCopy"
+import { useGroceryAvailability } from "@/features/grocery/useGroceryAvailability"
 import { useRead } from "@/hooks/useRead"
 import { useRequireAuth } from "@/hooks/useRequireAuth"
 import { fetchMyGroceryOrder } from "@/lib/api/reads/grocery"
@@ -18,7 +19,6 @@ import { fadeUp } from "@/lib/motion"
 const NEXT = [
   { icon: PhoneCall, text: "Our team calls the number you gave to confirm availability, your order and the total price." },
   { icon: Truck, text: "We prepare your order and deliver it to your door." },
-  { icon: Banknote, text: PAYMENT_COPY.howToPay },
 ]
 
 /** The confirmation of a sent order (GROCERY-3A). It shows what the SERVER holds, read again. */
@@ -29,6 +29,9 @@ function GrocerySubmittedPage() {
   const read = useRead(`grocery-sent:${user?.id ?? ""}:${orderId}`, (signal) => fetchMyGroceryOrder(orderId, signal), {
     enabled: Boolean(user),
   })
+
+  const payment = paymentCopy(offeredMethods(useGroceryAvailability().data))
+  const next = [...NEXT, { icon: Banknote, text: payment.howToPay }]
 
   useEffect(() => acknowledge(), [acknowledge])
 
@@ -74,7 +77,7 @@ function GrocerySubmittedPage() {
               </Typography>
             </div>
             <ul aria-label="What happens next" className="flex w-full flex-col gap-3 text-left">
-              {NEXT.map(({ icon: Icon, text }) => (
+              {next.map(({ icon: Icon, text }) => (
                 <li key={text} className="flex items-start gap-3 text-sm">
                   <span aria-hidden="true" className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/12 text-primary">
                     <Icon className="size-4" />

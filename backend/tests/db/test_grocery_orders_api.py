@@ -813,6 +813,9 @@ def test_there_is_no_route_that_sets_a_status(auth_env: AuthEnv) -> None:
         ("POST", "/api/v1/admin/grocery/orders/{order_id}/complete"),
         ("POST", "/api/v1/admin/grocery/orders/{order_id}/cancel"),
         ("POST", "/api/v1/admin/grocery/orders/{order_id}/issues"),
+        # GROCERY-4C: they record money checked outside the app; neither takes a status
+        ("POST", "/api/v1/admin/grocery/orders/{order_id}/record-payment"),
+        ("POST", "/api/v1/admin/grocery/orders/{order_id}/refund"),
     }
     assert {method for method, path in paths if "/orders" in path} == {"GET", "POST"}
 

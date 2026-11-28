@@ -16,6 +16,8 @@ import type {
   GroceryOrderCreateDto,
   GroceryOrderDetailDto,
   GroceryOrderSummaryDto,
+  GroceryPaymentMethodDto,
+  GroceryPaymentStatusDto,
   GroceryStatusDto,
   GroceryUnitRuleDto,
 } from "../../lib/api/dto/grocery"
@@ -75,6 +77,9 @@ export class GroceryBackend {
   /** Today's capacity is used up. */
   full = false
   blocks = [...TEST_BLOCKS]
+  /** What a Super Admin has switched on; cash is always in it. */
+  paymentMethods: GroceryPaymentMethodDto[] = ["cash_on_delivery"]
+  coversAllB17 = false
   maxItems = 50
   maxActive = 2
   /** Availability answers this instead (a server or network fault is injected by the transport). */
@@ -98,6 +103,8 @@ export class GroceryBackend {
       acceptingOrders: reason === undefined,
       ...(reason ? { unavailableReason: reason } : {}),
       serviceableBlocks: [...this.blocks],
+      coversAllB17: this.coversAllB17 && this.blocks.length > 0,
+      paymentMethods: [...this.paymentMethods],
       schedule: { ...this.schedule, operatingDays: [...this.schedule.operatingDays] },
       limits: { maxItemsPerOrder: this.maxItems, maxActiveOrders: this.maxActive },
       units: UNIT_RULES,
@@ -119,8 +126,18 @@ export class GroceryBackend {
     return this.orders.find((order) => order.detail.id === id)
   }
 
+  /** The server's one word for an order's money (§21). */
+  paymentStatusOf(order: GroceryOrderDetailDto): GroceryPaymentStatusDto | undefined {
+    if (order.payment?.status === "refunded") return "refunded"
+    if (order.payment?.status === "collected") return "paid"
+    if (order.finalAmountDuePaisa === undefined || order.status === "cancelled") return undefined
+    return "unpaid"
+  }
+
   private summary(order: GroceryOrderDetailDto): GroceryOrderSummaryDto {
+    const paymentStatus = this.paymentStatusOf(order)
     return {
+      ...(paymentStatus ? { paymentStatus } : {}),
       id: order.id,
       reference: order.reference,
       status: order.status,
@@ -135,7 +152,9 @@ export class GroceryBackend {
   }
 
   private read(order: StoredOrder): GroceryOrderDetailDto {
-    return JSON.parse(JSON.stringify(order.detail)) as GroceryOrderDetailDto
+    const detail = JSON.parse(JSON.stringify(order.detail)) as GroceryOrderDetailDto
+    const paymentStatus = this.paymentStatusOf(detail)
+    return paymentStatus ? { ...detail, paymentStatus } : detail
   }
 
   /** A new submitted order, as the server stores it. */
@@ -240,12 +259,38 @@ export class GroceryBackend {
     this.change(id, "delivered", (order, at) => {
       const due = order.finalAmountDuePaisa ?? 0
       order.deliveredAt = at
+      // An order already paid is not collected again.
+      if (order.payment?.status === "collected") return
       order.payment = { method: "cash_on_delivery", status: "collected", amountDuePaisa: due, amountCollectedPaisa: due, collectedAt: at }
+    })
+  }
+
+  /** Staff verified a card or external payment: no status change. */
+  staffPay(id: string, method: Exclude<GroceryPaymentMethodDto, "cash_on_delivery">): void {
+    this.change(id, null, (order, at) => {
+      const due = order.finalAmountDuePaisa ?? 0
+      order.payment = { method, status: "collected", amountDuePaisa: due, amountCollectedPaisa: due, collectedAt: at }
+    })
+  }
+
+  /** A Super Admin recorded the full refund: an undelivered order is cancelled with it. */
+  staffRefund(id: string): void {
+    const found = this.find(id)
+    if (!found?.detail.payment) throw new Error(`no paid grocery order ${id}`)
+    const delivered = found.detail.status === "delivered"
+    this.change(id, delivered ? null : "cancelled", (order, at) => {
+      const payment = order.payment!
+      order.payment = { ...payment, status: "refunded", refundedAmountPaisa: payment.amountCollectedPaisa, refundedAt: at }
+      if (!delivered) {
+        order.cancelledAt = at
+        order.cancelledBy = "staff"
+      }
     })
   }
 
   staffCancel(id: string): void {
     this.change(id, "cancelled", (order, at) => {
+      if (order.payment?.status === "collected") throw new Error("a paid order is cancelled by its refund")
       order.cancelledAt = at
       order.cancelledBy = "staff"
       delete order.payment

@@ -1265,3 +1265,14 @@ VR5 is the closing phase of the visual redesign. It applies the identity to the 
 **Gates:** TypeScript clean; lint 6 warnings (baseline); Vitest **72 files / 1118 tests passed**; build clean; mock Playwright **169 / 169 passed, 0 failed, 0 skipped, 0 retries** (`--workers=2`, on the rebuilt dist). Live-stack visual check at 1440 against the real backend: the Create kind picker renders with 4 glass kind cards + arrow affordances; selecting Property composes the LocationFieldset glass + Property identity FormSection; the signed-in Edit prompt ("Professional profile needed") still appears first for a fresh resident; no horizontal overflow. Baseline `e807a17`; VR5 uncommitted.
 
 **Visual redesign status after VR5.** Every major implemented surface now carries the Glassmorphism + Controlled Maximalism identity: public shell + Home + Search + Discovery (VR1 / VR2), five listing-card families + five listing detail pages + authentication (VR3), Professional / Admin / Resident workspaces + Request Service dialog + overlays (VR4), listing forms + location + map + media-unavailable + tags (VR5). The one surface that keeps its honest pre-redesign shape is the News administration (`NewsAdminSoon`), which the News admin backend has not been built for; it is intentional.
+
+## GROCERY-4C — flexible payments, complete B-17 coverage and development closeout (BUILT; **awaiting the owner's review, NOT committed**)
+
+**Baseline:** `898b9ab` (GROCERY-4B) on `master`. **Migration `0014`** (head; not applied to `b17_dev` or any real database). **Ordering stays off; no setting, account or order was changed.**
+
+- **Payments:** cash on delivery always; card, bank transfer, Easypaisa, JazzCash off until a Super Admin enables each. Verified payments recorded by Grocery staff without changing the order's status; a paid order keeps its amount; the whole payment can be recorded as refunded by a Super Admin only (`API_CONTRACT.md` §21, `DATA_MODEL.md` §24, `AUTH_RBAC.md` §40).
+- **Coverage:** a Super Admin confirmation, off by default, removed when the block list changes.
+- **Screens:** customer wording built from the enabled methods; paid and refunded states; staff record-payment and record-refund forms; two new settings controls.
+- **Deploy:** migration → backend → frontend; rollback and downgrade limits in `DEPLOYMENT.md` §22.
+- **Verification:** `docs/development/TESTING.md`, "GROCERY-4C".
+- **Closeout:** the last major Grocery development phase before staging; no 4D. **Not pilot- or production-ready:** the GROCERY-5 list is in `docs/product/GROCERY.md`. Next milestone (not started): restricted staging deployment.

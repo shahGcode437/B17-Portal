@@ -3,6 +3,8 @@
  * (`docs/backend/API_CONTRACT.md` §18.6; `backend/app/schemas/grocery.py`).
  */
 
+import type { GroceryPaymentMethodDto } from "@/lib/api/dto/grocery"
+
 export interface GrocerySettingsDto {
   /** The version number. A change must send the version it was made from. */
   revision: number
@@ -20,6 +22,10 @@ export interface GrocerySettingsDto {
   maxOrderValuePaisa: number
   maxActiveOrdersPerCustomer: number
   maxItemsPerOrder: number
+  /** What customers are offered and staff can record. Cash on delivery is always in it. */
+  paymentMethods: GroceryPaymentMethodDto[]
+  /** A Super Admin's statement that the listed blocks cover all of B-17. */
+  coversAllB17: boolean
   updatedAt: string
   /** Absent when no person is recorded for this version. */
   updatedBy?: { userId: string; displayName?: string }
@@ -36,6 +42,8 @@ export type GrocerySettingsField =
   | "maxOrderValuePaisa"
   | "maxActiveOrdersPerCustomer"
   | "maxItemsPerOrder"
+  | "paymentMethods"
+  | "coversAllB17"
 
 /** The body of `PATCH`: strict. An omitted field is unchanged; `null` is refused; lists replace whole. */
 export type GrocerySettingsPatchDto = { revision: number } & Partial<Pick<GrocerySettingsDto, GrocerySettingsField>>

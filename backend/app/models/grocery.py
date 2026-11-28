@@ -8,7 +8,10 @@ references are ``users``.
   total and amount due. Items never change. There is no supplier, quotation or inventory table.
 * ``grocery_order_confirmations`` — each agreement of the customer that a staff member recorded.
   A changed price is a NEW row; none is ever edited.
-* ``grocery_payments`` — the one cash-on-delivery collection of a delivered order.
+* ``grocery_payments`` — the ONE full payment of an order: cash collected at delivery, or a card
+  or external payment a staff member verified, possibly before delivery. ``grocery_refunds`` — the
+  one FULL refund of such a payment. Both insert-only; database triggers (migration ``0014``) keep
+  a paid order's amount fixed and refuse to cancel it without a refund.
 * ``grocery_order_events`` — claims, releases, reductions of the amount due and recorded issues.
   All three are insert-only (triggers refuse UPDATE and DELETE).
 * ``grocery_order_status_history`` — one row per creation or transition, in the same transaction.
@@ -33,6 +36,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     LargeBinary,
@@ -43,6 +47,7 @@ from sqlalchemy import (
     UniqueConstraint,
     Uuid,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column
@@ -56,12 +61,16 @@ from app.models.enums import (
     GroceryIssueKind,
     GroceryOrderStatus,
     GroceryPaymentMethod,
+    GroceryRefundMethod,
     GrocerySubstitution,
     GroceryUnit,
 )
 
 #: The database backstop of every amount (``grocery_rules.MAX_AMOUNT_PAISA``).
 _MAX_PAISA = 100_000_000
+_METHOD_ARRAY = "ARRAY[" + ", ".join(f"'{m.value}'" for m in GroceryPaymentMethod) + "]::varchar[]"
+_ONLINE_METHODS = "method IN ('bank_transfer', 'easypaisa', 'jazzcash')"
+_REFERENCE_FORMAT = "reference IS NULL OR reference ~ '^[A-Z0-9/._#]{4,64}$'"
 
 
 class GroceryOrder(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -285,6 +294,15 @@ class GrocerySettingsRevision(Base):
     )
     max_active_orders_per_customer: Mapped[int] = mapped_column(SmallInteger, nullable=False)
     max_items_per_order: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    #: The methods customers are offered and staff may record. Always contains cash.
+    payment_methods: Mapped[list[str]] = mapped_column(
+        ARRAY(String(32)),
+        nullable=False,
+        server_default=text("ARRAY['cash_on_delivery']::varchar[]"),
+    )
+    #: A Super Admin's confirmation that the listed blocks cover ALL of B-17. It changes what
+    #: the screens may say, never which address is accepted. Cleared when the blocks change.
+    covers_all_b17: Mapped[bool] = mapped_column(nullable=False, server_default=text("false"))
     actor_user_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
     request_id: Mapped[str | None] = mapped_column(String(64))
     created_at: Mapped[datetime.datetime] = mapped_column(
@@ -311,6 +329,16 @@ class GrocerySettingsRevision(Base):
             "max_active_orders_per_customer BETWEEN 1 AND 10", name="max_active_orders_range"
         ),
         CheckConstraint("max_items_per_order BETWEEN 1 AND 100", name="max_items_range"),
+        CheckConstraint(
+            f"'cash_on_delivery' = ANY (payment_methods) AND payment_methods <@ {_METHOD_ARRAY} "
+            "AND array_position(payment_methods, NULL) IS NULL "
+            "AND cardinality(payment_methods) <= 5",
+            name="payment_methods_valid",
+        ),
+        CheckConstraint(
+            "NOT covers_all_b17 OR cardinality(serviceable_blocks) >= 1",
+            name="full_coverage_needs_blocks",
+        ),
         CheckConstraint("revision = 1 OR actor_user_id IS NOT NULL", name="change_has_actor"),
     )
 
@@ -367,9 +395,10 @@ class GroceryOrderConfirmation(UUIDPrimaryKeyMixin, Base):
 
 
 class GroceryPayment(UUIDPrimaryKeyMixin, Base):
-    """THE cash collection of a delivered order: at most one per order, written in the same
-    transaction as ``delivered``, and only for exactly the amount due. Insert-only. Anything
-    else (a shortage, a dispute, a return) is an issue for a person to resolve."""
+    """THE payment of an order: at most one, for exactly the amount due. Insert-only. Cash is
+    written in the same transaction as ``delivered``; any other method when a staff member has
+    verified it, before or at delivery, which it does not itself record. Anything else (a
+    shortage, a dispute) is an issue for a person to resolve."""
 
     __tablename__ = "grocery_payments"
 
@@ -381,7 +410,10 @@ class GroceryPayment(UUIDPrimaryKeyMixin, Base):
     )
     amount_due_paisa: Mapped[int] = mapped_column(BigInteger, nullable=False)
     amount_collected_paisa: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    #: The staff member who recorded the collection.
+    #: The external transaction reference of a non-cash payment (staff only). Never a card or
+    #: account number. Stored upper-cased without spaces or hyphens.
+    reference: Mapped[str | None] = mapped_column(String(64))
+    #: The staff member who collected the cash, or VERIFIED the payment, and when.
     collected_by: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
     )
@@ -396,6 +428,68 @@ class GroceryPayment(UUIDPrimaryKeyMixin, Base):
         CheckConstraint(
             "amount_collected_paisa = amount_due_paisa", name="collected_is_the_amount_due"
         ),
+        CheckConstraint(
+            "(method = 'cash_on_delivery') = (reference IS NULL)", name="reference_iff_not_cash"
+        ),
+        CheckConstraint(_REFERENCE_FORMAT, name="reference_format"),
+        UniqueConstraint(
+            "id",
+            "order_id",
+            "amount_collected_paisa",
+            name="uq_grocery_payments_id_order_id_amount",
+        ),
+        # One online transaction can't pay two orders.
+        Index(
+            "uq_grocery_payments_online_reference",
+            "method",
+            "reference",
+            unique=True,
+            postgresql_where=text(_ONLINE_METHODS),
+        ),
+    )
+
+
+class GroceryRefund(UUIDPrimaryKeyMixin, Base):
+    """THE refund of an order's payment: the whole amount, once, recorded by a Super Admin AFTER
+    the money was returned outside the application. Insert-only. The payment row stays."""
+
+    __tablename__ = "grocery_refunds"
+
+    order_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("grocery_orders.id", ondelete="RESTRICT"), nullable=False
+    )
+    payment_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    amount_paisa: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    #: How the money went back.
+    method: Mapped[GroceryRefundMethod] = mapped_column(
+        str_enum(GroceryRefundMethod), nullable=False
+    )
+    reference: Mapped[str | None] = mapped_column(String(64))
+    #: INTERNAL.
+    reason: Mapped[str] = mapped_column(String(200), nullable=False)
+    refunded_by: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    refunded_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("order_id", name="uq_grocery_refunds_order_id"),
+        UniqueConstraint("payment_id", name="uq_grocery_refunds_payment_id"),
+        # The whole of THAT payment, of THAT order.
+        ForeignKeyConstraint(
+            ["payment_id", "order_id", "amount_paisa"],
+            [
+                "grocery_payments.id",
+                "grocery_payments.order_id",
+                "grocery_payments.amount_collected_paisa",
+            ],
+            name="fk_grocery_refunds_whole_payment",
+            ondelete="RESTRICT",
+        ),
+        in_values("method", GroceryRefundMethod, name="method_valid"),
+        CheckConstraint("method = 'cash' OR reference IS NOT NULL", name="reference_required"),
+        CheckConstraint(_REFERENCE_FORMAT, name="reference_format"),
+        CheckConstraint("char_length(btrim(reason)) >= 1", name="reason_not_blank"),
     )
 
 

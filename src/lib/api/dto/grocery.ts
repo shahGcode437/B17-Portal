@@ -12,6 +12,10 @@ export type GroceryUnitDto = "kg" | "gram" | "litre" | "ml" | "piece" | "pack" |
 export type GrocerySubstitutionDto = "allow" | "ask" | "none"
 export type GroceryUnavailableReasonDto = "disabled" | "no_service_area" | "closed" | "daily_limit_reached"
 export type GroceryConfirmationMethodDto = "phone_call" | "in_person" | "written_message"
+/** Cash is always offered; a Super Admin switches the others on. */
+export type GroceryPaymentMethodDto = "cash_on_delivery" | "card" | "bank_transfer" | "easypaisa" | "jazzcash"
+/** One word for an order's money (§21). Absent: nothing is owed or held. */
+export type GroceryPaymentStatusDto = "unpaid" | "paid" | "refunded"
 
 export interface GroceryUnitRuleDto {
   unit: GroceryUnitDto
@@ -34,6 +38,10 @@ export interface GroceryAvailabilityDto {
   acceptingOrders: boolean
   unavailableReason?: GroceryUnavailableReasonDto
   serviceableBlocks: string[]
+  /** A Super Admin confirmed the blocks cover all of B-17. Absent from a server before §21. */
+  coversAllB17?: boolean
+  /** The methods a customer may be offered. Absent from a server before §21 (cash only). */
+  paymentMethods?: GroceryPaymentMethodDto[]
   schedule: GroceryScheduleDto
   limits: { maxItemsPerOrder: number; maxActiveOrders: number }
   units: GroceryUnitRuleDto[]
@@ -81,6 +89,7 @@ export interface GroceryOrderSummaryDto {
   /** Present once the team has recorded an agreement. */
   finalAmountDuePaisa?: number
   deliveredAt?: string
+  paymentStatus?: GroceryPaymentStatusDto
 }
 
 /** A total the TEAM recorded after speaking with the customer. Not an approval given in the app. */
@@ -95,12 +104,17 @@ export interface GroceryAgreementDto {
   recordedAt: string
 }
 
+/** No staff name, transaction reference or refund reason is ever sent to a customer. */
 export interface GroceryPaymentDto {
-  method: "cash_on_delivery"
-  status: "due" | "collected"
+  /** How it was paid. While `due` it is the default and says nothing about how it will be paid. */
+  method: GroceryPaymentMethodDto
+  /** `collected`: staff received or verified the money. `refunded`: its return was recorded. */
+  status: "due" | "collected" | "refunded"
   amountDuePaisa: number
   amountCollectedPaisa?: number
   collectedAt?: string
+  refundedAmountPaisa?: number
+  refundedAt?: string
 }
 
 export interface GroceryHistoryDto {

@@ -14,37 +14,43 @@ import { RecoveryNotice } from "@/features/grocery/RecoveryNotice"
 import { useGroceryAvailability } from "@/features/grocery/useGroceryAvailability"
 import { isDraftHidden, useGroceryDraft } from "@/features/grocery/groceryDraftStore"
 import { formatSchedule } from "@/features/grocery/format"
-import { PAYMENT_COPY } from "@/features/grocery/paymentCopy"
+import { PRICE_CONFIRMED, offeredMethods, paymentCopy, type PaymentCopy } from "@/features/grocery/paymentCopy"
 import { useAuth } from "@/hooks/useAuth"
 import { routes } from "@/config/routes"
 import { fadeUp, staggerContainer, staggerItem } from "@/lib/motion"
 import type { GroceryAvailabilityDto } from "@/lib/api/dto/grocery"
 
-const HOW_IT_WORKS: { icon: LucideIcon; title: string; text: string }[] = [
-  {
-    icon: ListPlus,
-    title: "Send your list",
-    text: "Tell us what groceries you need, including quantities, preferred brands and any special instructions.",
-  },
-  {
-    icon: PhoneCall,
-    title: "Confirm your order",
-    text: "Our team confirms availability, order details and the total price with you.",
-  },
-  {
-    icon: Truck,
-    title: "Get it delivered",
-    // Not "anywhere in B-17": delivery is only as wide as the blocks a Super Admin has listed.
-    text: "Receive your groceries conveniently at your doorstep in our B-17 delivery areas.",
-  },
-  {
-    icon: Banknote,
-    title: PAYMENT_COPY.stepTitle,
-    text: PAYMENT_COPY.howToPay,
-  },
-]
+const ALL_OF_B17 = "Delivering across all sectors and blocks of B-17, Islamabad."
 
-function HowItWorks() {
+function howItWorks(payment: PaymentCopy, allOfB17: boolean): { icon: LucideIcon; title: string; text: string }[] {
+  return [
+    {
+      icon: ListPlus,
+      title: "Send your list",
+      text: "Tell us what groceries you need, including quantities, preferred brands and any special instructions.",
+    },
+    {
+      icon: PhoneCall,
+      title: "Confirm your order",
+      text: "Our team confirms availability, order details and the total price with you.",
+    },
+    {
+      icon: Truck,
+      title: "Get it delivered",
+      // "Anywhere in B-17" only once a Super Admin has confirmed the listed blocks cover all of it.
+      text: allOfB17
+        ? "Receive your groceries conveniently at your doorstep anywhere in B-17."
+        : "Receive your groceries conveniently at your doorstep in our B-17 delivery areas.",
+    },
+    {
+      icon: Banknote,
+      title: payment.stepTitle,
+      text: payment.stepText,
+    },
+  ]
+}
+
+function HowItWorks({ payment, allOfB17 }: { payment: PaymentCopy; allOfB17: boolean }) {
   return (
     <section aria-labelledby="grocery-how">
       <Typography as="h2" id="grocery-how" variant="h2" className="mb-4 text-xl sm:text-2xl">
@@ -56,8 +62,8 @@ function HowItWorks() {
         variants={staggerContainer}
         className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4"
       >
-        {HOW_IT_WORKS.map(({ icon: Icon, title, text }, index) => (
-          <motion.li key={title} variants={staggerItem} className="glass-panel flex gap-3 rounded-2xl p-4 lg:flex-col">
+        {howItWorks(payment, allOfB17).map(({ icon: Icon, title, text }, index) => (
+          <motion.li key={index} variants={staggerItem} className="glass-panel flex gap-3 rounded-2xl p-4 lg:flex-col">
             <span aria-hidden="true" className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/12 text-primary">
               <Icon className="size-5" />
             </span>
@@ -91,14 +97,17 @@ function Detail({ icon: Icon, title, children }: { icon: LucideIcon; title: stri
   )
 }
 
-function ServiceDetails({ availability }: { availability: GroceryAvailabilityDto }) {
+function ServiceDetails({ availability, payment }: { availability: GroceryAvailabilityDto; payment: PaymentCopy }) {
+  const allOfB17 = Boolean(availability.coversAllB17) && availability.serviceableBlocks.length > 0
   return (
     <section aria-label="Opening hours, areas and payment" className="grid grid-cols-1 gap-3 md:grid-cols-3">
       <Detail icon={Clock} title="Opening hours">
         <Typography variant="body-sm">{formatSchedule(availability.schedule)}</Typography>
       </Detail>
       <Detail icon={MapPin} title="Delivery areas">
-        {availability.serviceableBlocks.length > 0 ? (
+        {allOfB17 ? (
+          <Typography variant="body-sm">{ALL_OF_B17}</Typography>
+        ) : availability.serviceableBlocks.length > 0 ? (
           <>
             <Typography variant="body-sm">We deliver in B-17, Islamabad, to:</Typography>
             <ul aria-label="Blocks we deliver to" className="flex flex-wrap gap-1.5">
@@ -116,10 +125,24 @@ function ServiceDetails({ availability }: { availability: GroceryAvailabilityDto
         )}
       </Detail>
       <Detail icon={Banknote} title="Price and payment">
-        <Typography variant="body-sm">{PAYMENT_COPY.priceConfirmed}</Typography>
-        <Typography variant="body-sm">{PAYMENT_COPY.howToPay}</Typography>
+        <Typography variant="body-sm">{PRICE_CONFIRMED}</Typography>
+        <Typography variant="body-sm">{payment.howToPay}</Typography>
+        {payment.methodNames.length > 0 && (
+          <ul aria-label="Ways to pay" className="flex flex-wrap gap-1.5">
+            {payment.methodNames.map((name) => (
+              <li key={name} className="rounded-full bg-secondary px-3 py-1 text-sm">
+                {name}
+              </li>
+            ))}
+          </ul>
+        )}
+        {payment.notes.map((note) => (
+          <Typography key={note} variant="body-sm" className="text-muted-foreground">
+            {note}
+          </Typography>
+        ))}
         <Typography variant="body-sm" className="text-muted-foreground">
-          {PAYMENT_COPY.ifThingsChange}
+          {payment.ifThingsChange}
         </Typography>
       </Detail>
     </section>
@@ -139,6 +162,7 @@ function GroceryLandingPage() {
   const visibleCount = isDraftHidden(ownerId, user?.id ?? null) ? 0 : draftCount
 
   const data = availability.data
+  const payment = paymentCopy(offeredMethods(data))
   const writable = data ? canWriteAnOrder(data) : false
   const startLabel =
     visibleCount > 0
@@ -198,8 +222,8 @@ function GroceryLandingPage() {
           <ReadError error={availability.error} onRetry={availability.refresh} title="Couldn't check whether ordering is open" />
         ) : null}
 
-        <HowItWorks />
-        {data && <ServiceDetails availability={data} />}
+        <HowItWorks payment={payment} allOfB17={Boolean(data?.coversAllB17) && (data?.serviceableBlocks.length ?? 0) > 0} />
+        {data && <ServiceDetails availability={data} payment={payment} />}
       </div>
     </Container>
   )

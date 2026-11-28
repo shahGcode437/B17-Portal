@@ -210,6 +210,8 @@ export class AuthMock {
     this.admin.onSettings = (settings) => {
       this.grocery.enabled = settings.enabled
       this.grocery.blocks = [...settings.serviceableBlocks]
+      this.grocery.coversAllB17 = settings.coversAllB17
+      this.grocery.paymentMethods = [...settings.paymentMethods]
       this.grocery.schedule = {
         timezone: settings.timezone,
         operatingDays: [...settings.operatingDays],

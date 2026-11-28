@@ -10,12 +10,16 @@ import { describedBy, groceryInputClass } from "@/features/grocery/fieldStyles"
 import { AmountField } from "@/features/grocery-staff/StaffFields"
 import {
   LIMITS,
+  PAYMENT_METHODS,
   checkBlock,
   describeValue,
   draftKeyOf,
+  withBlocks,
   type SettingsDraft,
   type SettingsProblems,
 } from "@/features/grocery-staff/settings/settingsForm"
+import { PAYMENT_METHOD_NAME } from "@/features/grocery/paymentCopy"
+import type { GroceryPaymentMethodDto } from "@/lib/api/dto/grocery"
 import type { GrocerySettingsDto, GrocerySettingsField } from "@/lib/api/dto/grocerySettings"
 
 export interface SectionProps {
@@ -74,7 +78,7 @@ function AvailabilitySection({ id, draft, saved, changed, disabled, onChange }: 
   )
 }
 
-function CoverageSection({ id, draft, saved, changed, disabled, onChange }: SectionProps) {
+function CoverageSection({ id, draft, saved, changed, problems, disabled, onChange }: SectionProps) {
   const [text, setText] = useState("")
   const [error, setError] = useState<string>()
   const fieldId = `${id}-serviceableBlocks`
@@ -88,7 +92,7 @@ function CoverageSection({ id, draft, saved, changed, disabled, onChange }: Sect
     }
     setError(undefined)
     setText("")
-    onChange({ serviceableBlocks: [...draft.serviceableBlocks, checked.label] })
+    onChange(withBlocks([...draft.serviceableBlocks, checked.label], saved))
     document.getElementById(fieldId)?.focus()
   }
 
@@ -115,7 +119,7 @@ function CoverageSection({ id, draft, saved, changed, disabled, onChange }: Sect
                 aria-label={`Remove block ${block}`}
                 disabled={disabled}
                 onClick={() => {
-                  onChange({ serviceableBlocks: draft.serviceableBlocks.filter((other) => other !== block) })
+                  onChange(withBlocks(draft.serviceableBlocks.filter((other) => other !== block), saved))
                   document.getElementById(fieldId)?.focus()
                 }}
               >
@@ -151,6 +155,16 @@ function CoverageSection({ id, draft, saved, changed, disabled, onChange }: Sect
         </Button>
       </div>
       <Saved field="serviceableBlocks" saved={saved} changed={changed} />
+      <CheckField
+        id={`${id}-coversAllB17`}
+        label="The listed blocks cover all sectors and blocks of B-17"
+        hint="Tick only after checking the list against the official blocks. Customers are then told you deliver across all of B-17. Changing the list unticks this."
+        checked={draft.coversAllB17}
+        disabled={disabled || (draft.serviceableBlocks.length === 0 && !draft.coversAllB17)}
+        onChange={(coversAllB17) => onChange({ coversAllB17 })}
+        error={problems.coversAllB17}
+      />
+      <Saved field="coversAllB17" saved={saved} changed={changed} />
     </Section>
   )
 }
@@ -279,4 +293,44 @@ function FinancialSection({ id, draft, saved, changed, problems, disabled, onCha
   )
 }
 
-export { AvailabilitySection, CapacitySection, CoverageSection, FinancialSection, ScheduleSection }
+const METHOD_HINT: Record<GroceryPaymentMethodDto, string> = {
+  cash_on_delivery: "Always offered.",
+  card: "Taken on the business's card machine at delivery. No card details are entered in this app.",
+  bank_transfer: "A transfer to the business account, checked by staff.",
+  easypaisa: "A payment to the business Easypaisa account, checked by staff.",
+  jazzcash: "A payment to the business JazzCash account, checked by staff.",
+}
+
+function PaymentMethodsSection({ id, draft, saved, changed, disabled, onChange }: SectionProps) {
+  return (
+    <Section
+      id={`${id}-payment-methods`}
+      title="Payment methods"
+      hint="What customers are told they can pay with, and what staff can record. Switch a method on only once its account or card machine is ready. This app holds no account numbers: staff give them to customers."
+    >
+      <fieldset id={`${id}-paymentMethods`} tabIndex={-1} className="flex min-w-0 flex-col gap-2">
+        <legend className="sr-only">Payment methods offered</legend>
+        {PAYMENT_METHODS.map((method) => (
+          <CheckField
+            key={method}
+            id={`${id}-paymentMethods-${method}`}
+            label={PAYMENT_METHOD_NAME[method]}
+            hint={METHOD_HINT[method]}
+            checked={method === "cash_on_delivery" || draft.paymentMethods.includes(method)}
+            disabled={disabled || method === "cash_on_delivery"}
+            onChange={(checked) =>
+              onChange({
+                paymentMethods: PAYMENT_METHODS.filter((other) =>
+                  other === method ? checked : draft.paymentMethods.includes(other)
+                ),
+              })
+            }
+          />
+        ))}
+      </fieldset>
+      <Saved field="paymentMethods" saved={saved} changed={changed} />
+    </Section>
+  )
+}
+
+export { AvailabilitySection, CapacitySection, CoverageSection, FinancialSection, PaymentMethodsSection, ScheduleSection }

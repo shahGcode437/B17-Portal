@@ -14,7 +14,13 @@ interface Copy {
 }
 
 /** The order on screen is behind the server: someone (or something) moved it on. */
-const STALE = new Set(["order_conflict", "invalid_state_transition", "order_already_claimed", "order_not_claimed"])
+const STALE = new Set([
+  "order_conflict",
+  "invalid_state_transition",
+  "order_already_claimed",
+  "order_not_claimed",
+  "payment_recorded",
+])
 
 function hasDetail(error: ApiError, code: string): boolean {
   return error.details.some((detail) => detail.code === code)
@@ -48,6 +54,7 @@ const AMOUNT_FIELD: Record<string, string> = {
   agreedTotalPaisa: "The agreed total",
   finalAmountPaisa: "The new amount",
   amountCollectedPaisa: "The cash collected",
+  amountPaisa: "The amount",
 }
 
 const TEXT_FIELD: Record<string, string> = {
@@ -55,6 +62,7 @@ const TEXT_FIELD: Record<string, string> = {
   pricingNote: "The pricing note",
   reason: "The reason",
   note: "The note",
+  reference: "The reference",
 }
 
 const RULES: Record<string, string> = {
@@ -66,9 +74,22 @@ const RULES: Record<string, string> = {
   agreement_required: "Confirm that the customer agreed before recording it.",
   acknowledgement_required: "Confirm that goods may already have been bought.",
   system_only: "That kind of issue is recorded by the system. Choose another.",
+  already_paid: "This order is already paid, so no cash is collected.",
+  method_not_enabled: "That payment method is switched off. A Super Admin controls which methods are offered.",
+  cash_at_delivery: "Cash is recorded with the delivery.",
+  verification_required: "Confirm that you checked the money was received.",
+  reference_in_use: "That transaction reference is already recorded on another order. Check it before recording.",
+  invalid_reference: "Use the transaction reference: 4 to 64 letters and numbers.",
+  looks_like_card_number: "That looks like a card number. Never enter card numbers: use the receipt or approval number.",
+  looks_like_account_number: "That looks like a bank account number. Enter the transaction reference instead.",
+  reference_required: "Give the reference of the money you sent back.",
+  return_required: "Confirm the money has been returned before recording the refund.",
 }
 
 function describeStaffDetail(detail: ApiErrorDetail): string | null {
+  if (detail.field === "amountPaisa" && detail.code === "amount_mismatch") {
+    return "The amount must equal the whole total exactly. Part payments and partial refunds can't be recorded."
+  }
   if (detail.code && RULES[detail.code]) return RULES[detail.code]
   const field = detail.field ?? ""
   const noun = AMOUNT_FIELD[field] ?? TEXT_FIELD[field]
@@ -87,7 +108,7 @@ export function staffRefusalCopy(error: ApiError): Copy {
   if (needsSuperAdmin(error)) {
     return {
       title: "Only a Super Admin can do this now",
-      description: "Nothing was saved. Preparation has started: record an issue so a Super Admin can decide.",
+      description: "Nothing was saved. Record an issue so a Super Admin can decide.",
     }
   }
   switch (error.code) {
@@ -97,6 +118,11 @@ export function staffRefusalCopy(error: ApiError): Copy {
       return { title: "You don't hold this order", description: "Nothing was saved. Check below who has it now." }
     case "invalid_state_transition":
       return { title: "This order has moved on", description: "Nothing was saved. Check its current status below." }
+    case "payment_recorded":
+      return {
+        title: "This order is already paid",
+        description: "Nothing was saved. A paid order keeps its amount and can only be cancelled with a refund. Check below.",
+      }
     case "order_conflict":
       return { title: "This order changed since you opened it", description: "Nothing was saved. Check the latest version below, then decide again." }
     case "csrf_failed":

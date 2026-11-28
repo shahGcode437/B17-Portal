@@ -4,8 +4,9 @@ import { Button } from "@/components/ui/button"
 import { Typography } from "@/components/foundation/Typography"
 import { formatDay, formatPaisa, formatStamp } from "@/features/grocery/format"
 import { formatAmount } from "@/features/grocery/quantity"
+import { PAID_BY } from "@/features/grocery/paymentCopy"
 import { STATUS_META } from "@/features/grocery/orderStatus"
-import { ISSUE_LABEL, ITEM_SUBSTITUTION, METHOD_NAME, memberName } from "@/features/grocery-staff/staffLabels"
+import { ISSUE_LABEL, ITEM_SUBSTITUTION, METHOD_NAME, REFUND_METHOD_NAME, memberName } from "@/features/grocery-staff/staffLabels"
 import { formatPhone, telHref } from "@/lib/phone"
 import type {
   GroceryStaffConfirmationDto,
@@ -176,10 +177,11 @@ function AgreementsPanel({ order, viewerId }: { order: GroceryStaffOrderDetailDt
 }
 
 function PaymentPanel({ order, viewerId }: { order: GroceryStaffOrderDetailDto; viewerId: string }) {
-  const { payment, finalAmountDuePaisa: due, agreedTotalPaisa: agreed } = order
+  const { payment, refund, finalAmountDuePaisa: due, agreedTotalPaisa: agreed } = order
+  const unpaid = order.recordableMethods?.length ? "Not paid yet." : "Not collected. Cash on delivery."
   const lowered = due !== undefined && agreed !== undefined && due < agreed
   return (
-    <Panel id="staff-payment" title="Amount due and cash">
+    <Panel id="staff-payment" title="Amount due and payment">
       <dl className={PAIRS}>
         {agreed !== undefined && <Pair term="Latest agreed total">{formatPaisa(agreed)}</Pair>}
         <Pair term={order.status === "cancelled" ? "Amount on record" : "Amount due"}>
@@ -189,17 +191,34 @@ function PaymentPanel({ order, viewerId }: { order: GroceryStaffOrderDetailDto; 
         <Pair term="Payment">
           {payment ? (
             <>
-              <span className="font-semibold">Cash collected: {formatPaisa(payment.amountCollectedPaisa)}</span>
+              <span className="font-semibold">
+                {payment.method === "cash_on_delivery" ? "Cash collected" : `Paid ${PAID_BY[payment.method]}`}:{" "}
+                {formatPaisa(payment.amountCollectedPaisa)}
+              </span>
+              {payment.reference && <span className="block break-all">Reference: {payment.reference}</span>}
               <span className="block text-muted-foreground">
-                Recorded by {memberName(payment.collectedBy, viewerId)}, {formatStamp(payment.collectedAt)}
+                {payment.method === "cash_on_delivery" ? "Recorded" : "Verified"} by{" "}
+                {memberName(payment.collectedBy, viewerId)}, {formatStamp(payment.collectedAt)}
               </span>
             </>
           ) : order.status === "cancelled" ? (
-            "No cash was recorded."
+            "No payment was recorded."
           ) : (
-            "Not collected. Cash on delivery."
+            unpaid
           )}
         </Pair>
+        {refund && (
+          <Pair term="Refund">
+            <span className="font-semibold">
+              Refunded: {formatPaisa(refund.amountPaisa)}, {REFUND_METHOD_NAME[refund.method]}
+            </span>
+            {refund.reference && <span className="block break-all">Reference: {refund.reference}</span>}
+            <span className="block break-words">Reason: {refund.reason}</span>
+            <span className="block text-muted-foreground">
+              Recorded by {memberName(refund.refundedBy, viewerId)}, {formatStamp(refund.refundedAt)}
+            </span>
+          </Pair>
+        )}
         <Pair term="Counts toward">{formatDay(`${order.serviceDate}T12:00:00+05:00`)}</Pair>
       </dl>
     </Panel>

@@ -216,8 +216,17 @@ class GrocerySettingsPatch(StrictRequest):
     ) = None
     max_active_orders_per_customer: Annotated[StrictInt, Field(ge=1, le=10)] | None = None
     max_items_per_order: Annotated[StrictInt, Field(ge=1, le=ABSOLUTE_MAX_ITEMS)] | None = None
+    #: Replaces whole. Cash on delivery must stay in it.
+    payment_methods: (
+        Annotated[list[GroceryPaymentMethod], Field(max_length=len(GroceryPaymentMethod))] | None
+    ) = None
+    #: The Super Admin confirms the listed blocks cover all of B-17. Changing the blocks clears
+    #: it unless it is given again in the same change.
+    covers_all_b17: StrictBool | None = None
 
     @field_validator(
+        "payment_methods",
+        "covers_all_b17",
         "enabled",
         "serviceable_blocks",
         "operating_days",
@@ -234,6 +243,15 @@ class GrocerySettingsPatch(StrictRequest):
     def _not_null(cls, value: object) -> object:
         if value is None:
             raise _invalid("not_nullable", "Leave the field out to keep it unchanged.")
+        return value
+
+    @field_validator("payment_methods")
+    @classmethod
+    def _methods(cls, value: list[GroceryPaymentMethod]) -> list[GroceryPaymentMethod]:
+        if len(set(value)) != len(value):
+            raise _invalid("duplicate_method", "A payment method is listed more than once.")
+        if GroceryPaymentMethod.CASH_ON_DELIVERY not in value:
+            raise _invalid("cash_required", "Cash on delivery is always offered.")
         return value
 
     @field_validator("serviceable_blocks")
@@ -317,6 +335,8 @@ class GroceryOrderSummary(ApiModel):
     #: Present once the team has recorded the customer's agreement.
     final_amount_due_paisa: int | None = None
     delivered_at: datetime.datetime | None = None
+    #: Absent until a price is agreed, and on an order cancelled unpaid.
+    payment_status: Literal["unpaid", "paid", "refunded"] | None = None
 
 
 class GroceryAgreementRead(ApiModel):
@@ -334,11 +354,19 @@ class GroceryAgreementRead(ApiModel):
 
 
 class GroceryPaymentRead(ApiModel):
+    """What the CUSTOMER sees of payment. No staff name, reference or refund reason."""
+
+    #: How it was paid. While ``due`` it is the default (cash on delivery) and says nothing
+    #: about how it will be paid: the offered methods are in the availability answer.
     method: GroceryPaymentMethod
-    status: Literal["due", "collected"]
+    #: ``collected``: a staff member collected or VERIFIED the money. ``refunded``: a Super
+    #: Admin recorded that all of it was returned.
+    status: Literal["due", "collected", "refunded"]
     amount_due_paisa: int
     amount_collected_paisa: int | None = None
     collected_at: datetime.datetime | None = None
+    refunded_amount_paisa: int | None = None
+    refunded_at: datetime.datetime | None = None
 
 
 class GroceryOrderDetail(GroceryOrderSummary):
@@ -398,6 +426,10 @@ class GroceryAvailability(ApiModel):
     #: Present only when ``acceptingOrders`` is false.
     unavailable_reason: UnavailableReason | None = None
     serviceable_blocks: list[str]
+    #: Confirmed by a Super Admin: the blocks cover all of B-17.
+    covers_all_b17: bool
+    #: What a customer may be offered. Cash on delivery is always first.
+    payment_methods: list[GroceryPaymentMethod]
     schedule: GrocerySchedule
     limits: GroceryLimits
     units: list[GroceryUnitRead]
@@ -425,6 +457,8 @@ class GrocerySettingsRead(ApiModel):
     max_order_value_paisa: int
     max_active_orders_per_customer: int
     max_items_per_order: int
+    payment_methods: list[GroceryPaymentMethod]
+    covers_all_b17: bool
     updated_at: datetime.datetime
     #: Absent for the default the migration created.
     updated_by: GrocerySettingsActor | None = None

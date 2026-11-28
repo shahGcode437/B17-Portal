@@ -37,8 +37,10 @@ from tests.db.grocery_helpers import (
     open_for_orders,
     order_body,
     outcome,
+    payment_body,
     places,
     reagreement,
+    refund_body,
     staff_order,
     staff_post,
     submit,
@@ -71,6 +73,8 @@ CHANGES = (
     "delivery-failed",
     "complete",
     "cancel",
+    "record-payment",
+    "refund",
     "issues",
 )
 
@@ -81,6 +85,10 @@ def body_for(action: str, revision: int = 1) -> dict[str, Any] | None:
         return None
     if action == "confirm":
         return agreement(revision)
+    if action == "record-payment":
+        return payment_body(revision)
+    if action == "refund":
+        return refund_body(revision)
     if action == "reconfirm":
         return reagreement(revision)
     if action == "issues":
@@ -113,6 +121,7 @@ def everything(env: AuthEnv) -> tuple[Any, ...]:
             "grocery_order_status_history",
             "grocery_order_confirmations",
             "grocery_payments",
+            "grocery_refunds",
             "grocery_order_events",
         )
     )
@@ -750,10 +759,24 @@ def test_an_order_goes_from_submitted_to_delivered_and_paid(auth_env: AuthEnv) -
 #: status -> the status-changing (or status-bound) operations it allows.
 ALLOWED = {
     "submitted": {"confirm", "cancel"},
-    "confirmed": {"reconfirm", "reduce-amount", "start-preparing", "cancel"},
-    "preparing": {"reconfirm", "reduce-amount", "dispatch", "cancel"},
-    "out_for_delivery": {"reduce-amount", "delivery-failed", "complete"},
-    "delivered": set(),
+    "confirmed": {
+        "reconfirm",
+        "reduce-amount",
+        "start-preparing",
+        "cancel",
+        "record-payment",
+        "refund",
+    },
+    "preparing": {
+        "reconfirm",
+        "reduce-amount",
+        "dispatch",
+        "cancel",
+        "record-payment",
+        "refund",
+    },
+    "out_for_delivery": {"reduce-amount", "delivery-failed", "complete", "record-payment"},
+    "delivered": {"refund"},
     "cancelled": set(),
 }
 

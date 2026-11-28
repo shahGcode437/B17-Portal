@@ -865,3 +865,62 @@ The design, the route inventory and the limits are `AUTH_RBAC.md` §38.
 - **`AuthUser.readBinding: boolean`** (additive; on `/auth/me` and every answer carrying the user): `true` says the server does the above and does not count `/auth/me` as staff activity. An older server omits it.
 - **Cookie:** only responses that sign in (register, login, the Google callback, password-change rotation) set the session cookie, with `Max-Age` = the session's absolute lifetime. No other response re-issues it (this replaces the earlier "re-issued when the session slides"). `401 session_expired` and logout still clear it.
 - **Staff sessions:** the 2-hour staff idle limit counts only requests that pass a staff guard (`AUTH_RBAC.md` §38.4).
+
+## 21. Payments, manual refunds and all of B-17 (GROCERY-4C, approved by the owner and built; migration `0014`)
+
+**No payment service is integrated.** No gateway, wallet, card processing or automatic refund. The application **records** what a staff member says they checked outside it. It never accepts card numbers, CVV, expiry dates or banking credentials, and holds no business account or wallet number.
+
+### 21.1 Methods
+
+`cash_on_delivery`, `card` (the business's external card machine, at delivery), `bank_transfer`, `easypaisa`, `jazzcash`. **Cash is always offered. The other four are off until a Super Admin switches each on** (`paymentMethods` in the settings). One **full** payment per order; no part payment, instalment or split. Cash is recorded only by `complete`; the other four only by `record-payment`.
+
+### 21.2 Settings and availability
+
+| Where | Added field | Rule |
+|---|---|---|
+| `GET` / `PATCH /admin/grocery/settings` | `paymentMethods[]` | Replaces whole. Must contain `cash_on_delivery` (`422 cash_required`), no repeat (`duplicate_method`), known values only. Stored and returned in the fixed order above |
+| | `coversAllB17` | Boolean, default `false`. A statement about **the current block list**. `true` with no block: `422 needs_blocks` (field `coversAllB17`). When a change gives a different set of blocks (compared as block labels, so respelling is the same list) and does not send `coversAllB17`, the server sets it `false` |
+| `GET /grocery/availability` | `paymentMethods[]`, `coversAllB17` | What may be offered and claimed. `coversAllB17` is never `true` with an empty list |
+
+Both use the existing `revision` concurrency, permanent versions and Super Admin guard. **Full coverage changes no address check:** an order still needs a listed block (`422 not_serviceable`).
+
+### 21.3 `POST /admin/grocery/orders/{id}/record-payment`
+
+Body (strict): `{revision, method, amountPaisa, reference, moneyVerified: true}`.
+
+- **Who:** the holding `grocery` Moderator or a Super Admin; never the customer, never one's own order (§19.3).
+- **When:** `confirmed`, `preparing` or `out_for_delivery`. **The status does not change**: a paid order is not a delivered one. The revision is bumped.
+- **Body refusals (`422`):** `method` `cash_at_delivery` (cash) or `enum`; `amountPaisa` whole paisa, 1 to the field limit; `moneyVerified` `verification_required`; `reference` `invalid_reference` (after removing spaces and hyphens and upper-casing: 4 to 64 of `A-Z 0-9 / . _ #`), `looks_like_card_number` (a run of 13 to 19 digits passing the Luhn check), `looks_like_account_number` (a Pakistani IBAN). The refused value is not echoed, stored or logged.
+- **Then, in order:** `order_not_claimed` → `invalid_state_transition` → `order_conflict` (stale revision) → **`409 payment_recorded`** → `422 method_not_enabled` (as the settings stand **now**, read under the settings lock) → `422 amountPaisa amount_mismatch` → `422 reference reference_in_use` (bank transfer, Easypaisa and JazzCash only: one transaction can't pay two orders; card slip numbers may repeat).
+
+The reference checks catch obvious mistakes. They **cannot** prove a text is not sensitive: staff must still enter only the transaction or receipt number.
+
+### 21.4 `POST /admin/grocery/orders/{id}/refund`
+
+A **record** that the **whole** payment has already been returned outside the application. Body: `{revision, amountPaisa, method: cash|card|bank_transfer|easypaisa|jazzcash, reference?, reason, moneyReturned: true, procurementAcknowledged?}`. `reference` is required unless `cash` (`reference_required`), with the checks of §21.3.
+
+**Order of refusal:** `403 super_admin_required` → `409 invalid_state_transition` (only `confirmed`, `preparing`, `delivered`; **never while `out_for_delivery`**: record the failed attempt first) → `order_conflict` → `409 invalid_state_transition` with `payment: no_payment | already_refunded` → `422 amountPaisa amount_mismatch` (no part or excess refund) → `422 acknowledgement_required` (from `preparing`).
+
+| Order | Effect, in one transaction |
+|---|---|
+| `confirmed` | refund row; the order is **cancelled** (history row with the reason) |
+| `preparing` | the same, plus a `cancelled_after_procurement` issue |
+| `delivered` | refund row only; it **stays delivered** |
+
+The payment record is never changed or removed. One refund per order. A cancelled order keeps its day's capacity place, as before.
+
+### 21.5 Changes to existing calls
+
+- `complete`: `amountCollectedPaisa` is now optional. **Unpaid:** required and equal to the amount due (`missing`, `amount_mismatch`), as before. **Already paid:** it must be absent (`422 already_paid`), so nothing is collected twice.
+- `reconfirm`, `reduce-amount` and staff `cancel` on a paid order: `409 payment_recorded` (new error code). A paid order's amount is fixed and it is cancelled only by its refund. A failed delivery leaves the payment as it was.
+- A customer can still cancel only a `submitted` order, which can't have a payment.
+
+### 21.6 Reads
+
+- Staff detail: `payment` adds `reference?`; new `refund?` `{amountPaisa, method, reference?, reason, refundedBy, refundedAt}`; new `recordableMethods[]` (switched-on non-cash methods; empty once paid); `availableActions` may include `record_payment`, `record_refund`; a paid order offers neither `reconfirm`, `reduce_amount` nor `cancel`.
+- Staff queue rows add `paymentStatus?: unpaid|paid|refunded`; `paymentCollected` now means **paid and not refunded**.
+- Customer: summaries add `paymentStatus?` (absent before a price, and on an order cancelled unpaid). `payment.status` is `due | collected | refunded`, with `refundedAmountPaisa?`, `refundedAt?`; a recorded payment is shown even on a cancelled order. While `due`, `payment.method` is the default and says nothing. **A customer never receives a transaction reference, a refund reason or a staff name.** No customer call records or claims a payment.
+
+### 21.7 Compatibility
+
+Reads are additive except two **new values** an older client doesn't know: `payment.method` other than cash and `status: "refunded"`. Writes: `complete` without an amount and the two new routes need the new backend; the new settings fields are refused by an older backend. Deploy order and rollback: `DEPLOYMENT.md` §22.

@@ -141,7 +141,7 @@ test('the grocery Moderator takes it through to cash on delivery, and the custom
     await dialog(staff).getByLabel('Cash you collected (Rs)').fill('2,100.50')
     await dialog(staff).getByRole('checkbox').check()
   })
-  await expect(staff.getByRole('region', { name: 'Amount due and cash' })).toContainText('Cash collected: Rs 2,100.50')
+  await expect(staff.getByRole('region', { name: 'Amount due and payment' })).toContainText('Cash collected: Rs 2,100.50')
   expect(statusOf(first.id)).toBe('delivered')
   expect(rows(`SELECT amount_collected_paisa, collected_by = '${packerId}' FROM grocery_payments`)).toEqual([['210050', 't']])
   await staff.context().close()

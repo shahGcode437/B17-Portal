@@ -240,7 +240,7 @@ All three sit behind the **existing `admin` gate** (Super Admin only). `/admin/g
 | `GET /admin/grocery/settings` | the page | — |
 | `PATCH /admin/grocery/settings` | "Save settings" | `revision` and **only the changed** fields |
 
-Editable (every field the API takes with more than one allowed value): ordering on / off, delivery blocks, operating days, opening and closing time (a closing of 12:00 AM is midnight at the end of the day), orders per day, open orders per customer, items per order, largest order total. **The time zone is shown, not editable** (the API allows only `Asia/Karachi`). Field bounds are the API's (blocks: up to 100 of up to 40 characters; capacity 1–200; items 1–100; open orders 1–10; total Rs 1 to Rs 1,000,000; closing after opening, no overnight hours). No block name is suggested.
+Editable (every field the API takes with more than one allowed value): ordering on / off, delivery blocks, the all-of-B-17 confirmation and payment methods (§21), operating days, opening and closing time (a closing of 12:00 AM is midnight at the end of the day), orders per day, open orders per customer, items per order, largest order total. **The time zone is shown, not editable** (the API allows only `Asia/Karachi`). Field bounds are the API's (blocks: up to 100 of up to 40 characters; capacity 1–200; items 1–100; open orders 1–10; total Rs 1 to Rs 1,000,000; closing after opening, no overnight hours). No block name is suggested.
 
 - Saved and unsaved are shown apart: each changed field names the saved value; a bar counts the changes.
 - Every save goes through a review listing old → new and what it means. **Switching ordering on or off also needs its own tick.** One send; nothing shown as saved before the server answers.
@@ -306,39 +306,44 @@ Settings history; settings or order actions in the audit; a one-person staff rea
 - Block-name comparison in the browser is close to, not identical with, the server's.
 - No real-device or screen-reader testing; English only.
 
-## Proposed, NOT BUILT: card and online payments, and an "all of B-17" setting (needs the owner's approval)
+## Payments and delivery coverage (GROCERY-4C, as built)
 
-One additive migration (`0014`) would cover both. Nothing below exists yet, and **no screen may name a method until it does and is switched on**.
+The owner approved migration `0014` on 2026-11-28. The API is `API_CONTRACT.md` §21, the tables `DATA_MODEL.md` §24. It replaces the earlier proposal (whose single `online_transfer` became three named methods, and whose paid-order cancellation by hand became the refund record below).
 
-### Today
+**Payments.** Cash on delivery is always offered. Card (the business's card machine, at delivery), bank transfer, Easypaisa and JazzCash are **off until a Super Admin switches each on**. No gateway, wallet, card processing or automatic refund. The app records that a staff member checked the money; it takes no card details and holds no account number (staff give payment details to the customer directly).
 
-`grocery_payments`: **one row per order** (unique), `method` limited to `cash_on_delivery`, `amount_collected = amount_due`, insert-only, written **only** by `complete`, in the same transaction as `delivered`. The amount due can still be lowered (`reduce_amount`) or re-agreed (`reconfirm`) before delivery.
+| Money state | Reached by | Order status |
+|---|---|---|
+| unpaid → **paid** (cash) | `complete`, with the exact cash | becomes `delivered` in the same change |
+| unpaid → **paid** (card, bank transfer, Easypaisa, JazzCash) | **Record payment** (holder or Super Admin) on `confirmed`, `preparing`, `out_for_delivery` | **unchanged**: paid is not delivered |
+| paid → delivered | **Record delivery**; nothing more is collected | `delivered` |
+| paid → **refunded** | **Record refund** (Super Admin only, whole amount, after the money went back) | `confirmed` / `preparing` → `cancelled`; `delivered` stays `delivered`; not possible while `out_for_delivery` |
 
-### Minimal design: payments
+While paid: no new agreement, no lower amount, no ordinary cancellation. A failed delivery leaves it paid (not refunded). **A paid order that can't be supplied:** the Moderator records an issue; a Super Admin returns the money outside the app and records the refund, which cancels it. There are no partial refunds, so a paid order can't be partly supplied for less: refund it in full and, if wanted, take a new order.
 
-No gateway, wallet or refund feature. **Card** means a card machine or other approved external facility; **online transfer** means money a staff member has **seen arrive** in the business account. The app records that a staff member verified it. It never handles card numbers, CVV or banking credentials.
+**Customer wording** is built from the enabled methods (`features/grocery/paymentCopy.ts`). With cash only: "Pay on delivery". With more: "Pay your way", naming only enabled kinds; paying early is optional and appears only when an online method is on. The customer sees paid and refunded only from the server's records, never a reference or a refund reason. Home and search-engine descriptions name no method.
 
-| Change | Detail |
-|---|---|
-| Settings | `payment_methods text[] NOT NULL DEFAULT '{cash_on_delivery}'`, a subset of `cash_on_delivery`, `card`, `online_transfer` that **always contains cash**. Super Admin only, versioned like every setting |
-| `grocery_payments` | widen the `method` check; add `reference varchar(64)`, required unless cash. The API refuses a value holding a 13 to 19 digit card number (spaces and dashes removed, Luhn check). Still one row per order, amount equal to the amount due, insert-only |
-| Event and issue kinds | `payment_recorded`; `paid_order_cancelled` |
-| Availability | additive `paymentMethods[]`: customer text names only these |
-| New staff call | `POST /admin/grocery/orders/{id}/payment` `{revision, method, amountPaisa, reference}`: `confirmed`, `preparing` or `out_for_delivery`; holder or Super Admin; never one's own order; amount must equal the amount due; the method must be enabled. It records the payment and **does not change the status**, so an order paid early is not delivered |
-| `complete` | unpaid: as today (cash, `amountCollectedPaisa` required). Already paid: no amount, and none accepted |
-| After a payment exists | `reconfirm` and `reduce_amount` are refused (`409 payment_recorded`), since the money no longer would match. A staff cancellation needs a **Super Admin** with an explicit "the money must be returned by hand", and writes a `paid_order_cancelled` issue |
-| Customer | `payment.status` stays `due` or `collected`; `collected` only ever means **staff verified it**. A customer's claim records nothing; there is no "I have paid" button |
+**Delivery coverage.** `/grocery` says **"Delivering across all sectors and blocks of B-17, Islamabad."** (and "anywhere in B-17") only while a Super Admin's confirmation stands; otherwise it lists the configured blocks. Changing the list removes the confirmation unless it is given again with the change. Customers still choose a listed block and the server still refuses any other. No maps or geofencing. No block name is built in.
 
-**Order of work:** migration `0014` → backend → frontend (an older frontend would not understand a new method). A downgrade would refuse while a non-cash payment exists.
+**Owner configuration:** `DEPLOYMENT.md` §22.3.
 
-**Questions only the owner can answer first:** (1) Which methods will really operate at launch, and whose account or card machine? (2) May an online payment be taken before preparation, or only verified then or at the door? (3) Who may verify a transfer: any grocery Moderator on the order, or a Super Admin only? (4) An order paid early that can't be fully supplied or is cancelled: who returns the money, how, and how is it recorded (the design blocks price changes after payment because there are no refunds)? (5) Are payment details told on the phone (assumed), or shown in the app?
+**Open business decisions:** which methods will operate and whose accounts and card machine; who gives customers the payment details and how staff check receipt; who returns refunds and in what time; what to tell a customer whose paid order can't be supplied; receipts (none are issued); reconciliation of recorded payments against the accounts (no report exists).
 
-### Minimal design: delivery coverage
+## Development closeout (2026-11-28)
 
-The settings hold a **list of blocks**; customers choose one and the server refuses any other. That already serves all of B-17 **if the verified list is complete**. But the app can't tell that a list is complete, so it can't truthfully write "all sectors and blocks".
+GROCERY-4C is the **last major Grocery development phase before staging**. There is **no GROCERY-4D**. This is **not** a statement that Grocery is ready for a pilot or for production: ordering stays off.
 
-- **Recommended (with `0014`):** `covers_all_b17 boolean NOT NULL DEFAULT false`, set by a Super Admin and shown in availability. Only when true, `/grocery` says **"Delivering across all sectors and blocks of B-17, Islamabad."** and step 3 says "anywhere in B-17". The block list stays required, so address checks don't change.
-- **Alternative, no migration:** show those sentences whenever any block is listed, on the owner's undertaking that the list is complete. Not recommended: a partial list would make the page untrue.
+**GROCERY-5 (hardening and limited pilot) must cover:**
+
+1. **Staff MFA** (also the guard on a falsely recorded payment or refund).
+2. The remaining account-isolation and session limits: every item of `DEPLOYMENT.md` §20.
+3. **Real devices** (Android Chrome, iOS Safari, installed PWA) and a screen reader.
+4. The operational payment accounts and card facility, confirmed and rehearsed, before any non-cash method is switched on.
+5. The verified block list, hours and coverage confirmation (`DEPLOYMENT.md` §22.3).
+6. Business policies and readiness: refunds, cash handling, failed deliveries and bought goods, privacy and retention, excluded goods, telling customers about changes, **noticing new orders** (no notifications).
+7. The other launch blockers of `DEPLOYMENT.md` §15–§17: several accounts filling a day's capacity, per-IP rate limits at the proxy, tested backups, monitoring, least-privilege database credentials, production Google OAuth, durable e-mail.
+
+**Next milestone (recorded by the owner, not started):** restricted staging deployment (frontend on Vercel, API on Render, managed PostgreSQL, the already-purchased domain), while Admin / Moderator development continues.
 
 ## GROCERY-4A: account isolation (applies to every Grocery screen)
 
@@ -357,6 +362,8 @@ The owner's brief of this date replaces the earlier proposed 4B scopes. **No mig
 | Cash, card and online payment; before delivery or at the door | **Only cash on delivery exists and only it is named.** Card and online recording need approval (proposal above) |
 | Reliability | Double and lost submissions already used one idempotency key; added: the check after a reload |
 | Capacity and daily reset | The daily submission limit now resets at midnight in Karachi (was 05:00). Capacity already counted Karachi days. **Unchanged, by the owner's earlier decision:** a cancelled order keeps its place |
+
+*GROCERY-4C has since built the payment methods and the coverage confirmation named above as not built.*
 
 **Still not covered:** real devices and screen readers; a settings-history read; a list written before Google sign-in is still lost; no notifications.
 

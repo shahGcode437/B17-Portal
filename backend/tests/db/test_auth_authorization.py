@@ -272,6 +272,8 @@ def test_the_production_api_has_no_role_or_probe_routes(auth_env: AuthEnv) -> No
         "/api/v1/admin/grocery/orders/{order_id}/delivery-failed",
         "/api/v1/admin/grocery/orders/{order_id}/complete",
         "/api/v1/admin/grocery/orders/{order_id}/cancel",
+        "/api/v1/admin/grocery/orders/{order_id}/record-payment",
+        "/api/v1/admin/grocery/orders/{order_id}/refund",
         "/api/v1/admin/grocery/orders/{order_id}/issues",
     ]
     assert [p for p in paths if "/auth/" in p] == [

@@ -8,6 +8,7 @@ import {
   parseDraft,
   patchOf,
   rebase,
+  withBlocks,
   type SettingsDraft,
 } from "@/features/grocery-staff/settings/settingsForm"
 import { isStaleSettings, settingsRefusal } from "@/features/grocery-staff/settings/settingsErrors"
@@ -178,5 +179,66 @@ describe("settings refusals", () => {
     const copy = settingsRefusal(refusal)
     expect(`${copy.title} ${copy.description}`).toMatch(expected)
     expect(`${copy.title} ${copy.description}`).not.toContain("RAW SERVER TEXT")
+  })
+})
+
+describe("the all-of-B-17 confirmation and payment methods (GROCERY-4C)", () => {
+  const confirmed = { ...saved, serviceableBlocks: ["Test Block A", "Test Block B"], coversAllB17: true }
+  const from = (change: Partial<SettingsDraft> = {}): SettingsDraft => ({ ...draftOf(confirmed), ...change })
+
+  it("is unticked by any other list, and restored by going back to the saved one", () => {
+    expect(withBlocks(["Test Block A"], confirmed)).toEqual({ serviceableBlocks: ["Test Block A"], coversAllB17: false })
+    expect(withBlocks(["test  block b", "TEST BLOCK A"], confirmed).coversAllB17).toBe(true)
+    expect(withBlocks(["Test Block A"], saved).coversAllB17).toBe(false)
+  })
+
+  it("ticked again over a new list, it is sent with the list even though it didn't change", () => {
+    const grown = from({ serviceableBlocks: ["Test Block A", "Test Block B", "Test Block C"], coversAllB17: true })
+    expect(patchOf(confirmed, grown)).toEqual({
+      revision: 1,
+      serviceableBlocks: grown.serviceableBlocks,
+      coversAllB17: true,
+    })
+    expect(consequences(confirmed, patchOf(confirmed, grown)).join(" ")).toMatch(/all sectors and blocks of B-17/)
+
+    const unticked = from({ serviceableBlocks: ["Test Block A"], coversAllB17: false })
+    expect(patchOf(confirmed, unticked)).toMatchObject({ coversAllB17: false })
+    expect(consequences(confirmed, patchOf(confirmed, unticked)).join(" ")).toMatch(/statement is removed/)
+  })
+
+  it("an unrelated change sends neither", () => {
+    expect(patchOf(confirmed, from({ dailyCapacity: "20" }))).toEqual({ revision: 1, dailyCapacity: 20 })
+  })
+
+  it("can't be confirmed over no block", () => {
+    expect(parseDraft(from({ serviceableBlocks: [], coversAllB17: true })).problems.coversAllB17).toMatch(/List the blocks/)
+  })
+
+  it("a tick made over one list is never carried onto someone else's newer list", () => {
+    const mine = { ...draftOf({ ...confirmed, coversAllB17: false }), coversAllB17: true }
+    const newer = { ...confirmed, coversAllB17: false, revision: 2, serviceableBlocks: ["Test Block A"] }
+    const result = rebase({ ...confirmed, coversAllB17: false }, mine, newer)
+    expect(result.draft.serviceableBlocks).toEqual(["Test Block A"])
+    expect(result.draft.coversAllB17).toBe(false)
+    // over the same list the tick is kept
+    expect(rebase({ ...confirmed, coversAllB17: false }, mine, { ...confirmed, coversAllB17: false, revision: 2, dailyCapacity: 5 }).draft.coversAllB17).toBe(true)
+  })
+
+  it("keeps cash on and the server's order of methods, and says what a switch means", () => {
+    const patch = patchOf(saved, draft({ paymentMethods: ["jazzcash", "card"] }))
+    expect(patch).toEqual({ revision: 1, paymentMethods: ["cash_on_delivery", "card", "jazzcash"] })
+    expect(describeValue("paymentMethods", patch.paymentMethods!)).toBe("Cash on delivery, Card, JazzCash")
+    expect(consequences(saved, patch).join(" ")).toMatch(/offered Card, JazzCash.*card machine/)
+    expect(describeValue("coversAllB17", false)).toBe("Not confirmed")
+  })
+
+  it("names the server's refusal of a confirmation with no block", () => {
+    const error = new ApiError({
+      status: 422,
+      code: "validation_error",
+      message: "x",
+      details: [{ field: "coversAllB17", code: "needs_blocks", message: "x" }],
+    })
+    expect(settingsRefusal(error).description).toMatch(/List the delivery blocks/)
   })
 })

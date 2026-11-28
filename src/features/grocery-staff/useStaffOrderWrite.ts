@@ -4,7 +4,7 @@ import { useRequireOnline } from "@/hooks/useRequireOnline"
 import { useToast } from "@/hooks/useToast"
 import { ApiError, NETWORK_ERROR_CODE, isApiError } from "@/lib/api/errors"
 import { getIdentityStamp } from "@/lib/api/session"
-import { ACTION_DONE, ACTION_NOUN } from "@/features/grocery-staff/staffLabels"
+import { actionDone, actionNoun } from "@/features/grocery-staff/staffLabels"
 import { isLostAccess, isOwnOrder, isStaleOrder, isUnknownOutcome, needsSuperAdmin, staffRefusalCopy } from "@/features/grocery-staff/staffErrors"
 import { acquireWrite, releaseWrite, useWriteInFlight } from "@/hooks/useWriteLock"
 import type { GroceryStaffActionDto, GroceryStaffOrderDetailDto } from "@/lib/api/dto/groceryStaff"
@@ -82,7 +82,7 @@ export function useStaffOrderWrite({ userId, orderId, order, replace, reload, cl
         closeDialog()
         replace(updated)
         reload()
-        show(ACTION_DONE[action])
+        show(actionDone(action, order))
         return { closed: true }
       } catch (cause) {
         if (getIdentityStamp() !== askedAs) return { closed: true }
@@ -124,11 +124,11 @@ export function useStaffOrderWrite({ userId, orderId, order, replace, reload, cl
       ? null
       : locked
         ? {
-            title: `We don't know whether ${ACTION_NOUN[unknown.action]} was saved`,
+            title: `We don't know whether ${actionNoun(unknown.action, unknown.before)} was saved`,
             description: "Nothing was sent again. Actions are paused until the order has been loaded again.",
           }
         : {
-            title: `Check whether ${ACTION_NOUN[unknown.action]} was saved`,
+            title: `Check whether ${actionNoun(unknown.action, unknown.before)} was saved`,
             description:
               "We got no clear answer, and nothing was sent again. The order has been reloaded: check it below before you do this again. A request that was slow could still arrive.",
           }

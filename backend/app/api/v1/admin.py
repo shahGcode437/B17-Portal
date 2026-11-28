@@ -152,6 +152,9 @@ ADMIN_AUTHORITY: dict[str, str] = {
     "POST /admin/grocery/orders/{order_id}/delivery-failed": "grocery_staff",
     "POST /admin/grocery/orders/{order_id}/complete": "grocery_staff",
     "POST /admin/grocery/orders/{order_id}/cancel": "grocery_staff",
+    "POST /admin/grocery/orders/{order_id}/record-payment": "grocery_staff",
+    # grocery staff at the door; the SERVICE additionally requires a Super Admin
+    "POST /admin/grocery/orders/{order_id}/refund": "grocery_staff",
     "POST /admin/grocery/orders/{order_id}/issues": "grocery_staff",
     "GET /admin/requests": "services_staff",
     "GET /admin/requests/{request_id}": "services_staff",

@@ -470,7 +470,7 @@ describe("My Grocery Orders", () => {
     const list = await screen.findByRole("list", { name: "Your grocery orders" })
     expect(within(list).getAllByRole("listitem")).toHaveLength(10)
     expect(screen.getByText("12 orders")).toBeInTheDocument()
-    expect(within(list).getByText("Rs 2,100 to pay in cash")).toBeInTheDocument()
+    expect(within(list).getByText("Rs 2,100 to pay")).toBeInTheDocument()
     expect(within(list).getAllByText("Price to be confirmed")).toHaveLength(9)
     for (const secret of ["+92300", "0300", "House 17", "Ayesha", "Blue gate"]) {
       expect(list.textContent).not.toContain(secret)
@@ -657,5 +657,134 @@ describe("one order", () => {
     expect(screen.getByRole("button", { name: "Cancelling…" })).toBeDisabled()
     await user.keyboard("{Escape}")
     expect(onOpenChange).not.toHaveBeenCalled()
+  })
+})
+
+describe("payment methods and all of B-17 (GROCERY-4C)", () => {
+  const everyMethod = () => {
+    const backend = new GroceryBackend()
+    backend.paymentMethods = ["cash_on_delivery", "card", "bank_transfer", "easypaisa", "jazzcash"]
+    return backend
+  }
+  const price = async () => (await screen.findByRole("heading", { name: "Price and payment" })).closest("section")!
+
+  it("offers every switched-on method, with early payment optional and no card details asked", async () => {
+    const { container } = open("/grocery", { backend: everyMethod() })
+    await screen.findByText("Accepting orders now")
+
+    const steps = within(screen.getByRole("region", { name: "How it works" })).getAllByRole("heading", { level: 3 })
+    expect(steps.at(-1)).toHaveTextContent("Step 4: Pay your way")
+    expect(screen.getByText("Pay using our available cash, card or online payment options.")).toBeInTheDocument()
+    expect(screen.getByText("Pay after order confirmation or upon delivery using the available payment options.")).toBeInTheDocument()
+    expect(within(screen.getByRole("list", { name: "Ways to pay" })).getAllByRole("listitem").map((li) => li.textContent)).toEqual([
+      "Cash on delivery",
+      "Card on delivery",
+      "Bank transfer",
+      "Easypaisa",
+      "JazzCash",
+    ])
+    expect(screen.getByText(/^Paying early is optional\./)).toBeInTheDocument()
+    expect(screen.getByText(/B17-Portal doesn't ask for them/)).toBeInTheDocument()
+    expect(container.querySelector("input")).toBeNull() // nothing here takes payment details
+  })
+
+  it.each([
+    [["card"], "Pay using our available cash or card payment options.", /bank transfer|easypaisa|jazzcash|\bonline\b/i],
+    [["easypaisa"], "Pay using our available cash or online payment options.", /\bcard (on|payments)|bank transfer|jazzcash/i],
+  ] as const)("names only what is switched on: %j", async (extra, stepText, never) => {
+    const backend = new GroceryBackend()
+    backend.paymentMethods = ["cash_on_delivery", ...extra]
+    const { container } = open("/grocery", { backend })
+    await screen.findByText(stepText)
+    expect(container.textContent).not.toMatch(never)
+  })
+
+  it("a server that doesn't say (older than this) is treated as cash only, with no all-of-B-17 claim", async () => {
+    const backend = new GroceryBackend()
+    const full = backend.availability.bind(backend)
+    backend.availability = () => {
+      const { paymentMethods: _methods, coversAllB17: _covers, ...older } = full()
+      return older
+    }
+    const { container } = open("/grocery", { backend })
+    await screen.findByText("Accepting orders now")
+    expect(screen.getAllByText("Pay in cash when your order arrives.")).toHaveLength(2)
+    expect(container.textContent).not.toMatch(/all sectors|anywhere in B-17|Pay your way/)
+  })
+
+  it("claims all of B-17 only once the server says a Super Admin confirmed it", async () => {
+    const backend = new GroceryBackend()
+    backend.coversAllB17 = true
+    open("/grocery", { backend })
+
+    expect(await screen.findByText("Delivering across all sectors and blocks of B-17, Islamabad.")).toBeInTheDocument()
+    expect(screen.getByText("Receive your groceries conveniently at your doorstep anywhere in B-17.")).toBeInTheDocument()
+    expect(screen.queryByRole("list", { name: "Blocks we deliver to" })).not.toBeInTheDocument()
+  })
+
+  function ordered(arrange: (backend: GroceryBackend, id: string) => void) {
+    const backend = everyMethod()
+    const { id } = backend.seed(USER.id)
+    backend.staffConfirm(id)
+    arrange(backend, id)
+    return { id, backend, view: open(`/profile/grocery/${id}`, { backend }) }
+  }
+
+  it("an unpaid order says what is due and how it can be paid", async () => {
+    ordered(() => {})
+    expect(await screen.findByText("To pay: Rs 2,100")).toBeInTheDocument()
+    await waitFor(async () =>
+      expect(await price()).toHaveTextContent("Pay after order confirmation or upon delivery using the available payment options.")
+    )
+  })
+
+  it("an order paid early is paid and plainly not delivered", async () => {
+    const { view: { container } } = ordered((backend, id) => backend.staffPay(id, "bank_transfer"))
+
+    expect(await screen.findByText("Paid by bank transfer: Rs 2,100")).toBeInTheDocument()
+    expect(await price()).toHaveTextContent(/Our team confirmed this payment .*It isn't delivered yet/)
+    expect(screen.getByRole("list", { name: "Order progress" }).querySelector('[aria-current="step"]')).toHaveTextContent("Confirmed")
+    expect(container.textContent).not.toMatch(/To pay:|your order was delivered/i)
+  })
+
+  it("on its way and already paid, nothing is asked for at the door", async () => {
+    const { view: { container } } = ordered((backend, id) => {
+      backend.staffMove(id, "preparing")
+      backend.staffMove(id, "out_for_delivery")
+      backend.staffPay(id, "card")
+    })
+
+    expect(await screen.findByText("Paid by card: Rs 2,100")).toBeInTheDocument()
+    expect(screen.getByText(/Your order is on its way\. It's already paid\./)).toBeInTheDocument()
+    expect(container.textContent).not.toMatch(/have the cash ready|payment ready/)
+  })
+
+  it("a refund is shown only from the server's record, with the payment kept and no reason", async () => {
+    const { backend, id, view: { container } } = ordered((fake, orderId) => {
+      fake.staffPay(orderId, "jazzcash")
+      fake.staffRefund(orderId)
+    })
+
+    expect(await screen.findByText("Refunded: Rs 2,100")).toBeInTheDocument()
+    expect(await price()).toHaveTextContent("You paid Rs 2,100 with JazzCash.")
+    expect(await price()).toHaveTextContent("This order was cancelled.")
+    expect(container.textContent).not.toMatch(/To pay:|Cash on delivery:/)
+    expect(backend.orders.find((o) => o.detail.id === id)!.detail.status).toBe("cancelled")
+  })
+
+  it("the list says paid or refunded only when the server does", async () => {
+    const backend = everyMethod()
+    const paid = backend.seed(USER.id).id
+    backend.staffConfirm(paid)
+    backend.staffPay(paid, "easypaisa")
+    const refunded = backend.seed(USER.id).id
+    backend.staffConfirm(refunded)
+    backend.staffPay(refunded, "card")
+    backend.staffRefund(refunded)
+    open("/profile/grocery", { backend })
+
+    const list = await screen.findByRole("list", { name: "Your grocery orders" })
+    expect(within(list).getByText("Rs 2,100 paid")).toBeInTheDocument()
+    expect(within(list).getByText("Payment refunded")).toBeInTheDocument()
   })
 })

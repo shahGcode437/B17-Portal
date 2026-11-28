@@ -22,6 +22,7 @@ EXPECTED_TABLES = {
     "grocery_order_status_history",
     "grocery_orders",
     "grocery_payments",
+    "grocery_refunds",
     "grocery_settings_revisions",
     "listing_categories",
     "listing_status_history",

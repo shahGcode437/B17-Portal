@@ -17,6 +17,8 @@ import type {
   GroceryStaffOrderDetailDto,
   GroceryStaffOrderSummaryDto,
   GroceryStaffPaymentDto,
+  GroceryStaffRefundDto,
+  GroceryRecordableMethodDto,
 } from "../../lib/api/dto/groceryStaff"
 import type { GroceryBackend, GroceryReply, StoredOrder } from "./groceryBackend"
 
@@ -37,6 +39,7 @@ interface StaffRecord {
   confirmations: GroceryStaffConfirmationDto[]
   events: GroceryStaffEventDto[]
   payment?: GroceryStaffPaymentDto
+  refund?: GroceryStaffRefundDto
   /** What only staff see about a history row. */
   rows: WeakMap<GroceryHistoryDto, { actor?: GroceryStaffMemberDto; reason?: string }>
   cancelledAt?: string
@@ -75,10 +78,30 @@ const BODY_KEYS: Record<string, string[]> = {
   "reduce-amount": ["revision", "finalAmountPaisa", "reason"],
   "start-preparing": ["revision"], dispatch: ["revision", "note"], "delivery-failed": ["revision", "reason"],
   complete: ["revision", "amountCollectedPaisa"], cancel: ["revision", "reason", "procurementAcknowledged"],
+  "record-payment": ["revision", "method", "amountPaisa", "reference", "moneyVerified"],
+  refund: ["revision", "amountPaisa", "method", "reference", "reason", "moneyReturned", "procurementAcknowledged"],
   issues: ["kind", "note"],
 }
 
 type Body = Record<string, unknown>
+
+const ONLINE = ["bank_transfer", "easypaisa", "jazzcash"]
+
+/** The server's normal form of a reference: no spaces or hyphens, upper case. */
+const referenceOf = (value: unknown) => (typeof value === "string" ? value.replace(/[\s-]/g, "").toUpperCase() : "")
+
+function referenceProblem(reference: string): string | undefined {
+  if (!/^[A-Z0-9/._#]{4,64}$/.test(reference)) return "invalid_reference"
+  const digits = /\d{13,19}/.exec(reference)?.[0]
+  if (digits) {
+    const sum = [...digits].reverse().reduce((total, digit, i) => {
+      const doubled = Number(digit) * (i % 2 ? 2 : 1)
+      return total + (doubled > 9 ? doubled - 9 : doubled)
+    }, 0)
+    if (sum % 10 === 0) return "looks_like_card_number"
+  }
+  return /^PK\d{2}[A-Z]{4}\d{16}$/.test(reference) ? "looks_like_account_number" : undefined
+}
 
 function text(value: unknown): string {
   return typeof value === "string" ? value.trim() : ""
@@ -120,7 +143,25 @@ function bodyProblems(operation: string, body: Body): Problem[] {
     required("reason", 200)
   }
   if (operation === "delivery-failed" || operation === "cancel") required("reason", 200)
-  if (operation === "complete") integer("amountCollectedPaisa", 1)
+  if (operation === "complete") integer("amountCollectedPaisa", 1, false)
+  if (operation === "record-payment") {
+    if (body.method === "cash_on_delivery") problems.push({ field: "method", code: "cash_at_delivery" })
+    else if (!["card", ...ONLINE].includes(String(body.method))) problems.push({ field: "method", code: "enum" })
+    integer("amountPaisa", 1)
+    const wrong = referenceProblem(referenceOf(body.reference))
+    if (wrong) problems.push({ field: "reference", code: wrong })
+    if (body.moneyVerified !== true) problems.push({ field: "moneyVerified", code: "verification_required" })
+  }
+  if (operation === "refund") {
+    integer("amountPaisa", 1)
+    if (!["cash", "card", ...ONLINE].includes(String(body.method))) problems.push({ field: "method", code: "enum" })
+    if (referenceOf(body.reference)) {
+      const wrong = referenceProblem(referenceOf(body.reference))
+      if (wrong) problems.push({ field: "reference", code: wrong })
+    } else if (body.method !== "cash") problems.push({ field: "reference", code: "reference_required" })
+    required("reason", 200)
+    if (body.moneyReturned !== true) problems.push({ field: "moneyReturned", code: "return_required" })
+  }
   if (operation === "issues") {
     if (body.kind === "cancelled_after_procurement") problems.push({ field: "kind", code: "system_only" })
     else if (!["payment_discrepancy", "item_shortage", "delivery_problem", "customer_unreachable", "other"].includes(String(body.kind))) {
@@ -179,15 +220,21 @@ export class GroceryStaffBackend {
       ...(record.assignee ? { assignee: record.assignee } : {}),
       ...(detail.agreedTotalPaisa !== undefined ? { agreedTotalPaisa: detail.agreedTotalPaisa } : {}),
       ...(detail.finalAmountDuePaisa !== undefined ? { finalAmountDuePaisa: detail.finalAmountDuePaisa } : {}),
-      paymentCollected: Boolean(record.payment),
+      paymentCollected: Boolean(record.payment) && !record.refund,
+      ...(this.store.paymentStatusOf(detail) ? { paymentStatus: this.store.paymentStatusOf(detail) } : {}),
       failedDeliveryAttempts: detail.history.filter((r) => r.fromStatus === "out_for_delivery" && r.toStatus === "preparing").length,
       issueCount: record.events.filter((event) => event.action === "issue_recorded").length,
     }
   }
 
+  private recordable(order: StoredOrder): GroceryRecordableMethodDto[] {
+    if (this.record(order).payment) return []
+    return this.store.paymentMethods.filter((m): m is GroceryRecordableMethodDto => m !== "cash_on_delivery")
+  }
+
   private actions(order: StoredOrder, viewer: StaffViewer): GroceryStaffActionDto[] {
     const status = order.detail.status
-    const assignee = this.record(order).assignee
+    const { assignee, payment: paid, refund: refunded } = this.record(order)
     const active = ACTIVE.includes(status)
     const holder = viewer.superAdmin || assignee?.userId === viewer.id
     const actions: GroceryStaffActionDto[] = []
@@ -195,12 +242,20 @@ export class GroceryStaffBackend {
     if (active && assignee && holder) actions.push("release")
     if (holder) {
       if (status === "submitted") actions.push("confirm")
-      if (status === "confirmed" || status === "preparing") actions.push("reconfirm")
-      if (["confirmed", "preparing", "out_for_delivery"].includes(status)) actions.push("reduce_amount")
+      if ((status === "confirmed" || status === "preparing") && !paid) actions.push("reconfirm")
+      if (["confirmed", "preparing", "out_for_delivery"].includes(status) && !paid) actions.push("reduce_amount")
       if (status === "confirmed") actions.push("start_preparing")
       if (status === "preparing") actions.push("dispatch")
       if (status === "out_for_delivery") actions.push("delivery_failed", "complete")
-      if (["submitted", "confirmed"].includes(status) || (status === "preparing" && viewer.superAdmin)) actions.push("cancel")
+      if (!paid && (["submitted", "confirmed"].includes(status) || (status === "preparing" && viewer.superAdmin))) {
+        actions.push("cancel")
+      }
+      if (["confirmed", "preparing", "out_for_delivery"].includes(status) && !paid && this.recordable(order).length) {
+        actions.push("record_payment")
+      }
+      if (viewer.superAdmin && paid && !refunded && ["confirmed", "preparing", "delivered"].includes(status)) {
+        actions.push("record_refund")
+      }
     }
     actions.push("record_issue")
     return actions
@@ -240,6 +295,8 @@ export class GroceryStaffBackend {
       ...(detail.deliveredAt ? { deliveredAt: detail.deliveredAt } : {}),
       confirmations: record.confirmations,
       ...(record.payment ? { payment: record.payment } : {}),
+      ...(record.refund ? { refund: record.refund } : {}),
+      recordableMethods: this.recordable(order),
       deliveryAttempts: attempts,
       history: detail.history.map((row) => {
         const extra = record.rows.get(row)
@@ -358,8 +415,10 @@ export class GroceryStaffBackend {
       dispatch: ["preparing"],
       "delivery-failed": ["out_for_delivery"],
       complete: ["out_for_delivery"],
+      "record-payment": ["confirmed", "preparing", "out_for_delivery"],
       cancel: ["submitted", "confirmed", "preparing"],
     }
+    if (operation === "refund") return this.refund(order, body, viewer)
     if (!allowed[operation].includes(status)) return conflict("invalid_state_transition")
     const afterBuying = status === "preparing"
     if (operation === "cancel" && afterBuying && !viewer.superAdmin) {
@@ -375,7 +434,24 @@ export class GroceryStaffBackend {
     }
     const due = detail.finalAmountDuePaisa ?? 0
 
-    if (operation === "confirm" || operation === "reconfirm") {
+    if (record.payment && ["reconfirm", "reduce-amount", "cancel", "record-payment"].includes(operation)) {
+      return conflict("payment_recorded")
+    }
+
+    if (operation === "record-payment") {
+      const method = body.method as GroceryRecordableMethodDto
+      const reference = referenceOf(body.reference)
+      if (!this.store.paymentMethods.includes(method)) return invalid("method", "method_not_enabled")
+      if (body.amountPaisa !== due) return invalid("amountPaisa", "amount_mismatch")
+      const taken = this.store.orders.some((other) => {
+        const payment = this.record(other).payment
+        return payment?.method === method && payment.reference === reference
+      })
+      if (ONLINE.includes(method) && taken) return invalid("reference", "reference_in_use")
+      const at = this.store.tick()
+      record.payment = { method, amountDuePaisa: due, amountCollectedPaisa: due, reference, collectedBy: me, collectedAt: at }
+      detail.payment = { method, status: "collected", amountDuePaisa: due, amountCollectedPaisa: due, collectedAt: at }
+    } else if (operation === "confirm" || operation === "reconfirm") {
       const items = body.itemsSubtotalPaisa as number
       const service = (body.serviceFeePaisa as number | undefined) ?? 0
       const delivery = (body.deliveryFeePaisa as number | undefined) ?? 0
@@ -419,10 +495,15 @@ export class GroceryStaffBackend {
     } else if (operation === "delivery-failed") {
       move("preparing", text(body.reason))
     } else if (operation === "complete") {
-      if (body.amountCollectedPaisa !== due) return invalid("amountCollectedPaisa", "amount_mismatch")
+      const cash = body.amountCollectedPaisa
+      if (record.payment && cash !== undefined) return invalid("amountCollectedPaisa", "already_paid")
+      if (!record.payment && cash === undefined) return invalid("amountCollectedPaisa", "missing")
+      if (!record.payment && cash !== due) return invalid("amountCollectedPaisa", "amount_mismatch")
       const at = this.store.tick()
-      record.payment = { method: "cash_on_delivery", amountDuePaisa: due, amountCollectedPaisa: due, collectedBy: me, collectedAt: at }
-      detail.payment = { method: "cash_on_delivery", status: "collected", amountDuePaisa: due, amountCollectedPaisa: due, collectedAt: at }
+      if (!record.payment) {
+        record.payment = { method: "cash_on_delivery", amountDuePaisa: due, amountCollectedPaisa: due, collectedBy: me, collectedAt: at }
+        detail.payment = { method: "cash_on_delivery", status: "collected", amountDuePaisa: due, amountCollectedPaisa: due, collectedAt: at }
+      }
       detail.deliveredAt = at
       move("delivered")
     } else if (operation === "cancel") {
@@ -436,6 +517,56 @@ export class GroceryStaffBackend {
     }
     detail.revision += 1
     detail.canCancel = detail.status === "submitted"
+    detail.updatedAt = this.store.tick()
+    return null
+  }
+
+  /** The Super Admin's record of a full refund, in the server's order of refusal (§21). */
+  private refund(order: StoredOrder, body: Body, viewer: StaffViewer): GroceryReply | null {
+    const detail = order.detail
+    const record = this.record(order)
+    const me: GroceryStaffMemberDto = { userId: viewer.id, displayName: viewer.displayName }
+    const status = detail.status
+    if (!viewer.superAdmin) return fail(403, "forbidden", [{ field: "order", code: "super_admin_required" }])
+    if (!["confirmed", "preparing", "delivered"].includes(status)) return conflict("invalid_state_transition")
+    if (body.revision !== detail.revision) return stale()
+    if (!record.payment || record.refund) {
+      return fail(409, "invalid_state_transition", [{ field: "payment", code: record.refund ? "already_refunded" : "no_payment" }])
+    }
+    if (body.amountPaisa !== record.payment.amountCollectedPaisa) return invalid("amountPaisa", "amount_mismatch")
+    const afterBuying = status === "preparing"
+    if (afterBuying && body.procurementAcknowledged !== true) return invalid("procurementAcknowledged", "acknowledgement_required")
+    const at = this.store.tick()
+    const reference = referenceOf(body.reference)
+    record.refund = {
+      amountPaisa: record.payment.amountCollectedPaisa,
+      method: body.method as GroceryStaffRefundDto["method"],
+      ...(reference ? { reference } : {}),
+      reason: text(body.reason),
+      refundedBy: me,
+      refundedAt: at,
+    }
+    detail.payment = { ...detail.payment!, status: "refunded", refundedAmountPaisa: record.refund.amountPaisa, refundedAt: at }
+    if (status !== "delivered") {
+      const row: GroceryHistoryDto = { fromStatus: status, toStatus: "cancelled", actorRole: "staff", createdAt: this.store.tick() }
+      detail.history.push(row)
+      record.rows.set(row, { actor: me, reason: text(body.reason) })
+      detail.status = "cancelled"
+      record.cancelledAt = row.createdAt
+      detail.cancelledAt = row.createdAt
+      detail.cancelledBy = "staff"
+      if (afterBuying) {
+        record.events.push({
+          action: "issue_recorded",
+          issueKind: "cancelled_after_procurement",
+          note: text(body.reason),
+          actor: me,
+          createdAt: this.store.tick(),
+        })
+      }
+    }
+    detail.revision += 1
+    detail.canCancel = false
     detail.updatedAt = this.store.tick()
     return null
   }

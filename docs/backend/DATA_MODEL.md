@@ -505,3 +505,28 @@ grocery_orders *─0..1 users (assigned_to)
 
 - It counts the changes to the account's staff role and scopes and is **on the account**, so it survives removal and re-appointment. The application only ever adds to it (`StaffAuthorityService`, under the account's row lock, in the transaction of the change). The database does **not** itself enforce that it only grows or that every role or scope write advances it: a hand-written `UPDATE` of `user_roles` or `staff_scope_assignments` would bypass it.
 - Meaning and contract: `AUTH_RBAC.md` §39. Downgrade drops the column and its check (`DEPLOYMENT.md` §19).
+
+## 24. Payments, refunds and all of B-17 — **`0014` implemented in GROCERY-4C** (not applied to any real database)
+
+Additive. No existing row is rewritten and the migration runs no data statement.
+
+| Table | Change |
+|---|---|
+| `grocery_settings_revisions` | `payment_methods varchar(32)[] NOT NULL DEFAULT {cash_on_delivery}` (check: contains cash, known values only, no null, at most 5); `covers_all_b17 boolean NOT NULL DEFAULT false` (check: only with at least one block). Every earlier version takes these defaults |
+| `grocery_payments` | `reference varchar(64)` (null exactly for cash; format check: stored upper-case without spaces or hyphens); `method` check widened to the five methods; unique `(id, order_id, amount_collected_paisa)` for the refund's foreign key; partial unique `(method, reference)` for `bank_transfer`, `easypaisa`, `jazzcash`. **Unchanged:** one row per order, collected = due, append-only |
+| `grocery_refunds` (new) | `id`, `order_id`, `payment_id`, `amount_paisa`, `method`, `reference?`, `reason`, `refunded_by`, `refunded_at`. Composite foreign key `(payment_id, order_id, amount_paisa)` → the payment, so **only the whole payment of that order**; unique `order_id` and unique `payment_id`; reference required unless cash; append-only |
+
+**Triggers** (they hold whatever code writes the rows):
+
+| Trigger | Refuses |
+|---|---|
+| `grocery_payment_matches_order` | a payment for an order not `confirmed` / `preparing` / `out_for_delivery`, or for another amount than `final_due_paisa` |
+| `grocery_order_keeps_its_money` | on a paid order, a change of agreed or due amount, or cancellation without a refund; moving to `delivered` (with `delivered_at`) without a payment |
+| `grocery_refund_fits_order` | a refund for an order not `confirmed`, `preparing` or `delivered` |
+| `trg_grocery_refunds_append_only` | update or delete of a refund |
+
+**Concurrency:** every staff change locks the order row first (`SELECT … FOR UPDATE`), so two payments, a payment against a price change, cancellation or delivery, and two refunds are serialized; the unique constraints are the second line. Two orders naming one online transaction share no row lock: the partial unique index decides, and the loser gets `422 reference_in_use`. A settings change waits for a payment in progress (shared / exclusive settings lock). A trigger reads the order row without locking it; the application's order lock is what makes that safe, so **a hand-written script must lock the order first**.
+
+**Limits:** the database does not force a refund and its cancellation into one transaction (the service does), and triggers can be disabled by the table owner (least-privilege credentials, `DEPLOYMENT.md` §16).
+
+**Downgrade** refuses, changing nothing, while a non-cash payment, any refund, or a settings version with a non-default method list or coverage confirmation exists.

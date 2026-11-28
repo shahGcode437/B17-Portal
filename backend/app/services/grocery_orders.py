@@ -35,6 +35,8 @@ from app.models import (
     GroceryOrder,
     GroceryOrderItem,
     GroceryOrderStatusHistory,
+    GroceryPayment,
+    GroceryRefund,
     GrocerySettingsRevision,
 )
 from app.models.enums import (
@@ -134,6 +136,8 @@ class GroceryOrderService:
             accepting_orders=reason is None,
             unavailable_reason=reason,
             serviceable_blocks=list(settings.serviceable_blocks),
+            covers_all_b17=settings.covers_all_b17 and bool(settings.serviceable_blocks),
+            payment_methods=rules.ordered_methods(settings.payment_methods),
             schedule=GrocerySchedule(
                 timezone=settings.timezone,
                 operating_days=list(settings.operating_days),
@@ -275,7 +279,10 @@ class GroceryOrderService:
             principal.user_id, query.status, query.limit, query.offset
         )
         return (
-            [GroceryOrderSummary(**_summary_fields(order, count)) for order, count in rows],
+            [
+                GroceryOrderSummary(**_summary_fields(order, count, paid=paid, refunded=refunded))
+                for order, count, paid, refunded in rows
+            ],
             PageMeta(total=total, limit=query.limit, offset=query.offset),
         )
 
@@ -292,8 +299,12 @@ class GroceryOrderService:
             (row.actor_role for row in history if row.to_status is GroceryOrderStatus.CANCELLED),
             None,
         )
+        collected = self._repository.payment_of(order.id)
+        refund = None if collected is None else self._repository.refund_of(order.id)
         return GroceryOrderDetail(
-            **_summary_fields(order, len(items)),
+            **_summary_fields(
+                order, len(items), paid=collected is not None, refunded=refund is not None
+            ),
             items=[
                 GroceryItemRead(
                     position=item.position,
@@ -330,7 +341,7 @@ class GroceryOrderService:
                 )
                 for row in self._repository.confirmations_of(order.id)
             ],
-            payment=self._payment(order),
+            payment=_payment(order, collected, refund),
             can_cancel=rules.next_status(
                 order.status, rules.GroceryAction.CANCEL, GroceryActorRole.CUSTOMER
             )
@@ -347,18 +358,6 @@ class GroceryOrderService:
                 for row in history
             ],
             updated_at=order.updated_at,
-        )
-
-    def _payment(self, order: GroceryOrder) -> GroceryPaymentRead | None:
-        if order.final_due_paisa is None or order.status is GroceryOrderStatus.CANCELLED:
-            return None  # nothing is owed before an agreement, nor on a cancelled order
-        collected = self._repository.payment_of(order.id)
-        return GroceryPaymentRead(
-            method=GroceryPaymentMethod.CASH_ON_DELIVERY,
-            status="due" if collected is None else "collected",
-            amount_due_paisa=order.final_due_paisa,
-            amount_collected_paisa=None if collected is None else collected.amount_collected_paisa,
-            collected_at=None if collected is None else collected.collected_at,
         )
 
     # -- cancel ----------------------------------------------------------------------------------
@@ -446,7 +445,33 @@ def _stale(current_revision: int) -> AppError:
     )
 
 
-def _summary_fields(order: GroceryOrder, item_count: int) -> dict[str, object]:
+def _payment(
+    order: GroceryOrder, collected: GroceryPayment | None, refund: GroceryRefund | None
+) -> GroceryPaymentRead | None:
+    """A recorded payment is always shown, a cancelled order's refunded one included. Without
+    one, something is owed only on an open or delivered order with an agreed price."""
+    if collected is None:
+        if order.final_due_paisa is None or order.status is GroceryOrderStatus.CANCELLED:
+            return None
+        return GroceryPaymentRead(
+            method=GroceryPaymentMethod.CASH_ON_DELIVERY,
+            status="due",
+            amount_due_paisa=order.final_due_paisa,
+        )
+    return GroceryPaymentRead(
+        method=collected.method,
+        status="collected" if refund is None else "refunded",
+        amount_due_paisa=collected.amount_due_paisa,
+        amount_collected_paisa=collected.amount_collected_paisa,
+        collected_at=collected.collected_at,
+        refunded_amount_paisa=None if refund is None else refund.amount_paisa,
+        refunded_at=None if refund is None else refund.refunded_at,
+    )
+
+
+def _summary_fields(
+    order: GroceryOrder, item_count: int, *, paid: bool, refunded: bool
+) -> dict[str, object]:
     return {
         "id": order.id,
         "reference": order.reference,
@@ -458,4 +483,7 @@ def _summary_fields(order: GroceryOrder, item_count: int) -> dict[str, object]:
         "cancelled_at": order.cancelled_at,
         "final_amount_due_paisa": order.final_due_paisa,
         "delivered_at": order.delivered_at,
+        "payment_status": rules.payment_status(
+            order.status, order.final_due_paisa, paid=paid, refunded=refunded
+        ),
     }

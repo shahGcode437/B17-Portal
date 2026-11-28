@@ -37,6 +37,8 @@ DEFAULTS = {
     "dailyCapacity": 10,
     "maxActiveOrdersPerCustomer": 2,
     "maxItemsPerOrder": 50,
+    "paymentMethods": ["cash_on_delivery"],
+    "coversAllB17": False,
 }
 
 
@@ -81,7 +83,10 @@ def test_availability_is_public_private_free_and_never_cached(auth_env: AuthEnv)
         "limits",
         "units",
         "substitutionOptions",
+        "paymentMethods",
+        "coversAllB17",
     }
+    assert (data["paymentMethods"], data["coversAllB17"]) == (["cash_on_delivery"], False)
     assert data["schedule"] == {
         "timezone": "Asia/Karachi",
         "operatingDays": [1, 2, 3, 4, 5, 6, 7],

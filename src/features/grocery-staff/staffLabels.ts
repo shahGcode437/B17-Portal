@@ -2,6 +2,7 @@ import type { GroceryConfirmationMethodDto, GrocerySubstitutionDto } from "@/lib
 import type {
   GroceryIssueKindDto,
   GroceryRecordableIssueDto,
+  GroceryRefundMethodDto,
   GroceryStaffActionDto,
   GroceryStaffMemberDto,
   GroceryStaffOrderDetailDto,
@@ -37,6 +38,15 @@ export const ISSUE_LABEL: Record<GroceryIssueKindDto, string> = {
   cancelled_after_procurement: "Cancelled after buying may have started",
 }
 
+/** How a refund went back, as staff read and choose it. */
+export const REFUND_METHOD_NAME: Record<GroceryRefundMethodDto, string> = {
+  cash: "in cash",
+  card: "to the card",
+  bank_transfer: "by bank transfer",
+  easypaisa: "with Easypaisa",
+  jazzcash: "with JazzCash",
+}
+
 export const RECORDABLE_ISSUES: GroceryRecordableIssueDto[] = [
   "customer_unreachable",
   "item_shortage",
@@ -57,6 +67,8 @@ export const ACTION_NOUN: Record<GroceryStaffActionDto, string> = {
   delivery_failed: "the failed delivery",
   complete: "the delivery and cash",
   cancel: "the cancellation",
+  record_payment: "the payment",
+  record_refund: "the refund",
   record_issue: "the issue",
 }
 
@@ -72,7 +84,18 @@ export const ACTION_DONE: Record<GroceryStaffActionDto, string> = {
   delivery_failed: "Failed delivery recorded. The order is back in preparing.",
   complete: "Delivery and cash recorded.",
   cancel: "The order was cancelled.",
+  record_payment: "Payment recorded. The order's status didn't change.",
+  record_refund: "Refund recorded.",
   record_issue: "Issue recorded.",
+}
+
+/** A paid order is delivered without collecting anything, so no cash is spoken of. */
+export function actionNoun(action: GroceryStaffActionDto, before: GroceryStaffOrderDetailDto): string {
+  return action === "complete" && before.payment ? "the delivery" : ACTION_NOUN[action]
+}
+
+export function actionDone(action: GroceryStaffActionDto, before: GroceryStaffOrderDetailDto): string {
+  return action === "complete" && before.payment ? "Delivery recorded." : ACTION_DONE[action]
 }
 
 export function memberName(member: GroceryStaffMemberDto | undefined, viewerId: string): string {
@@ -93,7 +116,11 @@ export function assignmentLabel(assignee: GroceryStaffMemberDto | undefined, vie
  */
 export function actionNotes(order: GroceryStaffOrderDetailDto, viewerId: string, superAdmin: boolean): string[] {
   if (order.status === "delivered" || order.status === "cancelled") {
-    return ["This order is finished. You can still record an issue."]
+    const finished = ["This order is finished. You can still record an issue."]
+    if (order.availableActions.includes("record_refund")) {
+      finished.push("If its payment has been returned to the customer, record the refund.")
+    }
+    return finished
   }
   const holder = order.assignee
   const mine = holder?.userId === viewerId
@@ -107,6 +134,15 @@ export function actionNotes(order: GroceryStaffOrderDetailDto, viewerId: string,
     }
   } else if (holder && !mine) {
     notes.push(`${holder.displayName || "Another staff member"} has this order. As Super Admin you can still act on it.`)
+  }
+  if (order.payment && !order.refund) {
+    notes.push(
+      superAdmin
+        ? "This order is paid: its amount can't be changed. To cancel it, return the money first, then record the refund."
+        : "This order is paid: its amount can't be changed. Only a Super Admin can record a refund and cancel it. If it can't be supplied, record an issue."
+    )
+    if (order.status === "out_for_delivery") notes.push("To refund it, first record this delivery as failed.")
+    return notes
   }
   if (order.status === "preparing" && !superAdmin) {
     notes.push("Only a Super Admin can cancel once preparation has started. If it needs cancelling, record an issue.")

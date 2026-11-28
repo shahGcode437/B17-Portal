@@ -1,7 +1,8 @@
-import { Banknote } from "lucide-react"
+import { Banknote, CircleCheck, Undo2, type LucideIcon } from "lucide-react"
 import { Typography } from "@/components/foundation/Typography"
 import { METHOD_LABEL, formatPaisa, formatStamp } from "@/features/grocery/format"
-import type { GroceryAgreementDto, GroceryOrderDetailDto } from "@/lib/api/dto/grocery"
+import { PAID_BY, paymentCopy } from "@/features/grocery/paymentCopy"
+import type { GroceryAgreementDto, GroceryOrderDetailDto, GroceryPaymentMethodDto } from "@/lib/api/dto/grocery"
 
 function Row({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
   return (
@@ -17,12 +18,85 @@ function recordedLine(agreement: GroceryAgreementDto): string {
   return `Recorded by our team ${METHOD_LABEL[agreement.method]}, ${formatStamp(agreement.recordedAt)}.`
 }
 
+function PaymentBox({ icon: Icon, title, lines }: { icon: LucideIcon; title: string; lines: string[] }) {
+  return (
+    <div className="flex items-start gap-3 rounded-xl bg-primary/8 p-3 ring-1 ring-primary/20">
+      <Icon className="mt-0.5 size-5 shrink-0 text-primary" aria-hidden="true" />
+      <div className="flex min-w-0 flex-col gap-0.5">
+        <Typography as="p" variant="label" className="text-base">
+          {title}
+        </Typography>
+        {lines.map((line) => (
+          <Typography key={line} variant="body-sm" className="text-muted-foreground">
+            {line}
+          </Typography>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 /**
- * Price and cash on delivery. Every figure is the server's: the recorded totals, any later
- * reduction of the amount due, and the cash collected. Nothing is calculated that the server did not
+ * What the server says has happened to the money, or what is still to pay. "Paid" and "refunded"
+ * come only from the payment record. `methods` is what is offered now (`undefined`: not known).
+ */
+function PaymentState({ order, methods }: { order: GroceryOrderDetailDto; methods?: GroceryPaymentMethodDto[] }) {
+  const payment = order.payment
+  const copy = paymentCopy(methods)
+  const cancelled = order.status === "cancelled"
+  const open = !cancelled && order.status !== "delivered"
+
+  if (payment && payment.status !== "due" && payment.amountCollectedPaisa !== undefined) {
+    const paid = `${formatPaisa(payment.amountCollectedPaisa)} ${PAID_BY[payment.method]}`
+    if (payment.status === "refunded") {
+      return (
+        <PaymentBox
+          icon={Undo2}
+          title={`Refunded: ${formatPaisa(payment.refundedAmountPaisa ?? payment.amountCollectedPaisa)}`}
+          lines={[
+            `You paid ${paid}.`,
+            `Our team recorded that it was returned to you${payment.refundedAt ? ` on ${formatStamp(payment.refundedAt)}` : ""}. If it hasn't reached you, tell our team.`,
+          ]}
+        />
+      )
+    }
+    const cash = payment.method === "cash_on_delivery"
+    return (
+      <PaymentBox
+        icon={CircleCheck}
+        title={`Paid ${PAID_BY[payment.method]}: ${formatPaisa(payment.amountCollectedPaisa)}`}
+        lines={[
+          ...(payment.collectedAt
+            ? [`${cash ? "Received" : "Our team confirmed this payment"} ${formatStamp(payment.collectedAt)}.`]
+            : []),
+          ...(open ? ["Nothing more to pay. It isn't delivered yet: the status above shows where it is."] : []),
+        ]}
+      />
+    )
+  }
+  if (cancelled) return null
+  if (!payment) {
+    return (
+      <Typography variant="body-sm" className="text-muted-foreground">
+        {copy.summary}
+      </Typography>
+    )
+  }
+  return (
+    <PaymentBox
+      icon={Banknote}
+      title={`${copy.cashOnly ? "Cash on delivery" : "To pay"}: ${formatPaisa(payment.amountDuePaisa)}`}
+      lines={copy.cashOnly ? ["Pay this in cash when your order arrives."] : [copy.howToPay, ...copy.notes]}
+    />
+  )
+}
+
+/**
+ * Price and payment. Every figure is the server's: the recorded totals, any later
+ * reduction of the amount due, and any payment or refund. Nothing is calculated that the server did not
  * send, except the size of a reduction (the difference of two of its whole-paisa figures).
  */
-function PriceCard({ order }: { order: GroceryOrderDetailDto }) {
+function PriceCard({ order, methods }: { order: GroceryOrderDetailDto; methods?: GroceryPaymentMethodDto[] }) {
   const latest = order.agreements.at(-1)
   const earlier = order.agreements.slice(0, -1)
   const cancelled = order.status === "cancelled"
@@ -82,33 +156,12 @@ function PriceCard({ order }: { order: GroceryOrderDetailDto }) {
         </div>
       )}
 
-      {cancelled ? (
-        latest && (
-          <Typography variant="body-sm" className="text-muted-foreground">
-            This order was cancelled. The figures above are its record.
-          </Typography>
-        )
-      ) : order.payment ? (
-        <div className="flex items-start gap-3 rounded-xl bg-primary/8 p-3 ring-1 ring-primary/20">
-          <Banknote className="mt-0.5 size-5 shrink-0 text-primary" aria-hidden="true" />
-          <div className="flex flex-col gap-0.5">
-            <Typography as="p" variant="label" className="text-base">
-              {order.payment.status === "collected" && order.payment.amountCollectedPaisa !== undefined
-                ? `Paid in cash: ${formatPaisa(order.payment.amountCollectedPaisa)}`
-                : `Cash on delivery: ${formatPaisa(order.payment.amountDuePaisa)}`}
-            </Typography>
-            <Typography variant="body-sm" className="text-muted-foreground">
-              {order.payment.status === "collected" && order.payment.collectedAt
-                ? `Received ${formatStamp(order.payment.collectedAt)}.`
-                : "Pay this in cash when your order arrives."}
-            </Typography>
-          </div>
-        </div>
-      ) : (
+      {cancelled && latest && (
         <Typography variant="body-sm" className="text-muted-foreground">
-          Payment is cash on delivery.
+          This order was cancelled. The figures above are its record.
         </Typography>
       )}
+      <PaymentState order={order} methods={methods} />
     </section>
   )
 }

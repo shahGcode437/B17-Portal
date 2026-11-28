@@ -26,9 +26,15 @@ from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 from enum import StrEnum
+from typing import Literal
 from zoneinfo import ZoneInfo
 
-from app.models.enums import GroceryActorRole, GroceryOrderStatus, GroceryUnit
+from app.models.enums import (
+    GroceryActorRole,
+    GroceryOrderStatus,
+    GroceryPaymentMethod,
+    GroceryUnit,
+)
 
 # ------------------------------------------------------------------------------ lifecycle
 
@@ -108,6 +114,96 @@ MIN_ORDER_VALUE_LIMIT_PAISA = 100
 
 def order_total(items_subtotal: int, service_fee: int, delivery_fee: int) -> int:
     return items_subtotal + service_fee + delivery_fee
+
+
+# ------------------------------------------------------------------------------ payments
+
+#: Canonical order, cash first: how a list of methods is stored and shown.
+PAYMENT_METHOD_ORDER: tuple[GroceryPaymentMethod, ...] = tuple(GroceryPaymentMethod)
+#: The methods a staff member records when VERIFIED, before or at delivery. Cash is not one: it
+#: is collected at the door and recorded together with the delivery.
+RECORDABLE_METHODS: frozenset[GroceryPaymentMethod] = frozenset(GroceryPaymentMethod) - {
+    GroceryPaymentMethod.CASH_ON_DELIVERY
+}
+#: A reference that identifies one movement of money: it can't pay two orders.
+ONLINE_METHODS: frozenset[GroceryPaymentMethod] = frozenset(
+    {
+        GroceryPaymentMethod.BANK_TRANSFER,
+        GroceryPaymentMethod.EASYPAISA,
+        GroceryPaymentMethod.JAZZCASH,
+    }
+)
+#: A payment may be recorded once there is an agreed price and until the order is finished.
+PAYABLE_STATUSES: frozenset[GroceryOrderStatus] = frozenset(
+    {
+        GroceryOrderStatus.CONFIRMED,
+        GroceryOrderStatus.PREPARING,
+        GroceryOrderStatus.OUT_FOR_DELIVERY,
+    }
+)
+#: Never while the goods are on their way (record the failed attempt first). Before delivery the
+#: refund CANCELS the order in the same change; after it, the order stays delivered.
+REFUNDABLE_STATUSES: frozenset[GroceryOrderStatus] = frozenset(
+    {GroceryOrderStatus.CONFIRMED, GroceryOrderStatus.PREPARING, GroceryOrderStatus.DELIVERED}
+)
+
+_REFERENCE_TEXT = re.compile(r"[A-Z0-9/._#]{4,64}")
+_PK_IBAN = re.compile(r"PK[0-9]{2}[A-Z]{4}[0-9]{16}")
+
+
+def payment_status(
+    status: GroceryOrderStatus, amount_due: int | None, *, paid: bool, refunded: bool
+) -> Literal["unpaid", "paid", "refunded"] | None:
+    """One word for an order's money. ``None``: nothing is owed or held (no price yet, or
+    cancelled without ever being paid)."""
+    if refunded:
+        return "refunded"
+    if paid:
+        return "paid"
+    if amount_due is None or status is GroceryOrderStatus.CANCELLED:
+        return None
+    return "unpaid"
+
+
+def ordered_methods(methods: Collection[str]) -> list[GroceryPaymentMethod]:
+    """The given methods once each, in canonical order."""
+    wanted = set(methods)
+    return [method for method in PAYMENT_METHOD_ORDER if method.value in wanted]
+
+
+def _passes_luhn(digits: str) -> bool:
+    total = 0
+    for position, digit in enumerate(reversed(digits)):
+        value = int(digit) * (2 if position % 2 else 1)
+        total += value - 9 if value > 9 else value
+    return total % 10 == 0
+
+
+def normalize_reference(text: str) -> str:
+    """A transaction reference as it is stored: upper case, no spaces or hyphens."""
+    return "".join(text.split()).replace("-", "").upper()
+
+
+def reference_problem(reference: str) -> tuple[str, str] | None:
+    """``(code, message)`` if the NORMALIZED ``reference`` can't be stored. A card number or an
+    account number must never reach the database, so anything shaped like one is refused."""
+    if not _REFERENCE_TEXT.fullmatch(reference):
+        return (
+            "invalid_reference",
+            "Use the transaction or receipt number: 4 to 64 letters, numbers, / . _ or #.",
+        )
+    for run in re.findall(r"[0-9]+", reference):
+        if 13 <= len(run) <= 19 and _passes_luhn(run):
+            return (
+                "looks_like_card_number",
+                "This looks like a card number. Never enter one: use the receipt number.",
+            )
+    if _PK_IBAN.search(reference):
+        return (
+            "looks_like_account_number",
+            "This looks like a bank account number. Use the transaction number.",
+        )
+    return None
 
 
 # ------------------------------------------------------------------------------ quantities

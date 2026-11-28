@@ -446,3 +446,45 @@ describe("losing the session or the account while editing", () => {
     expect(window.location.search).toBe("")
   })
 })
+
+describe("all of B-17 and payment methods (GROCERY-4C)", () => {
+  const COVERS = "The listed blocks cover all sectors and blocks of B-17"
+
+  it("can't be confirmed with no block, is unticked by a new list, and is saved with the list", async () => {
+    const { user, server } = await openSettings()
+    expect(field(COVERS)).toBeDisabled()
+    expect(field(COVERS)).not.toBeChecked()
+    await addBlock(user, "Test Block A")
+    await user.click(field(COVERS))
+    await addBlock(user, "Test Block B")
+    expect(field(COVERS)).not.toBeChecked()
+    await user.click(field(COVERS))
+
+    await review(user)
+    expect(inDialog().getByRole("list", { name: "What this means" })).toHaveTextContent("all sectors and blocks of B-17")
+    await send(user)
+    await closed()
+
+    expect(server.writes()[0].body).toEqual({
+      revision: 1,
+      serviceableBlocks: ["Test Block A", "Test Block B"],
+      coversAllB17: true,
+    })
+    expect(server.admin.settings.coversAllB17).toBe(true)
+  })
+
+  it("switches methods on and off, with cash fixed on", async () => {
+    const { user, server } = await openSettings()
+    expect(field("Cash on delivery")).toBeChecked()
+    expect(field("Cash on delivery")).toBeDisabled()
+    for (const name of ["Card", "Bank transfer", "Easypaisa", "JazzCash"]) expect(field(name)).not.toBeChecked()
+
+    await user.click(field("Easypaisa"))
+    await review(user)
+    await send(user)
+    await closed()
+
+    expect(server.writes()[0].body).toEqual({ revision: 1, paymentMethods: ["cash_on_delivery", "easypaisa"] })
+    expect(field("Easypaisa")).toBeChecked()
+  })
+})

@@ -24,9 +24,10 @@ from app.models import (
     GroceryOrderItem,
     GroceryOrderStatusHistory,
     GroceryPayment,
+    GroceryRefund,
     User,
 )
-from app.models.enums import GroceryEventAction, GroceryOrderStatus
+from app.models.enums import GroceryEventAction, GroceryOrderStatus, GroceryPaymentMethod
 from app.repositories.grocery import GroceryRepository
 from app.repositories.search import LIKE_ESCAPE, escape_like
 
@@ -50,7 +51,8 @@ class QueueRow:
     item_count: int
     failed_delivery_attempts: int
     issue_count: int
-    payment_collected: bool
+    paid: bool
+    refunded: bool
     assignee_name: str | None
 
 
@@ -120,6 +122,16 @@ class GroceryStaffRepository(GroceryRepository):
         """Add an agreement, a cash collection or an event, and flush (constraints apply now)."""
         self._session.add(row)
         self._session.flush()
+
+    def reference_used(self, method: GroceryPaymentMethod, reference: str) -> bool:
+        """Whether another payment already carries this online reference (the unique index is
+        what guarantees it; this only gives the ordinary case a clear answer)."""
+        found = self._session.scalar(
+            select(GroceryPayment.id).where(
+                GroceryPayment.method == method, GroceryPayment.reference == reference
+            )
+        )
+        return found is not None
 
     def events_of(self, order_id: uuid.UUID) -> list[GroceryOrderEvent]:
         return list(
@@ -238,15 +250,24 @@ class GroceryStaffRepository(GroceryRepository):
             .correlate(GroceryOrder)
             .scalar_subquery()
         )
+        refunded = (
+            select(func.count())
+            .select_from(GroceryRefund)
+            .where(GroceryRefund.order_id == GroceryOrder.id)
+            .correlate(GroceryOrder)
+            .scalar_subquery()
+        )
         assignee = (
             select(User.display_name)
             .where(User.id == GroceryOrder.assigned_to)
             .correlate(GroceryOrder)
             .scalar_subquery()
         )
-        return select(GroceryOrder, items, failed, issues, paid, assignee)
+        return select(GroceryOrder, items, failed, issues, paid, refunded, assignee)
 
     @staticmethod
     def _queue_row(row: Any) -> QueueRow:
-        order, items, failed, issues, paid, assignee = row
-        return QueueRow(order, int(items), int(failed), int(issues), bool(paid), assignee)
+        order, items, failed, issues, paid, refunded, assignee = row
+        return QueueRow(
+            order, int(items), int(failed), int(issues), bool(paid), bool(refunded), assignee
+        )

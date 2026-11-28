@@ -43,6 +43,9 @@ class ErrorCode(StrEnum):
     ORDER_CONFLICT = "order_conflict"
     ORDER_ALREADY_CLAIMED = "order_already_claimed"
     ORDER_NOT_CLAIMED = "order_not_claimed"
+    # The order already has its one payment (GROCERY-4C): its amount is fixed and only a Super
+    # Admin's refund may cancel it
+    PAYMENT_RECORDED = "payment_recorded"
     IDEMPOTENCY_KEY_REQUIRED = "idempotency_key_required"
     IDEMPOTENCY_KEY_INVALID = "idempotency_key_invalid"
     IDEMPOTENCY_KEY_REUSED = "idempotency_key_reused"
@@ -81,6 +84,10 @@ DEFAULT_MESSAGES: dict[ErrorCode, str] = {
     ErrorCode.ORDER_CONFLICT: "This order changed since you opened it.",
     ErrorCode.ORDER_ALREADY_CLAIMED: "Another staff member is handling this order.",
     ErrorCode.ORDER_NOT_CLAIMED: "Claim this order before you work on it.",
+    ErrorCode.PAYMENT_RECORDED: (
+        "This order has a recorded payment. Its amount can't change, and only a Super Admin's "
+        "refund can cancel it."
+    ),
     ErrorCode.IDEMPOTENCY_KEY_REQUIRED: "Send an Idempotency-Key header with this request.",
     ErrorCode.IDEMPOTENCY_KEY_INVALID: "The Idempotency-Key header is not valid.",
     ErrorCode.IDEMPOTENCY_KEY_REUSED: (

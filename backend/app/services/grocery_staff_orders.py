@@ -3,8 +3,15 @@ preparation, delivery, cash on delivery and cancellation (GROCERY-2;
 docs/backend/API_CONTRACT.md §19, AUTH_RBAC.md §37).
 
 The business is deliberately simple: the team receives a list, agrees a price with the customer by
-telephone, buys the goods, delivers them and takes cash. There is no quotation engine, supplier,
-inventory or online payment here.
+telephone, gets the goods, delivers them and is paid. There is no quotation engine, supplier,
+inventory or payment gateway here.
+
+MONEY (GROCERY-4C). An order has at most ONE payment, for exactly the amount due. Cash is recorded
+with the delivery. A card or external payment is recorded when a staff member has VERIFIED it,
+before or at delivery, and changes no status. Once paid, the amount is fixed and ordinary
+cancellation is closed: only a Super Admin's record of a FULL refund, made after the money was
+returned, can cancel the order, in the same change. Every one of these runs through the same gate
+below, so competing changes of one order queue on its row.
 
 EVERY change is one transaction, in this order (AUTH_RBAC.md §36.4):
 
@@ -29,11 +36,13 @@ WHAT A STAFF MEMBER RECORDS IS NEVER PRESENTED AS THE CUSTOMER'S OWN ACTION. An 
 that a named staff member states the customer agreed, how, and when.
 """
 
+import datetime
 import uuid
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.clock import Clock
@@ -45,6 +54,7 @@ from app.models import (
     GroceryOrderEvent,
     GroceryOrderStatusHistory,
     GroceryPayment,
+    GroceryRefund,
 )
 from app.models.enums import (
     GroceryActorRole,
@@ -67,7 +77,9 @@ from app.schemas.grocery_staff import (
     GroceryQueueMeta,
     GroceryQueueQuery,
     GroceryReagreementRequest,
+    GroceryRecordPaymentRequest,
     GroceryReduceAmountRequest,
+    GroceryRefundRequest,
     GroceryRevisionRequest,
     GroceryStaffAction,
     GroceryStaffCancelRequest,
@@ -78,6 +90,7 @@ from app.schemas.grocery_staff import (
     GroceryStaffOrderDetail,
     GroceryStaffOrderSummary,
     GroceryStaffPaymentRead,
+    GroceryStaffRefundRead,
 )
 from app.services import grocery_rules as rules
 from app.services.auth_sessions import Principal, hold_acting_session
@@ -109,6 +122,24 @@ def _invalid(field: str, code: str, message: str) -> AppError:
         status_code=422,
         details=[ErrorDetail(field=field, code=code, message=message)],
     )
+
+
+def _reference_in_use() -> AppError:
+    return _invalid(
+        "reference", "reference_in_use", "This transaction is already recorded on another order."
+    )
+
+
+def _no_refund(code: str, message: str) -> AppError:
+    return AppError(
+        ErrorCode.INVALID_STATE_TRANSITION,
+        status_code=409,
+        details=[ErrorDetail(field="payment", code=code, message=message)],
+    )
+
+
+def _constraint_of(error: IntegrityError) -> str | None:
+    return getattr(getattr(error.orig, "diag", None), "constraint_name", None)
 
 
 def _stale(current_revision: int) -> AppError:
@@ -217,6 +248,7 @@ class GroceryStaffOrderService:
             if order.status not in rules.RECONFIRM_STATUSES:
                 raise invalid_transition()
             self._require_revision(order, payload.revision)
+            self._require_unpaid(order)
             total = self._record_agreement(order, actor, payload)
             self._apply(
                 order,
@@ -234,6 +266,7 @@ class GroceryStaffOrderService:
             if order.status not in rules.REDUCE_STATUSES:
                 raise invalid_transition()
             self._require_revision(order, payload.revision)
+            self._require_unpaid(order)
             due = order.final_due_paisa
             assert due is not None  # a database CHECK: these statuses always have an amount
             if payload.final_amount_paisa >= due:
@@ -284,43 +317,185 @@ class GroceryStaffOrderService:
     def complete(
         self, principal: Principal, raw_id: str, payload: GroceryCompleteRequest
     ) -> uuid.UUID:
-        """Delivered AND paid, together or not at all. The cash must equal the amount due; any
-        other outcome stays open for a person to resolve."""
+        """Delivered AND paid, together or not at all. An order already paid is only marked
+        delivered (and takes no amount). An unpaid one is paid in cash now: the cash must equal
+        the amount due; any other outcome stays open for a person to resolve."""
         with self._change(principal, raw_id) as (order, actor):
             self._require_holder(order, actor)
             target = self._require_move(order, rules.GroceryAction.COMPLETE)
             self._require_revision(order, payload.revision)
             due = order.final_due_paisa
             assert due is not None
-            if payload.amount_collected_paisa != due:
-                raise _invalid(
-                    "amountCollectedPaisa",
-                    "amount_mismatch",
-                    "The cash collected must equal the amount due. If it does not, leave the "
-                    "order open and record an issue.",
-                )
             now = self._clock()
-            self._repository.add_record(
-                GroceryPayment(
-                    order_id=order.id,
-                    method=GroceryPaymentMethod.CASH_ON_DELIVERY,
-                    amount_due_paisa=due,
-                    amount_collected_paisa=payload.amount_collected_paisa,
-                    collected_by=actor.user_id,
-                    collected_at=now,
-                )
-            )
+            if self._repository.payment_of(order.id) is not None:
+                if payload.amount_collected_paisa is not None:
+                    raise _invalid(
+                        "amountCollectedPaisa",
+                        "already_paid",
+                        "This order is already paid. Collect nothing.",
+                    )
+            else:
+                self._collect_cash(order, actor, payload.amount_collected_paisa, due, now)
             before = order.status
             self._apply(order, payload.revision, {"status": target, "delivered_at": now})
             self._history(order, actor, before, target)
             return order.id
+
+    def _collect_cash(
+        self,
+        order: GroceryOrder,
+        actor: _Actor,
+        amount: int | None,
+        due: int,
+        now: datetime.datetime,
+    ) -> None:
+        if amount is None:
+            raise _invalid("amountCollectedPaisa", "missing", "Enter the cash collected.")
+        if amount != due:
+            raise _invalid(
+                "amountCollectedPaisa",
+                "amount_mismatch",
+                "The cash collected must equal the amount due. If it does not, leave the "
+                "order open and record an issue.",
+            )
+        self._repository.add_record(
+            GroceryPayment(
+                order_id=order.id,
+                method=GroceryPaymentMethod.CASH_ON_DELIVERY,
+                amount_due_paisa=due,
+                amount_collected_paisa=amount,
+                collected_by=actor.user_id,
+                collected_at=now,
+            )
+        )
+
+    # -- money received and returned outside the application (GROCERY-4C) -------------------------
+
+    def record_payment(
+        self, principal: Principal, raw_id: str, payload: GroceryRecordPaymentRequest
+    ) -> uuid.UUID:
+        """A VERIFIED card or external payment: the method must be switched on NOW, the amount
+        exactly what is due. The order's status does not change. Order of refusal: holder →
+        status → revision → already paid → method → amount → reference."""
+        with self._change(principal, raw_id) as (order, actor):
+            self._require_holder(order, actor)
+            if order.status not in rules.PAYABLE_STATUSES:
+                raise invalid_transition()
+            self._require_revision(order, payload.revision)
+            self._require_unpaid(order)
+            self._repository.lock_settings_shared()  # a method switched off meanwhile waits
+            settings = self._repository.current_settings()
+            if settings is None:
+                raise AppError(ErrorCode.GROCERY_UNAVAILABLE, status_code=503)
+            if payload.method.value not in settings.payment_methods:
+                raise _invalid(
+                    "method", "method_not_enabled", "This payment method is not switched on."
+                )
+            due = order.final_due_paisa
+            assert due is not None  # a database CHECK: these statuses always have an amount
+            if payload.amount_paisa != due:
+                raise _invalid(
+                    "amountPaisa",
+                    "amount_mismatch",
+                    "The payment must equal the amount due. If it does not, record an issue.",
+                )
+            online = payload.method in rules.ONLINE_METHODS
+            if online and self._repository.reference_used(payload.method, payload.reference):
+                raise _reference_in_use()
+            try:
+                self._repository.add_record(
+                    GroceryPayment(
+                        order_id=order.id,
+                        method=payload.method,
+                        amount_due_paisa=due,
+                        amount_collected_paisa=payload.amount_paisa,
+                        reference=payload.reference,
+                        collected_by=actor.user_id,
+                        collected_at=self._clock(),
+                    )
+                )
+            except IntegrityError as error:
+                # Two orders claiming one online transaction at the same moment: the index
+                # decides. (Nothing of the error, which holds the values, travels further.)
+                if _constraint_of(error) == "uq_grocery_payments_online_reference":
+                    raise _reference_in_use() from None
+                raise
+            self._apply(order, payload.revision, {})  # a screen read before this is now stale
+            return order.id
+
+    def record_refund(
+        self, principal: Principal, raw_id: str, payload: GroceryRefundRequest
+    ) -> uuid.UUID:
+        """A Super Admin records that the WHOLE payment has been returned. An order not yet
+        delivered is cancelled in the same change; a delivered one stays delivered. Never while
+        it is out for delivery. The payment record stays. Order of refusal: Super Admin →
+        status → revision → there is a payment, not yet refunded → amount → acknowledgement."""
+        with self._change(principal, raw_id) as (order, actor):
+            if not actor.is_super_admin:
+                raise _forbidden("super_admin_required", "Only a Super Admin records a refund.")
+            if order.status not in rules.REFUNDABLE_STATUSES:
+                raise invalid_transition()
+            self._require_revision(order, payload.revision)
+            payment = self._repository.payment_of(order.id)
+            if payment is None:
+                raise _no_refund("no_payment", "There is no recorded payment to refund.")
+            if self._repository.refund_of(order.id) is not None:
+                raise _no_refund("already_refunded", "This payment is already refunded.")
+            if payload.amount_paisa != payment.amount_collected_paisa:
+                raise _invalid(
+                    "amountPaisa",
+                    "amount_mismatch",
+                    "Only the whole payment can be recorded as refunded.",
+                )
+            before = order.status
+            cancels = before is not GroceryOrderStatus.DELIVERED
+            after_procurement = before in rules.AFTER_PROCUREMENT
+            if after_procurement and not payload.procurement_acknowledged:
+                raise _invalid(
+                    "procurementAcknowledged",
+                    "acknowledgement_required",
+                    "Goods may already be bought. Confirm that you will resolve this manually.",
+                )
+            now = self._clock()
+            self._repository.add_record(
+                GroceryRefund(
+                    order_id=order.id,
+                    payment_id=payment.id,
+                    amount_paisa=payload.amount_paisa,
+                    method=payload.method,
+                    reference=payload.reference,
+                    reason=payload.reason,
+                    refunded_by=actor.user_id,
+                    refunded_at=now,
+                )
+            )
+            if not cancels:
+                self._apply(order, payload.revision, {})
+                return order.id
+            target = GroceryOrderStatus.CANCELLED
+            self._apply(order, payload.revision, {"status": target, "cancelled_at": now})
+            self._history(order, actor, before, target, payload.reason)
+            if after_procurement:
+                self._event(
+                    order,
+                    actor,
+                    GroceryEventAction.ISSUE_RECORDED,
+                    issue=GroceryIssueKind.CANCELLED_AFTER_PROCUREMENT,
+                    note=payload.reason,
+                )
+            return order.id
+
+    def _require_unpaid(self, order: GroceryOrder) -> None:
+        """Under the order's row lock, so no payment can arrive between this and the write."""
+        if self._repository.payment_of(order.id) is not None:
+            raise _conflict(ErrorCode.PAYMENT_RECORDED)
 
     def cancel(
         self, principal: Principal, raw_id: str, payload: GroceryStaffCancelRequest
     ) -> uuid.UUID:
         """Staff cancellation, always with a reason. Once purchasing may have started it needs a
         Super Admin and an explicit acknowledgement, and leaves an issue for manual resolution.
-        Never while out for delivery (record the failed attempt first); never a refund."""
+        Never while out for delivery (record the failed attempt first); never a paid order."""
         with self._change(principal, raw_id) as (order, actor):
             self._require_holder(order, actor)
             target = self._require_move(order, rules.GroceryAction.CANCEL)
@@ -332,6 +507,7 @@ class GroceryStaffOrderService:
                     "Only a Super Admin can cancel once the order is being prepared.",
                 )
             self._require_revision(order, payload.revision)
+            self._require_unpaid(order)  # a paid order is cancelled only by its refund
             if after_procurement and not payload.procurement_acknowledged:
                 raise _invalid(
                     "procurementAcknowledged",
@@ -559,6 +735,12 @@ class GroceryStaffOrderService:
         history = self._repository.history_of(order.id)
         confirmations = self._repository.confirmations_of(order.id)
         payment = self._repository.payment_of(order.id)
+        refund = None if payment is None else self._repository.refund_of(order.id)
+        settings = self._repository.current_settings()
+        enabled = [] if settings is None else rules.ordered_methods(settings.payment_methods)
+        recordable = (
+            [] if payment is not None else [m for m in enabled if m in rules.RECORDABLE_METHODS]
+        )
         events = self._repository.events_of(order.id)
         staff_ids = {r.actor_user_id for r in history if r.actor_role is _STAFF}
         staff_ids.update(c.recorded_by for c in confirmations)
@@ -566,6 +748,8 @@ class GroceryStaffOrderService:
         staff_ids.update(e.subject_user_id for e in events if e.subject_user_id is not None)
         if payment is not None:
             staff_ids.add(payment.collected_by)
+        if refund is not None:
+            staff_ids.add(refund.refunded_by)
         names = self._repository.display_names(staff_ids)
 
         def member(user_id: uuid.UUID) -> GroceryStaffMemberRef:
@@ -617,9 +801,21 @@ class GroceryStaffOrderService:
                 method=payment.method,
                 amount_due_paisa=payment.amount_due_paisa,
                 amount_collected_paisa=payment.amount_collected_paisa,
+                reference=payment.reference,
                 collected_by=member(payment.collected_by),
                 collected_at=payment.collected_at,
             ),
+            refund=None
+            if refund is None
+            else GroceryStaffRefundRead(
+                amount_paisa=refund.amount_paisa,
+                method=refund.method,
+                reference=refund.reference,
+                reason=refund.reason,
+                refunded_by=member(refund.refunded_by),
+                refunded_at=refund.refunded_at,
+            ),
+            recordable_methods=recordable,
             delivery_attempts=_attempts(history, member),
             history=[
                 GroceryStaffHistoryRead(
@@ -645,12 +841,20 @@ class GroceryStaffOrderService:
                 )
                 for e in events
             ],
-            available_actions=available_actions(principal, order),
+            available_actions=available_actions(
+                principal,
+                order,
+                paid=payment is not None,
+                refunded=refund is not None,
+                recordable=bool(recordable),
+            ),
             updated_at=order.updated_at,
         )
 
 
-def available_actions(principal: Principal, order: GroceryOrder) -> list[GroceryStaffAction]:
+def available_actions(
+    principal: Principal, order: GroceryOrder, *, paid: bool, refunded: bool, recordable: bool
+) -> list[GroceryStaffAction]:
     """A hint for the screen; every request is decided again under lock. (A viewer's own order
     never gets here: its staff detail is refused.)"""
     status = order.status
@@ -668,9 +872,9 @@ def available_actions(principal: Principal, order: GroceryOrder) -> list[Grocery
 
         if moves(rules.GroceryAction.CONFIRM):
             actions.append("confirm")
-        if status in rules.RECONFIRM_STATUSES:
+        if status in rules.RECONFIRM_STATUSES and not paid:
             actions.append("reconfirm")
-        if status in rules.REDUCE_STATUSES:
+        if status in rules.REDUCE_STATUSES and not paid:
             actions.append("reduce_amount")
         if moves(rules.GroceryAction.START_PREPARING):
             actions.append("start_preparing")
@@ -680,10 +884,21 @@ def available_actions(principal: Principal, order: GroceryOrder) -> list[Grocery
             actions.append("delivery_failed")
         if moves(rules.GroceryAction.COMPLETE):
             actions.append("complete")
-        if moves(rules.GroceryAction.CANCEL) and (
-            principal.is_super_admin or status not in rules.AFTER_PROCUREMENT
+        if (
+            moves(rules.GroceryAction.CANCEL)
+            and not paid
+            and (principal.is_super_admin or status not in rules.AFTER_PROCUREMENT)
         ):
             actions.append("cancel")
+        if status in rules.PAYABLE_STATUSES and not paid and recordable:
+            actions.append("record_payment")
+        if (
+            principal.is_super_admin
+            and paid
+            and not refunded
+            and status in rules.REFUNDABLE_STATUSES
+        ):
+            actions.append("record_refund")
     actions.append("record_issue")
     return actions
 
@@ -735,7 +950,10 @@ def _summary_fields(row: QueueRow) -> dict[str, object]:
         else GroceryStaffMemberRef(user_id=order.assigned_to, display_name=row.assignee_name),
         "agreed_total_paisa": order.agreed_total_paisa,
         "final_amount_due_paisa": order.final_due_paisa,
-        "payment_collected": row.payment_collected,
+        "payment_collected": row.paid and not row.refunded,
+        "payment_status": rules.payment_status(
+            order.status, order.final_due_paisa, paid=row.paid, refunded=row.refunded
+        ),
         "failed_delivery_attempts": row.failed_delivery_attempts,
         "issue_count": row.issue_count,
     }

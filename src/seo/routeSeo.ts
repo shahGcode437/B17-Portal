@@ -90,7 +90,7 @@ const entries: RouteEntry[] = [
     path: routes.grocery,
     seo: {
       title: pageTitle("Grocery by request"),
-      description: "Send a grocery list in B-17, Islamabad. We confirm availability and the total price with you, then deliver. Pay in cash on delivery.",
+      description: "Send a grocery list in B-17, Islamabad. We confirm availability and the total price with you, then deliver.",
       indexing: "noindex,follow",
     },
   },

@@ -9,6 +9,7 @@ from app.models.grocery import (
     GroceryOrderItem,
     GroceryOrderStatusHistory,
     GroceryPayment,
+    GroceryRefund,
     GrocerySettingsRevision,
 )
 from app.models.listings import (
@@ -44,6 +45,7 @@ __all__ = [
     "GroceryOrderItem",
     "GroceryOrderStatusHistory",
     "GroceryPayment",
+    "GroceryRefund",
     "GrocerySettingsRevision",
     "Listing",
     "ListingCategory",

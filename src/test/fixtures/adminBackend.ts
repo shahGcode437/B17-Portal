@@ -75,14 +75,17 @@ export function defaultSettings(): GrocerySettingsDto {
     maxOrderValuePaisa: 2_000_000,
     maxActiveOrdersPerCustomer: 2,
     maxItemsPerOrder: 50,
+    paymentMethods: ["cash_on_delivery"],
+    coversAllB17: false,
     updatedAt: "2026-11-20T05:00:00Z",
   }
 }
 
 const SETTING_KEYS = [
   "enabled", "serviceableBlocks", "operatingDays", "opensAt", "closesAt", "timezone", "dailyCapacity",
-  "maxOrderValuePaisa", "maxActiveOrdersPerCustomer", "maxItemsPerOrder",
+  "maxOrderValuePaisa", "maxActiveOrdersPerCustomer", "maxItemsPerOrder", "paymentMethods", "coversAllB17",
 ]
+const METHODS = ["cash_on_delivery", "card", "bank_transfer", "easypaisa", "jazzcash"]
 
 const RANGES: Record<string, [number, number]> = {
   dailyCapacity: [1, 200],
@@ -113,6 +116,13 @@ function settingsProblems(body: Record<string, unknown>): Problem[] {
     } else if ((field === "opensAt" || field === "closesAt") && !/^([01]\d|2[0-3]):[0-5]\d$/.test(String(value))) {
       problems.push({ field, code: "invalid_time" })
     } else if (field === "timezone" && value !== "Asia/Karachi") problems.push({ field, code: "unsupported_timezone" })
+    else if (field === "coversAllB17" && typeof value !== "boolean") problems.push({ field, code: "bool_type" })
+    else if (field === "paymentMethods") {
+      const methods = value as string[]
+      if (methods.some((m) => !METHODS.includes(m))) problems.push({ field, code: "enum" })
+      else if (new Set(methods).size !== methods.length) problems.push({ field, code: "duplicate_method" })
+      else if (!methods.includes("cash_on_delivery")) problems.push({ field, code: "cash_required" })
+    }
   }
   return problems
 }
@@ -238,6 +248,16 @@ export class AdminBackend {
     const { revision: _revision, ...change } = body
     if (Object.keys(change).length === 0) return invalid("body", "no_changes")
     const next = { ...this.settings, ...(change as Partial<GrocerySettingsDto>) }
+    if ("paymentMethods" in change) {
+      next.paymentMethods = METHODS.filter((m) => (next.paymentMethods as string[]).includes(m)) as typeof next.paymentMethods
+    }
+    // "All of B-17" is about one list: a new list drops it unless it is made again with it (§21).
+    const keys = (blocks: string[]) => JSON.stringify(blocks.map((b) => b.trim().split(/\s+/).join(" ").toLowerCase()).sort())
+    if (!("coversAllB17" in change)) {
+      if (keys(next.serviceableBlocks) !== keys(this.settings.serviceableBlocks)) next.coversAllB17 = false
+    } else if (next.coversAllB17 && next.serviceableBlocks.length === 0) {
+      return invalid("coversAllB17", "needs_blocks")
+    }
     // "00:00" closes at the END of the day; with a "00:00" opening that would be a whole day: refused.
     const ordered = next.closesAt === "00:00" ? next.opensAt !== "00:00" : next.opensAt < next.closesAt
     if (!ordered) return invalid("closesAt", "closes_before_opens")

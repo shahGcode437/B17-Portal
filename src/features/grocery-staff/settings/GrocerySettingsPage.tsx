@@ -20,6 +20,7 @@ import {
   CapacitySection,
   CoverageSection,
   FinancialSection,
+  PaymentMethodsSection,
   ScheduleSection,
   type SectionProps,
 } from "@/features/grocery-staff/settings/SettingsSections"
@@ -396,6 +397,7 @@ function SettingsWorkspace({ user }: { user: CurrentUser }) {
         <ScheduleSection {...section} />
         <CapacitySection {...section} />
         <FinancialSection {...section} />
+        <PaymentMethodsSection {...section} />
       </form>
 
       {edit && !conflict && (

@@ -26,14 +26,17 @@ import type { GroceryOrderSummaryDto, GroceryStatusDto } from "@/lib/api/dto/gro
 const PAGE = 10
 
 /**
- * The money line of a summary, from what the summary carries. It never says "paid": that comes from
- * the payment record, which only the order's own page has.
+ * The money line of a summary, from what the summary carries. "Paid" and "refunded" are said only
+ * when the server's `paymentStatus` says so.
  */
 function amountLine(order: GroceryOrderSummaryDto): string | null {
-  if (order.status === "cancelled") return null
+  if (order.status === "cancelled") return order.paymentStatus === "refunded" ? "Payment refunded" : null
   if (order.finalAmountDuePaisa === undefined) return "Price to be confirmed"
-  if (order.status === "delivered") return `Total ${formatPaisa(order.finalAmountDuePaisa)}`
-  return `${formatPaisa(order.finalAmountDuePaisa)} to pay in cash`
+  const amount = formatPaisa(order.finalAmountDuePaisa)
+  if (order.paymentStatus === "refunded") return `${amount} refunded`
+  if (order.status === "delivered") return `Total ${amount}`
+  if (order.paymentStatus === "paid") return `${amount} paid`
+  return `${amount} to pay`
 }
 
 /** One order in the history: no name, phone or address (the summary carries none that we show). */

@@ -337,9 +337,25 @@ class GroceryIssueKind(StrEnum):
 
 
 class GroceryPaymentMethod(StrEnum):
-    """Cash on delivery only. There is no online payment."""
+    """How an order's one payment was made (GROCERY-4C). Everything except cash is money moved
+    OUTSIDE the application (a card machine, a transfer to the business's account) that a staff
+    member has VERIFIED and recorded. The application takes no payment itself."""
 
     CASH_ON_DELIVERY = "cash_on_delivery"
+    CARD = "card"
+    BANK_TRANSFER = "bank_transfer"
+    EASYPAISA = "easypaisa"
+    JAZZCASH = "jazzcash"
+
+
+class GroceryRefundMethod(StrEnum):
+    """How a Super Admin returned the money, outside the application."""
+
+    CASH = "cash"
+    CARD = "card"
+    BANK_TRANSFER = "bank_transfer"
+    EASYPAISA = "easypaisa"
+    JAZZCASH = "jazzcash"
 
 
 class OAuthPurpose(StrEnum):

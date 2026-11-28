@@ -75,7 +75,7 @@ test('the whole staff journey, and what the customer then sees', async ({ page, 
     await dialog(page).getByLabel('Cash you collected (Rs)').fill('2,100.50')
     await dialog(page).getByRole('checkbox').check()
   })
-  await expect(page.getByRole('region', { name: 'Amount due and cash' })).toContainText('Cash collected: Rs 2,100.50')
+  await expect(page.getByRole('region', { name: 'Amount due and payment' })).toContainText('Cash collected: Rs 2,100.50')
 
   expect(staffPosts(authMock).map((call) => call.path.split('/').pop())).toEqual([
     'claim', 'confirm', 'start-preparing', 'dispatch', 'delivery-failed', 'dispatch', 'complete',
@@ -225,4 +225,60 @@ test('an expired staff session, and removed access, close the order', async ({ p
   await actions(page).getByRole('button', { name: 'Claim order' }).click()
   await expectPage(page, 'Grocery staff access only')
   for (const value of PRIVATE) await expect(page.locator('body')).not.toContainText(value)
+})
+
+test('payments at phone width: record a verified payment, then its refund, with nothing scrolling sideways', async ({ page, authMock }) => {
+  await page.setViewportSize({ width: 375, height: 812 })
+  authMock.grocery.paymentMethods = ['cash_on_delivery', 'card', 'bank_transfer', 'easypaisa', 'jazzcash']
+  authMock.grocery.coversAllB17 = true
+  const order = seedOrder(authMock)
+  authMock.grocery.staffConfirm(order.id)
+  const fits = async (where: string) => {
+    const widths = await page.evaluate(() => {
+      const box = document.querySelector('[role="dialog"]')
+      return [document.documentElement.scrollWidth, window.innerWidth, box ? box.scrollWidth - box.clientWidth : 0]
+    })
+    expect(widths[0], `${where}: page`).toBeLessThanOrEqual(widths[1]!)
+    expect(widths[2], `${where}: dialog`).toBeLessThanOrEqual(1)
+  }
+
+  await openApp(page, '/grocery', 'Grocery')
+  await expect(page.getByText('Delivering across all sectors and blocks of B-17, Islamabad.')).toBeVisible()
+  await expect(page.getByText('Pay using our available cash, card or online payment options.')).toBeVisible()
+  await fits('landing')
+
+  authMock.addAccount({ email: emailFor('Omar Admin'), displayName: 'Omar Admin', roles: ['admin'] })
+  await openApp(page, '/admin/grocery', 'Admin Login')
+  await signIn(page, 'Omar Admin', 'admin')
+  await expectPage(page, 'Grocery orders')
+  await pushInApp(page, `/admin/grocery/${order.id}`)
+  await expectPage(page, `Order ${order.reference}`)
+
+  await act(page, 'Record payment', 'Record payment', async () => {
+    await fits('record payment')
+    await dialog(page).getByRole('radio', { name: 'Bank transfer' }).check()
+    await dialog(page).getByLabel('Amount received (Rs)').fill('2100')
+    await dialog(page).getByLabel('Transaction reference').fill('TID-0000-1111-2222-3333-4444-5555-6666-ABCDEF')
+    await dialog(page).getByRole('checkbox', { name: /I checked that this money was received/ }).check()
+  })
+  const payment = page.getByRole('region', { name: 'Amount due and payment' })
+  await expect(payment).toContainText('Paid by bank transfer: Rs 2,100')
+  await fits('a paid order with a long reference')
+
+  await act(page, 'Record refund', 'Record refund and cancel order', async () => {
+    await fits('record refund')
+    await dialog(page).getByLabel('Amount returned (Rs)').fill('2100')
+    await dialog(page).getByRole('radio', { name: 'Cash', exact: true }).check()
+    await dialog(page).getByLabel('Reason').fill(SECRET_REASON)
+    await dialog(page).getByRole('checkbox', { name: /whole amount has been returned/ }).check()
+  })
+  await expect(payment).toContainText('Refunded: Rs 2,100, in cash')
+  await fits('a refunded order')
+  expect(staffPosts(authMock).map((call) => call.path.split('/').pop())).toEqual(['record-payment', 'refund'])
+  expect(staffPosts(authMock).every((call) => call.csrf)).toBe(true)
+
+  await pushInApp(page, '/admin/grocery/settings')
+  await expectPage(page, 'Grocery settings')
+  await expect(page.getByLabel('Cash on delivery')).toBeDisabled()
+  await fits('settings')
 })

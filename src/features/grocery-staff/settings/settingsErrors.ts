@@ -12,6 +12,9 @@ const RULES: Record<string, string> = {
   invalid_time: "Enter times as hours and minutes.",
   closes_before_opens: "The closing time must be after the opening time.",
   no_changes: "There is nothing to change.",
+  needs_blocks: "List the delivery blocks before confirming they cover all of B-17.",
+  cash_required: "Cash on delivery is always offered.",
+  duplicate_method: "A payment method is listed more than once.",
   unsupported_timezone: "That time zone isn't supported.",
 }
 

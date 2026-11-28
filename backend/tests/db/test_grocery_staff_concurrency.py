@@ -280,6 +280,8 @@ NEEDS = {
     "delivery-failed": "out_for_delivery",
     "complete": "out_for_delivery",
     "cancel": "confirmed",
+    "record-payment": "confirmed",
+    "refund": "confirmed",
     "issues": "submitted",
 }
 DROP_SCOPE = (

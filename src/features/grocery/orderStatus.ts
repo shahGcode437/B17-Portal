@@ -26,7 +26,7 @@ export const STATUS_META: Record<GroceryStatusDto, { label: string; tone: Status
     label: "Out for delivery",
     tone: "warning",
     icon: Truck,
-    summary: "Your order is on its way. Please have the cash ready.",
+    summary: "Your order is on its way.",
   },
   delivered: { label: "Delivered", tone: "success", icon: CheckCircle2, summary: "Your order was delivered." },
   cancelled: { label: "Cancelled", tone: "danger", icon: XCircle, summary: "This order was cancelled." },

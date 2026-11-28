@@ -711,3 +711,20 @@ Delivery service, **every day 8:00 AM to 12:00 midnight (Asia/Karachi)**, **all 
 (1) **Midnight is `00:00` as a closing time**, stored as the day's last instant: no migration, and an older backend reads it as `23:59`. `00:00` to `00:00` is refused. This is a small additive change to the settings contract. (2) The **daily submission limit counts Karachi days**. (3) Customer text **names only payment and coverage the system can stand behind**: cash on delivery; "our B-17 delivery areas" with the configured list. (4) After a reload, only **"an order was being sent", the account id and the time** are kept in the tab; sending is held until the customer has checked. (5) Times are written `8:00 AM` throughout.
 **Waiting for approval:** migration `0014` with card / online payment recording and the "all of B-17" setting (`docs/product/GROCERY.md`).
 **Unchanged:** a cancelled order keeps its capacity place (D3); 3 submissions an hour and 4 a day; no new cancellation, refund or fulfilment policy.
+
+---
+
+**Decision (owner, 2026-11-28 — GROCERY-4C: flexible payments and complete B-17 coverage; migration `0014` approved).**
+**Approved:** simple recording of cash, card and supported online payments; optional payment after confirmation, or on delivery (**no mandatory prepayment**); payment checked by authorized Grocery staff; **manual refunds controlled by a Super Admin**; a Super Admin confirmation of complete B-17 coverage; cash on delivery stays the default, **card and online methods off by default**, only enabled and operational ones shown; no gateway, wallet, card processing, partial or split payment, or automated refund; no invented account details.
+
+**Implementation choices made while building (for the owner to confirm):**
+(1) The online methods are three separate switches (**bank transfer, Easypaisa, JazzCash**) beside **card**, so only an operational one is named. (2) A reference is **required** for every non-cash payment; text shaped like a card number or a Pakistani IBAN is refused; one online reference can't pay two orders (card slip numbers may repeat). (3) Cash is recorded **only with the delivery**. (4) A paid order's amount is fixed and it is cancelled **only by its refund**; a refund of an undelivered order cancels it in the same transaction; **none while out for delivery**. (5) Only the **whole** amount is refunded. (6) A new block list **removes** the all-of-B-17 confirmation unless given again with it. (7) Database triggers hold the money rules whatever code writes. (8) Pages that can't know the settings (Home, search descriptions) name no payment method.
+**Rejected:** a "customer says they paid" button; staff marking an order paid without a reference; partial refunds or price changes after payment (they need balances); showing account numbers in the app.
+**Consequences:** a paid order that can only partly be supplied must be refunded in full. The older application can't be restored once a non-cash payment or refund exists, and the schema can't be downgraded once a non-default setting was saved (`DEPLOYMENT.md` §22.1).
+**Revisit when:** a payment provider is chosen; partial supply of paid orders proves common; staff MFA exists.
+
+---
+
+**Decision (owner, 2026-11-28 — Grocery development closeout and the next milestone).**
+**Decided:** GROCERY-4C is the last major Grocery development phase before staging; **no GROCERY-4D**; the remaining work is GROCERY-5. After it, the next milestone is a **restricted staging deployment** (Vercel, Render, managed PostgreSQL, the already-purchased domain) **while Admin / Moderator development continues**. **Recorded only:** no deployment or infrastructure work has started.
+**Not decided:** pilot or production readiness; neither is claimed.

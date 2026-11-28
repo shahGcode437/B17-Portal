@@ -278,7 +278,7 @@ test('staff: a lower amount, a failed delivery, a second try, an issue, and cash
     await dialog(page).getByLabel('Cash you collected (Rs)').fill('2000')
     await dialog(page).getByRole('checkbox').check()
   })
-  await expect(page.getByRole('region', { name: 'Amount due and cash' })).toContainText('Cash collected: Rs 2,000')
+  await expect(page.getByRole('region', { name: 'Amount due and payment' })).toContainText('Cash collected: Rs 2,000')
   expect(statusOf(order.id)).toBe('delivered')
   expect(scalar(`SELECT method || ' ' || amount_due_paisa || ' ' || amount_collected_paisa FROM grocery_payments WHERE order_id = '${order.id}'`)).toBe('cash_on_delivery 200000 200000')
   // No second collection: the finished order refuses it.

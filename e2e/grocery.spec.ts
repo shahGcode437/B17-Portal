@@ -270,7 +270,7 @@ test('history, price and payment: totals, a reduction, cash due and cash collect
 
   await navigateInApp(page, '/profile/grocery', 'My Grocery Orders')
   const list = page.getByRole('list', { name: 'Your grocery orders' })
-  await expect(list.getByText('Rs 2,000 to pay in cash')).toBeVisible()
+  await expect(list.getByText('Rs 2,000 to pay')).toBeVisible()
   await expect(list.getByText('Total Rs 1,050')).toBeVisible()
   await expect(list).not.toContainText('House 17')
   await page.getByRole('button', { name: 'Delivered', exact: true }).click()

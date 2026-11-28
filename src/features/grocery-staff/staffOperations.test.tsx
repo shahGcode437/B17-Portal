@@ -80,7 +80,7 @@ describe("the order detail", () => {
       expect(items).toHaveTextContent(text)
     }
     expect(screen.getByRole("region", { name: "Recorded agreements" })).toHaveTextContent("No price has been recorded")
-    expect(screen.getByRole("region", { name: "Amount due and cash" })).toHaveTextContent("Not collected")
+    expect(screen.getByRole("region", { name: "Amount due and payment" })).toHaveTextContent("Not collected")
     expect(document.querySelector("a[href*='wa.me']")).toBeNull()
   })
 
@@ -347,7 +347,7 @@ describe("revision conflicts", () => {
     await closed()
     const notice = await screen.findByText(/This order changed since you opened it/)
     await waitFor(() => expect(notice.closest("[tabindex='-1']")).toHaveFocus())
-    await waitFor(() => expect(screen.getByRole("region", { name: "Amount due and cash" })).toHaveTextContent("Rs 1,500"))
+    await waitFor(() => expect(screen.getByRole("region", { name: "Amount due and payment" })).toHaveTextContent("Rs 1,500"))
     expect(status()).toHaveTextContent("Confirmed")
     expect(server.store.orders[0].detail.status).toBe("confirmed")
     expect(posts(server)).toEqual(["start-preparing"])
@@ -370,7 +370,7 @@ describe("revision conflicts", () => {
     await submit(user, "Record delivered and paid")
     await closed()
     await screen.findByText(/This order changed since you opened it/)
-    await waitFor(() => expect(screen.getByRole("region", { name: "Amount due and cash" })).toHaveTextContent("Rs 1,500"))
+    await waitFor(() => expect(screen.getByRole("region", { name: "Amount due and payment" })).toHaveTextContent("Rs 1,500"))
     expect(server.store.orders[0].detail.status).toBe("out_for_delivery")
     expect(posts(server)).toEqual(["complete"])
   })
@@ -405,7 +405,7 @@ describe("lowering the amount", () => {
     await submit(user, "Lower amount")
     await closed()
     expect(lastBody(server)).toEqual({ revision: 2, finalAmountPaisa: 199_950, reason: "Eggs weren't available" })
-    const money = screen.getByRole("region", { name: "Amount due and cash" })
+    const money = screen.getByRole("region", { name: "Amount due and payment" })
     await waitFor(() => expect(money).toHaveTextContent("Rs 1,999.50 (lowered after the agreement)"))
     expect(screen.getByRole("region", { name: "Staff notes and issues" })).toHaveTextContent("You lowered the amount from Rs 2,100 to Rs 1,999.50")
   })
@@ -436,7 +436,7 @@ describe("preparation, delivery and cash", () => {
     const attempts = screen.getByRole("region", { name: "Delivery attempts" })
     expect(attempts).toHaveTextContent("Attempt 1: Failed")
     expect(attempts).toHaveTextContent("Reason: Nobody home")
-    expect(screen.getByRole("region", { name: "Amount due and cash" })).toHaveTextContent("Not collected")
+    expect(screen.getByRole("region", { name: "Amount due and payment" })).toHaveTextContent("Not collected")
 
     await step("Send out for delivery", "Out for delivery")
     await step("Record delivery and cash", "Record delivered and paid", async () => {
@@ -445,7 +445,7 @@ describe("preparation, delivery and cash", () => {
     })
     expect(lastBody(server)).toEqual({ revision: 6, amountCollectedPaisa: 210_000 })
     await waitFor(() => expect(status()).toHaveTextContent("Delivered"))
-    expect(screen.getByRole("region", { name: "Amount due and cash" })).toHaveTextContent("Cash collected: Rs 2,100")
+    expect(screen.getByRole("region", { name: "Amount due and payment" })).toHaveTextContent("Cash collected: Rs 2,100")
     expect(current().status).toBe("delivered")
     expect(posts(server)).toEqual(["start-preparing", "dispatch", "delivery-failed", "dispatch", "complete"])
     expect(within(screen.getByRole("region", { name: "Actions" })).getAllByRole("button").map((b) => b.textContent)).toEqual(["Record issue"])
@@ -617,7 +617,7 @@ describe("when the outcome is unknown, nothing is sent again and nothing is assu
     await sendCompletion(user)
     await screen.findByText(/Check whether the delivery and cash was saved/)
     await waitFor(() => expect(status()).toHaveTextContent("Delivered"))
-    expect(screen.getByRole("region", { name: "Amount due and cash" })).toHaveTextContent("Cash collected: Rs 2,100")
+    expect(screen.getByRole("region", { name: "Amount due and payment" })).toHaveTextContent("Cash collected: Rs 2,100")
     expect(screen.queryByText("Delivery and cash recorded.")).not.toBeInTheDocument()
     expect(server.writes()).toHaveLength(1)
   })
@@ -704,5 +704,186 @@ describe("refusals that keep the form open", () => {
     await user.click(screen.getByRole("button", { name: "Refresh" }))
     await screen.findByText(/Couldn't refresh/)
     expect(document.body).toHaveTextContent("House 17, Street 4")
+  })
+})
+
+describe("verified payments and refunds (GROCERY-4C)", () => {
+  const money = () => screen.getByRole("region", { name: "Amount due and payment" })
+  const actionNames = () =>
+    within(screen.getByRole("region", { name: "Actions" })).getAllByRole("button").map((b) => b.textContent)
+
+  async function openPayable(stage: Stage, options: { who?: Account; holder?: Account | null } = {}) {
+    const opened = await open(stage, options)
+    opened.server.store.paymentMethods = ["cash_on_delivery", "card", "easypaisa"]
+    await opened.user.click(screen.getByRole("button", { name: "Refresh" }))
+    await waitFor(() => expect(actionButton("Record payment")).toBeEnabled())
+    return opened
+  }
+
+  async function start(user: UserEvent, action: string) {
+    await user.click(await within(screen.getByRole("region", { name: "Actions" })).findByRole("button", { name: action }))
+    await dialog()
+  }
+
+  const tick = (user: UserEvent, name: RegExp) =>
+    user.click(within(screen.getByRole("dialog")).getByRole("checkbox", { name }))
+
+  async function recordPayment(user: UserEvent, reference = "EP 7788-9900") {
+    await start(user, "Record payment")
+    await user.click(radio("Easypaisa"))
+    await user.type(field(/^Amount received/), "2100")
+    await user.type(field(/^Transaction reference/), reference)
+    await tick(user, /I checked that this money was received/)
+    await submit(user, "Record payment")
+  }
+
+  it("with only cash switched on there is nothing to record before delivery", async () => {
+    await open("confirmed")
+    expect(queryAction("Record payment")).not.toBeInTheDocument()
+    expect(money()).toHaveTextContent("Not collected. Cash on delivery.")
+  })
+
+  it("records a verified payment once, offering only switched-on methods, and delivers nothing", async () => {
+    const { server, user, current } = await openPayable("confirmed")
+    expect(money()).toHaveTextContent("Not paid yet.")
+    await start(user, "Record payment")
+    expect(within(screen.getByRole("dialog")).getAllByRole("radio").map((r) => r.closest("label")!.textContent)).toEqual([
+      "Card",
+      "Easypaisa",
+    ])
+
+    await user.type(field(/^Amount received/), "2000")
+    await submit(user, "Record payment")
+    const form = screen.getByRole("dialog")
+    for (const problem of [
+      "Choose how the customer paid.",
+      "Enter exactly Rs 2,100. Part payments can't be recorded.",
+      "Enter the transaction reference.",
+      "Record a payment only after checking the money was received.",
+    ]) {
+      expect(form).toHaveTextContent(problem)
+    }
+    expect(server.writes()).toEqual([])
+    await user.keyboard("{Escape}")
+    await closed()
+
+    await recordPayment(user)
+    await closed()
+    await screen.findByText("Payment recorded. The order's status didn't change.")
+    expect(server.writes()).toHaveLength(1)
+    expect(lastBody(server)).toEqual({
+      revision: 2,
+      method: "easypaisa",
+      amountPaisa: 210_000,
+      reference: "EP 7788-9900",
+      moneyVerified: true,
+    })
+    await waitFor(() => expect(money()).toHaveTextContent("Paid with Easypaisa: Rs 2,100"))
+    expect(money()).toHaveTextContent("Reference: EP77889900")
+    expect(money()).toHaveTextContent("Verified by You")
+    expect(current().status).toBe("confirmed")
+    expect(actionNames()).toEqual(["Start preparing", "Release order", "Record issue"])
+    expect(screen.getByRole("region", { name: "Actions" })).toHaveTextContent("Only a Super Admin can record a refund")
+  })
+
+  it("a paid order is delivered without collecting cash again", async () => {
+    const { server, user } = await openPayable("out_for_delivery")
+    await recordPayment(user)
+    await closed()
+    await waitFor(() => expect(actionButton("Record delivery")).toBeEnabled())
+    expect(queryAction("Record delivery and cash")).not.toBeInTheDocument()
+
+    await start(user, "Record delivery")
+    expect(screen.getByRole("dialog")).toHaveTextContent("This order is already paid: collect nothing.")
+    expect(within(screen.getByRole("dialog")).queryByLabelText(/Cash you collected/)).not.toBeInTheDocument()
+    await tick(user, /The order was handed over/)
+    await submit(user, "Record delivered")
+    await closed()
+
+    await screen.findByText("Delivery recorded.")
+    expect(lastBody(server)).toEqual({ revision: 5 })
+    await waitFor(() => expect(status()).toHaveTextContent("Delivered"))
+    expect(money()).toHaveTextContent("Paid with Easypaisa: Rs 2,100")
+  })
+
+  it("a card number is refused by the server and never shown back", async () => {
+    const { server, user } = await openPayable("confirmed")
+    await recordPayment(user, "4111 1111 1111 1111")
+
+    await within(screen.getByRole("dialog")).findByText(/That looks like a card number/)
+    expect(document.querySelector('[role="alert"]')!.textContent).not.toContain("4111")
+    expect(server.writes()).toHaveLength(1)
+    expect(server.store.orders[0].detail.payment?.status).toBe("due")
+  })
+
+  it("only a Super Admin is offered the refund, which cancels an undelivered order once", async () => {
+    const { server, user, current } = await openPayable("preparing", { who: OWNER, holder: null })
+    await recordPayment(user)
+    await closed()
+    await waitFor(() => expect(actionButton("Record refund")).toBeEnabled())
+    expect(queryAction("Cancel order")).not.toBeInTheDocument()
+
+    await start(user, "Record refund")
+    expect(screen.getByRole("dialog")).toHaveTextContent("This app returns no money")
+    expect(screen.getByRole("dialog")).toHaveTextContent("This also cancels the order.")
+    await submit(user, "Record refund and cancel order")
+    for (const problem of [
+      "Choose how the money was returned.",
+      "Write why the payment was refunded.",
+      "Record a refund only after the money has been returned.",
+      "Confirm that goods may already have been bought.",
+    ]) {
+      expect(screen.getByRole("dialog")).toHaveTextContent(problem)
+    }
+    expect(server.writes()).toHaveLength(1) // only the payment
+
+    await user.type(field(/^Amount returned/), "2100")
+    await user.click(radio("Cash"))
+    await user.type(field(/^Reason/), "Shop was closed")
+    await tick(user, /whole amount has been returned/)
+    await tick(user, /goods may already have been bought/)
+    await submit(user, "Record refund and cancel order")
+    await closed()
+
+    await screen.findByText("Refund recorded.")
+    expect(lastBody(server)).toEqual({
+      revision: 4,
+      amountPaisa: 210_000,
+      method: "cash",
+      reason: "Shop was closed",
+      moneyReturned: true,
+      procurementAcknowledged: true,
+    })
+    await waitFor(() => expect(status()).toHaveTextContent("Cancelled"))
+    expect(money()).toHaveTextContent("Paid with Easypaisa: Rs 2,100") // the payment is kept
+    expect(money()).toHaveTextContent("Refunded: Rs 2,100, in cash")
+    expect(money()).toHaveTextContent("Reason: Shop was closed")
+    expect(queryAction("Record refund")).not.toBeInTheDocument()
+    expect(current().status).toBe("cancelled")
+    expect(posts(server)).toEqual(["record-payment", "refund"])
+  })
+
+  it("a payment recorded elsewhere meanwhile is explained, and nothing is sent twice", async () => {
+    const { server, user, order } = await openPayable("confirmed", { who: OWNER, holder: null })
+    await start(user, "Record payment")
+    await user.click(radio("Card"))
+    await user.type(field(/^Amount received/), "2100")
+    await user.type(field(/^Transaction reference/), "SLIP-001")
+    await tick(user, /I checked/)
+    // the same order is paid from another screen first
+    const me = { id: OWNER.id, displayName: OWNER.name, ownerKey: OWNER.id, superAdmin: true, groceryScope: false, emailVerified: true }
+    server.staff.route(
+      "POST",
+      `/admin/grocery/orders/${order.id}/record-payment`,
+      new URLSearchParams(),
+      { revision: 2, method: "easypaisa", amountPaisa: 210_000, reference: "EP-1111", moneyVerified: true },
+      me
+    )
+    await submit(user, "Record payment")
+
+    await screen.findByText(/This order is already paid|This order changed since you opened it/)
+    await closed()
+    await waitFor(() => expect(money()).toHaveTextContent("Paid with Easypaisa: Rs 2,100"))
+    expect(server.writes()).toHaveLength(1)
   })
 })

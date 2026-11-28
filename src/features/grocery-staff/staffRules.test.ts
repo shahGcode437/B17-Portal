@@ -169,7 +169,7 @@ describe("what a failed staff request means", () => {
 describe("assignment wording", () => {
   const me = "me-id"
   const order = (status: string, assignee?: { userId: string; displayName?: string }) =>
-    ({ status, assignee }) as unknown as GroceryStaffOrderDetailDto
+    ({ status, assignee, availableActions: [] }) as unknown as GroceryStaffOrderDetailDto
 
   it("names who holds an order", () => {
     expect(assignmentLabel(undefined, me)).toBe("Unassigned")
@@ -190,5 +190,13 @@ describe("assignment wording", () => {
     expect(actionNotes(order("preparing", { userId: me }), me, true)).toEqual([])
     expect(actionNotes(order("out_for_delivery", { userId: me }), me, false).join(" ")).toMatch(/first record this delivery as failed/)
     expect(actionNotes(order("delivered"), me, false)).toEqual(["This order is finished. You can still record an issue."])
+  })
+
+  it("explains what a payment closes off", () => {
+    const paid = { ...order("confirmed", { userId: me }), payment: {} } as unknown as GroceryStaffOrderDetailDto
+    expect(actionNotes(paid, me, false).join(" ")).toMatch(/amount can't be changed\. Only a Super Admin can record a refund/)
+    expect(actionNotes(paid, me, true).join(" ")).toMatch(/return the money first, then record the refund/)
+    const delivered = { ...order("delivered"), availableActions: ["record_refund"] } as GroceryStaffOrderDetailDto
+    expect(actionNotes(delivered, me, true)[1]).toMatch(/has been returned to the customer, record the refund/)
   })
 })

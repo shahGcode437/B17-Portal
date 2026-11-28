@@ -606,6 +606,33 @@ What it protects: `AUTH_RBAC.md` §38, §38.4, §38.5, §39.
 
 **Not run:** the full backend suite (changes are confined to Grocery hours and one rate policy); the other real-backend specs; exact second boundaries through the real stack (its clock is not faked; the backend tests cover them); Safari, Firefox, real devices, a screen reader.
 
+## GROCERY-4C (payments, refunds, all of B-17; migration `0014`)
+
+| File | What it covers |
+|---|---|
+| `backend/tests/db/test_grocery_payments_api.py` | methods and their defaults; early and doorstep payments; unpaid cash delivery unchanged; wrong amounts; card-number, IBAN and unverified refusals (not echoed or logged); who may record; duplicates and reused online references; paid-order locks; failed delivery; the refund matrix; what the customer sees; the database's triggers and constraints through raw SQL; coverage and its removal; address validation unchanged |
+| `backend/tests/db/test_grocery_payment_concurrency.py` | **separate real PostgreSQL connections**, each pair in both orders, one request paused holding the lock and the other seen waiting: two payments; payment against lower amount, new agreement, cancellation and cash delivery; two refunds; refund against dispatch; one online reference claimed by two orders at once (the unique index decides); a method switched off during a payment |
+| `backend/tests/db/test_migrations.py`, `test_schema.py` | `0014` adds only and rewrites no row; safe defaults on every settings version; the older application's cash writes still work; downgrade refused over a card payment, a refund, a method or a confirmation; clean downgrade restores schema, constraints and rows; DDL only |
+| `test_privileged_session_races.py` and the existing staff tests | session, role and scope revocation against `record-payment` and `refund` |
+| `groceryPages`, `staffOperations`, `staffRules`, `settingsForm`, `settingsPage`, `writeReplay` | wording only for enabled methods (an older server included); coverage claims; paid and refunded states; both staff forms; no replay of the two new writes; the settings controls and a tick never carried onto another list |
+| `e2e/grocery-staff.spec.ts` | record, refund and settings at 375 px with no sideways scrolling |
+| `e2e-real/20-grocery-payments.spec.ts` | React → FastAPI → PostgreSQL: the settings screen, an early payment, delivery with nothing collected, two payments at once, a refund, privacy, coverage removal, and parity of the fakes' payment and refund refusals and shapes |
+
+| Check | Result |
+|---|---|
+| Full backend suite once (111 files in six parts, real PostgreSQL) | **6,026 passed, 3 skipped, 5 failed** on the first run; the 5 passed when their files were rerun (**158 passed**). 4 were exact lists (route order, route set, availability keys) not yet naming the new routes and fields; 1 was an event-loop failure on this low-memory Windows machine in a file Grocery doesn't touch. Afterwards only tests changed; the extended refusal test was rerun (15 passed) |
+| `ruff check`, `ruff format --check`, `mypy` | passed (282 source files) |
+| `tsc -b`, e2e `tsc`, `npm run build` | passed |
+| `npm run lint` | passed, with the 7 older warnings |
+| Full unit / component suite once | **2,063 passed** (94 files) |
+| Full mocked browser suite once | **240 passed, 1 failed** (a locator in the new test: "Cash" also matched "JazzCash"); fixed, its file rerun: **9 passed** |
+| Real-backend specs `18`, `19`, `20`, throwaway `b17_g4c_lane` | first run 14 passed, 2 failed, 3 not run: `net::ERR_NO_BUFFER_SPACE` loading the sign-in page (this machine), and the new parity test comparing unlike seed orders. On a fresh database, all three together: **19 of 19**. Temporary copy on ports 5273 / 8001 with a guard, because the developer's app was on 5173 / 8000; database dropped; `b17_dev` identical before and after (version `0013`, counts, settings, roles) |
+| Phone-width screenshots (production build, mocked backend) | landing, record-payment dialog, staff payment record, settings methods, customer paid state: reviewed |
+
+**Reused, not repeated:** GROCERY-4A's and 4B's evidence for unchanged behaviour (session binding, cookies, staff idle, staff revision, reload recovery). **No mutation check** was run.
+
+**Not run:** the real-backend specs outside Grocery; a real payment of any kind (nothing is integrated; no provider, Google or e-mail service was contacted); a PWA update from a cached older build; Safari, Firefox, real devices, a screen reader. **Not testable by code:** that a recorded payment or refund really happened.
+
 ## Rule for mutation checks (owner, 2026-11-28)
 
 A mutation check deliberately breaks code. **No running development server may be able to load it.** On 2026-11-28 a check that edited the working tree did so while a developer's `uvicorn --reload` was running, and that server loaded broken copies for a few minutes.

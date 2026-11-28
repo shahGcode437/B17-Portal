@@ -93,6 +93,8 @@ GROCERY_OPERATIONS = {
     ("POST", "/admin/grocery/orders/{order_id}/complete"),
     ("POST", "/admin/grocery/orders/{order_id}/cancel"),
     ("POST", "/admin/grocery/orders/{order_id}/issues"),
+    ("POST", "/admin/grocery/orders/{order_id}/record-payment"),
+    ("POST", "/admin/grocery/orders/{order_id}/refund"),
 }
 
 

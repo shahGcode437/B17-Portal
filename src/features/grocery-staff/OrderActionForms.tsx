@@ -1,14 +1,14 @@
 import { useId, useState } from "react"
-import { Typography } from "@/components/foundation/Typography"
 import { formatPaisa } from "@/features/grocery/format"
 import { AgreementForm } from "@/features/grocery-staff/AgreementForm"
 import { CheckField } from "@/components/forms/CheckField"
-import { AmountField, ChoiceField, NoteField } from "@/features/grocery-staff/StaffFields"
+import { AmountDue, AmountField, ChoiceField, NoteField } from "@/features/grocery-staff/StaffFields"
 import { StaffActionDialog } from "@/features/grocery-staff/StaffActionDialog"
 import { useStaffForm, type StaffFormProps } from "@/features/grocery-staff/useStaffForm"
 import { amountProblem, parsePkr } from "@/features/grocery-staff/money"
 import { focusFirstProblem } from "@/features/grocery-staff/fieldFocus"
 import { ISSUE_LABEL, RECORDABLE_ISSUES } from "@/features/grocery-staff/staffLabels"
+import { RecordPaymentForm, RefundForm } from "@/features/grocery-staff/PaymentForms"
 import {
   cancelGroceryOrderAsStaff,
   completeGroceryOrder,
@@ -24,19 +24,6 @@ import type { GroceryRecordableIssueDto, GroceryStaffActionDto } from "@/lib/api
 /** What the dialog shell needs from a form's props. */
 function shell({ pending, onClose, pageExplains }: StaffFormProps) {
   return { pending, onClose, pageExplains }
-}
-
-function AmountDue({ label, paisa }: { label: string; paisa: number | undefined }) {
-  return (
-    <div className="flex items-baseline justify-between gap-3 rounded-xl bg-primary/8 px-3 py-2.5 ring-1 ring-primary/20">
-      <Typography as="span" variant="body-sm">
-        {label}
-      </Typography>
-      <Typography as="span" variant="label" className="text-lg tabular-nums">
-        {paisa === undefined ? "Not recorded" : formatPaisa(paisa)}
-      </Typography>
-    </div>
-  )
 }
 
 function ReleaseForm(props: StaffFormProps) {
@@ -93,7 +80,16 @@ function DispatchForm(props: StaffFormProps) {
         )
       }}
     >
-      <AmountDue label="Cash to collect" paisa={props.order.finalAmountDuePaisa} />
+      <AmountDue
+        label={
+          props.order.payment
+            ? "Already paid. Collect nothing"
+            : props.order.recordableMethods?.length
+              ? "To collect, if not paid first"
+              : "Cash to collect"
+        }
+        paisa={props.order.finalAmountDuePaisa}
+      />
       <NoteField
         id={`${id}-note`}
         label="Dispatch note"
@@ -144,7 +140,41 @@ function DeliveryFailedForm(props: StaffFormProps) {
   )
 }
 
-function CompleteForm(props: StaffFormProps) {
+/** A paid order: only the handover is recorded. Nothing is collected a second time. */
+function CompletePaidForm(props: StaffFormProps) {
+  const id = useId()
+  const { revision, refusal, outdated, submit } = useStaffForm("complete", props)
+  const [handedOver, setHandedOver] = useState(false)
+  const [error, setError] = useState<string>()
+  return (
+    <StaffActionDialog
+      {...shell(props)}
+      title="Record delivery"
+      description="This order is already paid: collect nothing. Recording the delivery can't be undone."
+      submitLabel="Record delivered"
+      pendingLabel="Recording…"
+      refusal={refusal}
+      outdated={outdated}
+      onSubmit={() => {
+        const problem = handedOver ? undefined : "Record this only after the order was handed over."
+        setError(problem)
+        if (problem) return focusFirstProblem(id, ["handed"], { handed: problem })
+        void submit((signal) => completeGroceryOrder(props.order.id, { revision }, signal))
+      }}
+    >
+      <AmountDue label="Already paid" paisa={props.order.payment?.amountCollectedPaisa} />
+      <CheckField
+        id={`${id}-handed`}
+        label="The order was handed over."
+        checked={handedOver}
+        onChange={setHandedOver}
+        error={error}
+      />
+    </StaffActionDialog>
+  )
+}
+
+function CompleteCashForm(props: StaffFormProps) {
   const id = useId()
   const { revision, refusal, outdated, submit } = useStaffForm("complete", props)
   const due = props.order.finalAmountDuePaisa
@@ -190,6 +220,12 @@ function CompleteForm(props: StaffFormProps) {
       />
     </StaffActionDialog>
   )
+}
+
+function CompleteForm(props: StaffFormProps) {
+  // Which of the two was opened stays: if the order changes underneath, the form is outdated.
+  const [paid] = useState(Boolean(props.order.payment))
+  return paid ? <CompletePaidForm {...props} /> : <CompleteCashForm {...props} />
 }
 
 function ReduceAmountForm(props: StaffFormProps) {
@@ -374,6 +410,10 @@ function StaffActionForm({ action, ...props }: StaffFormProps & { action: Exclud
       return <ReduceAmountForm {...props} />
     case "cancel":
       return <CancelForm {...props} />
+    case "record_payment":
+      return <RecordPaymentForm {...props} />
+    case "record_refund":
+      return <RefundForm {...props} />
     case "record_issue":
       return <IssueForm {...props} />
   }

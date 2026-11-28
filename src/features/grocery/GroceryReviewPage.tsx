@@ -14,7 +14,7 @@ import { ItemDetails } from "@/features/grocery/ItemRow"
 import { AuthUnreachable, VerifyToOrder } from "@/features/grocery/SignInGatePanel"
 import { RefusedAlert, UnconfirmedPanel } from "@/features/grocery/SubmissionStatus"
 import { buildOrderRequest, deliverySchema } from "@/features/grocery/orderRequest"
-import { PAYMENT_COPY } from "@/features/grocery/paymentCopy"
+import { PRICE_CONFIRMED, offeredMethods, paymentCopy } from "@/features/grocery/paymentCopy"
 import { RecoveryNotice } from "@/features/grocery/RecoveryNotice"
 import { useUncheckedSubmission } from "@/features/grocery/useUncheckedSubmission"
 import { useGroceryAvailability } from "@/features/grocery/useGroceryAvailability"
@@ -169,7 +169,8 @@ function GroceryReviewPage() {
               <div className="flex flex-col gap-1 text-sm">
                 <p className="font-semibold">Your total is confirmed before preparation</p>
                 <p>
-                  {PAYMENT_COPY.priceConfirmed} {PAYMENT_COPY.howToPay} You can cancel here until the price is confirmed.
+                  {PRICE_CONFIRMED} {paymentCopy(offeredMethods(data)).howToPay} You can cancel here until the price is
+                  confirmed.
                 </p>
               </div>
             </section>

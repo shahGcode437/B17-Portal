@@ -46,7 +46,7 @@ const MOCKED: Record<'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE', string[]> = {
     '/admin/categories/reorder',
     '/grocery/orders',
     `/grocery/orders/${ID}/cancel`,
-    `/admin/grocery/orders/${ID}/(claim|release|confirm|reconfirm|reduce-amount|start-preparing|dispatch|delivery-failed|complete|cancel|issues)`,
+    `/admin/grocery/orders/${ID}/(claim|release|confirm|reconfirm|reduce-amount|start-preparing|dispatch|delivery-failed|complete|cancel|record-payment|refund|issues)`,
     '/admin/staff/moderators',
     `/admin/staff/moderators/${ID}/(pause|resume)`,
   ],

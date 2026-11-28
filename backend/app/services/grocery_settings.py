@@ -10,6 +10,7 @@ The Grocery staff scope grants nothing here. Settings authority is the Super Adm
 """
 
 import datetime
+from typing import cast
 
 from sqlalchemy.orm import Session
 
@@ -39,12 +40,39 @@ SETTING_FIELDS: tuple[str, ...] = (
     "max_order_value_paisa",
     "max_active_orders_per_customer",
     "max_items_per_order",
+    "payment_methods",
+    "covers_all_b17",
 )
 _MAX_REQUEST_ID = 64
 
 
 def _unavailable() -> AppError:
     return AppError(ErrorCode.GROCERY_UNAVAILABLE, status_code=503)
+
+
+def _keep_coverage_honest(
+    current: GrocerySettingsRevision, values: dict[str, object], given: set[str]
+) -> None:
+    """ "These blocks cover all of B-17" is a statement about ONE list. When the list changes it
+    no longer stands unless it is made again in the same change; with no block it can't be made.
+    (A new spelling of the same blocks is the same list.)"""
+    blocks = cast(list[str], values["serviceable_blocks"])
+    if "covers_all_b17" not in given:
+        before = {rules.block_key(block) for block in current.serviceable_blocks}
+        if {rules.block_key(block) for block in blocks} != before:
+            values["covers_all_b17"] = False
+    elif values["covers_all_b17"] and not blocks:
+        raise AppError(
+            ErrorCode.VALIDATION_ERROR,
+            status_code=422,
+            details=[
+                ErrorDetail(
+                    field="coversAllB17",
+                    code="needs_blocks",
+                    message="List the delivery blocks before confirming they cover all of B-17.",
+                )
+            ],
+        )
 
 
 class GrocerySettingsService:
@@ -107,7 +135,10 @@ class GrocerySettingsService:
                     value = rules.parse_closing_time(value)
                 elif name == "opens_at":
                     value = datetime.time.fromisoformat(value)
+                elif name == "payment_methods":
+                    value = [method.value for method in rules.ordered_methods(value)]
                 values[name] = value
+            _keep_coverage_honest(current, values, given)
             if values["opens_at"] >= values["closes_at"] or rules.is_whole_day(
                 values["opens_at"], values["closes_at"]
             ):
@@ -149,6 +180,8 @@ class GrocerySettingsService:
             max_order_value_paisa=row.max_order_value_paisa,
             max_active_orders_per_customer=row.max_active_orders_per_customer,
             max_items_per_order=row.max_items_per_order,
+            payment_methods=rules.ordered_methods(row.payment_methods),
+            covers_all_b17=row.covers_all_b17 and bool(row.serviceable_blocks),
             updated_at=row.created_at,
             updated_by=(
                 GrocerySettingsActor(

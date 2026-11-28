@@ -15,6 +15,8 @@ import { GroceryTimeline } from "@/features/grocery/GroceryTimeline"
 import { ItemDetails } from "@/features/grocery/ItemRow"
 import { OrderStatusBadge } from "@/features/grocery/OrderStatusBadge"
 import { PriceCard } from "@/features/grocery/PriceCard"
+import { offeredMethods, paymentCopy } from "@/features/grocery/paymentCopy"
+import { useGroceryAvailability } from "@/features/grocery/useGroceryAvailability"
 import { STATUS_META, failedDeliveries, isFinal } from "@/features/grocery/orderStatus"
 import { formatClock, formatStamp } from "@/features/grocery/format"
 import { useRefreshableRead } from "@/features/grocery/useRefreshableRead"
@@ -26,20 +28,29 @@ import { isResourceNotFound, type ApiError } from "@/lib/api/errors"
 import { routes } from "@/config/routes"
 import { formatPhone } from "@/lib/phone"
 import { cn } from "@/lib/utils"
-import type { GroceryOrderDetailDto } from "@/lib/api/dto/grocery"
+import type { GroceryOrderDetailDto, GroceryPaymentMethodDto } from "@/lib/api/dto/grocery"
 
 /** Coming back to the tab checks again, but not more often than this. */
 const RECHECK_AFTER_MS = 15_000
 
 const CHECKED = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Karachi", hour: "2-digit", minute: "2-digit", hourCycle: "h23" })
 
+/** What to have ready at the door, from what the order has already paid. */
+function atTheDoor(order: GroceryOrderDetailDto, methods?: GroceryPaymentMethodDto[]): string {
+  if (order.payment?.status === "collected") return "It's already paid."
+  return paymentCopy(methods).cashOnly ? "Please have the cash ready." : "Please have your payment ready."
+}
+
 /** What the status means now, including a delivery that did not complete and who cancelled. */
-function StatusSummary({ order }: { order: GroceryOrderDetailDto }) {
+function StatusSummary({ order, methods }: { order: GroceryOrderDetailDto; methods?: GroceryPaymentMethodDto[] }) {
   const attempts = failedDeliveries(order)
   const retrying = attempts > 0 && order.status === "preparing"
   return (
     <div className="flex flex-col gap-3">
-      <Typography variant="body">{STATUS_META[order.status].summary}</Typography>
+      <Typography variant="body">
+        {STATUS_META[order.status].summary}
+        {order.status === "out_for_delivery" && ` ${atTheDoor(order, methods)}`}
+      </Typography>
       {retrying && (
         <div role="status" className="flex items-start gap-3 rounded-xl bg-warning/10 p-3 ring-1 ring-warning/35">
           <TriangleAlert className="mt-0.5 size-5 shrink-0 text-warning-text" aria-hidden="true" />
@@ -72,6 +83,8 @@ function OrderView({ userId, orderId }: { userId: string; orderId: string }) {
   const read = useRefreshableRead(`grocery-order:${userId}:${orderId}`, (signal) => fetchMyGroceryOrder(orderId, signal))
   const [cancelling, setCancelling] = useState(false)
   const [stale, setStale] = useState<ApiError | null>(null)
+  // Only for what to say about paying; the order itself says what has been paid.
+  const methods = offeredMethods(useGroceryAvailability().data)
   const order = read.data
   const final = order ? isFinal(order.status) : false
 
@@ -163,7 +176,7 @@ function OrderView({ userId, orderId }: { userId: string; orderId: string }) {
       )}
 
       <section aria-label="Current status" className="glass-panel flex flex-col gap-5 rounded-2xl p-4 sm:p-5">
-        <StatusSummary order={order} />
+        <StatusSummary order={order} methods={methods} />
         <GroceryTimeline order={order} />
         {order.canCancel && (
           <Button type="button" variant="destructive" className="h-11 self-start" onClick={() => setCancelling(true)}>
@@ -172,7 +185,7 @@ function OrderView({ userId, orderId }: { userId: string; orderId: string }) {
         )}
       </section>
 
-      <PriceCard order={order} />
+      <PriceCard order={order} methods={methods} />
 
       <section aria-labelledby="grocery-items" className="glass-panel flex flex-col gap-3 rounded-2xl p-4 sm:p-5">
         <Typography as="h2" id="grocery-items" variant="h3" className="text-lg">
@@ -233,7 +246,7 @@ function OrderView({ userId, orderId }: { userId: string; orderId: string }) {
   )
 }
 
-/** One of the customer's own orders (GROCERY-3A): status, price, cash, items and delivery. */
+/** One of the customer's own orders (GROCERY-3A): status, price, payment, items and delivery. */
 function GroceryOrderPage() {
   const { orderId = "" } = useParams()
   const user = useRequireAuth()

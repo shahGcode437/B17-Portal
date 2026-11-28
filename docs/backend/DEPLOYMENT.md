@@ -526,3 +526,107 @@ GROCERY-4A was accepted as a **development checkpoint only**. **Every item below
 8. Check `/grocery`: it should read "Every day — 8:00 AM to 12:00 Midnight (Pakistan time)." and list your blocks.
 
 **Payment methods:** nothing to configure. Only cash on delivery exists.
+
+## 22. Payments, refunds and full coverage, migration `0014` (GROCERY-4C)
+
+### 22.1 Deploy and roll back
+
+- **Order: migration → backend → frontend.** The new backend **requires** `0014` for every `/grocery` and `/admin/grocery` route (older schema: errors there; the rest of the portal is unaffected). No configuration or environment change.
+- The older backend runs correctly on the `0014` schema for cash orders (new columns have defaults). The new frontend on an older backend treats it as cash only with no all-of-B-17 claim. The older frontend on the new backend works while only cash is on; **with another method on, an old cached app would call a non-cash payment "cash"**, so update the frontend (and let installed apps refresh) before switching one on.
+- **Rolling the application back is safe only while there is no non-cash payment and no refund.** The older code can't read them, would show a refunded delivered order as paid, and the database's triggers would turn its price change or cancellation of a paid order into a server error. If any exists: **roll forward**.
+- **Downgrading the schema** refuses while a non-cash payment, a refund, or a settings version with other than the defaults exists. Settings versions are permanent, so **once a method or the coverage box has been saved, downgrade is closed** (restore a backup, or roll forward).
+
+### 22.2 Owner: apply `0014` to the local development database
+
+Windows PowerShell, from the repository's `backend` folder. **Stop the local API first.** (With this code on disk, a running `--reload` API already expects `0014`, so its Grocery pages fail until this is done.) Stop at any step whose result differs. These commands were **not** run on `b17_dev`.
+
+1. `Test-Path Env:DATABASE_URL` prints `False` (otherwise remove it).
+2. The target by name only (prints no credential); it must print `b17_dev`:
+
+   ```powershell
+   .\.venv\Scripts\python.exe -c "from sqlalchemy.engine import make_url; from app.core.config import Settings; print(make_url(Settings().database_url.get_secret_value()).database)"
+   ```
+
+3. `.\.venv\Scripts\python.exe -m alembic current` prints `0013`.
+4. Back up outside any synced folder (the dump holds personal data and password hashes), one command at a time:
+
+   ```powershell
+   New-Item -ItemType Directory -Force "$env:USERPROFILE\b17-backups"
+   ```
+
+   ```powershell
+   docker exec b17-portal-db-1 pg_dump -U b17 -d b17_dev -Fc -f /tmp/b17_dev_before_0014.dump
+   ```
+
+   ```powershell
+   docker exec b17-portal-db-1 pg_restore --list /tmp/b17_dev_before_0014.dump | Select-String "TABLE DATA public users "
+   ```
+
+   ```powershell
+   docker cp b17-portal-db-1:/tmp/b17_dev_before_0014.dump "$env:USERPROFILE\b17-backups\b17_dev_before_0014.dump"
+   ```
+
+   The third must print one line and the fourth must succeed.
+5. Prove the backup restores, into a second database that is then removed:
+
+   ```powershell
+   docker exec b17-portal-db-1 createdb -U b17 b17_restore_check
+   ```
+
+   ```powershell
+   docker exec b17-portal-db-1 pg_restore -U b17 -d b17_restore_check --exit-on-error /tmp/b17_dev_before_0014.dump
+   ```
+
+   ```powershell
+   docker exec b17-portal-db-1 psql -U b17 -d b17_restore_check -tAc "SELECT version_num FROM alembic_version"
+   ```
+
+   It prints `0013`. Then:
+
+   ```powershell
+   docker exec b17-portal-db-1 dropdb -U b17 b17_restore_check
+   ```
+
+   ```powershell
+   docker exec b17-portal-db-1 rm /tmp/b17_dev_before_0014.dump
+   ```
+
+6. Upgrade:
+
+   ```powershell
+   .\.venv\Scripts\python.exe -m alembic upgrade 0014
+   ```
+
+7. Verify. `alembic current` prints `0014 (head)` and `alembic check` prints `No new upgrade operations detected.`:
+
+   ```powershell
+   .\.venv\Scripts\python.exe -m alembic current
+   ```
+
+   ```powershell
+   .\.venv\Scripts\python.exe -m alembic check
+   ```
+
+   Cash only, not confirmed (`{cash_on_delivery}|f`), and no refund (`0`):
+
+   ```powershell
+   docker exec b17-portal-db-1 psql -U b17 -d b17_dev -tAc "SELECT payment_methods, covers_all_b17 FROM grocery_settings_revisions ORDER BY revision DESC LIMIT 1"
+   ```
+
+   ```powershell
+   docker exec b17-portal-db-1 psql -U b17 -d b17_dev -tAc "SELECT count(*) FROM grocery_refunds"
+   ```
+
+8. Start the API again.
+
+### 22.3 Owner: configure methods, hours and coverage
+
+Super Admin, signed in within the last 12 hours (staff sign-in): **Grocery → Grocery settings**.
+
+1. **Delivery coverage:** add every block and sector from **your verified list** (§21.1).
+2. Tick **"The listed blocks cover all sectors and blocks of B-17"** only after checking the list is complete. Changing the list unticks it; check and tick again.
+3. **Operating schedule:** all seven days, **Opens at** `8:00 AM`, **Closes at** `12:00 AM`.
+4. **Payment methods:** leave **only Cash on delivery** until each other method is operational: the business account (or card machine) exists, someone can check money arrived in it, and staff know how to give customers the details. Then tick that method alone. The app stores no account or wallet number.
+5. **Review changes** → read "What this means" → **Save settings**.
+6. **Leave "Accept new grocery orders" off** until the pre-pilot blockers are cleared.
+7. Check `/grocery`: hours "Every day — 8:00 AM to 12:00 Midnight (Pakistan time)."; "Delivering across all sectors and blocks of B-17, Islamabad." only if you ticked step 2; payment wording naming only what you switched on.

@@ -1,4 +1,5 @@
 import { Input } from "@/components/ui/input"
+import { Typography } from "@/components/foundation/Typography"
 import { Textarea } from "@/components/ui/textarea"
 import { FieldError } from "@/components/forms/FieldError"
 import { GroceryField } from "@/features/grocery/GroceryField"
@@ -103,4 +104,18 @@ function ChoiceField<T extends string>({ id, legend, options, value, onChange, e
   )
 }
 
-export { AmountField, ChoiceField, NoteField }
+/** The figure a form is about, shown above its fields. */
+function AmountDue({ label, paisa }: { label: string; paisa: number | undefined }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3 rounded-xl bg-primary/8 px-3 py-2.5 ring-1 ring-primary/20">
+      <Typography as="span" variant="body-sm">
+        {label}
+      </Typography>
+      <Typography as="span" variant="label" className="text-lg tabular-nums">
+        {paisa === undefined ? "Not recorded" : formatPaisa(paisa)}
+      </Typography>
+    </div>
+  )
+}
+
+export { AmountDue, AmountField, ChoiceField, NoteField }

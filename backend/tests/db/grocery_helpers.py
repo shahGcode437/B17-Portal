@@ -158,6 +158,38 @@ def reagreement(revision: int = 1, **changes: Any) -> dict[str, Any]:
     return agreement(revision, **{"consentNote": "Agreed by telephone (test note)", **changes})
 
 
+#: Every method switched on, for tests of recording payments.
+ALL_METHODS = ["cash_on_delivery", "card", "bank_transfer", "easypaisa", "jazzcash"]
+
+
+def payment_body(revision: int = 1, **changes: Any) -> dict[str, Any]:
+    """A well-formed record of a VERIFIED payment of the usual agreed total."""
+    body: dict[str, Any] = {
+        "revision": revision,
+        "method": "bank_transfer",
+        "amountPaisa": TOTAL_PAISA,
+        "reference": "TID-20261128-0001",
+        "moneyVerified": True,
+    }
+    body.update(changes)
+    return body
+
+
+def refund_body(revision: int = 1, **changes: Any) -> dict[str, Any]:
+    """A well-formed record of the whole usual total already returned."""
+    body: dict[str, Any] = {
+        "revision": revision,
+        "amountPaisa": TOTAL_PAISA,
+        "method": "bank_transfer",
+        "reference": "RF-20261128-0001",
+        "reason": "The order could not be supplied",
+        "moneyReturned": True,
+        "procurementAcknowledged": True,
+    }
+    body.update(changes)
+    return body
+
+
 def staff_post(
     api: AuthApi, order_id: str, action: str, body: dict[str, Any] | None = None, **kw: Any
 ) -> Response:
