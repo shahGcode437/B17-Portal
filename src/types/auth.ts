@@ -65,6 +65,12 @@ export interface AuthUser {
   session: SessionSummary
   /** In-memory CSRF token. The auth layer moves it out of the user object and never stores it. */
   csrfToken: string
+  /**
+   * The server binds private reads to the named session (`AUTH_RBAC.md` §38) and `/auth/me` is no
+   * use of a staff session (§38.4). Absent from an older server. It never relaxes the app's own
+   * confirmation of private answers; it only lets staff tabs ask who is signed in more freely.
+   */
+  readBinding?: boolean
   /** Absent from an older backend; screens then keep their cautious wording. */
   emailDelivery?: EmailDelivery
 }

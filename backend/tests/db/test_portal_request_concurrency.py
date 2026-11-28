@@ -341,7 +341,7 @@ def test_an_action_and_a_staff_removal_meet_without_a_deadlock(
     removed: dict[str, Response] = {}
     remover = threading.Thread(
         target=lambda: removed.setdefault(
-            "r", boss.request("DELETE", f"{MODERATORS}/{moderator_id}")
+            "r", boss.request("DELETE", f"{MODERATORS}/{moderator_id}?revision=0")
         ),
         daemon=True,
     )

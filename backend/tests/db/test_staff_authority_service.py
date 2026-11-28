@@ -85,10 +85,11 @@ def test_promotion_grants_the_role_revokes_sessions_and_writes_audit_and_timelin
     assert event.action is StaffAuditAction.SUPER_ADMIN_PROMOTED
     assert event.source is StaffAuditSource.CLI and event.actor_user_id is None
     assert event.target_user_id == user.id and event.reason == REASON
-    assert event.before == {"role": None, "scopes": []}
+    assert event.before == {"role": None, "scopes": [], "revision": 0}
     assert event.after == {
         "role": "admin",
         "scopes": [],
+        "revision": 1,
         "super_admin_count": 1,
         "policy_override": False,
         "break_glass": False,
@@ -168,7 +169,7 @@ def test_promoting_a_moderator_clears_the_moderator_role_and_scopes_in_one_trans
         AuthEventType.ROLE_REVOKED,
     ]  # the moderator role revoked AND the admin role granted
     (event,) = audit_events(auth_env.session)
-    assert event.before == {"role": "moderator", "scopes": ["directory", "food"]}
+    assert event.before == {"role": "moderator", "scopes": ["directory", "food"], "revision": 0}
     assert event.after is not None and event.after["scopes"] == []
 
 
@@ -501,10 +502,11 @@ def test_demotion_removes_the_role_revokes_sessions_and_audits(auth_env: AuthEnv
     assert event.action is StaffAuditAction.SUPER_ADMIN_DEMOTED
     assert event.source is StaffAuditSource.CLI and event.actor_user_id is None
     assert event.reason == REASON and event.target_user_id == leaving.id
-    assert event.before == {"role": "admin", "scopes": []}
+    assert event.before == {"role": "admin", "scopes": [], "revision": 0}
     assert event.after == {
         "role": None,
         "scopes": [],
+        "revision": 1,
         "super_admin_count": 1,
         "sessions_revoked": 2,
     }
@@ -634,12 +636,20 @@ def test_hosted_environments_refuse_fixture_demo_and_reserved_identities(
             svc.promote_super_admin(target.email, REASON)
         with refused(StaffCode.TARGET_NOT_ELIGIBLE):
             svc.appoint_moderator(
-                actor.id, target.email, [FOOD], session_id=live_session(auth_env.session, actor.id)
+                actor.id,
+                target.email,
+                [FOOD],
+                revision=0,
+                session_id=live_session(auth_env.session, actor.id),
             )
         assert roles_of(auth_env.session, target.id) == set()
     else:  # local development / throwaway test databases: demo staff are allowed
         assert svc.appoint_moderator(
-            actor.id, target.email, [FOOD], session_id=live_session(auth_env.session, actor.id)
+            actor.id,
+            target.email,
+            [FOOD],
+            revision=0,
+            session_id=live_session(auth_env.session, actor.id),
         ).changed
         assert roles_of(auth_env.session, target.id) == {"moderator"}
 
@@ -678,7 +688,11 @@ def test_a_super_admin_who_lost_the_role_cannot_complete_a_staff_change(auth_env
 
     with refused(StaffCode.ACTOR_NOT_AUTHORISED):
         svc.appoint_moderator(
-            actor.id, target.email, [FOOD], session_id=live_session(auth_env.session, actor.id)
+            actor.id,
+            target.email,
+            [FOOD],
+            revision=0,
+            session_id=live_session(auth_env.session, actor.id),
         )
 
     assert snapshot(auth_env.session, target.id) == before
@@ -694,7 +708,11 @@ def test_a_suspended_or_unverified_actor_cannot_complete_a_staff_change(
 
     with refused(StaffCode.ACTOR_NOT_AUTHORISED):
         service(auth_env.session, auth_env.clock).appoint_moderator(
-            actor.id, target.email, [FOOD], session_id=live_session(auth_env.session, actor.id)
+            actor.id,
+            target.email,
+            [FOOD],
+            revision=0,
+            session_id=live_session(auth_env.session, actor.id),
         )
 
 

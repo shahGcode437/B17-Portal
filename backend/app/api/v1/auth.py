@@ -7,6 +7,8 @@ token only ever leaves in the ``Set-Cookie`` header; ``csrfToken`` (derived from
 token in a body.
 """
 
+from datetime import timedelta
+
 from fastapi import APIRouter, Request, Response
 from fastapi.responses import RedirectResponse
 
@@ -87,14 +89,15 @@ def auth_user_body(
         auth_methods=AuthMethods(password=methods.password, providers=methods.providers),
         session=SessionInfo(expires_at=principal.session_expires_at),
         csrf_token=csrf_token_for(session_token),
+        read_binding=True,
     )
 
 
-def _max_age(principal: Principal) -> int:
-    """Cookie lifetime: from the moment this session was (re)issued until its idle expiry."""
-    return max(
-        1, int((principal.session_expires_at - principal.session_last_seen_at).total_seconds())
-    )
+def _max_age(principal: Principal, settings: Settings) -> int:
+    """Cookie lifetime: until the session's ABSOLUTE end. It is set at sign-in and never re-sent
+    (AUTH_RBAC.md §38.5), so it must outlast every slide; the server enforces the idle timeout."""
+    absolute = principal.session_created_at + timedelta(days=settings.session_absolute_days)
+    return max(1, int((absolute - principal.session_last_seen_at).total_seconds()))
 
 
 def _schedule(
@@ -113,7 +116,7 @@ def _signed_in(
     response: Response,
 ) -> Envelope[AuthUser]:
     principal = issued.principal
-    set_session_cookie(response, settings, issued.session_token, _max_age(principal))
+    set_session_cookie(response, settings, issued.session_token, _max_age(principal, settings))
     return Envelope(
         data=auth_user_body(
             principal, service.account_methods(principal), issued.session_token, settings

@@ -41,6 +41,7 @@ def _member(
         account_status=user.status,
         email_verified=user.email_verified_at is not None,
         granted_at=role.granted_at,
+        revision=user.staff_revision,
         granted_by=(
             StaffGrantor(user_id=role.granted_by, display_name=grantor)
             if role.granted_by is not None and grantor is not None

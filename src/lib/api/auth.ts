@@ -35,7 +35,9 @@ export function normalizeEmailDelivery(value: unknown): EmailDelivery | undefine
 function normalizeAuthUser(user: AuthUser): AuthUser {
   const emailDelivery = normalizeEmailDelivery(user.emailDelivery)
   rememberEmailDelivery(emailDelivery)
-  return { ...user, staffScopes: normalizeStaffScopes(user.staffScopes), emailDelivery }
+  // Only a server that says so plainly: anything else is treated as the older, cautious one.
+  const readBinding = user.readBinding === true ? true : undefined
+  return { ...user, staffScopes: normalizeStaffScopes(user.staffScopes), emailDelivery, readBinding }
 }
 
 /** `GET /auth/me` — 200 = signed in, 401 = anonymous. Pre-session by nature (it is how we find out). */

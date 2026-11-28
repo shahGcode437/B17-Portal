@@ -476,7 +476,7 @@ def test_an_authoring_write_and_an_rbac_c_removal_meet_without_a_deadlock(
     removed: dict[str, Response] = {}
     remover = threading.Thread(
         target=lambda: removed.setdefault(
-            "r", boss.request("DELETE", f"{MODERATORS}/{moderator_id}")
+            "r", boss.request("DELETE", f"{MODERATORS}/{moderator_id}?revision=0")
         ),
         daemon=True,
     )
@@ -507,7 +507,7 @@ def test_a_create_after_a_committed_removal_is_refused_and_leaves_no_provider(
     moderator = sign_in_account(world_env, email, professional=None, moderator_scopes=[SERVICES])
     moderator_id = scalar(db_engine, "SELECT id FROM users WHERE email = :e", e=email)
 
-    assert boss.request("DELETE", f"{MODERATORS}/{moderator_id}").status_code == 204
+    assert boss.request("DELETE", f"{MODERATORS}/{moderator_id}?revision=0").status_code == 204
     response = moderator.request("POST", PROVIDERS, json=staff_provider_body())
 
     assert response.status_code in (401, 403)  # the sessions were revoked with the role

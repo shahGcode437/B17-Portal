@@ -353,7 +353,7 @@ describe("revision conflicts", () => {
     expect(posts(server)).toEqual(["start-preparing"])
   })
 
-  it("a form left open while the order changes underneath cannot send", async () => {
+  it("returning loads nothing, and a form left open while the order changed can't apply it", async () => {
     const { server, order, user } = await open("out_for_delivery")
     await user.click(actionButton("Record delivery and cash"))
     await dialog()
@@ -361,11 +361,18 @@ describe("revision conflicts", () => {
     await user.click(checkbox())
     vi.spyOn(Date, "now").mockReturnValue(Date.now() + 60_000)
     server.store.staffReduce(order.id, 150_000)
+    const reads = server.staffCalls().length
     act(returnToTab)
-    await within(screen.getByRole("dialog")).findByText(/This order changed while this was open/)
-    expect(within(screen.getByRole("dialog")).getByRole("button", { name: "Record delivered and paid" })).toBeDisabled()
-    await user.type(field(/^Cash you collected/), "{Enter}")
-    expect(server.writes()).toEqual([])
+    await act(() => new Promise((done) => setTimeout(done, 60)))
+    expect(server.staffCalls()).toHaveLength(reads)
+
+    // The screen is out of date; the server's version check is what stops the change.
+    await submit(user, "Record delivered and paid")
+    await closed()
+    await screen.findByText(/This order changed since you opened it/)
+    await waitFor(() => expect(screen.getByRole("region", { name: "Amount due and cash" })).toHaveTextContent("Rs 1,500"))
+    expect(server.store.orders[0].detail.status).toBe("out_for_delivery")
+    expect(posts(server)).toEqual(["complete"])
   })
 
   it("an order that moved on is explained, with the actions that now apply", async () => {

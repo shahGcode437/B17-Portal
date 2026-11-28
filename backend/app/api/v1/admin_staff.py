@@ -34,6 +34,7 @@ from app.dependencies.write import NoStore
 from app.schemas.envelope import PageMeta
 from app.schemas.staff import (
     AppointModeratorRequest,
+    PauseModeratorRequest,
     ReplaceScopesRequest,
     ResumeModeratorRequest,
     StaffAuditEnvelope,
@@ -65,7 +66,8 @@ _MUTATION_RESPONSES: dict[int | str, dict[str, Any]] = {
     409: {
         "model": ErrorResponse,
         "description": (
-            "already_moderator | moderator_paused | moderator_not_paused | moderator_already_paused"
+            "staff_changed (details[0].currentRevision) | already_moderator | moderator_paused "
+            "| moderator_not_paused | moderator_already_paused"
         ),
     },
     422: {
@@ -106,6 +108,7 @@ _HTTP: dict[StaffCode, tuple[int, ErrorCode]] = {
     StaffCode.MODERATOR_NOT_PAUSED: (409, ErrorCode.CONFLICT),
     StaffCode.MODERATOR_ALREADY_PAUSED: (409, ErrorCode.CONFLICT),
     StaffCode.LAST_SUPER_ADMIN: (409, ErrorCode.CONFLICT),
+    StaffCode.STAFF_CHANGED: (409, ErrorCode.CONFLICT),
 }
 
 
@@ -117,7 +120,10 @@ def _app_error(error: StaffAuthorityError) -> AppError:
         status_code=status,
         details=[
             ErrorDetail(
-                field=error.field or "request", code=error.code.value, message=error.message
+                field=error.field or "request",
+                code=error.code.value,
+                message=error.message,
+                current_revision=error.current_revision,
             )
         ],
     )
@@ -191,7 +197,11 @@ def appoint_moderator(
     ineligible state answer the same ``target_not_eligible``."""
     with _staff_errors():
         change = service.appoint_moderator(
-            actor.user_id, payload.email, payload.scopes, session_id=actor.session_id
+            actor.user_id,
+            payload.email,
+            payload.scopes,
+            revision=payload.revision,
+            session_id=actor.session_id,
         )
     return StaffMemberEnvelope(data=StaffReadService(session).member(change.user_id))
 
@@ -213,7 +223,13 @@ def replace_scopes(
     updated. Any real change revokes the target's sessions."""
     target = _user_id(user_id)
     with _staff_errors():
-        service.replace_scopes(actor.user_id, target, payload.scopes, session_id=actor.session_id)
+        service.replace_scopes(
+            actor.user_id,
+            target,
+            payload.scopes,
+            revision=payload.revision,
+            session_id=actor.session_id,
+        )
     return StaffMemberEnvelope(data=StaffReadService(session).member(target))
 
 
@@ -223,13 +239,19 @@ def replace_scopes(
     summary="Pause a Moderator",
 )
 def pause_moderator(
-    user_id: str, actor: StaffMutationUser, service: StaffAuthorityDep, session: DbSession
+    user_id: str,
+    payload: PauseModeratorRequest,
+    actor: StaffMutationUser,
+    service: StaffAuthorityDep,
+    session: DbSession,
 ) -> StaffMemberEnvelope:
     """Keep the role, delete every scope, revoke every session. A paused Moderator has no staff
     authority at all."""
     target = _user_id(user_id)
     with _staff_errors():
-        service.pause_moderator(actor.user_id, target, session_id=actor.session_id)
+        service.pause_moderator(
+            actor.user_id, target, revision=payload.revision, session_id=actor.session_id
+        )
     return StaffMemberEnvelope(data=StaffReadService(session).member(target))
 
 
@@ -249,7 +271,13 @@ def resume_moderator(
     appointment). Revokes the target's sessions: authority returns after a fresh sign-in."""
     target = _user_id(user_id)
     with _staff_errors():
-        service.resume_moderator(actor.user_id, target, payload.scopes, session_id=actor.session_id)
+        service.resume_moderator(
+            actor.user_id,
+            target,
+            payload.scopes,
+            revision=payload.revision,
+            session_id=actor.session_id,
+        )
     return StaffMemberEnvelope(data=StaffReadService(session).member(target))
 
 
@@ -259,10 +287,15 @@ def resume_moderator(
     summary="Remove a Moderator",
 )
 def remove_moderator(
-    user_id: str, actor: StaffMutationUser, service: StaffAuthorityDep
+    user_id: str,
+    actor: StaffMutationUser,
+    service: StaffAuthorityDep,
+    revision: Annotated[int, Query(ge=0, le=2_147_483_647)],
 ) -> Response:
     """Delete the ``moderator`` role (its scopes go with it) and revoke every session. The account
     itself remains: this is never a user deletion."""
     with _staff_errors():
-        service.remove_moderator(actor.user_id, _user_id(user_id), session_id=actor.session_id)
+        service.remove_moderator(
+            actor.user_id, _user_id(user_id), revision=revision, session_id=actor.session_id
+        )
     return Response(status_code=204)

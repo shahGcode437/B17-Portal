@@ -220,7 +220,7 @@ def op_category_reorder(env: AuthEnv, engine: Engine) -> Prepared:
 def op_appoint(env: AuthEnv, engine: Engine) -> Prepared:
     boss = _boss(env)
     _staff_target(env, None)
-    body = {"email": "target@example.org", "scopes": ["food"]}
+    body = {"email": "target@example.org", "scopes": ["food"], "revision": 0}
     return Prepared(boss, lambda: boss.post(MODERATORS, body), staff_authority, 201)
 
 
@@ -229,7 +229,7 @@ def op_replace_scopes(env: AuthEnv, engine: Engine) -> Prepared:
     url = f"{MODERATORS}/{target}/scopes"
     return Prepared(
         boss,
-        lambda: boss.request("PUT", url, json={"scopes": ["education"]}),
+        lambda: boss.request("PUT", url, json={"scopes": ["education"], "revision": 0}),
         staff_authority,
         200,
     )
@@ -237,19 +237,29 @@ def op_replace_scopes(env: AuthEnv, engine: Engine) -> Prepared:
 
 def op_pause(env: AuthEnv, engine: Engine) -> Prepared:
     boss, target = _boss(env), _staff_target(env, [StaffScope.FOOD])
-    return Prepared(boss, lambda: boss.post(f"{MODERATORS}/{target}/pause"), staff_authority, 200)
+    return Prepared(
+        boss,
+        lambda: boss.post(f"{MODERATORS}/{target}/pause", {"revision": 0}),
+        staff_authority,
+        200,
+    )
 
 
 def op_resume(env: AuthEnv, engine: Engine) -> Prepared:
     boss, target = _boss(env), _staff_target(env, [])
     url = f"{MODERATORS}/{target}/resume"
-    return Prepared(boss, lambda: boss.post(url, {"scopes": ["food"]}), staff_authority, 200)
+    return Prepared(
+        boss, lambda: boss.post(url, {"scopes": ["food"], "revision": 0}), staff_authority, 200
+    )
 
 
 def op_remove(env: AuthEnv, engine: Engine) -> Prepared:
     boss, target = _boss(env), _staff_target(env, [StaffScope.FOOD])
     return Prepared(
-        boss, lambda: boss.request("DELETE", f"{MODERATORS}/{target}"), staff_authority, 204
+        boss,
+        lambda: boss.request("DELETE", f"{MODERATORS}/{target}?revision=0"),
+        staff_authority,
+        204,
     )
 
 
@@ -575,7 +585,9 @@ def test_acting_on_your_own_account_while_its_password_is_being_reset_does_not_d
     boss = _boss(world)
     revoke = by_password_reset(world, db_engine, boss)
     gate = gate_method(monkeypatch, StaffManagementRepository, "lock_user_by_email", after=False)
-    pending = Running(lambda: boss.post(MODERATORS, {"email": BOSS, "scopes": ["food"]}))
+    pending = Running(
+        lambda: boss.post(MODERATORS, {"email": BOSS, "scopes": ["food"], "revision": 0})
+    )
     gate.wait_arrived()  # the actor is locked; the target (the same account) is not yet
 
     resetting = Background(revoke)

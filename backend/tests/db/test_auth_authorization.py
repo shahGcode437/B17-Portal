@@ -163,13 +163,17 @@ def test_an_admin_session_must_have_been_used_within_two_hours(env: AuthEnv) -> 
     assert again.get("/_probe/admin").status_code == 200
 
 
-def test_ordinary_activity_keeps_an_admin_session_fresh(env: AuthEnv) -> None:
+def test_staff_activity_keeps_an_admin_session_fresh(env: AuthEnv) -> None:
+    """§38.4: only a request that passes a staff guard is staff activity."""
     api = as_actor(env, "admin")
     for _ in range(4):
         env.clock.advance(hours=1, minutes=30)
-        assert api.get("/_probe/current").status_code == 200  # resident-style use
+        assert api.get("/_probe/admin").status_code == 200
 
-    assert api.get("/_probe/admin").status_code == 200  # 6h in, last used a moment ago
+    env.clock.advance(hours=1, minutes=30)
+    assert api.get("/_probe/current").status_code == 200  # the account's ordinary use
+    env.clock.advance(minutes=31)  # 2h 1m since the last STAFF request
+    assert api.get("/_probe/admin").status_code == 401
 
 
 def test_an_admin_session_older_than_twelve_hours_is_refused(env: AuthEnv) -> None:

@@ -291,16 +291,23 @@ describe("another Super Admin changes the settings", () => {
     expect(server.writes()).toHaveLength(1)
   })
 
-  it("a review left open while a newer version arrives cannot save", async () => {
+  it("returning loads nothing, and a review left open over a newer version can't overwrite it", async () => {
     const { user, server } = await openSettings()
     await setNumber(user, /^Orders accepted per day/, "15")
     await review(user)
     vi.spyOn(Date, "now").mockReturnValue(Date.now() + 60_000)
     server.admin.saveElsewhere({ opensAt: "09:00" })
+    const reads = server.adminCalls().length
     act(() => void window.dispatchEvent(new Event("focus")))
-    await inDialog().findByText(/The settings changed while this was open/)
-    expect(inDialog().getByRole("button", { name: "Save settings" })).toBeDisabled()
-    expect(server.writes()).toEqual([])
+    await act(() => new Promise((done) => setTimeout(done, 60)))
+    expect(server.adminCalls()).toHaveLength(reads)
+
+    // The server's version check stops it; the newer version is read and the person decides again.
+    await send(user)
+    await closed()
+    await screen.findByRole("region", { name: /was saved while you were editing/ })
+    expect(server.writes()).toHaveLength(1)
+    expect(server.admin.settings).toMatchObject({ opensAt: "09:00", dailyCapacity: 10 })
   })
 
   it("with no edits, the newer version is simply shown", async () => {

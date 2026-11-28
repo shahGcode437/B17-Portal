@@ -205,6 +205,26 @@ class SessionRepository:
             .values(last_seen_at=last_seen_at, expires_at=expires_at)
         )
 
+    def slide(self, session_id: uuid.UUID, expires_at: datetime) -> None:
+        """The idle expiry alone; ``last_seen_at`` (the staff clock) is left as it is."""
+        self._session.execute(
+            update(AuthSession).where(AuthSession.id == session_id).values(expires_at=expires_at)
+        )
+
+    def record_activity(
+        self, session_id: uuid.UUID, seen_at: datetime, idle_expires_at: datetime
+    ) -> None:
+        """Staff activity: the staff clock and the idle expiry, never past the absolute lifetime
+        and never backwards (an earlier request may commit after a later one)."""
+        self._session.execute(
+            update(AuthSession)
+            .where(AuthSession.id == session_id, AuthSession.last_seen_at < seen_at)
+            .values(
+                last_seen_at=seen_at,
+                expires_at=func.least(idle_expires_at, AuthSession.absolute_expires_at),
+            )
+        )
+
     def rotate(
         self,
         session_id: uuid.UUID,

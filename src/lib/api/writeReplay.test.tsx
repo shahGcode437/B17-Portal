@@ -61,11 +61,11 @@ const WRITES: Write[] = [
   ["groceryStaff", "cancelGroceryOrderAsStaff", () => staffOrderWrites.cancelGroceryOrderAsStaff(ID, anyBody)],
   ["groceryStaff", "recordGroceryIssue", () => staffOrderWrites.recordGroceryIssue(ID, anyBody)],
   ["grocerySettings", "updateGrocerySettings", () => settingsWrites.updateGrocerySettings({ revision: 1, enabled: true })],
-  ["staffAdmin", "appointModerator", () => staffAdminWrites.appointModerator("someone@example.org", ["grocery"])],
-  ["staffAdmin", "replaceModeratorScopes", () => staffAdminWrites.replaceModeratorScopes(ID, ["food"])],
-  ["staffAdmin", "pauseModerator", () => staffAdminWrites.pauseModerator(ID)],
-  ["staffAdmin", "resumeModerator", () => staffAdminWrites.resumeModerator(ID, ["food"])],
-  ["staffAdmin", "removeModerator", () => staffAdminWrites.removeModerator(ID)],
+  ["staffAdmin", "appointModerator", () => staffAdminWrites.appointModerator("someone@example.org", ["grocery"], 0)],
+  ["staffAdmin", "replaceModeratorScopes", () => staffAdminWrites.replaceModeratorScopes(ID, ["food"], 1)],
+  ["staffAdmin", "pauseModerator", () => staffAdminWrites.pauseModerator(ID, 1)],
+  ["staffAdmin", "resumeModerator", () => staffAdminWrites.resumeModerator(ID, ["food"], 1)],
+  ["staffAdmin", "removeModerator", () => staffAdminWrites.removeModerator(ID, 1)],
 ]
 
 /** The real auth layer (it gives the API client its session handlers), with a probe on its state. */

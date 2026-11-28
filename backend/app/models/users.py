@@ -17,6 +17,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Index,
+    Integer,
     String,
     Text,
     UniqueConstraint,
@@ -43,9 +44,14 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         str_enum(UserStatus), nullable=False, default=UserStatus.ACTIVE, server_default="active"
     )
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    #: How many times this account's staff role or scopes have changed (AUTH_RBAC.md §39). It only
+    #: grows, and it is the account's, so it survives removal and re-appointment. Written by
+    #: ``StaffAuthorityService`` alone, in the transaction of the change it counts.
+    staff_revision: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
 
     __table_args__ = (
         in_values("status", UserStatus, name="status_valid"),
+        CheckConstraint("staff_revision >= 0", name="staff_revision_non_negative"),
         CheckConstraint("char_length(btrim(display_name)) >= 2", name="display_name_length"),
         CheckConstraint("position('@' in email) > 1", name="email_has_at_sign"),
         # Phase 11B: the stored address is always trimmed and lower-cased (AUTH_RBAC.md §7.2).

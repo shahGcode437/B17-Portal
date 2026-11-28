@@ -324,7 +324,9 @@ def test_a_moderator_who_lost_services_keeps_other_scopes_but_loses_the_portal(
     assert moderator.get(PORTAL_REQUESTS).status_code == 200
     target = user_id(auth_env, email)
 
-    replaced = boss.request("PUT", f"{MODERATORS}/{target}/scopes", json={"scopes": ["directory"]})
+    replaced = boss.request(
+        "PUT", f"{MODERATORS}/{target}/scopes", json={"scopes": ["directory"], "revision": 0}
+    )
     assert replaced.status_code == 200, replaced.text
     fresh = auth_env.client()  # their old session was revoked with the scope change
     assert fresh.login(email).status_code == 200
@@ -343,7 +345,8 @@ def test_a_paused_moderator_cannot_use_the_portal(auth_env: AuthEnv) -> None:
     moderator = auth_env.client()
     assert moderator.login(email).status_code == 200
 
-    assert boss.request("POST", f"{MODERATORS}/{user_id(auth_env, email)}/pause").status_code == 200
+    pause = f"{MODERATORS}/{user_id(auth_env, email)}/pause"
+    assert boss.request("POST", pause, json={"revision": 0}).status_code == 200
 
     for response in (
         moderator.get(PORTAL_REQUESTS),

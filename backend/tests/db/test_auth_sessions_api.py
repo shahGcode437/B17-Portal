@@ -55,6 +55,7 @@ def test_me_returns_exactly_the_approved_fields(auth_env: AuthEnv) -> None:
         "session",
         "csrfToken",
         "emailDelivery",  # EMAIL-1, additive: configuration, never account data
+        "readBinding",  # GROCERY-4A, additive: what this server enforces (AUTH_RBAC.md §38)
     }
     assert data["roles"] == ["admin"] and data["professional"] == {"planCode": "premium"}
     assert data["staffScopes"] == []  # a Super Admin's authority is the role, never scope rows
@@ -134,12 +135,12 @@ def test_last_seen_is_written_at_most_every_five_minutes(auth_env: AuthEnv) -> N
     assert row.last_seen_at == first_seen
     assert "set-cookie" not in quiet.headers  # the cookie is only re-issued when the session slid
 
+    expires = row.expires_at
     auth_env.clock.advance(minutes=2)  # 6 minutes since the last write
     slid = api.me()
     auth_env.session.refresh(row)
-    assert row.last_seen_at == auth_env.clock()
-    assert "max-age=" in slid.headers["set-cookie"].lower()
-    assert slid.headers["set-cookie"].split("=", 1)[1].split(";")[0] == api.session_cookie
+    assert row.last_seen_at == auth_env.clock() and row.expires_at > expires
+    assert "set-cookie" not in slid.headers  # sliding never re-sends the cookie (§38.5)
 
 
 def test_an_expired_session_row_is_not_authenticated_even_if_it_still_exists(

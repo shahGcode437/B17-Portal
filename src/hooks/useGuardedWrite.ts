@@ -52,7 +52,7 @@ function lostAuthority(error: ApiError): boolean {
  *  - after a success, or when the screen turns out to be behind, the data is loaded again;
  *  - when the outcome is UNKNOWN nothing is retried, and no change is offered until a newer copy of
  *    the data has arrived;
- *  - a success that arrives after the signed-in account changed does nothing here.
+ *  - whatever arrives after the signed-in account changed does nothing here.
  */
 export function useGuardedWrite<S>({ lockKey, snapshot, reload, closeDialog, isBehind, explain }: Options<S>) {
   const { refreshMe } = useAuth()
@@ -97,6 +97,7 @@ export function useGuardedWrite<S>({ lockKey, snapshot, reload, closeDialog, isB
         reload()
         return { closed: true }
       } catch (cause) {
+        if (getIdentityStamp() !== askedAs) return { closed: true }
         const notSent = cause instanceof NotSent
         const thrown = notSent ? cause.error : cause
         const error = isApiError(thrown)

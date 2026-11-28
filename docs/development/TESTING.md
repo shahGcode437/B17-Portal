@@ -488,6 +488,104 @@ What it protects: `AUTH_RBAC.md` §23.1.
 
 **Not run:** the real-stack lane (`e2e-real/`); backend tests (no backend file changed); two real browser tabs against a running backend; any real device.
 
+## GROCERY-4A (account isolation)
+
+What it protects: `AUTH_RBAC.md` §23.2. Order is made explicit (held answers, called events); the only timers are short waits to show that **nothing** arrives, and a faked clock for "returning to a tab".
+
+| File | What |
+|---|---|
+| `lib/api/readIsolation.test.tsx` | **all 16 private reads**, listed and checked for completeness: another account before sending, and while the answer travels; the same session; a renewed session; unconfirmable; signed out; late `401` / `account_disabled` on reads and writes; a multi-request read; the recorded limit (a reinstated cookie) |
+| `app/crossTabSync.test.tsx` | one tab and a second `BroadcastChannel` as "the other tab": sign-out, switch, same account, the cover, offline and reconnect, bursts, no loops, forged message, visitor tab; what is and isn't announced, and that nothing but the signal is sent; return to a tab, staff and no-channel cases, back-forward restore |
+| `hooks/useMutation.abandoned.test.ts` | an overtaken operation settles (success, refusal, no answer), for every caller, releases the control, and claims no cancellation |
+| `app/accountSwitch.test.tsx` (+6) | no message of a replaced screen reaches the next account; an ended session explained; a person's own logout silent |
+| `features/grocery-staff/staffAccess.test.tsx`, `features/staff-management/staffManagement.test.tsx` | updated (below) |
+| `e2e/account-sync.spec.ts` (8), `e2e/mobile/account-sync.spec.ts` (2) | **two real Chromium tabs of one context** on the mocked API (`openSecondTab`): sign-out and switches across tabs; a tab without `BroadcastChannel` while the confirmation is slow; the cover when the server is unreachable; same-admin sign-in keeping a form; the cover **over an open dialog**, by mouse and keyboard, Escape included; 375 / 320 px and keyboard |
+
+**Before the fix** (new tests, application code unchanged at `badbe44`): `readIsolation` **57 failed, 6 passed**; `crossTabSync` and `useMutation.abandoned` **22 failed, 7 passed**; the six new message tests **5 failed, 1 passed** (two of the five test the new "session ended" message, which did not exist). The passes are controls that expect nothing to change, checks of the list itself, and the recorded limit.
+
+**Two older tests changed, and why.** One counted `/auth/me` calls, which now include read confirmations. The other expected a Moderator change pressed after an account switch to be sent once and refused; **it is now not sent at all**, because the re-read before it is confirmed and finds the other account.
+
+**Results on the final code (local, mocked; no backend, database or real API was used; no backend test was run, as no backend file changed).**
+
+| Check | Result |
+|---|---|
+| `npx tsc -b --force`; `npx tsc -p tsconfig.e2e.json --noEmit`; `npm run build` | passed |
+| `npm run lint` (oxlint) | passed, with the 7 warnings that existed before; none in a new or changed file |
+| `npx vitest run --maxWorkers=2`, caches cleared | **1,927 passed** (94 files); before this phase 1,823 in 91 |
+| `PW_SKIP_BUILD=1 npx playwright test --workers=2` (desktop, mobile, PWA), after the build | **240 passed**; before 230. Includes the two isolation checks that are meant to fail. No request escaped the mock |
+
+**Earlier runs, recorded as they happened.**
+1. First full unit run: 1,918 passed, 3 failed. One was a **real defect in the new cover** (its page-hiding mark was set a moment after its text); fixed. Two were the older tests described above.
+2. First two-tab browser run: 6 of 6 failed or partly failed from **test mistakes** (a wrong route; the second tab not registered with the sign-in helper); fixed.
+3. First full browser run: 237 passed, 1 failed: the same Moderator-change expectation as in the unit test; updated.
+4. Found by reading the new code: `AbortSignal.timeout` would have broken **every private read on Safari 15**. Replaced; its test fails when the call is put back.
+5. Next full run: unit 1,926 passed; browser 237 passed, 1 failed (`an expired admin session and a removed role close the screens`). **Reproduced: 17 of 30 repeats failed.** The test removed the admin role while a read confirmation was still on its way, so the app closed the screen before the test's click (correct behaviour). The test now waits for the confirmed list; **30 of 30** passed. Then the two-tab, grocery staff and grocery admin specs were repeated eight times: **168 of 168**. Only that spec changed afterwards (the unit run's file fingerprint was reproduced exactly without the edit), and the next full browser run passed 238 of 238.
+6. **A real defect found by testing the cover over an open dialog** (an untested case noticed while writing the report): **Escape** pressed while covered closed the hidden dialog and **lost its form** (the dialog library listens on `document`, ahead of the cover). A unit test and two browser tests were written, failed, and pass with the fix (the cover holds Escape at `window`). The first form of those browser tests also asked for a button the dialog doesn't have.
+7. **Load-related failures while repeating the two-tab specs**, with the machine at about 300 MB free memory: five rounds with four workers, 37 passed and 3 timed out (one tab still checking at 10 s); twenty rounds with four workers and tracing, **59 of 60 failed**, several unable to load a page within 30 s. The same three tests one at a time: **30 of 30**. To rule out an ordering race, a temporary copy answered every `/auth/me` after a random 0 to 2.5 s with long limits: **12 of 12** reached the right screen. No stuck state was found; **load is the likely cause, not proven**. The temporary spec was removed.
+8. A final run was **stopped by mistake** during the browser stage, after type-checks, lint, the 1,927 unit tests and the build had passed. Its browser results (208 passed, 24 failed, 8 not run) are **void**: 21 failures were Windows `0xC0000142` (new processes could not start). One was an assertion, in `e2e/search.spec.ts` (the search text not restored after a reload). **Its cause is not proven.** This phase changed no search code; the test passed in every other full run, in the rerun above and in **30 of 30** repeats. If it recurs, keep the trace. The browser suite was then rerun on the identical tree and build (same fingerprint before and after): the result above. It used two workers.
+
+**Mutation check** (before the Escape fix; that protection's test was seen to fail without it): sixteen protections removed one at a time (the confirmation; its token comparison; its "sent after the answer" rule; the late-refusal rule; the unchanged user object; the sign-in announcement; the cover; the trailing check after a burst; the staff announcement and return rules; the return check; the cover's inert page; abandonment; the replaced screen's silence; clearing messages; the old-Safari timer). **All sixteen are caught.** Three of the tests that catch them were written for this check, before it ran. Two account checks that could never trigger (inside multi-request reads) were removed instead. Files were restored byte for byte.
+
+**Not run:** the real-stack lane (`e2e-real/`); any backend or database test; Safari, Firefox or a real device; a screen reader; two tabs against a running backend. **Mocks say nothing about real database concurrency**, and none is claimed.
+
+## GROCERY-4A backend closure (session binding, cookie, staff idle, staff revision)
+
+What it protects: `AUTH_RBAC.md` §38, §38.4, §38.5, §39.
+
+| File | What |
+|---|---|
+| `backend/tests/db/test_session_binding_api.py` | the route table (every `GET` classified private / discovery / public); each private route with a mismatched, matching and absent name; no session write and no `Set-Cookie` on refusal; CORS preflight; logging; `readBinding` |
+| `backend/tests/db/test_session_cookie_races.py` | a browser cookie-jar model that applies **real** responses in a chosen order; the corrected races and two recorded limits (`test_limit_*`) |
+| `backend/tests/db/test_staff_idle.py` | the two clocks, on a controlled clock |
+| `backend/tests/db/test_staff_revision_api.py` | the contract, ABA, order of refusal, audit, CLI |
+| `backend/tests/db/test_staff_revision_concurrency.py` | **independent PostgreSQL connections** on committed rows; contenders observed waiting on a lock |
+| `backend/tests/db/test_migrations.py` (+4) | `0013` up on a populated database, defaults and check, down and up, DDL only |
+| frontend: `readIsolation`, `client`, `crossTabSync`, `staffQueue`, `staffManagement`, `writeReplay` | session name on reads, `session_mismatch`, binding and older servers, staff tabs, reconnect, revisions, refusal and recovery |
+| `e2e-real/17-session-and-staff.spec.ts`, `e2e-real/18-grocery.spec.ts` | the same rules, and the Grocery customer and staff journey, React → FastAPI → PostgreSQL. `18` needs a **throwaway** database and `P12I_KEEP=1`: Grocery orders can't be cleaned up |
+
+**Before each fix**, on the committed backend: binding, **all 18 private routes served a request naming another session**; cookie and idle tests **23 failed, 10 passed** (the passes are controls); a stale scope replacement returned `200` and removed another administrator's grant. The first run of the binding tests was **invalid** (the test client overwrote the hand-set header with its own); it was fixed and the defect reproduced again.
+
+**Results on the final code.**
+
+| Check | Result |
+|---|---|
+| Backend: `ruff check`, `ruff format --check`, `mypy` | passed (280 source files) |
+| Backend full suite, real PostgreSQL (`b17_test`), in six parts on one unchanged tree | **5,889 passed, 3 skipped, 0 failed** (all 5,892 collected). The skips are `test_staff_atomicity` cases for operations that write no timeline event |
+| Backend mutation check | 8 new protections broken one at a time (binding, the two staff clocks twice, cookie re-issue, cookie lifetime, revision comparison, target row lock, revision advance): **all caught**; files restored byte for byte |
+| `tsc -b`, e2e `tsc`, `npm run build` | passed |
+| `npm run lint` | passed, with the 7 warnings that existed before; none in a new or changed file |
+| `vitest run --maxWorkers=2`, caches cleared | **2,011 passed** (94 files); 1,927 before the closure |
+| Mocked Playwright (`--workers=2`) | **240 passed** (desktop, mobile, PWA); the same app and test sources before and after |
+| Frontend mutation check (new and changed protections only) | **17 caught**: the 2 changed rules and 15 new ones (one survived at first, below); source restored byte for byte |
+| Real-backend lane, throwaway database | **41 of 41** priority tests passed on the final specs, over three runs: `01`, `05`, `07`, `11` (32, first run), `18` (4, second run), `17` (5, third run). No single run covered all 41. Application code did not change between runs. Run through a temporary copy of the lane on ports 5273 / 8001 (only addresses substituted; separate Vite cache), because the developer's own app was on 5173 / 8000; a guard proved the web port wrote to the throwaway database `b17_g4a_lane`, which was dropped afterwards. `b17_dev` read-only checked: still `0009` |
+
+**Recorded as they happened.** (1) The first full backend run was stopped at about 8%: older tests in 8 files still called staff routes without a revision (an omission in this work), which showed as refusals and paused-thread timeouts. Fixed; the 742 tests of the affected files passed. (2) The next full run was stopped by the app at 26% with no failure and was not counted. The suite was then run in six parts. (3) Frontend mutation `removal states no revision` **survived**: every unit-test Moderator was at revision 0. The four member-change tests now each start at a different non-zero revision, and three matching mutations were added; all four are caught. (4) First real-backend run: 33 passed, 2 failed, 6 did not run. All three faults found (a form behind its button, a wrong response field name, then a click on a list the app does not show after an appointment) were in the **new specs**; no application code changed. (5) The backend mutation check edits source files, and the developer's API was running with auto-reload at the time, so it loaded deliberately broken copies for a few minutes; it restarted after the last restore. Do not run a mutation check beside a reloading server.
+
+**Reused, not repeated** (unchanged protections; owner-approved): the sixteen-protection mutation check of the first 4A pass, except its two staff-tab rules, which changed and were mutated again.
+
+**Not run:** the other real-backend specs (`02`, `03`, `04`, `06`, `08`, `09`, `10`, `12`–`16`, `mobile`), deferred by the owner's risk-based plan; the lane's tagged cleanup after `17` (runs used `P12I_KEEP=1` and dropped the database); a real browser receiving late responses out of order (covered by the cookie-jar tests on the real API, and by the real-browser check that only a sign-in sets the cookie); Safari, Firefox, a real device, a screen reader; real Google or Resend.
+
+### Correction before closing: no staff reload on return (2026-11-28)
+
+`useVerifiedReload` now only checks the identity on return or reconnect; Refresh still verifies and loads. No backend change. Four tests state the new rule (queue, order form, settings review, Moderator dialog); two older queue tests became one. **Before the fix those four failed** and the other 296 of the two staff folders passed.
+
+| Check, on the corrected code | Result |
+|---|---|
+| `vitest run --maxWorkers=2` on `features/grocery-staff`, `features/staff-management`, `app/accountSwitch`, `app/crossTabSync` | **358 passed** (10 files) |
+| `tsc -b --force`; e2e `tsc` | passed |
+| `oxlint` on the changed hook and the two staff folders | passed |
+| `npm run build`; mocked Playwright `grocery-staff`, `grocery-admin`, `account-sync` (desktop and mobile) | **32 passed** |
+
+**Not repeated** (owner's instruction): the full unit and mocked-browser suites, the backend suite, the real-backend lane and the mutation checks. The full-suite counts in the table above were taken **before** this correction. The earlier mutation `reconnecting reloads staff data` targeted code that no longer exists; the new queue test asserts that reconnecting loads nothing, and was not mutated.
+
+## Rule for mutation checks (owner, 2026-11-28)
+
+A mutation check deliberately breaks code. **No running development server may be able to load it.** On 2026-11-28 a check that edited the working tree did so while a developer's `uvicorn --reload` was running, and that server loaded broken copies for a few minutes.
+
+1. **Mutate an isolated copy** of the code, outside the working tree and outside any synced folder, and run its tests from that copy. Confirm that the tests import the copy, not the original (a mutation that survives for that reason looks like a weak test).
+2. **First list what is running** (listeners on 8000, 8001, 5173, 5273, 4173; `uvicorn` and `vite` processes and their folders). If any server could load files from the place to be mutated, **stop and ask its owner**; never stop it yourself.
+3. If an isolated copy isn't possible, don't mutate while any such server is running.
+
 ## Known intermittent failure in the mocked browser lane
 
 **2026-11-27, local, once.** In a full mocked run (184 passed, 1 failed), `e2e/write-journeys.spec.ts`, *"rejected → the owner sees the reason → edits a real field → PATCH → pending …"*, failed at the heading check **after `page.reload()`**: the "Listings" heading did not appear within the 10 s assertion timeout. The page snapshot taken just afterwards showed the heading and the updated card. The test then passed 30 of 30 repeats alone, its file passed 72 of 72 over three repeats, and the next full run passed 185 of 185. **The cause is not proven**; slowness under a parallel local run is the likely explanation. Nothing was changed: no timeout, retry or test. The GitHub run on `e1b566f` reported 185 passed (CI allows one retry per test; its summary listed no flaky test). **If it recurs, keep the trace and investigate; do not just raise the timeout.**

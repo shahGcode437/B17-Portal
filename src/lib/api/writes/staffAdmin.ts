@@ -6,7 +6,9 @@ import type { StaffScope } from "@/types/auth"
 
 /**
  * The five staff-management changes (`docs/backend/AUTH_RBAC.md` §30). Each needs a recent sign-in
- * and is sent ONCE (the client never sends any request twice). None takes a reason or a version.
+ * and is sent ONCE (the client never sends any request twice). Each states the account's staff
+ * `revision` as the person saw it; the server refuses any other with `staff_changed` (§39). None
+ * takes a reason.
  */
 async function change(method: "POST" | "PUT", path: string, signal: AbortSignal | undefined, body?: object): Promise<StaffMemberDto> {
   const member = await apiRequest<StaffMemberDto>(method, `/admin/staff/moderators${path}`, {
@@ -20,21 +22,23 @@ async function change(method: "POST" | "PUT", path: string, signal: AbortSignal 
   return member
 }
 
-export const appointModerator = (email: string, scopes: StaffScope[], signal?: AbortSignal) =>
-  change("POST", "", signal, { email, scopes })
+/** `revision` is 0 for an account that has never held a staff role. */
+export const appointModerator = (email: string, scopes: StaffScope[], revision: number, signal?: AbortSignal) =>
+  change("POST", "", signal, { email, scopes, revision })
 
 /** The Moderator ends with exactly these scopes. */
-export const replaceModeratorScopes = (userId: string, scopes: StaffScope[], signal?: AbortSignal) =>
-  change("PUT", `/${segment(userId)}/scopes`, signal, { scopes })
+export const replaceModeratorScopes = (userId: string, scopes: StaffScope[], revision: number, signal?: AbortSignal) =>
+  change("PUT", `/${segment(userId)}/scopes`, signal, { scopes, revision })
 
-export const pauseModerator = (userId: string, signal?: AbortSignal) => change("POST", `/${segment(userId)}/pause`, signal)
+export const pauseModerator = (userId: string, revision: number, signal?: AbortSignal) =>
+  change("POST", `/${segment(userId)}/pause`, signal, { revision })
 
-export const resumeModerator = (userId: string, scopes: StaffScope[], signal?: AbortSignal) =>
-  change("POST", `/${segment(userId)}/resume`, signal, { scopes })
+export const resumeModerator = (userId: string, scopes: StaffScope[], revision: number, signal?: AbortSignal) =>
+  change("POST", `/${segment(userId)}/resume`, signal, { scopes, revision })
 
 /** Removes the moderator role (`204`). The account itself stays. */
-export function removeModerator(userId: string, signal?: AbortSignal): Promise<void> {
-  return apiRequest<void>("DELETE", `/admin/staff/moderators/${segment(userId)}`, {
+export function removeModerator(userId: string, revision: number, signal?: AbortSignal): Promise<void> {
+  return apiRequest<void>("DELETE", `/admin/staff/moderators/${segment(userId)}?revision=${revision}`, {
     session: true,
     signal,
   })

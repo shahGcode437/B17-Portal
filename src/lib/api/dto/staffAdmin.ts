@@ -20,6 +20,11 @@ export interface StaffMemberDto {
   grantedAt: string
   /** Absent when no granting person is recorded (a command-line grant, for example). */
   grantedBy?: { userId: string; displayName: string }
+  /**
+   * The account's staff revision: stated with every change to it (`AUTH_RBAC.md` §39). Absent only
+   * from an older server, to which the app sends no change to an existing member.
+   */
+  revision?: number
 }
 
 export type StaffAuditActionDto =

@@ -12,7 +12,8 @@ import { isMocked } from './mockedEndpoints'
  * the Vitest layer — the HTTP boundary is faked, but with the real contract: cookie-style session
  * state held "server side" (it survives page reloads, like an HttpOnly cookie), the real
  * `{data}` / `{error}` envelopes, `/auth/me` returning a CSRF token, CSRF enforced on authenticated
- * unsafe calls, and the documented status codes. Nothing here reaches Google or any real service.
+ * unsafe calls, a read naming another session refused (`403 session_mismatch`, `AUTH_RBAC.md` §38),
+ * and the documented status codes. Nothing here reaches Google or any real service.
  *
  * Phase 12G: the same object also answers every READ endpoint (public discovery and the signed-in
  * owner / admin / saved / request reads) from `src/test/fixtures/readRouter.ts` - the contract the
@@ -213,6 +214,14 @@ export class AuthMock {
       this.grocery.maxActive = settings.maxActiveOrdersPerCustomer
       this.groceryStaff.maxOrderValuePaisa = settings.maxOrderValuePaisa
     }
+    await this.attach(page)
+  }
+
+  /**
+   * Serves `page` from this mock without resetting anything: for a SECOND tab of the same browser,
+   * which shares the sign-in (`session`) as real tabs share the cookie.
+   */
+  async attach(page: Page): Promise<void> {
     await page.route('**/api/v1/**', (route) => this.handle(route))
     await page.route('https://tile.openstreetmap.org/**', (route) => {
       this.tileRequests.push(route.request().url())
@@ -234,6 +243,7 @@ export class AuthMock {
       authMethods: { password: true, providers: account.providers },
       session: { expiresAt: '2099-01-01T00:00:00Z' },
       csrfToken: csrf,
+      readBinding: true,
       ...(this.emailDelivery && { emailDelivery: this.emailDelivery }),
     }
   }
@@ -279,6 +289,10 @@ export class AuthMock {
     // session's own CSRF token. (The calls that start a session have none to give.)
     if (method !== 'GET' && this.session && !PRE_SESSION.test(path) && csrf !== this.session.csrf) {
       return error(403, 'csrf_failed')
+    }
+    // And its rule for a read that names a session (only private reads send the name).
+    if (method === 'GET' && path !== '/auth/me' && this.session && csrf !== null && csrf !== this.session.csrf) {
+      return error(403, 'session_mismatch')
     }
 
     if (/^\/admin\/(grocery\/settings|staff(\/.*)?|audit)$/.test(path)) {

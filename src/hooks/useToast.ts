@@ -7,6 +7,8 @@ export interface ToastOptions {
 
 export interface ToastContextValue {
   show: (message: string, options?: ToastOptions) => void
+  /** Takes down whatever is showing (used when the signed-in account changes). */
+  clear?: () => void
 }
 
 export const ToastContext = createContext<ToastContextValue | null>(null)

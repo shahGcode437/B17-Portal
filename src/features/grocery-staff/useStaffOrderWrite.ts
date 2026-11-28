@@ -38,7 +38,7 @@ interface Options {
  *  - after a success or a conflict the order is loaded again from the server;
  *  - when the outcome is UNKNOWN nothing is retried, and no action is offered until a fresh copy of
  *    the order has arrived;
- *  - a success that arrives after the signed-in account changed does nothing here.
+ *  - whatever arrives after the signed-in account changed does nothing here.
  */
 export function useStaffOrderWrite({ userId, orderId, order, replace, reload, closeDialog }: Options) {
   const { refreshMe } = useAuth()
@@ -85,6 +85,7 @@ export function useStaffOrderWrite({ userId, orderId, order, replace, reload, cl
         show(ACTION_DONE[action])
         return { closed: true }
       } catch (cause) {
+        if (getIdentityStamp() !== askedAs) return { closed: true }
         const error = isApiError(cause)
           ? cause
           : new ApiError({ status: 0, code: NETWORK_ERROR_CODE, message: "No answer." })

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react"
+import { OperationAbandoned } from "@/lib/api/abandoned"
 import { ApiError, NETWORK_ERROR_CODE, isApiError } from "@/lib/api/errors"
 import { getIdentityStamp } from "@/lib/api/session"
 
@@ -10,9 +11,10 @@ import { getIdentityStamp } from "@/lib/api/session"
  *    first in-flight promise (same resolution, same thrown error) and no second request is sent.
  *    Pages should still disable the submit button on `pending`; this is defence.
  *  - A late answer from an unmounted hook is dropped.
- *  - A SUCCESS that arrives after the signed-in account changed is never handed to the caller: what
- *    would follow it (a message, a move to another page) belongs to the previous account, whose
- *    screen is already gone. A failure still comes through.
+ *  - If the signed-in account changed while it was under way, whatever the outcome, `mutate` rejects
+ *    with `OperationAbandoned` and the state returns to `idle`: the caller's success path never runs,
+ *    nothing stays held, and no outcome is claimed (the request may well have been carried out). The
+ *    caller needs no special case: its screen has been replaced and can no longer show a message.
  *  - A thrown non-`ApiError` becomes a network error, so pages never see a raw `TypeError`.
  *  - `mutate` returns the result on success and rethrows the typed error on failure.
  *  - `reset()` clears the state so the control is usable again after a dialog is dismissed.
@@ -58,16 +60,25 @@ export function useMutation<Args, T>(run: (args: Args) => Promise<T>): MutationH
     if (inFlightRef.current) return inFlightRef.current
     setState({ status: "submitting" })
     const askedAs = getIdentityStamp()
+    const abandoned = () => {
+      if (getIdentityStamp() === askedAs) return false
+      if (mountedRef.current) setState({ status: "idle" })
+      return true
+    }
     const promise = (async () => {
       try {
-        const data = await runRef.current(args)
-        if (getIdentityStamp() !== askedAs) return await new Promise<never>(() => {})
+        let data: T
+        try {
+          data = await runRef.current(args)
+        } catch (cause) {
+          if (abandoned()) throw new OperationAbandoned()
+          const error = toApiError(cause)
+          if (mountedRef.current) setState({ status: "error", error })
+          throw error
+        }
+        if (abandoned()) throw new OperationAbandoned()
         if (mountedRef.current) setState({ status: "success", data })
         return data
-      } catch (cause) {
-        const error = toApiError(cause)
-        if (mountedRef.current) setState({ status: "error", error })
-        throw error
       } finally {
         inFlightRef.current = null
       }

@@ -124,6 +124,7 @@ One shape for every non-2xx response:
 | 403 | `email_not_verified` | A verified email is required for this action; *Phase 11* |
 | 403 | `account_disabled` | Correct credentials on a suspended account; *Phase 11* |
 | 403 | `csrf_failed` | Missing/invalid CSRF token or disallowed Origin; *Phase 11* |
+| 403 | `session_mismatch` | A safe request named a session (`X-CSRF-Token`) that is not the cookie's. Nothing is read or written and no cookie is set; *GROCERY-4A*, §20 |
 | 409 | `email_already_registered` | Registration with an existing email (documented enumeration trade-off); *Phase 11* |
 | 409 | `identity_conflict` | A social identity belongs to another account / email collision. In 11C it is reported only as the `/login?error=identity_conflict` redirect code of the OAuth callback (the callback never returns JSON); the registered code is reserved for the Phase 12 SPA |
 | 400 | `token_invalid` · `token_expired` | Verification/reset token unknown, used or past its expiry; *Phase 11* |
@@ -583,13 +584,15 @@ Super Admin only; the design and the reasons are `AUTH_RBAC.md` §30. Every resp
 |---|---|---|---|
 | `GET /admin/staff?limit&offset` | Super Admin | `200` `{data: StaffMember[], meta}` | Super Admins first, then by name; `limit` 1-100 (default 50) |
 | `GET /admin/audit?action&actor&target&resource&since&until&limit&offset` | Super Admin | `200` `{data: StaffAuditEntry[], meta}` | newest first; `limit` 1-100 (default 25); `since` / `until` need a time zone; read-only |
-| `POST /admin/staff/moderators` `{email, scopes}` | Super Admin, session <= 15 min | `201` `{data: StaffMember}` | appoint an existing, active, verified account |
-| `PUT /admin/staff/moderators/{user_id}/scopes` `{scopes}` | same | `200` `{data: StaffMember}` | replace-set; at least one scope |
-| `POST /admin/staff/moderators/{user_id}/pause` | same | `200` `{data: StaffMember}` | keeps the role, deletes every scope |
-| `POST /admin/staff/moderators/{user_id}/resume` `{scopes}` | same | `200` `{data: StaffMember}` | at least one scope |
-| `DELETE /admin/staff/moderators/{user_id}` | same | `204` | removes the role; the account stays |
+| `POST /admin/staff/moderators` `{email, scopes, revision}` | Super Admin, session <= 15 min | `201` `{data: StaffMember}` | appoint an existing, active, verified account |
+| `PUT /admin/staff/moderators/{user_id}/scopes` `{scopes, revision}` | same | `200` `{data: StaffMember}` | replace-set; at least one scope |
+| `POST /admin/staff/moderators/{user_id}/pause` `{revision}` | same | `200` `{data: StaffMember}` | keeps the role, deletes every scope |
+| `POST /admin/staff/moderators/{user_id}/resume` `{scopes, revision}` | same | `200` `{data: StaffMember}` | at least one scope |
+| `DELETE /admin/staff/moderators/{user_id}?revision=N` | same | `204` | removes the role; the account stays |
 
-`StaffMember` = `{userId, displayName, email, role ("admin" | "moderator"), scopes[], paused, accountStatus, emailVerified, grantedAt, grantedBy?: {userId, displayName}}`. `StaffAuditEntry` = `{id, occurredAt, source ("web" | "cli"), action, actor?, target?: {userId, displayName?}, resourceType?, resourceId?, before?, after?, reason?, requestId?}`. A request body accepts only the declared fields (`role`, `userId`, `staffScopes`, ... are `422`). Scopes are the assignable modules `services` `directory` `food` `education` `property`; `news` is reserved and refused.
+`StaffMember` = `{userId, displayName, email, role ("admin" | "moderator"), scopes[], paused, accountStatus, emailVerified, grantedAt, grantedBy?: {userId, displayName}, revision}`. `StaffAuditEntry` = `{id, occurredAt, source ("web" | "cli"), action, actor?, target?: {userId, displayName?}, resourceType?, resourceId?, before?, after?, reason?, requestId?}`. A request body accepts only the declared fields (`role`, `userId`, `staffScopes`, ... are `422`). Scopes are the assignable modules `services` `directory` `food` `education` `property`; `news` is reserved and refused.
+
+**Staff revision (GROCERY-4A, `AUTH_RBAC.md` §39; migration `0013`). A breaking change to the five write routes:** each **requires** `revision` (strict integer, 0 to 2147483647): the account's `StaffMember.revision` as the caller saw it, or `0` when appointing an account that has never been staff. Any other value is refused with `409`, `error.code = "conflict"`, `details[0] = {field: "revision", code: "staff_changed", currentRevision}`; nothing changes, nothing is audited and no session ends. `currentRevision` is an additive, optional field of an error detail, present only on this refusal. A missing or invalid `revision` is `422`. A staff revision is compared after authorization and the target lookup and before the state checks.
 
 Refusals (`details[0].code`): `403 forbidden` (not a Super Admin / `super_admin_target_forbidden`) · `403 sensitive_reauth_required` (the session is older than the 15-minute window: sign in again; reads are not affected) · `403 csrf_failed` · `404 moderator_not_found` · `409 already_moderator | moderator_paused | moderator_not_paused | moderator_already_paused` · `422 invalid_staff_scope | target_not_eligible | validation_error` · `429 rate_limited` (20 mutation attempts per 15 minutes per Super Admin; `Retry-After`). There is no endpoint that promotes or demotes a Super Admin (operator CLI only).
 
@@ -853,3 +856,12 @@ Issue kinds: `payment_discrepancy`, `item_shortage`, `delivery_problem`, `custom
 ### 19.9 Settings addition
 
 `maxOrderValuePaisa`: default 2 000 000, allowed 100–100 000 000, changed through the existing `PATCH /admin/grocery/settings` (Super Admin; versioned and permanent). A new value affects only agreements recorded afterwards.
+
+## 20. Session binding of private reads, and the session cookie (GROCERY-4A)
+
+The design, the route inventory and the limits are `AUTH_RBAC.md` §38.
+
+- **Request:** an authenticated `GET` may send `X-CSRF-Token`, naming the session it means. If the session cookie is a different session: `403 session_mismatch` (envelope, `Cache-Control: no-store`), before any lookup: no data, no session write, no `Set-Cookie`. No header: served as before (such a client is **not** protected). No cookie: `401`. Public routes and `GET /auth/me` ignore the header.
+- **`AuthUser.readBinding: boolean`** (additive; on `/auth/me` and every answer carrying the user): `true` says the server does the above and does not count `/auth/me` as staff activity. An older server omits it.
+- **Cookie:** only responses that sign in (register, login, the Google callback, password-change rotation) set the session cookie, with `Max-Age` = the session's absolute lifetime. No other response re-issues it (this replaces the earlier "re-issued when the session slides"). `401 session_expired` and logout still clear it.
+- **Staff sessions:** the 2-hour staff idle limit counts only requests that pass a staff guard (`AUTH_RBAC.md` §38.4).

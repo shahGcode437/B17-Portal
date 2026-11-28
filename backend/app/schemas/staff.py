@@ -28,6 +28,10 @@ from app.schemas.write import StrictRequest
 #: validation error.
 Scopes = Annotated[list[StaffScope], Field(max_length=len(StaffScope))]
 
+#: The ``staff_revision`` a change was decided on (AUTH_RBAC.md §39). REQUIRED on every change: an
+#: optional one would let a client that leaves it out overwrite another administrator's change.
+StaffRevision = Annotated[int, Field(ge=0, le=2_147_483_647, strict=True)]
+
 # ------------------------------------------------------------------------------ requests
 
 
@@ -36,6 +40,8 @@ class AppointModeratorRequest(StrictRequest):
     #: indistinguishable from an unknown one (the answer is ``target_not_eligible`` for both).
     email: Annotated[str, StringConstraints(max_length=320)]
     scopes: Scopes
+    #: 0 for an account that has never held a staff role.
+    revision: StaffRevision
 
 
 class ReplaceScopesRequest(StrictRequest):
@@ -43,10 +49,16 @@ class ReplaceScopesRequest(StrictRequest):
     pause, which is a separate operation, and is refused here."""
 
     scopes: Scopes
+    revision: StaffRevision
 
 
 class ResumeModeratorRequest(StrictRequest):
     scopes: Scopes
+    revision: StaffRevision
+
+
+class PauseModeratorRequest(StrictRequest):
+    revision: StaffRevision
 
 
 class StaffRosterQuery(ApiModel):
@@ -100,6 +112,8 @@ class StaffMember(ApiModel):
     email_verified: bool
     granted_at: datetime.datetime
     granted_by: StaffGrantor | None = None
+    #: State this with the next change to this account (§39).
+    revision: int
 
 
 class StaffMemberEnvelope(ApiModel):

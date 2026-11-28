@@ -3,7 +3,8 @@ import { ApiError } from "@/lib/api/errors"
 import type { Page } from "@/lib/api/client"
 import { fetchStaffRoster } from "@/lib/api/reads/staffAdmin"
 import { getIdentityStamp } from "@/lib/api/session"
-import { STAFF_CHANGED } from "@/features/staff-management/staffAdminErrors"
+import { sessionChangedError } from "@/lib/api/errors"
+import { STAFF_CHANGED, STAFF_UNVERSIONED } from "@/features/staff-management/staffAdminErrors"
 import { sameAccess } from "@/features/staff-management/staffLabels"
 import type { StaffMemberDto } from "@/lib/api/dto/staffAdmin"
 
@@ -38,11 +39,19 @@ export async function loadStaffData(offset: number, selected: string | null, sig
   return { roster, member }
 }
 
+/** The revision a change to `member` states. A server that gives none can't protect the change. */
+export function statedRevision(member: StaffMemberDto): number {
+  if (typeof member.revision !== "number") {
+    throw new NotSent(new ApiError({ status: 409, code: STAFF_UNVERSIONED, message: "Not sent." }))
+  }
+  return member.revision
+}
+
 /**
  * Run just BEFORE a change to an existing Moderator: read them again and stop if their access is no
- * longer what the change was decided on. The API takes no version for staff changes (a scope change
- * replaces the whole set), so this narrows the chance of overwriting another Super Admin's change;
- * it cannot close it. Any failure here means nothing was sent.
+ * longer what the change was decided on. The SERVER is what closes the race (the change states a
+ * revision, §39); this says so earlier, and sends nothing at all. Any failure here means nothing
+ * was sent.
  *
  * Because it waits, it also stops if the signed-in account changed meanwhile: the change was decided
  * by the person who pressed the button, and would otherwise go out with the other account's token.
@@ -55,9 +64,7 @@ export async function assertUnchanged(shown: StaffMemberDto, signal: AbortSignal
   } catch (cause) {
     throw new NotSent(cause as ApiError)
   }
-  if (getIdentityStamp() !== askedAs) {
-    throw new NotSent(new ApiError({ status: 409, code: "account_changed", message: "Not sent." }))
-  }
+  if (getIdentityStamp() !== askedAs) throw new NotSent(sessionChangedError())
   if (!now || !sameAccess(now, shown)) {
     throw new NotSent(new ApiError({ status: 409, code: STAFF_CHANGED, message: "Changed." }))
   }

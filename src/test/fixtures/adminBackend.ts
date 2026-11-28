@@ -4,8 +4,9 @@
  * `staff_authority.py`, `staff_reads.py` and their routes: the order of refusal (401 / 403 →
  * recent sign-in → 429 → 422 body → state), replace-set scopes, an identical set changing nothing,
  * pause / resume rules, sessions ended on every real change, Super Admin targets refused, one
- * answer for every ineligible address, a version check on settings only, and the audit rows the
- * server writes. It does not model locking or the session age itself (a test sets
+ * answer for every ineligible address, a version check on settings, the staff revision every
+ * staff change states (`409 conflict` / `staff_changed`, §39), and the audit rows the server
+ * writes. It does not model locking or the session age itself (a test sets
  * `recentSignIn`). CSRF is the transport's job.
  */
 import type { GrocerySettingsDto } from "../../lib/api/dto/grocerySettings"
@@ -37,7 +38,7 @@ export interface AdminViewer {
   emailVerified: boolean
 }
 
-type Problem = { field: string; code: string }
+type Problem = { field: string; code: string; currentRevision?: number }
 
 const ok = (data: unknown, status = 200): GroceryReply => ({ status, body: { data: JSON.parse(JSON.stringify(data)) } })
 const page = (rows: unknown[], limit: number, offset: number): GroceryReply => ({
@@ -127,6 +128,10 @@ export class AdminBackend {
   /** Called with every new settings version, so another fake can follow it. */
   onSettings: ((settings: GrocerySettingsDto) => void) | null = null
   private readonly grants = new Map<string, { at: string; by?: { userId: string; displayName: string } }>()
+  /** Each account's staff revision. Kept through removal, so an old decision stays old. */
+  private readonly revisions = new Map<string, number>()
+  /** `false`: the server from before §39, which gives no revision and ignores one. */
+  versionsStaff = true
   private serial = 0
   private time = Date.parse("2026-11-27T08:00:00Z")
 
@@ -151,6 +156,15 @@ export class AdminBackend {
     this.onSettings?.(this.settings)
   }
 
+  revisionOf(id: string): number {
+    return this.revisions.get(id) ?? 0
+  }
+
+  /** Someone else changed this account's staff access and it may look the same again (A → B → A). */
+  advanceElsewhere(id: string, by = 1): void {
+    this.revisions.set(id, this.revisionOf(id) + by)
+  }
+
   member(account: DirectoryAccount): StaffMemberDto {
     const role = account.roles.includes("admin") ? "admin" : "moderator"
     const scopes = role === "admin" ? [] : [...account.scopes].sort()
@@ -166,6 +180,7 @@ export class AdminBackend {
       emailVerified: account.emailVerified,
       grantedAt: grant?.at ?? "2026-11-20T06:00:00Z",
       ...(grant?.by ? { grantedBy: grant.by } : {}),
+      ...(this.versionsStaff ? { revision: this.revisionOf(account.id) } : {}),
     }
   }
 
@@ -212,7 +227,7 @@ export class AdminBackend {
       const rows = this.audit.filter((e) => (!action || e.action === action) && (!target || e.target?.userId === target))
       return page(rows, limit, offset)
     }
-    return this.changeStaff(method, path, payload, viewer)
+    return this.changeStaff(method, path, query, payload, viewer)
   }
 
   private patchSettings(body: Record<string, unknown>, viewer: AdminViewer): GroceryReply {
@@ -230,7 +245,13 @@ export class AdminBackend {
     return ok(this.settings)
   }
 
-  private changeStaff(method: string, path: string, body: Record<string, unknown>, viewer: AdminViewer): GroceryReply {
+  private changeStaff(
+    method: string,
+    path: string,
+    query: URLSearchParams,
+    body: Record<string, unknown>,
+    viewer: AdminViewer,
+  ): GroceryReply {
     if (!this.recentSignIn) return fail(403, "forbidden", [{ field: "session", code: "sensitive_reauth_required" }])
     if (this.staffRateLimited) return fail(429, "rate_limited")
     const match = /^\/admin\/staff\/moderators(?:\/([^/]+)(?:\/(scopes|pause|resume))?)?$/.exec(path)
@@ -239,9 +260,19 @@ export class AdminBackend {
     const appoint = !id && method === "POST"
     const takesScopes = appoint || operation === "scopes" || operation === "resume"
 
-    const allowed = appoint ? ["email", "scopes"] : takesScopes ? ["scopes"] : []
+    const removing = !operation && !appoint && method === "DELETE"
+    const stated = this.versionsStaff ? (["revision"] as const) : []
+    const allowed: string[] = appoint
+      ? ["email", "scopes", ...stated]
+      : takesScopes
+        ? ["scopes", ...stated]
+        : operation === "pause"
+          ? [...stated]
+          : []
     const extra = Object.keys(body).filter((key) => !allowed.includes(key))
     if (extra.length) return invalid(extra[0], "not_allowed")
+    const seen = removing ? (query.has("revision") ? Number(query.get("revision")) : undefined) : body.revision
+    if (this.versionsStaff && !(Number.isInteger(seen) && (seen as number) >= 0)) return invalid("revision", "missing")
     let scopes: StaffScope[] = []
     if (takesScopes) {
       if (!Array.isArray(body.scopes)) return invalid("scopes", "missing")
@@ -252,6 +283,10 @@ export class AdminBackend {
     const superTarget = () => fail(403, "forbidden", [{ field: "request", code: "super_admin_target_forbidden" }])
     const eligible = (a: DirectoryAccount) => a.status === "active" && a.emailVerified
     const state = (account: DirectoryAccount) => this.member(account)
+    const stale = (userId: string): GroceryReply | null =>
+      this.versionsStaff && seen !== this.revisionOf(userId)
+        ? fail(409, "conflict", [{ field: "revision", code: "staff_changed", currentRevision: this.revisionOf(userId) }])
+        : null
 
     if (appoint) {
       if (typeof body.email !== "string" || body.email.length > 320) return invalid("email", "string_type")
@@ -259,8 +294,11 @@ export class AdminBackend {
       const account = this.directory.all().find((a) => a.email.toLowerCase() === wanted)
       if (!account || !eligible(account)) return invalid("email", "target_not_eligible")
       if (account.roles.includes("admin")) return superTarget()
+      const behind = stale(account.id)
+      if (behind) return behind
       if (account.roles.includes("moderator")) return fail(409, "conflict", [{ field: "request", code: "already_moderator" }])
       const ended = this.directory.setStaff(account.id, "moderator", scopes)
+      this.advanceElsewhere(account.id)
       this.grants.set(account.id, { at: this.tick(), by: { userId: viewer.id, displayName: viewer.displayName } })
       this.log("moderator_appointed", viewer, account, { role: null, scopes: [] }, { role: "moderator", scopes, paused: false, sessions_revoked: ended })
       return ok(state(this.directory.all().find((a) => a.id === account.id)!), 201)
@@ -271,11 +309,17 @@ export class AdminBackend {
     if (!target) return notFound()
     if (target.roles.includes("admin")) return superTarget()
     if (!target.roles.includes("moderator")) return notFound()
+    const behind = stale(target.id)
+    if (behind) return behind
     const current = [...target.scopes].sort()
     const paused = current.length === 0
     const conflict = (code: string) => fail(409, "conflict", [{ field: "request", code }])
     const before = { role: "moderator", scopes: current, paused }
-    const apply = (role: "moderator" | null, next: StaffScope[]) => this.directory.setStaff(target.id, role, next)
+    const apply = (role: "moderator" | null, next: StaffScope[]) => {
+      const ended = this.directory.setStaff(target.id, role, next)
+      this.advanceElsewhere(target.id)
+      return ended
+    }
     const answer = () => ok(state(this.directory.all().find((a) => a.id === target.id)!))
 
     if (!operation && method === "DELETE") {

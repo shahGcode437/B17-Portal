@@ -220,7 +220,8 @@ def test_authenticated_requests_do_not_write_on_every_call(db_session: Session) 
             assert sessions.authenticate(raw).principal is not None
         assert len(updates) == 1  # the 5-minute throttle: one write for five requests
         clock.advance(minutes=6)
-        assert sessions.authenticate(raw).refreshed_max_age is not None
+        slid = sessions.authenticate(raw).principal
+        assert slid is not None and slid.session_expires_at > clock()
         assert len(updates) == 2
 
 

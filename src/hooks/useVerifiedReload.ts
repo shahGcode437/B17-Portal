@@ -4,9 +4,6 @@ import { fetchMe } from "@/lib/api/auth"
 import { isApiError, type ApiError } from "@/lib/api/errors"
 import type { AuthUser, CurrentUser } from "@/types/auth"
 
-/** Coming back to the tab reloads the data again, but not more often than this. */
-export const RELOAD_AFTER_MS = 15_000
-
 function authorityOf(user: Pick<CurrentUser, "id" | "roles" | "staffScopes" | "emailVerified">): string {
   return JSON.stringify([user.id, [...user.roles].sort(), [...(user.staffScopes ?? [])].sort(), user.emailVerified])
 }
@@ -54,8 +51,10 @@ function useVerifyIdentity(user: CurrentUser, mayAccess: (now: AuthUser) => bool
 }
 
 /**
- * `reload` for a "Refresh" button, and the same on returning to the tab or coming back online
- * (identity every time; the data at most every `RELOAD_AFTER_MS`). No polling.
+ * `reload` for a "Refresh" button, which is the ONLY thing here that loads staff data. Returning to
+ * the tab or coming back online checks who is signed in and loads nothing: nobody asked for data,
+ * and loading staff data counts as their activity (`AUTH_RBAC.md` §38.4), so neither may keep a
+ * staff session alive. No polling.
  */
 export function useVerifiedReload(user: CurrentUser, reload: () => void, mayAccess: (now: AuthUser) => boolean) {
   const verify = useVerifyIdentity(user, mayAccess)
@@ -63,33 +62,23 @@ export function useVerifiedReload(user: CurrentUser, reload: () => void, mayAcce
   useEffect(() => {
     reloadRef.current = reload
   })
-  const lastLoad = useRef(0)
-  useEffect(() => {
-    lastLoad.current = Date.now()
-  }, [])
 
   const reloadNow = useCallback(async () => {
     if (!(await verify())) return
-    lastLoad.current = Date.now()
     reloadRef.current()
   }, [verify])
 
   useEffect(() => {
-    const returned = () => {
-      if (document.visibilityState !== "visible" || !navigator.onLine) return
-      void verify().then((same) => {
-        if (!same || Date.now() - lastLoad.current < RELOAD_AFTER_MS) return
-        lastLoad.current = Date.now()
-        reloadRef.current()
-      })
+    const cameBack = () => {
+      if (document.visibilityState === "visible" && navigator.onLine) void verify()
     }
-    window.addEventListener("focus", returned)
-    window.addEventListener("online", returned)
-    document.addEventListener("visibilitychange", returned)
+    window.addEventListener("focus", cameBack)
+    window.addEventListener("online", cameBack)
+    document.addEventListener("visibilitychange", cameBack)
     return () => {
-      window.removeEventListener("focus", returned)
-      window.removeEventListener("online", returned)
-      document.removeEventListener("visibilitychange", returned)
+      window.removeEventListener("focus", cameBack)
+      window.removeEventListener("online", cameBack)
+      document.removeEventListener("visibilitychange", cameBack)
     }
   }, [verify])
 

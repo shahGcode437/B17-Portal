@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event"
 import { useLayoutEffect, useState, type ReactElement } from "react"
 import { RouterProvider, createMemoryRouter, useNavigate, type RouteObject } from "react-router-dom"
 import { beforeEach, describe, expect, it } from "vitest"
-import { ACCOUNT_CHANGED_MESSAGE } from "@/app/AccountBoundary"
+import { ACCOUNT_CHANGED_MESSAGE, SESSION_ENDED_MESSAGE } from "@/app/AccountBoundary"
 import { AppRoot } from "@/app/ScrollManager"
 import { AuthGate } from "@/components/access/AuthGate"
 import { ToastProvider } from "@/components/feedback/ToastProvider"
@@ -519,6 +519,108 @@ describe("the staff and administration write hooks", () => {
     await succeed()
 
     expect(await screen.findByText(said)).toBeInTheDocument()
+  })
+})
+
+describe("nothing the earlier account's screens say reaches the next one", () => {
+  const LISTING_ID = "00000000-0000-4000-8000-000000000101"
+  const emptySaved = okPage([], { limit: 50 })
+
+  it("the refusal of a change pressed after the switch is not announced as theirs", async () => {
+    const server = sharedCookieServer(ALICE, () => emptySaved)
+    const app = renderApp("/open", [{ path: "/open", element: <SaveButton kind="provider" id={LISTING_ID} name="Imran" /> }])
+    await app.who(signedIn(ALICE))
+    await settle()
+
+    server.signInAs(BOB)
+    await app.user.click(screen.getByRole("button", { name: /Imran/ }))
+    await app.who(signedIn(BOB))
+    await settle()
+
+    expect(await screen.findByText(ACCOUNT_CHANGED_MESSAGE)).toBeInTheDocument()
+    expect(document.body).not.toHaveTextContent(/secure session|couldn.t save|something went wrong/i)
+    expect(server.performed).toEqual([])
+  })
+
+  /** Any screen that reports an outcome itself, without the shared write hooks. */
+  function ReportsLater({ work }: { work: () => Promise<unknown> }) {
+    const { show } = useToast()
+    return (
+      <button
+        onClick={() =>
+          void work().then(
+            () => show("It worked for Alice"),
+            () => show("It failed for Alice", { tone: "error" })
+          )
+        }
+      >
+        Go
+      </button>
+    )
+  }
+
+  it.each(["resolve", "reject"] as const)("a message a replaced screen sends later (%s) is dropped", async (how) => {
+    let finish!: () => void
+    const work = new Promise<void>((resolve, reject) => {
+      finish = () => (how === "resolve" ? resolve() : reject(new Error("late")))
+    })
+    const server = sharedCookieServer(ALICE)
+    const app = renderApp("/open", [{ path: "/open", element: <ReportsLater work={() => work} /> }])
+    await app.who(signedIn(ALICE))
+    await app.user.click(screen.getByRole("button", { name: "Go" }))
+
+    server.signInAs(BOB)
+    await app.reread()
+    await act(async () => finish())
+    await settle()
+
+    expect(document.body).not.toHaveTextContent(/for Alice/)
+  })
+
+  it("a message already showing is taken down with its screen", async () => {
+    const server = sharedCookieServer(ALICE)
+    const app = renderApp("/open", [{ path: "/open", element: <ReportsLater work={() => Promise.resolve()} /> }])
+    await app.who(signedIn(ALICE))
+    await app.user.click(screen.getByRole("button", { name: "Go" }))
+    await screen.findByText("It worked for Alice")
+
+    server.signInAs(BOB)
+    await app.reread()
+
+    // Well inside the few seconds a message stays up on its own.
+    await waitFor(() => expect(screen.queryByText("It worked for Alice")).not.toBeInTheDocument(), { timeout: 1000 })
+    expect(screen.getByText(ACCOUNT_CHANGED_MESSAGE)).toBeInTheDocument()
+  })
+
+  it("the same screen, unchanged account: its message is shown", async () => {
+    sharedCookieServer(ALICE)
+    const app = renderApp("/open", [{ path: "/open", element: <ReportsLater work={() => Promise.resolve()} /> }])
+    await app.who(signedIn(ALICE))
+    await app.user.click(screen.getByRole("button", { name: "Go" }))
+    expect(await screen.findByText("It worked for Alice")).toBeInTheDocument()
+  })
+
+  it("a session that ended under a press is explained once, as ended", async () => {
+    const server = sharedCookieServer(ALICE, (call) => (call.method === "GET" ? emptySaved : fail(401, "session_expired")))
+    const app = renderApp("/open", [{ path: "/open", element: <SaveButton kind="provider" id={LISTING_ID} name="Imran" /> }])
+    await app.who(signedIn(ALICE))
+    await settle()
+
+    await app.user.click(screen.getByRole("button", { name: /Imran/ }))
+    await app.who("anonymous")
+    await settle()
+
+    expect(screen.getAllByText(SESSION_ENDED_MESSAGE)).toHaveLength(1)
+    expect(server.performed).toHaveLength(1)
+  })
+
+  it("logging out says nothing about an ended session", async () => {
+    sharedCookieServer(ALICE)
+    const app = renderApp("/open", [{ path: "/open", element: <p>page</p> }])
+    await app.who(signedIn(ALICE))
+    await act(() => app.auth().logout())
+    await settle()
+    expect(screen.queryByText(SESSION_ENDED_MESSAGE)).not.toBeInTheDocument()
   })
 })
 

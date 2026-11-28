@@ -975,7 +975,7 @@ Frozen on 2026-11-19 by the product owner; **documentation only** (baseline `079
 **PLANNED / FROZEN:**
 - `admin` keeps its stored value and means **Super Admin**; one new role, **`moderator`**, whose authority is the role plus one or more scopes from `services`, `directory`, `food`, `education`, `property`, `news` (`news` only once a News administration API exists). Professional is never a staff role. Scope is derived server-side from the resource's own database state; unknown or corrupt scope is Super Admin only; an out-of-scope item returns the same `404` as a nonexistent one; non-staff get `403`; every privileged `/admin/*` route needs an explicit authority classification, enforced by a CI / security test; taxonomy is Super Admin only.
 - Super Admin: operational target 1–2 accounts (never a database cap; a promotion above 2 needs an explicit CLI override with a reason, and a transient third is allowed for safe rotation); never zero **usable** Super Admins (active, verified, holding `admin`, a usable sign-in method and, once staff MFA ships, an enrolled MFA factor — transactional, advisory-lock serialized); promotion and demotion are CLI-only in v1 through a shared authority service with a reason, an audit record and session revocation. Super Admin and Moderator are mutually exclusive.
-- Moderators are appointed from existing active, verified accounts (no Professional profile) and can never manage staff, change scopes or touch Super Admins; elevation revokes sessions and needs a fresh login; removal takes effect at once and also revokes sessions; pausing a Moderator keeps the role and removes every scope (zero scopes = zero staff authority); staff authorization reuses the existing admin freshness policy and staff management adds an interim 15-minute session-age window. **Before PUBLIC production every Super Admin and every Moderator must have MFA** (no production staff bypass; any bypass is development-only).
+- Moderators are appointed from existing active, verified accounts (a Professional profile is neither required nor a bar: professional accounts are eligible) and can never manage staff, change scopes or touch Super Admins; elevation revokes sessions and needs a fresh login; removal takes effect at once and also revokes sessions; pausing a Moderator keeps the role and removes every scope (zero scopes = zero staff authority); staff authorization reuses the existing admin freshness policy and staff management adds an interim 15-minute session-age window. **Before PUBLIC production every Super Admin and every Moderator must have MFA** (no production staff bypass; any bypass is development-only).
 - Self-moderation is denied for Moderators and, for ordinary content, for Super Admin too; one **temporary, approval-only** audited override let a Super Admin approve their own Service / Professional listing until RBAC-D made provider resources staff-managed (**removed in RBAC-D**, 2026-11-21 — see "RBAC-D Result" below). Moderators get no raw precise coordinates by default; the reduced view ships in RBAC-B, before RBAC-C can appoint a Moderator.
 - A durable append-only staff audit (never secrets; its infrastructure is created in RBAC-A, RBAC-B and RBAC-C write their own records, RBAC-G expands coverage) will record staff, scope, promotion, provider, taxonomy and override events. Eventually `/admin/login` is the single Staff Login (Super Admin → global dashboard, Moderator → scoped dashboard, non-staff denied) and `/login` stays valid for staff. Fixtures and demo staff identities are refused in staging and production; staging seeds no staff identity (a staging Super Admin is provisioned explicitly through the staff CLI); hosted environments reject fixture / demo / reserved-TLD identities for privileged grants.
 - Order: RBAC-A schema + primitives → B scoped moderation → C staff management → D staff-managed providers → E Super Admin UI → F Moderator dashboard → G audit / privacy hardening → H full security / e2e / production hardening; then staff-login hardening, rate limits and MFA.
@@ -1138,7 +1138,9 @@ Baseline `d2db92b` (clean, equal to `origin/master`, latest relevant CI passed).
 - **Not production-ready.** Launch blockers stay open (`DEPLOYMENT.md` §15–§17; `GROCERY.md`, "Before a pilot").
 - **Verification:** `TESTING.md` (GROCERY-3B).
 
-## GROCERY-3C Result — Grocery settings and staff management (BUILT; **awaiting the owner's review, NOT committed**)
+## GROCERY-3C Result — Grocery settings and staff management (**since committed and pushed by the owner**)
+
+**Update:** committed with the security correction below as `badbe44`. The owner reported **Frontend CI #48 passed** on it in 6 min 56 s (not read by this session). Latest applicable Backend CI: `e70c651`, passed. The notes below are as written before the commit.
 
 Baseline `0e8c5ae` (clean, equal to `origin/master`, latest relevant CI passed). **Frontend only:** no backend, migration or dependency change. Everything about it: `docs/product/GROCERY.md`, "Administration"; decisions: `DECISIONS.md`.
 
@@ -1149,7 +1151,7 @@ Baseline `0e8c5ae` (clean, equal to `origin/master`, latest relevant CI passed).
 - **Not production-ready. Staff MFA does not exist** and stays a launch blocker, with every other blocker in `DEPLOYMENT.md` §15–§17.
 - **Verification:** `TESTING.md` (GROCERY-3C).
 
-## Security correction — no authenticated change is re-sent (BUILT; **awaiting the owner's review, NOT committed**)
+## Security correction — no authenticated change is re-sent (**since committed and pushed by the owner in `badbe44`**)
 
 Built 2026-11-28 on top of the uncommitted GROCERY-3C tree. **Frontend only:** no backend, migration or dependency change. Detail: `AUTH_RBAC.md` §23.1; decision: `DECISIONS.md`; tests: `TESTING.md`.
 
@@ -1157,6 +1159,28 @@ Built 2026-11-28 on top of the uncommitted GROCERY-3C tree. **Frontend only:** n
 - **Now:** nothing is ever sent twice; screens, saved items and a pending staff change do not carry into another account.
 - **Open limits:** no cross-tab notification (a stale tab keeps its old screen, and its reads are answered for the new account, until it re-reads who is signed in); verified against fakes only.
 - **Not production-ready**; the launch blockers (staff MFA among them) are unchanged.
+
+## GROCERY-4A — account isolation and concurrency hardening (BUILT; **accepted as a development checkpoint, NOT committed**)
+
+Baseline `badbe44` (clean, equal to `origin/master`). **Frontend only:** no backend, migration or dependency change. Detail: `AUTH_RBAC.md` §23.2; tests: `TESTING.md`; decision: `DECISIONS.md`.
+
+- **Fixed (each reproduced first):** private reads handing another account's records to a stale tab; late refusals ending a newer session; a multi-request read mixing accounts; no cross-tab sync; never-settling abandoned operations; messages reaching the next account.
+- **Visible changes:** signing in or out in one tab updates the others, which are briefly covered while checking; a cover with "Try again" when that can't be checked; messages explaining a reset.
+- The three items open at the end of this frontend pass (the server read binding, the staff revision and `/auth/me` against the staff idle rule) are handled by the backend closure below.
+- **Moderator eligibility:** unchanged; an ambiguous sentence corrected.
+- **Verified against fakes only** (never the real backend). **Grocery stays disabled**; no setting, account or database was changed. **Not production-ready.**
+
+## GROCERY-4A backend closure (BUILT; **accepted by the owner as a development checkpoint, 2026-11-28; NOT committed**)
+
+Owner-approved on top of the uncommitted 4A frontend (baseline `badbe44`). **Backend and frontend; migration `0013`, run only on isolated test databases** (`b17_dev` stays at `0009`). Detail: `AUTH_RBAC.md` §38, §38.4, §38.5, §39; deploy order: `DEPLOYMENT.md` §19; tests: `TESTING.md`.
+
+- **Fixed (each reproduced first):** every private read answered whatever session the cookie held; late responses re-sending an older session's cookie (also reviving a logged-out one); `/auth/me` keeping an idle staff session alive; stale staff changes overwriting newer ones.
+- **Behaviour changes:** staff writes **require** `revision` (breaking); `/auth/me` and non-staff requests no longer extend the 2-hour staff clock and **returning to a staff tab no longer reloads staff data** (identity check only; Refresh loads), so an expired staff screen stays visible until the next staff request (`AUTH_RBAC.md` §38.4); the session cookie is set only at sign-in, for the absolute lifetime.
+- **Verification** (details and what was not run: `TESTING.md`): backend 5,889 passed / 3 skipped on real PostgreSQL; 2,011 frontend unit / component tests; 240 mocked browser tests; 41 priority real-backend browser tests on a throwaway database, including a first Grocery customer-to-cash journey. The other real-backend specs were deferred.
+- **Mandatory pre-pilot review:** every item of `DEPLOYMENT.md` §20.
+- **GROCERY-4B:** verification foundation approved; further items await a requirements review; not started.
+- **Still open:** clients that send no session name are not protected; a late `401` or logout can clear a newer cookie (signs out, never grants); staff MFA and the other launch blockers.
+- **Grocery stays disabled.** **Not production-ready, and not pilot-ready.**
 
 ## VR1 (Visual Redesign) — Glassmorphism + Controlled Maximalism Foundation (in progress, NOT committed)
 

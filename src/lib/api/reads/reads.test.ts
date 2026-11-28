@@ -112,7 +112,7 @@ describe("public reads", () => {
 })
 
 describe("private reads", () => {
-  it("are authenticated calls: cookies included, no CSRF header on a GET", async () => {
+  it("are authenticated calls: cookies included; with no token yet, none is invented", async () => {
     const { calls } = installFetchMock(() => okPage([], { counts: { pending: 1 } }))
     await fetchSaved()
     await fetchMyRequests({ status: "submitted" })

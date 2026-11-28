@@ -19,6 +19,11 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* While it isn't known who is signed in (features/auth/IdentityCheckCover) only the cover shows. */
+html[data-identity-check] body > :not([data-identity-cover]) {
+    visibility: hidden !important;
+}
+
 /*
  * B-17 Portal design tokens.
  * Single source of truth — components must reference these tokens

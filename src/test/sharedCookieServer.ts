@@ -31,7 +31,17 @@ const PRE_SESSION = new Set(["/auth/register", "/auth/login", "/auth/forgot-pass
 
 export type Answer = (call: MockCall, actor: CookieAccount) => MockReply | "network-error" | Promise<MockReply | "network-error">
 
-export function sharedCookieServer(first: CookieAccount | null, answer?: Answer) {
+export interface ServerOptions {
+  /**
+   * `true` (default): the current backend, which refuses a read naming another session
+   * (`AUTH_RBAC.md` §38) and says so in `/auth/me` (`readBinding`). `false`: an older backend, which
+   * ignores the name, so only the app's own confirmation protects a private answer.
+   */
+  binds?: boolean
+}
+
+export function sharedCookieServer(first: CookieAccount | null, answer?: Answer, options: ServerOptions = {}) {
+  const binds = options.binds ?? true
   let serial = 0
   const state = {
     account: null as CookieAccount | null,
@@ -65,7 +75,16 @@ export function sharedCookieServer(first: CookieAccount | null, answer?: Answer)
     const who = state.account
     if (call.path === "/auth/me") {
       return who
-        ? ok(meBody({ id: who.id, displayName: who.name, roles: who.roles ?? [], staffScopes: who.staffScopes ?? [], csrfToken: state.csrf }))
+        ? ok(
+            meBody({
+              id: who.id,
+              displayName: who.name,
+              roles: who.roles ?? [],
+              staffScopes: who.staffScopes ?? [],
+              csrfToken: state.csrf,
+              ...(binds && { readBinding: true }),
+            })
+          )
         : fail(401, "unauthenticated")
     }
     const unsafe = call.method !== "GET" && !PRE_SESSION.has(call.path)
@@ -75,6 +94,8 @@ export function sharedCookieServer(first: CookieAccount | null, answer?: Answer)
       performed.push({ actor: who.name, method: call.method, path: call.path, body: call.body })
     }
     if (!who) return fail(401, "unauthenticated")
+    const named = call.headers.get("X-CSRF-Token")
+    if (binds && call.method === "GET" && named !== null && named !== state.csrf) return fail(403, "session_mismatch")
     if (call.path === "/auth/logout" && unsafe) {
       signInAs(null)
       return { status: 204 }

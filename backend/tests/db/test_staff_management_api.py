@@ -136,10 +136,11 @@ def test_appointment_writes_the_audit_and_the_timeline_event(auth_env: AuthEnv) 
     assert event.action is StaffAuditAction.MODERATOR_APPOINTED
     assert event.source is StaffAuditSource.WEB and event.actor_user_id == actor
     assert event.target_user_id == cand.id and event.reason is None
-    assert event.before == {"role": None, "scopes": []}
+    assert event.before == {"role": None, "scopes": [], "revision": 0}
     assert event.after == {
         "role": "moderator",
         "scopes": ["food", "property"],
+        "revision": 1,
         "paused": False,
         "sessions_revoked": 2,
     }
@@ -309,8 +310,9 @@ def test_replacing_scopes_adds_removes_and_audits_before_and_after(auth_env: Aut
             "role": "moderator",
             "scopes": ["education", "food"],
             "paused": False,
+            "revision": 1,
         }
-        assert event.after is not None
+        assert event.after is not None and event.after["revision"] == 2
         assert event.after["scopes"] == ["directory", "education", "property"]
         assert event.after["sessions_revoked"] == 2
 
@@ -406,8 +408,19 @@ def test_pausing_keeps_the_role_deletes_every_scope_and_leaves_zero_authority(
     assert live_sessions(auth_env.session, mod.id) == 0 and browsers[0].me().status_code == 401
     event = audit_events(auth_env.session)[-1]
     assert event.action is StaffAuditAction.MODERATOR_PAUSED
-    assert event.before == {"role": "moderator", "scopes": ["directory", "food"], "paused": False}
-    assert event.after == {"role": "moderator", "scopes": [], "paused": True, "sessions_revoked": 2}
+    assert event.before == {
+        "role": "moderator",
+        "scopes": ["directory", "food"],
+        "paused": False,
+        "revision": 1,
+    }
+    assert event.after == {
+        "role": "moderator",
+        "scopes": [],
+        "paused": True,
+        "sessions_revoked": 2,
+        "revision": 2,
+    }
 
     paused = sign_in(auth_env, mod.email)
     assert paused.me().json()["data"]["staffScopes"] == []
@@ -450,12 +463,13 @@ def test_resuming_restores_scopes_revokes_sessions_and_authority_returns_after_l
     assert paused_browser.me().status_code == 401  # revoked at resume
     event = audit_events(auth_env.session)[-1]
     assert event.action is StaffAuditAction.SCOPE_GRANTED  # recorded from a PAUSED state
-    assert event.before == {"role": "moderator", "scopes": [], "paused": True}
+    assert event.before == {"role": "moderator", "scopes": [], "paused": True, "revision": 2}
     assert event.after == {
         "role": "moderator",
         "scopes": ["education", "property"],
         "paused": False,
         "sessions_revoked": 1,
+        "revision": 3,
     }
     assert sign_in(auth_env, mod.email).get("/admin/listings").status_code == 200
 
@@ -521,8 +535,13 @@ def test_removing_a_moderator_deletes_the_role_and_scopes_but_keeps_the_account(
     assert auth_env.session.get(User, mod.id) is not None  # the account is untouched
     event = audit_events(auth_env.session)[-1]
     assert event.action is StaffAuditAction.MODERATOR_REMOVED
-    assert event.before == {"role": "moderator", "scopes": ["directory", "food"], "paused": False}
-    assert event.after == {"role": None, "scopes": [], "sessions_revoked": 2}
+    assert event.before == {
+        "role": "moderator",
+        "scopes": ["directory", "food"],
+        "paused": False,
+        "revision": 1,
+    }
+    assert event.after == {"role": None, "scopes": [], "sessions_revoked": 2, "revision": 2}
     timeline = auth_env.session.scalars(
         select(AuthEvent).where(
             AuthEvent.user_id == mod.id, AuthEvent.event_type == AuthEventType.ROLE_REVOKED
@@ -784,7 +803,7 @@ def test_every_staff_mutation_enforces_csrf_and_origin_and_changes_nothing(
 
 MEMBER_KEYS = {
     "userId", "displayName", "email", "role", "scopes", "paused", "accountStatus",
-    "emailVerified", "grantedAt", "grantedBy",
+    "emailVerified", "grantedAt", "grantedBy", "revision",
 }  # fmt: skip
 
 

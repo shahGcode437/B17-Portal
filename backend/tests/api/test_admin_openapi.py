@@ -164,13 +164,16 @@ def test_staff_management_manages_moderators_only_and_never_a_super_admin(
 
 def test_the_staff_request_bodies_are_exactly_the_declared_fields(document: dict[str, Any]) -> None:
     appoint = schemas(document)["AppointModeratorRequest"]
-    assert set(appoint["properties"]) == {"email", "scopes"} and set(appoint["required"]) == {
-        "email",
-        "scopes",
-    }
+    assert set(appoint["properties"]) == set(appoint["required"]) == {"email", "scopes", "revision"}
     for name in ("ReplaceScopesRequest", "ResumeModeratorRequest"):
         body = schemas(document)[name]
-        assert set(body["properties"]) == {"scopes"} and body["required"] == ["scopes"]
+        assert set(body["properties"]) == set(body["required"]) == {"scopes", "revision"}
+    pause = schemas(document)["PauseModeratorRequest"]
+    assert set(pause["properties"]) == set(pause["required"]) == {"revision"}
+    # A removal has no body: it states the revision in the query, and must.
+    remove = document["paths"][f"{PREFIX}/admin/staff/moderators/{{user_id}}"]["delete"]
+    (stated,) = [p for p in remove["parameters"] if p["name"] == "revision"]
+    assert stated["in"] == "query" and stated["required"] is True
 
 
 def test_every_staff_mutation_documents_its_refusals(document: dict[str, Any]) -> None:

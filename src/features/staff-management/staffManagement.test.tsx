@@ -34,6 +34,16 @@ async function openMember(name: string, server: FakeAdminServer = fakeAdminServe
   return app
 }
 
+/**
+ * A server on which `name` has already had `revision` changes. Never 0 where a test asserts what is
+ * sent: a change that always stated 0 would pass such a test.
+ */
+function changedBefore(name: string, revision: number): FakeAdminServer {
+  const server = fakeAdminServer()
+  server.admin.advanceElsewhere(server.byName(name).id, revision)
+  return server
+}
+
 const action = (name: string) =>
   within(screen.getByRole("group", { name: "Change this moderator" })).getByRole("button", { name })
 
@@ -207,7 +217,7 @@ describe("appointing a moderator", () => {
     expect(server.writes()[0]).toMatchObject({
       method: "POST",
       path: "/admin/staff/moderators",
-      body: { email: "Rafi.Resident@example.org", scopes: ["grocery"] },
+      body: { email: "Rafi.Resident@example.org", scopes: ["grocery"], revision: 0 },
     })
     expect(server.byName("Rafi Resident")).toMatchObject({ roles: ["moderator"], scopes: ["grocery"] })
     // The new moderator's own record is shown, read from the server, with its history.
@@ -265,7 +275,7 @@ describe("appointing a moderator", () => {
 
 describe("changing a moderator's scopes", () => {
   it("starts from what they have, shows the difference, and replaces the whole set", async () => {
-    const { user, server } = await openMember("Farah Food")
+    const { user, server } = await openMember("Farah Food", changedBefore("Farah Food", 3))
     await user.click(action("Change scopes"))
     const form = await dialog()
     expect(form).toHaveTextContent("farah.food@example.org")
@@ -284,7 +294,7 @@ describe("changing a moderator's scopes", () => {
     await confirm(user, "Save scopes")
     await closed()
     expect(posts(server)).toEqual(["PUT /admin/staff/moderators/:id/scopes"])
-    expect(server.writes()[0].body).toEqual({ scopes: ["grocery"] })
+    expect(server.writes()[0].body).toEqual({ scopes: ["grocery"], revision: 3 })
     await waitFor(() => expect(screen.getByText("Moderator for: Grocery orders.")).toBeInTheDocument())
     const history = screen.getByRole("list", { name: "Changes to this account" })
     await waitFor(() => expect(history).toHaveTextContent("Scopes taken away"))
@@ -321,7 +331,7 @@ describe("changing a moderator's scopes", () => {
     await waitFor(() => expect(screen.getByText("Moderator for: Food, Grocery orders.")).toBeInTheDocument())
   })
 
-  it("a dialog left open while their access changes cannot send", async () => {
+  it("returning loads nothing, and a dialog left open while their access changed sends nothing", async () => {
     const { server, user } = await openMember("Farah Food")
     await user.click(action("Change scopes"))
     await dialog()
@@ -330,13 +340,15 @@ describe("changing a moderator's scopes", () => {
     vi.spyOn(Date, "now").mockReturnValue(Date.now() + 60_000)
     const reads = server.adminCalls().length
     act(() => void window.dispatchEvent(new Event("focus")))
-    await inDialog().findByText(/This person's access changed while this was open/)
-    expect(server.adminCalls().length).toBeGreaterThan(reads)
-    expect(inDialog().getByRole("button", { name: "Save scopes" })).toBeDisabled()
-    const after = server.adminCalls().length
-    await user.keyboard("{Enter}")
-    expect(server.adminCalls()).toHaveLength(after) // not even the check before sending
+    await act(() => new Promise((done) => setTimeout(done, 60)))
+    expect(server.adminCalls()).toHaveLength(reads)
+
+    // The check before sending reads them again and finds the change.
+    await confirm(user, "Save scopes")
+    await closed()
+    expect(await screen.findByText(/This person's access changed since you opened it/)).toBeInTheDocument()
     expect(server.writes()).toEqual([])
+    expect(server.byName("Farah Food").scopes).toEqual(["food", "grocery"])
   })
 
   it("is not sent if the account changes while the check before it is still waiting", async () => {
@@ -377,9 +389,136 @@ describe("changing a moderator's scopes", () => {
   })
 })
 
+describe("the staff revision (AUTH_RBAC §39)", () => {
+  /** Another Super Admin acts after the check made before sending, just before the change lands. */
+  async function raced(name: string, button: string, prepare: (user: UserEvent) => Promise<unknown>, send: string) {
+    const opened = await openMember(name)
+    const gate = deferred<void>()
+    opened.server.state.writeGate = gate.promise
+    await opened.user.click(action(button))
+    await dialog()
+    await prepare(opened.user)
+    await confirm(opened.user, send)
+    await waitFor(() => expect(opened.server.writes()).toHaveLength(1))
+    return {
+      ...opened,
+      land: async () => {
+        opened.server.state.writeGate = null
+        await act(async () => gate.resolve())
+      },
+    }
+  }
+
+  it.each([
+    ["Farah Food", "Change scopes", "Save scopes"],
+    ["Sana Grocer", "Pause", "Pause moderator"],
+    ["Pia Paused", "Resume", "Resume"],
+    ["Farah Food", "Remove moderator", "Remove moderator"],
+  ])("%s, %s: a change that lands on newer access is refused, reread and not sent again", async (name, button, send) => {
+    const { server, land } = await raced(
+      name,
+      button,
+      async (user) => {
+        if (button === "Change scopes") await user.click(scope("Education"))
+        if (button === "Resume") await user.click(scope("Food"))
+        if (button === "Remove moderator") await user.click(inDialog().getByRole("checkbox", { name: /Yes, remove/ }))
+      },
+      send
+    )
+    const before = [...server.byName(name).scopes]
+    const reads = server.adminCalls().length
+    // Changed and changed back: roles and scopes look exactly as they did, only the revision moved.
+    server.admin.advanceElsewhere(server.byName(name).id, 2)
+    await land()
+
+    await closed()
+    expect(await screen.findByText(/This person's access changed since you opened it/)).toBeInTheDocument()
+    expect(screen.queryByText("Staff access saved.")).not.toBeInTheDocument()
+    expect(server.byName(name)).toMatchObject({ scopes: before, roles: ["moderator"] })
+    expect(server.admin.audit).toEqual([])
+    await waitFor(() => expect(server.adminCalls().length).toBeGreaterThan(reads + 1))
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)))
+    expect(server.writes()).toHaveLength(1)
+  })
+
+  it("after that refusal, deciding again states the newer revision", async () => {
+    const { user, server, land } = await raced("Sana Grocer", "Pause", async () => {}, "Pause moderator")
+    server.admin.advanceElsewhere(server.byName("Sana Grocer").id, 2)
+    await land()
+    await closed()
+    await screen.findByText(/This person's access changed since you opened it/)
+    await screen.findByRole("heading", { level: 2, name: "Sana Grocer" })
+    await user.click(await screen.findByRole("button", { name: "Pause" }))
+    await dialog()
+    await confirm(user, "Pause moderator")
+    await closed()
+    expect(server.writes().map((call) => call.body)).toEqual([{ revision: 0 }, { revision: 2 }])
+    expect(server.byName("Sana Grocer").scopes).toEqual([])
+  })
+
+  it("access that changed and changed back is caught before sending, too", async () => {
+    const { user, server } = await openMember("Farah Food")
+    await user.click(action("Change scopes"))
+    await dialog()
+    await user.click(scope("Education"))
+    server.admin.advanceElsewhere(server.byName("Farah Food").id, 2)
+    await confirm(user, "Save scopes")
+    await closed()
+    expect(await screen.findByText(/This person's access changed since you opened it/)).toBeInTheDocument()
+    expect(server.writes()).toEqual([])
+  })
+
+  it("appointing an account with staff history: refused, kept open, and only a second decision sends it", async () => {
+    const { user, server } = await openStaff()
+    const rafi = server.byName("Rafi Resident")
+    server.admin.advanceElsewhere(rafi.id, 2) // appointed and removed some time ago
+    await appoint(user, "rafi.resident@example.org", ["Food"])
+    await inDialog().findByText(/Check this account's staff history first/)
+    expect(inDialog().getByRole("checkbox", { name: /checked that this is the right/ })).not.toBeChecked()
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)))
+    expect(server.writes()).toHaveLength(1)
+    expect(rafi.roles).toEqual([])
+
+    await confirm(user, "Appoint moderator") // not without ticking again
+    expect(server.writes()).toHaveLength(1)
+    await user.click(inDialog().getByRole("checkbox", { name: /checked that this is the right/ }))
+    await confirm(user, "Appoint moderator")
+    await closed()
+    expect(server.writes().map((call) => (call.body as { revision: number }).revision)).toEqual([0, 2])
+    expect(rafi).toMatchObject({ roles: ["moderator"], scopes: ["food"] })
+  })
+
+  it("a revision learned for one address is never stated for another", async () => {
+    const { user, server } = await openStaff()
+    server.admin.advanceElsewhere(server.byName("Rafi Resident").id, 2)
+    await appoint(user, "rafi.resident@example.org", ["Food"])
+    await inDialog().findByText(/Check this account's staff history first/)
+    await user.click(inDialog().getByRole("button", { name: "Change the details" }))
+    await user.clear(inDialog().getByLabelText("Account email"))
+    await user.type(inDialog().getByLabelText("Account email"), "nobody@example.org")
+    await confirm(user, "Review")
+    await user.click(inDialog().getByRole("checkbox", { name: /checked that this is the right/ }))
+    await confirm(user, "Appoint moderator")
+    await inDialog().findByText(/That account can't be made a moderator/)
+    expect((server.writes().at(-1)!.body as { revision: number }).revision).toBe(0)
+  })
+
+  it("a server that gives no revision is sent no change to a member", async () => {
+    const server = fakeAdminServer()
+    server.admin.versionsStaff = false
+    const { user } = await openMember("Sana Grocer", server)
+    await user.click(action("Pause"))
+    await dialog()
+    await confirm(user, "Pause moderator")
+    await inDialog().findByText(/This server can't protect staff changes yet/)
+    expect(server.writes()).toEqual([])
+    expect(server.byName("Sana Grocer").scopes).toEqual(["grocery"])
+  })
+})
+
 describe("pause, resume and remove", () => {
   it("pausing keeps the role and removes every scope, only after confirming", async () => {
-    const { user, server } = await openMember("Sana Grocer")
+    const { user, server } = await openMember("Sana Grocer", changedBefore("Sana Grocer", 4))
     await user.click(action("Pause"))
     const form = await dialog()
     expect(form).toHaveTextContent("keep the moderator role but lose every scope")
@@ -392,14 +531,14 @@ describe("pause, resume and remove", () => {
     await confirm(user, "Pause moderator")
     await closed()
     expect(posts(server)).toEqual(["POST /admin/staff/moderators/:id/pause"])
-    expect(server.writes()[0].body).toBeUndefined()
+    expect(server.writes()[0].body).toEqual({ revision: 4 })
     await waitFor(() => expect(screen.getByText("Paused: no staff access.")).toBeInTheDocument())
     expect(action("Resume")).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Change scopes" })).not.toBeInTheDocument()
   })
 
   it("resuming starts with no scope chosen and needs at least one", async () => {
-    const { user, server } = await openMember("Pia Paused")
+    const { user, server } = await openMember("Pia Paused", changedBefore("Pia Paused", 5))
     await user.click(action("Resume"))
     await dialog()
     for (const box of inDialog().getAllByRole("checkbox")) expect(box).not.toBeChecked()
@@ -407,7 +546,7 @@ describe("pause, resume and remove", () => {
     await user.click(scope("Food"))
     await confirm(user, "Resume")
     await closed()
-    expect(server.writes()[0].body).toEqual({ scopes: ["food"] })
+    expect(server.writes()[0].body).toEqual({ scopes: ["food"], revision: 5 })
     await waitFor(() => expect(screen.getByText("Moderator for: Food.")).toBeInTheDocument())
     expect(await screen.findByRole("list", { name: "Changes to this account" })).toHaveTextContent("Moderator resumed")
   })
@@ -425,7 +564,7 @@ describe("pause, resume and remove", () => {
   })
 
   it("removing needs an explicit tick and leaves the account itself", async () => {
-    const { user, server } = await openMember("Farah Food")
+    const { user, server } = await openMember("Farah Food", changedBefore("Farah Food", 6))
     await user.click(action("Remove moderator"))
     const form = await dialog()
     expect(form).toHaveTextContent("Their account is not deleted.")
@@ -436,6 +575,7 @@ describe("pause, resume and remove", () => {
     await confirm(user, "Remove moderator")
     await closed()
     expect(posts(server)).toEqual(["DELETE /admin/staff/moderators/:id"])
+    expect(new URL(server.writes()[0].url, "http://test.invalid").search).toBe("?revision=6")
     await screen.findByRole("list", { name: "Staff" })
     await waitFor(() => expect(screen.getByRole("list", { name: "Staff" })).not.toHaveTextContent("Farah Food"))
     expect(server.byName("Farah Food")).toMatchObject({ roles: [], status: "active" })
@@ -586,8 +726,9 @@ describe("losing the session, the role or the account", () => {
     await confirm(user, "Pause moderator")
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
     await screen.findByRole("list", { name: "Staff" })
-    expect(server.writes()).toHaveLength(1)
-    expect(server.writes()[0].headers.get("X-CSRF-Token")).toBe("csrf-1")
+    // The read made before a staff change is confirmed like any private read, so it finds the other
+    // account and the change is never sent at all.
+    expect(server.writes()).toHaveLength(0)
     expect(server.byName("Sana Grocer").scopes).toEqual(["grocery"])
     expect(screen.queryByRole("heading", { level: 2, name: "Sana Grocer" })).not.toBeInTheDocument()
   })

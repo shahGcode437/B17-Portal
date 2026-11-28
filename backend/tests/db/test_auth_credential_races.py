@@ -414,7 +414,9 @@ def _by_staff_removal(env: AuthEnv, engine: Engine, holder: AuthApi) -> Callable
     make_account(env.session, "boss@example.org", admin=True)
     boss = browser(env, "boss@example.org")
     target = user_id(engine, EMAIL)
-    return lambda: _expect(lambda: boss.request("DELETE", f"/admin/staff/moderators/{target}"), 204)
+    return lambda: _expect(
+        lambda: boss.request("DELETE", f"/admin/staff/moderators/{target}?revision=0"), 204
+    )
 
 
 def _sql(engine: Engine, statement: str) -> Callable[[], None]:

@@ -217,7 +217,7 @@ describe("another account in the same browser", () => {
     server.signInAs(BILAL)
     await user.click(actionButton("Claim order"))
 
-    await waitFor(() => expect(server.calls.filter((c) => c.path === "/auth/me")).toHaveLength(2))
+    await waitFor(() => expect(server.writes()).toHaveLength(1))
     await waitFor(() => expect(screen.getByText(/Assignment:/).parentElement).toHaveTextContent("Unassigned"))
     expect(server.writes()).toHaveLength(1)
     expect(server.writes()[0].headers.get("X-CSRF-Token")).toBe("csrf-1")

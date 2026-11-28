@@ -1,4 +1,4 @@
-import type { ApiError } from "@/lib/api/errors"
+import { SESSION_CHANGED_CODE, type ApiError } from "@/lib/api/errors"
 
 /**
  * User-facing copy for a failed read (Phase 12G). Keyed on the stable error `code` and the HTTP
@@ -12,6 +12,13 @@ export interface ReadErrorCopy {
 }
 
 export function readErrorCopy(error: ApiError): ReadErrorCopy {
+  if (error.code === SESSION_CHANGED_CODE) {
+    return {
+      title: "Your sign-in changed while this was loading",
+      description: "Nothing from that answer is shown. Try again.",
+      retryable: true,
+    }
+  }
   if (error.isNetwork) {
     return {
       title: "We couldn't reach the server",

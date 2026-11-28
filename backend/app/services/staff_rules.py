@@ -49,6 +49,8 @@ class StaffCode(StrEnum):
     MODERATOR_NOT_PAUSED = "moderator_not_paused"
     MODERATOR_ALREADY_PAUSED = "moderator_already_paused"
     LAST_SUPER_ADMIN = "last_super_admin"
+    #: The account's staff access is not at the revision the change was decided on (§39).
+    STAFF_CHANGED = "staff_changed"
     #: The acting Super Admin lost the role between the request and the transaction.
     ACTOR_NOT_AUTHORISED = "forbidden"
     # -- operator CLI only ---------------------------------------------------------------------
@@ -62,10 +64,19 @@ class StaffCode(StrEnum):
 class StaffAuthorityError(Exception):
     """A refusal that changed nothing. ``code`` is stable; ``message`` is safe to show."""
 
-    def __init__(self, code: StaffCode, message: str, *, field: str | None = None) -> None:
+    def __init__(
+        self,
+        code: StaffCode,
+        message: str,
+        *,
+        field: str | None = None,
+        current_revision: int | None = None,
+    ) -> None:
         self.code = code
         self.message = message
         self.field = field
+        #: Set for ``staff_changed`` only: where the account stands now.
+        self.current_revision = current_revision
         super().__init__(message)
 
 

@@ -113,6 +113,9 @@ class AuthUser(ApiModel):
     auth_methods: AuthMethods
     session: SessionInfo
     csrf_token: str
+    #: This server enforces the session binding of private reads (AUTH_RBAC.md §38) and treats
+    #: ``GET /auth/me`` as no use of a staff session (§38.4). Absent from an older server.
+    read_binding: bool
     #: How this server handles e-mail (EMAIL-1), so a screen can say what is true. Configuration,
     #: not account data, and never a statement that any message was delivered.
     email_delivery: EmailDelivery

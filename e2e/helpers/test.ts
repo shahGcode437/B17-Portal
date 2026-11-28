@@ -55,6 +55,18 @@ export const test = base.extend<{ apiGuard: ApiGuard; authMock: AuthMock }>({
 
 export { expect }
 
+/**
+ * A second tab of the same browser, served by the same mock: it shares the sign-in, as tabs share the cookie.
+ * It is closed with the test's context.
+ */
+export async function openSecondTab(first: Page): Promise<Page> {
+  const mock = mockFor(first)
+  const second = await first.context().newPage()
+  await mock.attach(second)
+  mocks.set(second, mock)
+  return second
+}
+
 /** The mock backend installed for this page (throws if a spec forgot to use the project's `test`). */
 export function mockFor(page: Page): AuthMock {
   const mock = mocks.get(page)

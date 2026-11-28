@@ -905,7 +905,7 @@ def test_changing_a_moderators_scope_away_from_services_ends_their_provider_auth
     replaced = boss.request(
         "PUT",
         f"{MODERATORS}/{user.id}/scopes",
-        json={"scopes": ["directory"]},
+        json={"scopes": ["directory"], "revision": 0},
     )
     assert replaced.status_code == 200, replaced.text
     assert scopes_of(auth_env.session, user.id) == ["directory"]
@@ -929,7 +929,8 @@ def test_pausing_a_moderator_ends_their_provider_authority_but_not_the_provider(
     assert moderator.login(email).status_code == 200
     listing_id = provider_id_of(auth_env, moderator)
 
-    assert boss.request("POST", f"{MODERATORS}/{user.id}/pause").status_code == 200
+    paused = boss.request("POST", f"{MODERATORS}/{user.id}/pause", json={"revision": 0})
+    assert paused.status_code == 200
 
     assert patch_provider(moderator, listing_id, 1, name="Paused Edit").status_code in (401, 403)
     assert patch_provider(boss, listing_id, 1, name="Portal Edit").status_code == 200

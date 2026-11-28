@@ -5,10 +5,16 @@ This service creates, validates, slides, rotates and revokes sessions.
 
 Transaction ownership: the *mutating* methods (``create``, ``revoke_*``, ``rotate``) run inside the
 caller's transaction — the auth service commits once, atomically with the rest of the operation
-(register + token + session, login + cap revocations + audit, ...). The one exception is
-:meth:`authenticate`, which owns a deliberately tiny transaction for the throttled ``last_seen``
-write: it happens at most once per :data:`LAST_SEEN_INTERVAL` per session, and only when a request
-is authenticated, so authenticated GETs do not write on every call.
+(register + token + session, login + cap revocations + audit, ...). The exceptions are
+:meth:`authenticate` and :meth:`record_staff_activity`, which each own a deliberately tiny
+transaction for a throttled write: at most once per :data:`LAST_SEEN_INTERVAL` per session, so
+authenticated GETs do not write on every call.
+
+TWO CLOCKS (AUTH_RBAC.md §38.4). ``expires_at`` is the session's own idle timeout and slides
+with ordinary use. ``last_seen_at`` is what the staff freshness rule reads. For an account with
+a staff role it moves ONLY when a request passes a staff guard: asking who is signed in writes
+nothing at all, and the account's ordinary use slides ``expires_at`` alone. For everyone else
+the two move together, as before.
 """
 
 import uuid
@@ -156,8 +162,6 @@ class Authentication:
     #: ``unknown``: no such session (or a malformed token); ``expired``: it existed but is no longer
     #: valid (expired, revoked, or its account is not active) — the caller clears the cookie.
     problem: Literal["unknown", "expired"] | None = None
-    #: When the idle expiry slid forward: the new cookie ``Max-Age`` to re-issue.
-    refreshed_max_age: int | None = None
 
 
 class SessionService:
@@ -253,20 +257,16 @@ class SessionService:
         self._sessions.rotate(session_id, hash_token(raw), now, expires)
         return raw, expires
 
-    def restore_activity(self, principal: "Principal") -> None:
-        """Undo this request's ``last_seen`` slide (used when an admin request is refused as stale).
-
-        A refused request must not count as activity, otherwise one rejected attempt would make the
-        very next one pass the idle check. Runs in its own tiny transaction like the touch it
-        reverses.
-        """
-        previous = principal.session_last_seen_at
-        absolute = principal.session_created_at + timedelta(
-            days=self._settings.session_absolute_days
-        )
+    def record_staff_activity(self, principal: "Principal") -> None:
+        """A request has PASSED the staff freshness rule: move the staff clock (throttled)."""
+        now = self._clock()
+        if now - principal.session_last_seen_at < LAST_SEEN_INTERVAL:
+            return
         with transaction(self._session):
-            self._sessions.touch(
-                principal.session_id, previous, self._idle_expiry(previous, absolute)
+            self._sessions.record_activity(
+                principal.session_id,
+                now,
+                now + timedelta(days=self._settings.session_idle_days),
             )
 
     # -- authentication ------------------------------------------------------------------------
@@ -311,8 +311,13 @@ class SessionService:
             staff_scopes=staff_scopes,
         )
 
-    def authenticate(self, raw_token: str | None) -> Authentication:
-        """Resolve a cookie token to a principal, sliding the idle expiry at most every 5 min."""
+    def authenticate(
+        self, raw_token: str | None, *, identity_check: bool = False
+    ) -> Authentication:
+        """Resolve a cookie token to a principal, sliding the idle expiry at most every 5 min.
+
+        ``identity_check``: only asking who is signed in, which for a staff account writes
+        nothing (see the module's TWO CLOCKS)."""
         if raw_token is None or not is_well_formed_token(raw_token):
             return Authentication(None, "unknown" if raw_token is not None else None)
         found = self._sessions.get_with_account(hash_token(raw_token))
@@ -325,12 +330,16 @@ class SessionService:
 
         last_seen_before = auth_session.last_seen_at
         expires_at = auth_session.expires_at
-        refreshed: int | None = None
-        if now - last_seen_before >= LAST_SEEN_INTERVAL:
-            expires_at = self._idle_expiry(now, auth_session.absolute_expires_at)
+        slid = self._idle_expiry(now, auth_session.absolute_expires_at)
+        if RoleName.ADMIN in roles or RoleName.MODERATOR in roles:
+            if not identity_check and slid - expires_at >= LAST_SEEN_INTERVAL:
+                expires_at = slid
+                with transaction(self._session):  # ordinary use: not the staff clock
+                    self._sessions.slide(auth_session.id, expires_at)
+        elif now - last_seen_before >= LAST_SEEN_INTERVAL:
+            expires_at = slid
             with transaction(self._session):  # the one small, explicit authentication transaction
                 self._sessions.touch(auth_session.id, now, expires_at)
-            refreshed = max(1, int((expires_at - now).total_seconds()))
         principal = self.principal_for(
             auth_session,
             user,
@@ -340,4 +349,4 @@ class SessionService:
             last_seen_before=last_seen_before,
             expires_at=expires_at,
         )
-        return Authentication(principal, None, refreshed)
+        return Authentication(principal, None)

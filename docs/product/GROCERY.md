@@ -152,7 +152,7 @@ Rupees are turned into whole paisa **from the digits** (never `rupees × 100` in
 ## Security and privacy
 
 - Staff data lives only in the screen that loaded it: no web storage, IndexedDB or app-wide store. Reads are keyed by account (and order); the workspace is remounted when the account changes.
-- On returning to the tab, coming back online and on "Refresh", the app first asks who is signed in. A different account, removed or paused access, or a sign-out closes or rebuilds the screen **before** any staff data is requested again.
+- Returning to the tab or coming back online only asks who is signed in; **it loads no staff data**. "Refresh" asks first and then loads. A different account, removed or paused access, or a sign-out closes or rebuilds the screen **before** any staff data is requested again. An expired staff session is found at the next staff request; until then the screen keeps what it had loaded (`AUTH_RBAC.md` §38.4).
 - A refused read (`401`, `403`, `404`) **drops what was already on screen**.
 - An expired staff session (`401 session_expired`) signs the browser out and returns to the staff sign-in. Logging out clears the screen.
 - Nothing about a customer is put in an address, the document title or the console. Filters in the address hold a status, a reference, a day, an assignee id, a sort and a page.
@@ -175,7 +175,7 @@ Reused from GROCERY-3A: status badge and wording, money and time formats, quanti
 ## Known limitations
 
 - **Not verified against a real backend.** The staff fake was written from `grocery_staff_orders.py`; it does not model locking, the 2 h / 12 h freshness windows (tests inject their answer) or the server's free-text rules. It could drift from the server.
-- **No notifications and no polling:** a new order appears only after "Refresh" or returning to the tab. Staff must look.
+- **No notifications and no polling:** on an open screen a new order appears only after "Refresh". Staff must look.
 - The largest order allowed is learned only from the server's refusal.
 - Choosing an arbitrary colleague in the filter is not offered: Moderators have no staff directory.
 - After an unknown outcome, a very slow request can still arrive **after** the reload. The revision protects every change that carries one, and claiming twice changes nothing; **an issue could be recorded twice**.
@@ -304,14 +304,24 @@ Settings history; settings or order actions in the audit; a one-person staff rea
 - Block-name comparison in the browser is close to, not identical with, the server's.
 - No real-device or screen-reader testing; English only.
 
-## GROCERY-4: integration plan (proposed; not approved, not started)
+## GROCERY-4A: account isolation (applies to every Grocery screen)
 
-`ROADMAP.md` still describes GROCERY-4 as pilot corrections; the owner must confirm which GROCERY-4 is. The integration work that should come before any pilot:
+Customer, staff and Super Admin screens follow `AUTH_RBAC.md` §23.2: a private answer is shown only once confirmed as this account's; other tabs are told when the sign-in changes and are covered while they check; a replaced screen shows no later message. The customer's draft, idempotency key and "unconfirmed" handling are unchanged. **Backend closure (§38, §39; migration `0013`):** the server refuses a private read whose named session is not the cookie's, no longer re-sends the session cookie, and refuses a staff change made from an outdated revision, so one Super Admin can't silently overwrite another's. Asking who is signed in no longer keeps an idle staff session alive (§38.4). **Still open:** clients that send no session name, and a late sign-out or `401` clearing a newer cookie (§38.2, §38.5).
+
+## GROCERY-4B scope (foundation approved 2026-11-28; NOT started)
+
+**Approved by the owner: integration verification is the foundation of GROCERY-4B** (the list below).
+
+**To be added after their exact requirements are reviewed with the owner (not yet defined or approved in detail):** previously discussed customer-facing Grocery **wording**, **order reliability** and **simple payment flexibility**. **No complex payment gateway.** Today the schema and rules allow only cash on delivery, with the amount collected equal to the amount due (`DATA_MODEL.md` §22), so any payment change needs its requirements, and possibly a migration, approved first.
+
+**Not part of GROCERY-4B:** pilot corrections (failed delivery and returns, D15; cash handling, D17; refunds, issue resolution and reconciliation only if approved). They need pilot experience, and the pilot is GROCERY-5.
+
+**Verification foundation:**
 
 1. A **throwaway** database migrated to head by the owner's process (`b17_dev` only if the owner decides to).
-2. Real-stack browser specs (`e2e-real/`, which has none for Grocery): enable with **test** blocks → customer sends → Super Admin appoints a grocery Moderator (15-minute rule) → the Moderator claims, agrees, prepares, dispatches, fails once, collects cash → customer sees it; pause the Moderator and release their orders.
+2. Real-stack browser specs. A first one exists (`e2e-real/18-grocery.spec.ts`, GROCERY-4A; run on a throwaway database): enable with a test block → customer sends → a grocery Moderator claims, agrees, prepares, dispatches and collects cash → customer sees it; another customer can't read it; a paused Moderator changes nothing. **Still to cover:** a failed delivery, cancellation by customer and staff, recorded issues, a reduced amount, releasing the orders of a paused or removed Moderator, and enabling and appointing through the screens.
 3. Compare every fake with the real answers: shapes (absent fields), error codes and `details`, order of refusal, `401` / `403` kinds, rate limits, session ages.
-4. Decide on: a scope-change precondition; a settings-history read (both need backend approval).
+4. Decide on a settings-history read (backend approval needed). The staff revision (`AUTH_RBAC.md` §39) and the server read binding (§38) are built.
 5. A real-device pass of the customer, staff and admin screens.
 
-**Launch blockers (all still open):** everything in `DEPLOYMENT.md` §15–§17, including verified serviceable blocks; refund, privacy / retention, excluded-goods and cash-handling policies; rules for failed deliveries and bought goods; routines for telling customers about changes and for **noticing new orders** (no notifications); several accounts filling a day's capacity; the 05:00 PKT limit reset; **staff MFA**; per-IP rate limiting at the proxy; tested backups; monitoring; least-privilege database credentials; production Google OAuth.
+**Launch blockers (all still open):** the mandatory pre-pilot security review of `DEPLOYMENT.md` §20; everything in `DEPLOYMENT.md` §15–§17, including verified serviceable blocks; refund, privacy / retention, excluded-goods and cash-handling policies; rules for failed deliveries and bought goods; routines for telling customers about changes and for **noticing new orders** (no notifications); several accounts filling a day's capacity; the 05:00 PKT limit reset; **staff MFA**; per-IP rate limiting at the proxy; tested backups; monitoring; least-privilege database credentials; production Google OAuth.

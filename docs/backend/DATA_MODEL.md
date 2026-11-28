@@ -494,3 +494,14 @@ grocery_orders *─0..1 users (assigned_to)
 - The order's `cancel_reason` stays the **customer's** field; a staff reason lives in the history row.
 - Not created: quotation, supplier, bill, price-per-line, inventory, refund or issue-resolution tables.
 - **Downgrade** locks the six tables and **refuses, changing nothing**, while any order is past `submitted`/`cancelled`, is assigned or priced, or any agreement, payment, event, staff history row or changed value cap exists (`DEPLOYMENT.md` §17).
+
+## 23. Staff revision — **`0013` implemented in GROCERY-4A** (not applied to any real database)
+
+**Additive: one column, no data statement.**
+
+| Table | Change | Rules the database enforces |
+|---|---|---|
+| `users` | adds `staff_revision INTEGER NOT NULL DEFAULT 0` | `ck_users_staff_revision_non_negative` |
+
+- It counts the changes to the account's staff role and scopes and is **on the account**, so it survives removal and re-appointment. The application only ever adds to it (`StaffAuthorityService`, under the account's row lock, in the transaction of the change). The database does **not** itself enforce that it only grows or that every role or scope write advances it: a hand-written `UPDATE` of `user_roles` or `staff_scope_assignments` would bypass it.
+- Meaning and contract: `AUTH_RBAC.md` §39. Downgrade drops the column and its check (`DEPLOYMENT.md` §19).

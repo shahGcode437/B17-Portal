@@ -1,16 +1,25 @@
 import { API_BASE_URL } from "@/config/api"
-import { ApiError, NETWORK_ERROR_CODE, errorFromBody } from "@/lib/api/errors"
-import { getCsrfToken, getSessionHandlers } from "@/lib/api/session"
+import { ApiError, NETWORK_ERROR_CODE, errorFromBody, sessionChangedError } from "@/lib/api/errors"
+import { confirmPrivateAnswer } from "@/lib/api/sessionCheck"
+import { bindSession, getCsrfToken, getSessionHandlers, isStillBound } from "@/lib/api/session"
 
 /**
  * The one place the SPA talks to the backend (Phase 12C).
  *
  *  - Cookie auth: every call uses `credentials: "include"`; the HttpOnly session cookie is attached
  *    by the browser and is never readable here. There is no bearer-token code anywhere.
- *  - `session: true` marks an AUTHENTICATED call: unsafe ones carry `X-CSRF-Token`, and a
- *    `401 unauthenticated|session_expired` (or `account_disabled`) ends the local session.
- *    Pre-session calls (login, register, forgot/reset password, verify-email, `/auth/me` itself)
- *    leave `session` off.
+ *  - `session: true` marks an AUTHENTICATED call: it carries `X-CSRF-Token` (a change proves
+ *    itself with it; a read NAMES the session it means, and the server refuses any other with
+ *    `403 session_mismatch`, `docs/backend/AUTH_RBAC.md` §38), and a
+ *    `401 unauthenticated|session_expired` (or `account_disabled`) ends the local session, but
+ *    only if the tab still holds the session the request was sent as: a late refusal of an
+ *    earlier one says nothing about a newer one. Pre-session calls (login, register,
+ *    forgot/reset password, verify-email, `/auth/me` itself) leave `session` off.
+ *  - A PRIVATE ANSWER IS ALSO CONFIRMED BEFORE IT IS HANDED OVER, whatever the server does with
+ *    the name: an older server ignores it and answers for whoever the cookie belongs to. A
+ *    successful `session: true` read is returned only if an `/auth/me` sent AFTER it arrived
+ *    shows the same session the tab held when it was sent (`lib/api/sessionCheck`); otherwise it
+ *    is dropped (`session_changed`), or reported as unreachable if that can't be asked.
  *  - NO REQUEST IS EVER SENT TWICE. The session cookie belongs to the browser, not to this tab:
  *    another tab may have signed in as somebody else, and re-sending with the new CSRF token would
  *    carry this person's change out as them. A `403 csrf_failed` re-reads `/auth/me` once (so the
@@ -23,7 +32,7 @@ import { getCsrfToken, getSessionHandlers } from "@/lib/api/session"
 export interface RequestOptions {
   body?: unknown
   signal?: AbortSignal
-  /** An authenticated call: CSRF header, session re-read on `csrf_failed`, session-loss handling. */
+  /** An authenticated call: session header, confirmed answer (reads), session-loss handling. */
   session?: boolean
   /** Extra request headers an endpoint requires (e.g. `Idempotency-Key`). */
   headers?: Record<string, string>
@@ -60,9 +69,10 @@ interface Envelope<T> {
 
 async function execute<T>(method: string, path: string, options: RequestOptions): Promise<Envelope<T>> {
   const unsafe = UNSAFE_METHODS.has(method)
+  const sentAs = bindSession()
   const headers = new Headers({ ...options.headers, Accept: "application/json" })
   if (options.body !== undefined) headers.set("Content-Type", "application/json")
-  if (options.session && unsafe) {
+  if (options.session) {
     const token = getCsrfToken()
     if (token) headers.set("X-CSRF-Token", token)
   }
@@ -87,6 +97,7 @@ async function execute<T>(method: string, path: string, options: RequestOptions)
 
   const parsed = await readJson(response)
   if (response.ok) {
+    if (options.session && !unsafe) await confirmPrivateAnswer(sentAs, options.signal)
     if (parsed !== null && typeof parsed === "object" && "data" in parsed) {
       const envelope = parsed as { data: T; meta?: unknown }
       return { data: envelope.data, meta: envelope.meta }
@@ -96,12 +107,17 @@ async function execute<T>(method: string, path: string, options: RequestOptions)
 
   const error = errorFromBody(response.status, parsed, response.headers.get("X-Request-ID"))
   if (options.session) {
+    if (!unsafe && error.status === 403 && error.code === "session_mismatch") {
+      // The server answered no data. To the screen this is an answer that couldn't be used.
+      if (isStillBound(sentAs)) await getSessionHandlers()?.onSessionMismatch()
+      throw sessionChangedError()
+    }
     if (unsafe && error.status === 403 && error.code === "csrf_failed") {
       // The token we held is not this browser's session any more. Re-read who is signed in (and the
       // current token) BEFORE the caller hears of the refusal, then let the refusal through.
       await getSessionHandlers()?.refreshSession()
     }
-    if (endsTheSession(error)) getSessionHandlers()?.onSessionLost(error.code)
+    if (endsTheSession(error) && isStillBound(sentAs)) getSessionHandlers()?.onSessionLost(error.code)
   }
   throw error
 }

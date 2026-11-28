@@ -10,15 +10,15 @@ import { FormAlert } from "@/components/forms/FormAlert"
 import { AttentionRegion } from "@/features/grocery/AttentionRegion"
 import { GroceryField } from "@/features/grocery/GroceryField"
 import { describedBy, groceryInputClass } from "@/features/grocery/fieldStyles"
-import { needsRecentSignIn, staffAdminRefusal } from "@/features/staff-management/staffAdminErrors"
-import { assertUnchanged } from "@/features/staff-management/staffData"
+import { STAFF_HISTORY, currentStaffRevision, needsRecentSignIn, staffAdminRefusal } from "@/features/staff-management/staffAdminErrors"
+import { assertUnchanged, statedRevision } from "@/features/staff-management/staffData"
 import { ASSIGNABLE_SCOPES, SCOPE_INFO, sameAccess, scopeNames } from "@/features/staff-management/staffLabels"
 import { appointModerator, pauseModerator, removeModerator, replaceModeratorScopes, resumeModerator } from "@/lib/api/writes/staffAdmin"
 import { focusFirstProblem, focusIfLost } from "@/lib/focus"
 import type { GuardedResult, useGuardedWrite } from "@/hooks/useGuardedWrite"
 import type { StaffData } from "@/features/staff-management/staffData"
 import type { StaffMemberDto } from "@/lib/api/dto/staffAdmin"
-import type { ApiError } from "@/lib/api/errors"
+import { ApiError } from "@/lib/api/errors"
 import type { StaffScope } from "@/types/auth"
 
 /** Where focus goes when the button that opened a dialog is gone. */
@@ -138,6 +138,10 @@ function AppointDialog({ pending, run, pageExplains, onClose, onSignInAgain, onA
   const [problems, setProblems] = useState<{ email?: string; scopes?: string; checked?: string }>({})
   const refused = useRefusal()
   const address = email.trim()
+  // 0: an account that has never been staff. After the server says otherwise, its revision, kept
+  // for that address alone and used only when the person appoints again.
+  const [told, setTold] = useState<{ address: string; revision: number } | null>(null)
+  const revision = told?.address === address.toLowerCase() ? told.revision : 0
 
   async function submit() {
     if (step === "details") {
@@ -156,7 +160,16 @@ function AppointDialog({ pending, run, pageExplains, onClose, onSignInAgain, onA
       return focusFirstProblem(id, ["checked"], { checked: "missing" })
     }
     refused.clear()
-    refused.keep(await run("the appointment", (signal) => appointModerator(address, scopes, signal), onAppointed))
+    const send = (signal: AbortSignal) =>
+      appointModerator(address, scopes, revision, signal).catch((cause: unknown) => {
+        const current = currentStaffRevision(cause)
+        if (current === null) throw cause
+        // Not resent: the person checks, ticks again and presses the button again.
+        setTold({ address: address.toLowerCase(), revision: current })
+        setChecked(false)
+        throw new ApiError({ status: 409, code: STAFF_HISTORY, message: "Not appointed." })
+      })
+    refused.keep(await run("the appointment", send, onAppointed))
   }
 
   return (
@@ -291,11 +304,12 @@ function MemberDialog({ action, current, opened, pending, run, pageExplains, onC
     refused.clear()
     const userId = opened.userId
     const send = async (signal: AbortSignal): Promise<StaffMemberDto | null> => {
+      const revision = statedRevision(opened)
       await assertUnchanged(opened, signal)
-      if (action === "scopes") return replaceModeratorScopes(userId, scopes, signal)
-      if (action === "resume") return resumeModerator(userId, scopes, signal)
-      if (action === "pause") return pauseModerator(userId, signal)
-      await removeModerator(userId, signal)
+      if (action === "scopes") return replaceModeratorScopes(userId, scopes, revision, signal)
+      if (action === "resume") return resumeModerator(userId, scopes, revision, signal)
+      if (action === "pause") return pauseModerator(userId, revision, signal)
+      await removeModerator(userId, revision, signal)
       return null
     }
     refused.keep(await run(meta.what, send, onSaved))

@@ -106,32 +106,76 @@ def sign_in(env: AuthEnv, email: str) -> AuthApi:
 # -- the API, one thin call per route -------------------------------------------------------------
 
 
-def appoint(api: AuthApi, email: str, scopes: Iterable[StaffScope | str], **kw: Any) -> Response:
-    return api.request("POST", MODERATORS, json={"email": email, "scopes": values(scopes)}, **kw)
+def revision_of(session: Session, account: uuid.UUID | str) -> int:
+    """The account's stored staff revision, by id or e-mail address: what a roster read just now
+    would show. 0 for an account nothing is known of (a malformed or unknown id or address)."""
+    text_ = str(account)
+    if "@" in text_:
+        condition = func.lower(User.email) == text_.strip().lower()
+    else:
+        try:
+            condition = User.id == uuid.UUID(text_)
+        except ValueError:
+            return 0
+    return session.execute(select(User.staff_revision).where(condition)).scalar() or 0
+
+
+def _at(api: AuthApi, account: uuid.UUID | str, revision: int | None) -> int:
+    return revision_of(api.env.session, account) if revision is None else revision
+
+
+# Each helper states the CURRENT revision unless told another (``revision=``): a client that has
+# just loaded the account. Staleness has its own tests.
+
+
+def appoint(
+    api: AuthApi,
+    email: str,
+    scopes: Iterable[StaffScope | str],
+    *,
+    revision: int | None = None,
+    **kw: Any,
+) -> Response:
+    body = {"email": email, "scopes": values(scopes), "revision": _at(api, email, revision)}
+    return api.request("POST", MODERATORS, json=body, **kw)
 
 
 def put_scopes(
-    api: AuthApi, user_id: uuid.UUID | str, scopes: Iterable[StaffScope | str], **kw: Any
+    api: AuthApi,
+    user_id: uuid.UUID | str,
+    scopes: Iterable[StaffScope | str],
+    *,
+    revision: int | None = None,
+    **kw: Any,
 ) -> Response:
-    return api.request(
-        "PUT", f"{MODERATORS}/{user_id}/scopes", json={"scopes": values(scopes)}, **kw
-    )
+    body = {"scopes": values(scopes), "revision": _at(api, user_id, revision)}
+    return api.request("PUT", f"{MODERATORS}/{user_id}/scopes", json=body, **kw)
 
 
-def pause(api: AuthApi, user_id: uuid.UUID | str, **kw: Any) -> Response:
-    return api.request("POST", f"{MODERATORS}/{user_id}/pause", **kw)
+def pause(
+    api: AuthApi, user_id: uuid.UUID | str, *, revision: int | None = None, **kw: Any
+) -> Response:
+    body = {"revision": _at(api, user_id, revision)}
+    return api.request("POST", f"{MODERATORS}/{user_id}/pause", json=body, **kw)
 
 
 def resume(
-    api: AuthApi, user_id: uuid.UUID | str, scopes: Iterable[StaffScope | str], **kw: Any
+    api: AuthApi,
+    user_id: uuid.UUID | str,
+    scopes: Iterable[StaffScope | str],
+    *,
+    revision: int | None = None,
+    **kw: Any,
 ) -> Response:
-    return api.request(
-        "POST", f"{MODERATORS}/{user_id}/resume", json={"scopes": values(scopes)}, **kw
-    )
+    body = {"scopes": values(scopes), "revision": _at(api, user_id, revision)}
+    return api.request("POST", f"{MODERATORS}/{user_id}/resume", json=body, **kw)
 
 
-def remove(api: AuthApi, user_id: uuid.UUID | str, **kw: Any) -> Response:
-    return api.request("DELETE", f"{MODERATORS}/{user_id}", **kw)
+def remove(
+    api: AuthApi, user_id: uuid.UUID | str, *, revision: int | None = None, **kw: Any
+) -> Response:
+    at = _at(api, user_id, revision)
+    return api.request("DELETE", f"{MODERATORS}/{user_id}", params={"revision": str(at)}, **kw)
 
 
 def detail_code(response: Response) -> str:

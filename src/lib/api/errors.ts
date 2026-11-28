@@ -9,9 +9,14 @@ export interface ApiErrorDetail {
   field?: string
   code?: string
   message?: string
+  /** Only on a `staff_changed` refusal: the revision the account is at now. */
+  currentRevision?: number
 }
 
 export const NETWORK_ERROR_CODE = "network_error"
+
+/** Not from the server: a private answer was set aside because the session behind it is not this screen's. */
+export const SESSION_CHANGED_CODE = "session_changed"
 
 export class ApiError extends Error {
   readonly status: number
@@ -38,6 +43,10 @@ export function isApiError(value: unknown): value is ApiError {
   return value instanceof ApiError
 }
 
+export function sessionChangedError(): ApiError {
+  return new ApiError({ status: 0, code: SESSION_CHANGED_CODE, message: "The signed-in session changed." })
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
 }
@@ -55,6 +64,7 @@ export function errorFromBody(status: number, body: unknown, headerRequestId?: s
           field: typeof detail.field === "string" ? detail.field : undefined,
           code: typeof detail.code === "string" ? detail.code : undefined,
           message: typeof detail.message === "string" ? detail.message : undefined,
+          ...(Number.isInteger(detail.currentRevision) && { currentRevision: detail.currentRevision as number }),
         }))
       : []
   const requestId =

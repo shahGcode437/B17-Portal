@@ -86,7 +86,7 @@ def test_a_fresh_database_upgrades_to_head(scratch_url: str) -> None:
     command.upgrade(alembic_config(scratch_url), "head")
 
     assert tables(scratch_url) == EXPECTED_TABLES | {"alembic_version"}
-    assert version(scratch_url) == "0012"
+    assert version(scratch_url) == "0013"
 
 
 def test_it_downgrades_to_base_and_upgrades_again(scratch_url: str) -> None:
@@ -111,8 +111,9 @@ def test_the_models_and_the_migrations_have_not_drifted(scratch_url: str) -> Non
 def test_there_is_a_single_linear_migration_history(scratch_url: str) -> None:
     script = ScriptDirectory.from_config(alembic_config(scratch_url))
 
-    assert script.get_heads() == ["0012"]
+    assert script.get_heads() == ["0013"]
     assert [revision.revision for revision in script.walk_revisions()] == [
+        "0013",
         "0012",
         "0011",
         "0010",
@@ -186,7 +187,7 @@ def test_0002_downgrades_cleanly_to_0001_and_upgrades_again(scratch_url: str) ->
     assert "search_document" not in columns(scratch_url, "listings")
     assert "pg_trgm" not in extensions(scratch_url)
     command.upgrade(config, "head")
-    assert version(scratch_url) == "0012"
+    assert version(scratch_url) == "0013"
     command.check(config)
 
 
@@ -273,7 +274,7 @@ def test_0003_downgrades_to_0002_and_upgrades_again(scratch_url: str) -> None:
     assert tables(scratch_url).isdisjoint(AUTH_TABLES)
     assert "ck_users_email_normalized" not in user_checks(scratch_url)
     command.upgrade(config, "head")
-    assert version(scratch_url) == "0012"
+    assert version(scratch_url) == "0013"
     assert tables(scratch_url) >= AUTH_TABLES
 
 
@@ -379,7 +380,7 @@ def test_0004_downgrades_to_0003_and_upgrades_again(scratch_url: str) -> None:
         scratch_url, "auth_identities"
     )
     command.upgrade(config, "head")
-    assert version(scratch_url) == "0012" and "oauth_flows" in tables(scratch_url)
+    assert version(scratch_url) == "0013" and "oauth_flows" in tables(scratch_url)
 
 
 def test_0004_refuses_to_run_over_duplicate_provider_identities(scratch_url: str) -> None:
@@ -584,7 +585,7 @@ def test_0005_downgrades_to_0004_and_reupgrades_without_touching_listings(
     command.upgrade(config, "head")
 
     # Re-upgrading to head also applies 0008, which makes the legacy providers portal-managed.
-    assert version(scratch_url) == "0012"
+    assert version(scratch_url) == "0013"
     assert listing_snapshot(scratch_url) == portal_managed(before)
     command.check(config)
 
@@ -754,7 +755,7 @@ def test_0006_downgrades_to_0005_and_reupgrades_without_touching_existing_data(
     command.upgrade(config, "head")
 
     # Re-upgrading to head also applies 0008, which makes the legacy providers portal-managed.
-    assert version(scratch_url) == "0012"
+    assert version(scratch_url) == "0013"
     expected = {**before, "listings": portal_managed(before["listings"])}
     assert existing_data(scratch_url) == expected
     command.check(config)
@@ -931,7 +932,7 @@ def test_0007_downgrades_an_empty_staff_schema_and_reupgrades(scratch_url: str) 
 
     command.upgrade(config, "head")
 
-    assert version(scratch_url) == "0012" and tables(scratch_url) >= STAFF_TABLES
+    assert version(scratch_url) == "0013" and tables(scratch_url) >= STAFF_TABLES
     command.check(config)
 
 
@@ -1007,7 +1008,7 @@ def test_0007_refuses_to_downgrade_over_live_staff_data_and_changes_nothing(
         command.downgrade(config, "0006")
 
     assert expected in str(refused.value)  # it says exactly what it would have destroyed
-    assert version(scratch_url) == "0012"  # nothing was downgraded...
+    assert version(scratch_url) == "0013"  # nothing was downgraded...
     assert tables(scratch_url) == tables_before  # ...no table was dropped...
     # ...and the protection is still in place (0011, undone with the rest, adds its own triggers)
     assert trigger_names(scratch_url) == STAFF_TRIGGERS | GROCERY_TRIGGERS | GROCERY_0012_TRIGGERS
@@ -1419,7 +1420,7 @@ def test_0009_downgrades_to_0008_keeping_every_row_and_upgrades_again(scratch_ur
 
     command.upgrade(config, "head")
 
-    assert version(scratch_url) == "0012"
+    assert version(scratch_url) == "0013"
     assert columns(scratch_url, "listings") >= CONTACT_COLUMNS
     assert rows(scratch_url, UNTOUCHED_SQL) == before
     # Re-upgrading invents nothing either: the numbers are gone with the column that held them.
@@ -1442,7 +1443,7 @@ def test_0009_downgrades_all_the_way_to_base_and_upgrades_again(scratch_url: str
 
     command.upgrade(config, "head")
 
-    assert version(scratch_url) == "0012"
+    assert version(scratch_url) == "0013"
     assert columns(scratch_url, "listings") >= CONTACT_COLUMNS
     command.check(config)
 
@@ -1639,7 +1640,7 @@ def test_0010_downgrades_when_nobody_holds_grocery_and_keeps_audit_history(
 
     command.upgrade(config, "head")
 
-    assert version(scratch_url) == "0012"
+    assert version(scratch_url) == "0013"
     assert scope_check_values(scratch_url) == PREVIOUS_SCOPE_VALUES | {"grocery"}
     command.check(config)
 
@@ -1661,7 +1662,7 @@ def test_0010_refuses_to_downgrade_while_grocery_is_held_and_changes_nothing(
 
     assert "2 grocery staff scope assignment(s)" in str(refused.value)
     assert "roll back the application code" in str(refused.value)  # it says the order
-    assert version(scratch_url) == "0012"  # one transaction: the 0011 step is undone too
+    assert version(scratch_url) == "0013"  # one transaction: the 0011 step is undone too
     assert every_row(scratch_url) == rows_before
     assert all_constraints(scratch_url) == constraints_before
 
@@ -2130,6 +2131,7 @@ def test_0012_is_additive_and_keeps_every_existing_order(scratch_url: str) -> No
     untouched = set(before) - {"grocery_orders", "grocery_settings_revisions"}
     assert {table: after[table] for table in untouched} == {t: before[t] for t in untouched}
     assert trigger_names(scratch_url) >= GROCERY_0012_TRIGGERS
+    command.upgrade(config, "head")  # Alembic compares the models with the NEWEST schema only
     command.check(config)
 
 
@@ -2244,6 +2246,131 @@ def test_0012_refuses_to_downgrade_over_order_handling_and_changes_nothing(
         command.downgrade(config, "0011")
 
     assert expected in str(refused.value)
-    assert version(scratch_url) == "0012"
+    assert version(scratch_url) == "0013"
     assert every_row(scratch_url) == data
     assert schema_shape(scratch_url) == shape
+
+
+# -- 0013: the staff revision (GROCERY-4A, AUTH_RBAC.md §39) ----------------------------------------
+
+
+def _accounts(url: str) -> list[tuple[object, ...]]:
+    """Every account, every column that existed before 0013."""
+    with shared_engine(url).connect() as connection:
+        return [
+            tuple(row)
+            for row in connection.execute(
+                text(
+                    "SELECT id, email, email_verified_at, display_name, password_hash, status, "
+                    "last_login_at, created_at, updated_at FROM users ORDER BY email"
+                )
+            )
+        ]
+
+
+def _populated_0012(url: str) -> None:
+    """A 0012 database with an ordinary account, a Super Admin and a scoped Moderator."""
+    command.upgrade(alembic_config(url), "0012")
+    engine = create_engine(url)
+    try:
+        with engine.begin() as connection:
+            for name, role in (("plain", None), ("boss", "admin"), ("helper", "moderator")):
+                user_id = connection.execute(
+                    text(
+                        "INSERT INTO users (id, email, display_name) "
+                        "VALUES (gen_random_uuid(), :e, :n) RETURNING id"
+                    ),
+                    {"e": f"{name}@example.org", "n": name.title()},
+                ).scalar_one()
+                if role:
+                    connection.execute(
+                        text("INSERT INTO user_roles (user_id, role) VALUES (:u, :r)"),
+                        {"u": user_id, "r": role},
+                    )
+                if role == "moderator":
+                    connection.execute(
+                        text(
+                            "INSERT INTO staff_scope_assignments (user_id, scope) "
+                            "VALUES (:u, 'food')"
+                        ),
+                        {"u": user_id},
+                    )
+    finally:
+        engine.dispose()
+
+
+def _count(url: str, table: str) -> int:
+    with shared_engine(url).connect() as connection:
+        return int(connection.execute(text(f"SELECT count(*) FROM {table}")).scalar_one())
+
+
+def test_0013_adds_one_column_and_leaves_every_row_as_it_was(scratch_url: str) -> None:
+    _populated_0012(scratch_url)
+    before, columns_before = _accounts(scratch_url), columns(scratch_url, "users")
+    roles = _count(scratch_url, "user_roles"), _count(scratch_url, "staff_scope_assignments")
+
+    command.upgrade(alembic_config(scratch_url), "head")
+
+    assert version(scratch_url) == "0013"
+    assert columns(scratch_url, "users") - columns_before == {"staff_revision"}
+    assert _accounts(scratch_url) == before  # not even updated_at moved
+    with shared_engine(scratch_url).connect() as connection:
+        assert list(connection.execute(text("SELECT staff_revision FROM users")).scalars()) == [
+            0,
+            0,
+            0,
+        ]
+    assert (
+        _count(scratch_url, "user_roles"),
+        _count(scratch_url, "staff_scope_assignments"),
+    ) == roles
+    command.check(alembic_config(scratch_url))  # the model and the migration agree
+
+
+def test_0013_defaults_new_accounts_to_zero_and_refuses_a_negative_revision(
+    scratch_url: str,
+) -> None:
+    command.upgrade(alembic_config(scratch_url), "head")
+    insert = text(
+        "INSERT INTO users (id, email, display_name) "
+        "VALUES (gen_random_uuid(), 'new@example.org', 'New') RETURNING staff_revision"
+    )
+    with shared_engine(scratch_url).begin() as connection:
+        assert connection.execute(insert).scalar_one() == 0
+    with (
+        pytest.raises(IntegrityError, match="ck_users_staff_revision_non_negative"),
+        shared_engine(scratch_url).begin() as connection,
+    ):
+        connection.execute(text("UPDATE users SET staff_revision = -1"))
+
+
+def test_0013_downgrades_keeping_every_row_and_upgrades_again(scratch_url: str) -> None:
+    config = alembic_config(scratch_url)
+    _populated_0012(scratch_url)
+    command.upgrade(config, "head")
+    with shared_engine(scratch_url).begin() as connection:
+        connection.execute(text("UPDATE users SET staff_revision = 4"))
+    before = _accounts(scratch_url)
+
+    command.downgrade(config, "0012")
+
+    assert version(scratch_url) == "0012"
+    assert "staff_revision" not in columns(scratch_url, "users")
+    assert _accounts(scratch_url) == before and _count(scratch_url, "user_roles") == 2
+    command.upgrade(config, "head")
+    assert version(scratch_url) == "0013"
+    command.check(config)
+
+
+def test_0013_is_ddl_only(scratch_url: str) -> None:
+    config = alembic_config(scratch_url)
+    buffer = io.StringIO()
+    config.output_buffer = buffer
+
+    command.upgrade(config, "0012:0013", sql=True)
+
+    statements = [s.strip().upper() for s in buffer.getvalue().split(";") if s.strip()]
+    assert any(s.endswith("CHECK (STAFF_REVISION >= 0)") for s in statements)
+    # The one data statement is Alembic's own version stamp.
+    writes = [s for s in statements if s.startswith(("INSERT", "UPDATE", "DELETE"))]
+    assert len(writes) == 1 and writes[0].startswith("UPDATE ALEMBIC_VERSION")

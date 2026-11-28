@@ -25,6 +25,13 @@ are UX only — these are the authority.
 =========================  =========================================================================
 
 Professional is a *capability* (a profile row), not a role. Resident is every account.
+
+SESSION BINDING (AUTH_RBAC.md §38). Every dependency above resolves the session through
+:func:`resolve_authentication`, so one rule covers every route that reads it: a safe request that
+names a session (``X-CSRF-Token``) is answered only for THAT session.
+
+STAFF INACTIVITY (AUTH_RBAC.md §38.4). ``last_seen_at`` is a staff session's staff-activity
+clock: only a request that passes a staff guard moves it.
 """
 
 from datetime import timedelta
@@ -32,12 +39,14 @@ from typing import Annotated, cast
 
 from fastapi import Depends, Request, Response
 
-from app.api.cookies import clear_cookie_header, clear_session_cookie, set_session_cookie
+from app.api.cookies import clear_cookie_header, clear_session_cookie
 from app.core.clock import Clock
 from app.core.config import Settings
 from app.core.errors import AppError, ErrorCode, ErrorDetail
 from app.core.rate_limit import RateLimiter
+from app.core.security.csrf import CSRF_HEADER, UNSAFE_METHODS
 from app.core.security.passwords import PasswordService
+from app.core.security.tokens import csrf_token_matches
 from app.dependencies.db import DbSession
 from app.dependencies.settings import SettingsDep
 from app.models.enums import AuthProvider
@@ -99,18 +108,45 @@ def get_oauth_service(
 OAuthServiceDep = Annotated[OAuthService, Depends(get_oauth_service)]
 
 
+def _asks_who_is_signed_in(request: Request, settings: Settings) -> bool:
+    """``GET /auth/me``: identity discovery. It is how a client learns which session it has (so
+    it can never be bound to one), and asking is not use of a staff session."""
+    return request.method == "GET" and request.url.path == f"{settings.api_v1_prefix}/auth/me"
+
+
+def _require_named_session(request: Request, token: str | None) -> None:
+    """§38: a safe request may name the session it means by sending that session's CSRF token.
+    If the cookie is another session, refuse BEFORE the session is looked up: nothing is read,
+    nothing is written and no ``Set-Cookie`` is sent, so the other session is left untouched.
+
+    Optional on purpose (a client that sends nothing is served as before, and is NOT protected
+    by this). It grants nothing: authority still comes only from the cookie's session. Unsafe
+    methods are already held to the same token by ``AuthSecurityMiddleware``. With no cookie
+    there is nothing to bind: the ordinary ``401`` follows."""
+    if request.method in UNSAFE_METHODS or token is None:
+        return
+    named = request.headers.get(CSRF_HEADER)
+    if named is not None and not csrf_token_matches(token, named):
+        raise AppError(ErrorCode.SESSION_MISMATCH, status_code=403)
+
+
 def resolve_authentication(
     request: Request, response: Response, db: DbSession, settings: SettingsDep, clock: ClockDep
 ) -> Authentication:
-    """Present the cookie, slide the session when due, and clear a dead cookie."""
+    """Present the cookie, slide the session when due, and clear a dead cookie.
+
+    THE SESSION COOKIE IS NEVER RE-ISSUED HERE (AUTH_RBAC.md §38.5). A browser applies every
+    ``Set-Cookie`` in the order answers ARRIVE, so re-sending an older session's cookie could
+    undo a newer sign-in. Only a response that IS a sign-in sets it, once, for the session's
+    whole absolute lifetime; the idle timeout is enforced here, from the database."""
     token = request.cookies.get(settings.auth_cookie_name)
+    identity_check = _asks_who_is_signed_in(request, settings)
+    if not identity_check:
+        _require_named_session(request, token)
     service = SessionService(db, settings, clock, AuthAuditService(db, clock))
-    result = service.authenticate(token)
-    if token is not None:
-        if result.refreshed_max_age is not None:
-            set_session_cookie(response, settings, token, result.refreshed_max_age)
-        elif result.problem == "expired":
-            clear_session_cookie(response, settings)
+    result = service.authenticate(token, identity_check=identity_check)
+    if token is not None and result.problem == "expired":
+        clear_session_cookie(response, settings)
     return result
 
 
@@ -168,24 +204,20 @@ def admin_session_is_fresh(principal: Principal, settings: Settings, clock: Cloc
 
 
 def _require_fresh_staff_session(
-    principal: Principal,
-    authentication: Authentication,
-    db: DbSession,
-    settings: Settings,
-    clock: Clock,
+    principal: Principal, db: DbSession, settings: Settings, clock: Clock
 ) -> None:
-    """The one staff freshness rule (idle <= 2 h, age <= 12 h). A refused request must not count as
-    activity, so the touch it already made is undone and a retry is refused too."""
-    if admin_session_is_fresh(principal, settings, clock):
-        return
-    if authentication.refreshed_max_age is not None:
-        SessionService(db, settings, clock, AuthAuditService(db, clock)).restore_activity(principal)
-    raise AppError(ErrorCode.SESSION_EXPIRED, status_code=401)
+    """The one staff freshness rule (idle <= 2 h, age <= 12 h). Passing it is staff work, and
+    ONLY that moves the staff clock, AFTER the judgement: a refused request writes nothing, so
+    there is never a moment in which another request could see the session as fresh."""
+    if not admin_session_is_fresh(principal, settings, clock):
+        raise AppError(ErrorCode.SESSION_EXPIRED, status_code=401)
+    SessionService(db, settings, clock, AuthAuditService(db, clock)).record_staff_activity(
+        principal
+    )
 
 
 def require_super_admin(
     principal: VerifiedUser,
-    authentication: AuthenticationDep,
     db: DbSession,
     settings: SettingsDep,
     clock: ClockDep,
@@ -193,7 +225,7 @@ def require_super_admin(
     """A verified, active Super Admin (the ``admin`` role, read live) with a fresh session."""
     if not principal.is_super_admin:
         raise AppError(ErrorCode.FORBIDDEN, status_code=403)
-    _require_fresh_staff_session(principal, authentication, db, settings, clock)
+    _require_fresh_staff_session(principal, db, settings, clock)
     return principal
 
 
@@ -204,7 +236,6 @@ require_admin = require_super_admin
 
 def require_staff(
     principal: VerifiedUser,
-    authentication: AuthenticationDep,
     db: DbSession,
     settings: SettingsDep,
     clock: ClockDep,
@@ -215,13 +246,12 @@ def require_staff(
     each service still proves the exact scope of the resource it touches."""
     if not principal.has_listing_authority:
         raise AppError(ErrorCode.FORBIDDEN, status_code=403)
-    _require_fresh_staff_session(principal, authentication, db, settings, clock)
+    _require_fresh_staff_session(principal, db, settings, clock)
     return principal
 
 
 def require_grocery_staff(
     principal: VerifiedUser,
-    authentication: AuthenticationDep,
     db: DbSession,
     settings: SettingsDep,
     clock: ClockDep,
@@ -237,7 +267,7 @@ def require_grocery_staff(
     ``share_staff_roles`` → (unless Super Admin) ``share_moderator_scope(actor, GROCERY_SCOPE)``."""
     if not principal.has_grocery_authority:
         raise AppError(ErrorCode.FORBIDDEN, status_code=403)
-    _require_fresh_staff_session(principal, authentication, db, settings, clock)
+    _require_fresh_staff_session(principal, db, settings, clock)
     return principal
 
 

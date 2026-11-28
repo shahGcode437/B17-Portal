@@ -72,6 +72,7 @@ from tests.db.staff_helpers import (
     put_scopes,
     remove,
     resume,
+    revision_of,
     revoke_reasons,
     roles_of,
     scopes_of,
@@ -785,6 +786,7 @@ class Change:
         self.done = threading.Event()
         with Session(engine, expire_on_commit=False) as setup:
             self._acting = live_session(setup, actor_id)
+            self._revision = revision_of(setup, target.id)
         self._thread = threading.Thread(
             target=self._run, args=(engine, operation, actor_id, target.id), daemon=True
         )
@@ -795,11 +797,17 @@ class Change:
             with Session(engine, expire_on_commit=False) as session:
                 service = StaffAuthorityService(session, FakeClock(), policy())
                 if operation == "replace":
-                    service.replace_scopes(actor_id, target, [FOOD], session_id=self._acting)
+                    service.replace_scopes(
+                        actor_id, target, [FOOD], revision=self._revision, session_id=self._acting
+                    )
                 elif operation == "pause":
-                    service.pause_moderator(actor_id, target, session_id=self._acting)
+                    service.pause_moderator(
+                        actor_id, target, revision=self._revision, session_id=self._acting
+                    )
                 else:
-                    service.remove_moderator(actor_id, target, session_id=self._acting)
+                    service.remove_moderator(
+                        actor_id, target, revision=self._revision, session_id=self._acting
+                    )
         except BaseException as error:
             self.error = error
         finally:
@@ -918,7 +926,11 @@ def test_swapping_a_listing_scope_for_grocery_races_a_moderation_decision_safely
         try:
             with Session(db_engine, expire_on_commit=False) as session:
                 StaffAuthorityService(session, FakeClock(), policy()).replace_scopes(
-                    admin.id, worker.id, [GROCERY], session_id=acting
+                    admin.id,
+                    worker.id,
+                    [GROCERY],
+                    revision=revision_of(session, worker.id),
+                    session_id=acting,
                 )
         except BaseException as error:
             errors.append(error)

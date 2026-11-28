@@ -57,8 +57,9 @@ export function accessSummary(member: StaffMemberDto): string {
 
 /** Whether two answers describe the same authority (what a change was decided on). */
 export function sameAccess(a: StaffMemberDto, b: StaffMemberDto): boolean {
+  // The revision too: access changed and changed back looks the same and is not (`AUTH_RBAC.md` §39).
   const shape = (m: StaffMemberDto) =>
-    JSON.stringify([m.userId, m.role, [...m.scopes].sort(), m.paused, m.accountStatus, m.emailVerified])
+    JSON.stringify([m.userId, m.role, [...m.scopes].sort(), m.paused, m.accountStatus, m.emailVerified, m.revision])
   return shape(a) === shape(b)
 }
 

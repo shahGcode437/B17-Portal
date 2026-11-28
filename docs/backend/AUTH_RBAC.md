@@ -119,10 +119,10 @@ A session is valid iff the row exists, `revoked_at IS NULL`, `now() < expires_at
 |---|---|---|
 | Idle timeout (sliding) | **14 days** | Residents open the PWA irregularly; a few-hours expiry would be hostile, an unlimited one risky |
 | Absolute lifetime | **30 days** | Bounds a stolen cookie; forces a periodic fresh login |
-| Admin recency (`require_admin`) | session `last_seen` within **2 h** and `created_at` within **12 h**, else `401 session_expired` | Stricter handling for the highest-privilege role without a second session type (a resident action by the same admin keeps the normal lifetime) |
+| Staff recency (every staff guard) | **staff work** within the last **2 h** and `created_at` within **12 h**, else `401 session_expired` | Stricter handling for staff authority without a second session type. What counts as staff work: §38.4 |
 | Remember-me | **Deferred** — one policy for everyone | Avoid a second lifetime class without a requirement |
 
-Renewal: when `last_seen_at` is refreshed the server also slides `expires_at` and re-sends `Set-Cookie` with the new `Max-Age` (only then, not on every response). A missing/unknown token → `401 unauthenticated`; a known but expired/revoked token → `401 session_expired` **and** the cookie is cleared. All tunables are settings (§14).
+Renewal (**amended by GROCERY-4A, §38.5**): the idle timeout slides **in the database only**, at most once per 5 minutes per session. **No response re-sends the session cookie**; it is set once, by the response that signs in, for the session's whole absolute lifetime. A missing/unknown token → `401 unauthenticated`; a known but expired/revoked token → `401 session_expired` **and** the cookie is cleared. All tunables are settings (§14).
 
 ### 4.5 Multi-device and revocation (D5)
 
@@ -151,7 +151,7 @@ Future (no UI now): `DELETE /auth/sessions/{id}` and a list endpoint — the tab
 | `SameSite` | **`Lax`** |
 | `Path` | `/` (required by `__Host-`) |
 | `Domain` | **never set** (host-only, which `__Host-` requires): the cookie belongs to the API host and is sent only to it |
-| `Max-Age` | seconds until idle expiry (persistent cookie; re-issued when the session slides) |
+| `Max-Age` | seconds until the session's **absolute** expiry (persistent cookie; set only by the response that creates or rotates the session, never re-issued). The idle timeout is the server's alone (§4.4, §38.5) |
 | Clearing | `Set-Cookie` with an empty value, `Max-Age=0`, identical name/path/flags |
 
 **Why `Lax`, not `Strict`:** `Strict` withholds the cookie on top-level navigations arriving from other sites (an email link to the frontend, the OAuth callback), which breaks nothing important here but buys little beyond what the CSRF layers already give, and `Lax` is the browser default users' tools expect. **Why never `None`:** `SameSite=None` is only needed when the frontend and API are **cross-site** (different registrable domains) or embedded in third-party frames — exactly the topology §5.1 forbids; browsers increasingly block such third-party cookies, and `None` removes the very protection layer D4 relies on.
@@ -739,17 +739,41 @@ The frontend half of §22.2–§22.4 is implemented; the backend is unchanged. O
 3. **The new token and the new screen arrive together:** an `/auth/me` answer is applied with `flushSync`.
 4. **State outside the tree** clears itself: the grocery draft (as before) and the saved-listing set, which also drops a list or a save answered for the previous account.
 5. **A flow that waits before it sends** checks the tab's identity stamp (`getIdentityStamp`, `lib/api/session.ts`) and sends nothing if it moved. The one such flow is the re-read before a Moderator change (§30; it could otherwise send one Super Admin's decision with another's token).
-6. **A success answered after the account changed** runs nothing that would follow it (no message, no move to another page).
+6. **Whatever is answered after the account changed** runs nothing on the screens: a write hook's call is abandoned (§23.2, rule 6), so no message is shown and no page is moved.
 
 **Recovery for the same account** (for example after signing in again in another tab): the change is refused once, the form keeps what was typed, the message says it was not sent again, and the person presses the button again. A grocery order whose outcome was unknown keeps its idempotency key, so resending it still creates at most one order. A refused logout leaves the person signed in and says to try again.
 
-**Remaining limits.**
-- There is **no cross-tab notification**. A stale tab learns of a switch only when something makes it read `/auth/me` again (a refused change, a staff screen's refresh or return, recovery from `unavailable`). Until then it keeps showing the earlier account's screen.
-- **Reads carry no CSRF token** (by design). Until it re-reads, a stale tab's reads are answered for the account that now holds the cookie, and can appear on a screen still labelled with the earlier one. No change can be made that way.
+**Remaining limits** (as of this correction; GROCERY-4A, §23.2, closed the first, second and fifth).
 - A change **already sent** before the switch carries the earlier account's cookie and token; it is that person's own action and may complete.
 - Rule 5 is a **convention**: a new flow that awaits something before a write must use the stamp. No automatic check finds one.
-- Short toasts live outside the boundary: one already showing can stay for a few seconds, and the refusal of the earlier account's change can appear after the reset.
-- Proven against fakes only (unit, component and mocked browser tests). Not run against a real backend or with two real browser tabs.
+- Proven against fakes only (unit, component and mocked browser tests). Not run against a real backend.
+
+### 23.2 Tabs stay in step, and private answers belong to the screen that asked (GROCERY-4A, 2026-11-28; frontend only)
+
+**Defects reproduced before any change** (a fake server with one shared cookie; tests in `TESTING.md`):
+- **All 16 private reads** handed another account's records to a stale tab, and also accepted an answer that arrived after the account had changed.
+- A **late `401` or `account_disabled`** of the earlier session signed the newer one out of the tab (reads and writes).
+- A read made of several requests (the staff member lookup) could combine two accounts' pages.
+- `useMutation` hid a late success behind a promise that **never settled**.
+- Messages of a replaced screen appeared to the next account.
+- No tab was told anything: a stale screen stayed until it happened to ask.
+
+**Rules now.**
+1. **A private answer is confirmed after it arrives** (`lib/api/sessionCheck.ts`). A successful `session: true` read is handed over only if an `/auth/me` **sent after the answer arrived** shows the same session (same CSRF token) the tab held when it sent the read, and the tab has learned of nothing else meanwhile. Otherwise it is dropped (`session_changed`); if `/auth/me` can't be reached, nothing is handed over and the person stays signed in. Reads that finish together share the confirming request (at most one on its way and one waiting). `/auth/me` itself and public reads are not confirmed. Cost: up to one more `/auth/me` per private read.
+   *Why after, not before:* the cookie can change right after any check. After the answer, the cookie held the same session at both ends, and signing in again never brings an old session back.
+2. **A late refusal ends only its own session:** `401` / `account_disabled` clears the tab only if it still holds the session the request was sent as.
+3. **A read made of several requests needs nothing more:** each request is confirmed against the session it was sent as, and nothing else runs between one finishing and the next being sent (tested with the staff member lookup).
+4. **Tabs are told** (`features/auth/authChannel.ts`, `BroadcastChannel` `b17-auth`). The message is the fixed `{type: "b17:auth-changed"}`: no account, token or private detail, and its content is never read. Announced: password sign-in, registration, logout, a session found dead by a request, and **a page load that finds a signed-in session** (this covers the return from Google sign-in). A tab never announces because it heard an announcement or because it re-read `/auth/me`, so there are no loops; a burst costs at most one request in flight and one more.
+5. **While a told tab doesn't know who it is,** a signed-in tab is covered (`IdentityCheckCover`): everything beneath stays mounted but hidden, inert and out of the accessibility tree. Escape is held too, so an open dialog can't close underneath and lose its form. Same account: the screen returns as it was. Another account or none: rebuilt (§23.1). Server unreachable: it stays covered with "Try again", and also checks on reconnect or return. A page restored from the back-forward cache is covered the same way. A signed-out visitor's tab is not covered.
+6. **Returning to a tab** asks again (not within 10 s of the last time; no polling). Out of reach, the screen stays as it was, since nothing says it changed. **No web-storage fallback** exists for browsers without `BroadcastChannel` (§22.2 bars auth state from storage); there, every tab asks on return.
+7. **A STAFF tab does not ask on return while the channel works, and a staff session ended by a refusal is not announced.** `/auth/me` counts as session activity, so either could make an idle staff session fresh again and weaken the 2-hour idle rule (§27.7).
+8. **Operations are abandoned, not left hanging.** If the account changed while a write hook's operation was under way, `useMutation` rejects with `OperationAbandoned` (success, refusal or no answer) and returns to idle; the staff and admin write hooks report `closed` and do nothing. Nothing claims the request was cancelled: the server may have carried it out.
+9. **A replaced screen cannot show messages** (its message function stops working), messages already showing are cleared, and the boundary says why the page was reset: another account, or an ended session. A person's own logout says nothing.
+
+**What this left open, and what has changed since** (GROCERY-4A backend closure, §38):
+- **Closed:** a late response re-sending an older session's cookie (§38.5); a private read answered for a cookie other than the one the tab named (§38); `/auth/me` counting as staff activity (§38.4). With the current server, rules 7 and 1 behave as follows: a staff tab asks on return and its refusals are announced like any other (the tab still holds back from an older server, which does not send `readBinding`). The confirmation of rule 1 is **kept for every server**.
+- **Still open:** a late `401` or sign-out **clearing** a newer cookie, and two sign-ins finishing out of order (§38.5); the announcement is asynchronous, so a stale tab shows its old screen for the moment before it arrives (what it shows was fetched for its own account); a change already sent may still complete as the person who sent it; a new flow that awaits something before a write must still check the identity stamp itself; a client that sends no session name is not protected (§38.2).
+- Frontend behaviour is verified against fakes, including two real Chromium tabs on the mocked API; the server rules on real PostgreSQL. See `TESTING.md` for what was never run together.
 
 ## 24. Implementation notes — Phase 12D (backend write guards)
 
@@ -1322,3 +1346,110 @@ It proves that a named, authenticated staff member **recorded** that the custome
 ### 37.6 Regression tests
 
 Real PostgreSQL, through the endpoints: all 11 changes are in `OPERATIONS` of `tests/db/test_privileged_session_races.py` (password reset, logout, logout-all and suspension in both orders, and a removed role), now 26 operations; `tests/db/test_grocery_staff_concurrency.py` removes the `grocery` scope after authentication for each of the 11 changes, shows that a removal waits for a change in flight, and stages competing changes of one order in both orders; `tests/db/test_grocery_staff_api.py` covers who is refused, ownership and privacy.
+
+## 38. Private reads are bound to a session (GROCERY-4A, approved by the owner and built)
+
+Closes the read race of §23.2 for every client that names its session. **No migration. No CORS change.**
+
+### 38.1 Contract
+
+- A safe request (`GET` / `HEAD`) may name the session it means with the **existing `X-CSRF-Token`** header. That token is `HMAC-SHA256(session token, "b17-csrf-v1")` (§6), so it identifies exactly one session, is useless without the cookie, and is already treated as never to be logged.
+- If a session cookie **and** the header are present and don't match (constant-time `csrf_token_matches`): **`403 session_mismatch`**, the ordinary error envelope with `Cache-Control: no-store`.
+- It is refused **before the session is looked up**: no data is read, nothing is written (neither clock moves), **no `Set-Cookie`** is sent (nothing is refreshed, rotated or cleared), and it answers the same whether the cookie's session is live, expired or revoked. It comes before authentication and permission checks.
+- Header present, no cookie: `401`, as without it. Header absent: served as before. After a match every existing check runs. The header **grants nothing**; authority comes only from the cookie's session.
+- **Where:** `resolve_authentication` (`app/dependencies/auth.py`), through which every authentication dependency resolves the session. So the rule covers each route that reads the session, a new one included, and cannot touch a route that doesn't. (The proposal put it in the middleware by path prefix; the dependency needs no list of prefixes.)
+- **Exempt:** `GET /api/v1/auth/me`, which is how a client learns which session it has. **Not affected:** public routes, which ignore the header, so anonymous browsing is unchanged; the Google callback, which never reads the session from this dependency. Unsafe methods were already held to the same token by `AuthSecurityMiddleware` (`403 csrf_failed`), unchanged.
+- **Coverage** (`tests/db/test_session_binding_api.py` reads the app's route table and fails on any unclassified `GET`): **18 private** — `/admin/audit`, `/admin/categories`, `/admin/grocery/orders`, `/admin/grocery/orders/{order_id}`, `/admin/grocery/settings`, `/admin/listings`, `/admin/listings/{listing_id}`, `/admin/requests`, `/admin/requests/{request_id}`, `/admin/staff`, `/grocery/orders`, `/grocery/orders/{order_id}`, `/requests`, `/requests/{request_id}`, `/saved`, `/users/me/leads`, `/users/me/listings`, `/users/me/listings/{listing_id}`; **1 discovery** — `/auth/me`; **10 public** — `/auth/oauth/google/callback`, `/categories`, `/grocery/availability`, `/health`, `/health/ready`, `/listings/{listing_id}`, `/news`, `/news/{news_id}`, `/search`, `/search/suggestions`.
+
+### 38.2 Client, CORS, compatibility
+
+- The app sends the header on every `session: true` request, never on a public read. On `session_mismatch` it covers the screen, asks `/auth/me`, then keeps or rebuilds the screen as for any account change (§23.2). The read is **not repeated**.
+- **The client keeps confirming every private answer** (§23.2, rule 1) whatever the server says. The proposal would have dropped that request when the server advertised binding; it was kept, so no server answer can lower a protection. Removing it is a later, separate decision.
+- `/auth/me` (and the sign-in answers) carry the additive `readBinding: true`. The client uses it **only** to decide that a staff tab may ask who is signed in on return, and may announce a staff session's loss (§38.4). Anything but `true` means the older rules.
+- **CORS:** `X-CSRF-Token` was already in `CORS_ALLOWED_HEADERS`, with credentials and an exact origin list; a preflight for a private `GET` with the header is tested. The app calls a same-origin relative `/api/v1`; a cross-origin deployment adds a preflight to private reads.
+- **Old client, new server:** it sends no header and is served as before, **unprotected by this rule**. That includes an installed PWA still running a cached older build. Making the header mandatory would break such clients and is a separate decision.
+- **New client, old server:** the header is ignored and `readBinding` is absent, so the client relies on its confirmation alone and keeps staff tabs quiet.
+- Read isolation is therefore **not** claimed complete for clients that send no name.
+
+### 38.3 Tests
+
+`tests/db/test_session_binding_api.py` (real PostgreSQL, per private route): matching → as before; another account's session and the same account's other session → `403 session_mismatch` with no data, no `Set-Cookie`, no session write (including a session due to slide, an expired one and a revoked one); no header; no cookie; refusal precedes authentication and permission; `/auth/me` and public routes ignore it; preflight; the value is not logged; `readBinding`. Frontend: `src/lib/api/readIsolation.test.tsx` runs against a binding server and an ignoring one; `client.test.ts`, `crossTabSync.test.tsx`.
+
+### 38.4 Staff inactivity: asking who is signed in is not staff work
+
+**Defect (reproduced with a controlled clock before the change):** `/auth/me` moved `last_seen_at`, so a page that asked every 10 minutes, a reload or the app's own identity check kept an idle staff session alive indefinitely. A refused staff request also moved it and moved it back, leaving a moment in which another request could see it as fresh.
+
+**Rule now — two clocks.** `expires_at` is the session's own idle timeout (14 days) and slides with ordinary use. `last_seen_at` is what the staff rule reads. For an account **with a staff role** (`admin` or `moderator`, paused included):
+
+| Request | `expires_at` | `last_seen_at` (staff clock) |
+|---|---|---|
+| `GET /auth/me` | unchanged: **writes nothing** | unchanged |
+| Any other authenticated request that passes no staff guard | slides | unchanged |
+| A request that **passes a staff guard** (after the freshness check, and only then) | slides | moves (at most once per 5 minutes) |
+| A staff request refused as stale | unchanged or slid as above | unchanged: the refusal writes nothing on the staff clock |
+
+Accounts with no staff role behave as before (both move together, `/auth/me` included). The 2-hour idle and 12-hour age limits and the 14/30-day session limits are unchanged; an expired session stays expired. Because the clock moves at most every 5 minutes, the idle limit can end a session up to 5 minutes early, never late (as before).
+
+**A change of behaviour to note:** before, **any** request by a staff member (saving a listing as a resident, for example) kept the staff session fresh. Now only staff work does, as the owner's decision that passive checks must not extend it, read strictly.
+
+**What counts:** every request that passes the staff **role and age** guard (intentional staff work, and anything else that makes such a request).
+
+**What does not count:** `/auth/me` (the identity check, the confirmation after a private read, a reload's own session check, CSRF recovery) and the account's non-staff requests. **Returning to a staff tab or reconnecting loads no staff data** (owner-approved correction, 2026-11-28): it checks the identity only. Staff data is loaded when a screen is opened, on **Refresh**, and around a change the person makes. There is no timer or polling.
+
+**Limitation — refused after the staff guard (`DEPLOYMENT.md` §20).** The guard moves the clock before the rest of the request is judged, so a request that passes it **still counts when it is then refused**: for example a scope check inside the service, the 15-minute window for staff changes, a stale revision, invalid input or a rate limit. This follows from the order of the code and has no test of its own. It never revives an expired session, and the 12-hour age limit still applies. A request refused as stale, by role, by session binding or by CSRF does not count.
+
+**Limitation — an expired staff screen stays visible (`DEPLOYMENT.md` §20).** Because returning asks for no staff data, a screen left open past the idle limit keeps showing what it had loaded until the next staff request (Refresh, opening a screen, or a change), which is refused with `401 session_expired` and clears it. The server serves and changes nothing after expiry. Before the correction, the reload on return would have closed such a screen. `/auth/me` does not report staff freshness; telling the screen without counting it as activity would need a new, separately approved contract. Signing out, another account and removed access are still found by the identity check on return.
+
+**Other requests that count:** a script or a future screen that polled a staff route, and a browser that reloads a staff page by itself (for example a tab it had discarded): the server cannot tell these from a person.
+
+Tests: `tests/db/test_staff_idle.py` (controlled clock).
+
+### 38.5 Late responses and the session cookie
+
+A browser applies `Set-Cookie` headers in the order responses **arrive**, whatever tab sent the request. Tests with a cookie-jar model that applies real responses in a chosen order (`tests/db/test_session_cookie_races.py`) reproduced:
+
+**Corrected.** Every request that slid a session, `/auth/me` and private reads included, re-sent **that request's** cookie. Arriving late, it **restored** an older session over a newer sign-in (another account's, possibly), brought a logged-out cookie back, and brought back the pre-rotation token after a password change. Now **only a response that signs in sets the cookie**: register, password login, the Google callback, and the rotation on password change. Its `Max-Age` is the session's absolute lifetime, so a live session never needs it again; the idle timeout is enforced from the database. No other response sets the cookie. CSRF recovery is an `/auth/me` read, which now writes no cookie. Frontend response filtering could not have prevented any of this.
+
+**Responses that still write the cookie, and what a late one can do:**
+
+| Response | Late effect |
+|---|---|
+| `401 session_expired` (dead or revoked session) clears it | can **sign out** a newer sign-in |
+| `204` logout / logout-all clears it | the same |
+| a sign-in answer (login, register, Google callback, password-change rotation) | the **last to arrive wins**; a password-change answer arriving after another account's sign-in would restore the account that changed its password |
+
+The first two **fail closed**: they can end a session, never grant or restore one, and no data crosses accounts. They are kept because a cookie can't be cleared conditionally, and leaving dead cookies in place breaks flows that treat a present cookie as a session (an unsafe call, including the Google start, then demands that session's CSRF token). The last needs two sign-ins in flight in one browser (the app offers no password-change screen). `test_limit_*` tests record both.
+
+**Closing them needs a different session architecture, which was not approved and is only outlined here:** a per-session cookie name (`b17_session_<id>`) plus a request header selecting it, so no response can write another session's cookie. That changes the cookie contract, the OAuth callback, the CSRF binding and every client, and needs its own design and approval.
+
+## 39. Staff changes state the version they were decided on (GROCERY-4A, approved by the owner and built)
+
+### 39.1 The gap
+
+Each staff change was atomic and serialized but took **no statement of what the administrator saw**. Reproduced on PostgreSQL: a stale scope replacement returned `200` and silently removed another Super Admin's grant; a stale pause succeeded after a pause and resume (A → B → A). Comparing role and scopes can't detect ABA; re-reading in the browser narrows the window and can't close it.
+
+### 39.2 As built
+
+- **Migration `0013_staff_revision`:** `users.staff_revision INTEGER NOT NULL DEFAULT 0` with `ck_users_staff_revision_non_negative`. No data statement. Downgrade drops both (DEPLOYMENT.md §19). It lives on the **account**, so it survives removal and re-appointment and never goes back while the column exists.
+- **Advanced by 1, in the same transaction,** by every operation that changes a role or scopes: appoint, a scope replacement that changes something, pause, resume, removal, and CLI promotion and demotion (`StaffAuthorityService` is the only writer; `app.cli.admin` delegates to the staff CLI). A no-op, a refusal and a rolled-back change add nothing. `scripts/dev_fixtures.py` seeds a test administrator directly and leaves the default.
+- **Read:** `StaffMember.revision` on the roster and every mutation answer.
+- **Write — required:** `POST …/moderators` `{email, scopes, revision}` · `PUT …/scopes` `{scopes, revision}` · `POST …/pause` `{revision}` · `POST …/resume` `{scopes, revision}` · `DELETE …/{user_id}?revision=N`. Strict integer, 0 to 2147483647.
+- **Appointment and re-appointment are covered too** (the proposal had left them out): `revision` is 0 for an account that has never been staff. An account with history answers `409 staff_changed` with its current revision, so appointing it again is a decision made knowing it has history, and a stale appointment can't undo a removal.
+- **Refusal:** `409`, `error.code = "conflict"`, `details[0] = {field: "revision", code: "staff_changed", currentRevision: N}`. `currentRevision` is an additive field of the error detail, present only here.
+- **Order inside the transaction:** advisory lock → actor and acting session re-read (lost authority still answers `403` first) → target row locked `FOR UPDATE` and re-read → `moderator_not_found` / Super Admin target (appointment: eligibility, then Super Admin target) → **revision** → the existing state and eligibility checks → change. The revision is compared before the identical-set no-op, so a stale "no change" is not reported as saved.
+- **Unchanged:** authorization, the 15-minute window, the rate limit (a stale refusal counts), eligibility, session revocation and the audit. A refused change writes nothing, audits nothing and revokes nothing. Audit `before` / `after` now record `revision`.
+
+### 39.3 Frontend
+
+- A dialog states the revision of the record it **opened** with. The re-read before sending (§30) stays as an early warning (nothing is sent at all) and now compares the revision too.
+- On `staff_changed` for a member: the dialog closes, the record and history are read again, a message says nothing was changed or resent, and the person decides again.
+- Appointment: the form stays open, unticks its confirmation and explains that the account has staff history or just changed. The reported revision is kept **for that address only** and is sent only if the person ticks and presses Appoint again. The form does not show the history itself; Staff history does.
+- **Nothing is resent automatically.**
+
+### 39.4 Compatibility
+
+**A breaking change to the staff write routes.** A client that sends no revision gets `422` and changes nothing, so it fails closed. The new frontend against an **older** server: its appointment, replacement and resume are refused by the older strict schemas (`422`); an older server would **accept** a pause or removal and ignore the revision, so the app sends **no** change to a member when the server gives no `revision` ("This server can't protect staff changes yet"). Deploy order: DEPLOYMENT.md §19.
+
+### 39.5 Tests (real PostgreSQL)
+
+`tests/db/test_staff_revision_concurrency.py` uses **independent connections** on committed rows, with contenders observed waiting on a lock before release: two Super Admins deciding each operation on one revision (exactly one wins); a revision committed while a change waits on the target row (refused, nothing changed); a failure at the audit write (the revision rolls back with everything); the operator CLI racing a web change. `tests/db/test_staff_revision_api.py` covers ABA for scopes, pause/resume and removal/re-appointment, validation, order of refusal, audit and the CLI. Migration up/down and drift: `test_migrations.py`. The mocked frontend tests show what the screens do with these answers and prove nothing about the database.

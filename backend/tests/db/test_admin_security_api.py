@@ -403,12 +403,12 @@ def test_the_stale_session_still_works_for_ordinary_use_and_a_fresh_login_restor
     assert world.calls["approve"](again).status_code == 200
 
 
-def test_ordinary_activity_keeps_an_admin_session_fresh(auth_env: AuthEnv) -> None:
+def test_staff_activity_keeps_an_admin_session_fresh(auth_env: AuthEnv) -> None:
     world = World(auth_env)
     admin = admin_signed_in(auth_env)
-    for _ in range(5):  # six hours of regular use, never idle for two
+    for _ in range(5):  # six hours of regular staff work, never idle for two
         auth_env.clock.advance(hours=1, minutes=10)
-        assert admin.get("/auth/me").status_code == 200
+        assert admin.get("/admin/listings").status_code == 200
 
     assert world.calls["approve"](admin).status_code == 200
 

@@ -8,7 +8,7 @@ if anything does), so the invariants below have exactly one place to hold.
 One operation = ONE database transaction that contains every effect:
 
     advisory lock → (web) the actor and acting session → target row lock → re-read eligibility
-    → role / scope change
+    → (web) the stated revision → role / scope change → revision advanced
     → revoke the target's sessions → auth timeline event (role changes) → durable staff audit
     → COMMIT
 
@@ -22,6 +22,13 @@ LOCK ORDER (binding; frozen in RBAC-B)::
                                        SHARE)]
                                    →  users (target, FOR UPDATE)  →  user_roles
                                    →  staff_scope_assignments
+
+STALE CHANGES (§39). Every web change states the ``staff_revision`` of the account it was decided
+on. It is compared under the target's row lock, inside the change's own transaction, so nothing can
+come between the comparison and the write; anything else is ``staff_changed`` and writes nothing.
+The revision only grows, so a state that has come back (scopes restored, paused then resumed,
+removed then re-appointed) is still recognised as changed. Every operation that changes a role or
+scopes advances it, the operator CLI's included; a no-op and a rolled-back change do not.
 
 A web change re-reads under those two locks that the acting session is still usable
 (AUTH_RBAC.md §36). Only staff mutations hold two users' rows, and the advisory lock lets one
@@ -159,10 +166,12 @@ class StaffAuthorityService:
         email: str,
         scopes: Collection[StaffScope],
         *,
+        revision: int,
         session_id: uuid.UUID,
     ) -> StaffChange:
         """Make an existing, active, verified account a Moderator with ``scopes`` (at least one,
-        assignable). A Professional profile is NOT required."""
+        assignable). A Professional profile is NOT required. ``revision`` is 0 for an account that
+        has never held a staff role; appointing one that has means stating where it stands."""
         wanted = validate_scopes(scopes)
         with transaction(self._session):
             self._begin_web(actor_id, session_id)
@@ -172,6 +181,8 @@ class StaffAuthorityService:
             roles = self._staff.staff_roles_of(user.id)
             if RoleName.ADMIN in roles:
                 raise self._super_admin_target()
+            # After eligibility, so the revision of an ineligible or unknown address is never told.
+            self._require_revision(user, revision)
             if RoleName.MODERATOR in roles:
                 raise StaffAuthorityError(
                     StaffCode.ALREADY_MODERATOR,
@@ -180,6 +191,7 @@ class StaffAuthorityService:
             now = self._clock()
             self._roles.grant(user.id, RoleName.MODERATOR, actor_id, now)
             self._staff.add_scopes(user.id, wanted, actor_id, now)
+            was, is_now = self._advance(user)
             revoked = self._revoke_sessions(user.id, now)
             self._auth_audit.record(
                 AuthEventType.ROLE_GRANTED,
@@ -192,8 +204,14 @@ class StaffAuthorityService:
                 source=StaffAuditSource.WEB,
                 actor_user_id=actor_id,
                 target_user_id=user.id,
-                before=_state(None, ()),
-                after=_state(RoleName.MODERATOR, wanted, paused=False, sessions_revoked=revoked),
+                before=_state(None, (), revision=was),
+                after=_state(
+                    RoleName.MODERATOR,
+                    wanted,
+                    paused=False,
+                    sessions_revoked=revoked,
+                    revision=is_now,
+                ),
             )
             return StaffChange(user.id, user.email, True, revoked)
 
@@ -203,6 +221,7 @@ class StaffAuthorityService:
         user_id: uuid.UUID,
         scopes: Collection[StaffScope],
         *,
+        revision: int,
         session_id: uuid.UUID,
     ) -> StaffChange:
         """Replace an ACTIVE Moderator's scope set (replace-set semantics, atomic). An identical
@@ -212,6 +231,8 @@ class StaffAuthorityService:
         with transaction(self._session):
             self._begin_web(actor_id, session_id)
             user, current = self._moderator_target(user_id)
+            # Before the no-op below: a stale "no change" must not be reported as saved.
+            self._require_revision(user, revision)
             if not current:
                 raise StaffAuthorityError(
                     StaffCode.MODERATOR_PAUSED,
@@ -223,9 +244,16 @@ class StaffAuthorityService:
             now = self._clock()
             self._staff.remove_scopes(user.id, removed)
             self._staff.add_scopes(user.id, added, actor_id, now)
+            was, is_now = self._advance(user)
             revoked = self._revoke_sessions(user.id, now)
-            before = _state(RoleName.MODERATOR, current, paused=False)
-            after = _state(RoleName.MODERATOR, wanted, paused=False, sessions_revoked=revoked)
+            before = _state(RoleName.MODERATOR, current, paused=False, revision=was)
+            after = _state(
+                RoleName.MODERATOR,
+                wanted,
+                paused=False,
+                sessions_revoked=revoked,
+                revision=is_now,
+            )
             for action, happened in (
                 (StaffAuditAction.SCOPE_GRANTED, added),
                 (StaffAuditAction.SCOPE_REVOKED, removed),
@@ -242,26 +270,30 @@ class StaffAuthorityService:
             return StaffChange(user.id, user.email, True, revoked)
 
     def pause_moderator(
-        self, actor_id: uuid.UUID, user_id: uuid.UUID, *, session_id: uuid.UUID
+        self, actor_id: uuid.UUID, user_id: uuid.UUID, *, revision: int, session_id: uuid.UUID
     ) -> StaffChange:
         """Keep the ``moderator`` role, delete EVERY scope, revoke every session. A Moderator with
         zero scopes has zero staff authority (``require_staff`` refuses them)."""
         with transaction(self._session):
             self._begin_web(actor_id, session_id)
             user, current = self._moderator_target(user_id)
+            self._require_revision(user, revision)
             if not current:
                 raise StaffAuthorityError(
                     StaffCode.MODERATOR_ALREADY_PAUSED, "That Moderator is already paused."
                 )
             self._staff.remove_scopes(user.id, current)
+            was, is_now = self._advance(user)
             revoked = self._revoke_sessions(user.id, self._clock())
             self._audit.record(
                 StaffAuditAction.MODERATOR_PAUSED,
                 source=StaffAuditSource.WEB,
                 actor_user_id=actor_id,
                 target_user_id=user.id,
-                before=_state(RoleName.MODERATOR, current, paused=False),
-                after=_state(RoleName.MODERATOR, (), paused=True, sessions_revoked=revoked),
+                before=_state(RoleName.MODERATOR, current, paused=False, revision=was),
+                after=_state(
+                    RoleName.MODERATOR, (), paused=True, sessions_revoked=revoked, revision=is_now
+                ),
             )
             return StaffChange(user.id, user.email, True, revoked)
 
@@ -271,6 +303,7 @@ class StaffAuthorityService:
         user_id: uuid.UUID,
         scopes: Collection[StaffScope],
         *,
+        revision: int,
         session_id: uuid.UUID,
     ) -> StaffChange:
         """Give a PAUSED Moderator scopes again (at least one, assignable), after the same
@@ -280,6 +313,7 @@ class StaffAuthorityService:
         with transaction(self._session):
             self._begin_web(actor_id, session_id)
             user, current = self._moderator_target(user_id)
+            self._require_revision(user, revision)
             if current:
                 raise StaffAuthorityError(
                     StaffCode.MODERATOR_NOT_PAUSED, "That Moderator is not paused."
@@ -288,26 +322,35 @@ class StaffAuthorityService:
                 raise self._not_eligible()
             now = self._clock()
             self._staff.add_scopes(user.id, wanted, actor_id, now)
+            was, is_now = self._advance(user)
             revoked = self._revoke_sessions(user.id, now)
             self._audit.record(
                 StaffAuditAction.SCOPE_GRANTED,
                 source=StaffAuditSource.WEB,
                 actor_user_id=actor_id,
                 target_user_id=user.id,
-                before=_state(RoleName.MODERATOR, (), paused=True),
-                after=_state(RoleName.MODERATOR, wanted, paused=False, sessions_revoked=revoked),
+                before=_state(RoleName.MODERATOR, (), paused=True, revision=was),
+                after=_state(
+                    RoleName.MODERATOR,
+                    wanted,
+                    paused=False,
+                    sessions_revoked=revoked,
+                    revision=is_now,
+                ),
             )
             return StaffChange(user.id, user.email, True, revoked)
 
     def remove_moderator(
-        self, actor_id: uuid.UUID, user_id: uuid.UUID, *, session_id: uuid.UUID
+        self, actor_id: uuid.UUID, user_id: uuid.UUID, *, revision: int, session_id: uuid.UUID
     ) -> StaffChange:
         """Delete the ``moderator`` role (its scopes cascade) and revoke every session. The account
         itself is untouched: never a user deletion."""
         with transaction(self._session):
             self._begin_web(actor_id, session_id)
             user, current = self._moderator_target(user_id)
+            self._require_revision(user, revision)
             self._roles.revoke(user.id, RoleName.MODERATOR)
+            was, is_now = self._advance(user)
             revoked = self._revoke_sessions(user.id, self._clock())
             self._auth_audit.record(
                 AuthEventType.ROLE_REVOKED,
@@ -320,8 +363,8 @@ class StaffAuthorityService:
                 source=StaffAuditSource.WEB,
                 actor_user_id=actor_id,
                 target_user_id=user.id,
-                before=_state(RoleName.MODERATOR, current, paused=not current),
-                after=_state(None, (), sessions_revoked=revoked),
+                before=_state(RoleName.MODERATOR, current, paused=not current, revision=was),
+                after=_state(None, (), sessions_revoked=revoked, revision=is_now),
             )
             return StaffChange(user.id, user.email, True, revoked)
 
@@ -365,6 +408,7 @@ class StaffAuthorityService:
                     AuthEventType.ROLE_REVOKED, user_id=user.id, details={"reason": "moderator"}
                 )
             self._roles.grant(user.id, RoleName.ADMIN, None, now)
+            was, is_now = self._advance(user)
             revoked = self._revoke_sessions(user.id, now)
             self._auth_audit.record(
                 AuthEventType.ROLE_GRANTED, user_id=user.id, details={"reason": RoleName.ADMIN}
@@ -373,10 +417,15 @@ class StaffAuthorityService:
                 StaffAuditAction.SUPER_ADMIN_PROMOTED,
                 source=StaffAuditSource.CLI,
                 target_user_id=user.id,
-                before=_state(RoleName.MODERATOR if RoleName.MODERATOR in roles else None, cleared),
+                before=_state(
+                    RoleName.MODERATOR if RoleName.MODERATOR in roles else None,
+                    cleared,
+                    revision=was,
+                ),
                 after=_state(
                     RoleName.ADMIN,
                     (),
+                    revision=is_now,
                     super_admin_count=decision.new_count,
                     policy_override=decision.policy_override_used,
                     break_glass=decision.break_glass_used,
@@ -408,6 +457,7 @@ class StaffAuthorityService:
                 return StaffChange(user.id, user.email, False)
             self.guard_last_usable_super_admin(user.id)
             self._roles.revoke(user.id, RoleName.ADMIN)
+            was, is_now = self._advance(user)
             revoked = self._revoke_sessions(user.id, self._clock())
             self._auth_audit.record(
                 AuthEventType.ROLE_REVOKED, user_id=user.id, details={"reason": RoleName.ADMIN}
@@ -416,10 +466,11 @@ class StaffAuthorityService:
                 StaffAuditAction.SUPER_ADMIN_DEMOTED,
                 source=StaffAuditSource.CLI,
                 target_user_id=user.id,
-                before=_state(RoleName.ADMIN, ()),
+                before=_state(RoleName.ADMIN, (), revision=was),
                 after=_state(
                     None,
                     (),
+                    revision=is_now,
                     super_admin_count=self._staff.usable_super_admin_count(),
                     sessions_revoked=revoked,
                 ),
@@ -475,6 +526,24 @@ class StaffAuthorityService:
         if RoleName.MODERATOR not in roles:
             raise self._moderator_not_found()
         return user, self._staff.scopes_of(user.id)
+
+    def _require_revision(self, user: User, expected: int) -> None:
+        """``user`` was locked ``FOR UPDATE`` and re-read in THIS transaction, so what is
+        compared here is what the write that follows will change."""
+        if user.staff_revision != expected:
+            raise StaffAuthorityError(
+                StaffCode.STAFF_CHANGED,
+                "This account's staff access has changed since you looked at it. Check it again.",
+                field="revision",
+                current_revision=user.staff_revision,
+            )
+
+    def _advance(self, user: User) -> tuple[int, int]:
+        """One more change to this account's staff authority: ``(before, after)``."""
+        before = user.staff_revision
+        user.staff_revision = before + 1
+        self._session.flush()
+        return before, before + 1
 
     def _eligible(self, user: User) -> bool:
         """Active, e-mail verified and, in a hosted environment, not a fixture / demo / reserved

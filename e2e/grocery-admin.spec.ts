@@ -212,7 +212,9 @@ test('after another tab switches admins, a pressed button never acts as the othe
   await dialog(page).getByRole('button', { name: 'Pause moderator' }).click()
   await expect(dialog(page)).toHaveCount(0)
   await expect(page.getByRole('list', { name: 'Staff' }).getByRole('button', { name: /Zara Admin.*You/ })).toBeVisible()
-  expect(writes(authMock)).toHaveLength(1)
+  // The read made before a staff change is confirmed like any private read, so it finds the other
+  // account and the change is never sent at all.
+  expect(writes(authMock)).toHaveLength(0)
   expect(authMock.accounts.get(emailFor('Sana Grocer'))!.staffScopes).toEqual(['grocery'])
 })
 
@@ -226,6 +228,9 @@ test('an expired admin session and a removed role close the screens', async ({ p
   authMock.adminSessionStale = false
   await signIn(page, ADMIN, 'admin')
   await expectPage(page, 'Staff')
+  // The list shows only once its read has been confirmed: no confirmation is still on its way to notice
+  // the removal below before Refresh is pressed.
+  await expect(page.getByRole('list', { name: 'Staff' })).toBeVisible()
   authMock.accounts.get(emailFor(ADMIN))!.roles = []
   await page.getByRole('button', { name: 'Refresh' }).click()
   await expectPage(page, 'Admin access only')

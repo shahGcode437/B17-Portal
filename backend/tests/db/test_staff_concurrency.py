@@ -36,6 +36,7 @@ from tests.db.staff_helpers import (
     live_session,
     policy,
     purge_staff_audit,
+    revision_of,
 )
 from tests.db.test_listing_write_concurrency import committed_world
 from tests.db.test_scoped_moderation_concurrency import (
@@ -315,68 +316,77 @@ def moderator(env: AuthEnv, email: str = "m@example.org", scopes: Any = (FOOD,))
     return make_account(env.session, email, moderator_scopes=list(scopes))
 
 
-def test_simultaneous_scope_replacements_serialise_into_one_consistent_chain(
+def test_two_replacements_decided_on_one_revision_apply_exactly_one(
     db_engine: Engine, staff_world: AuthEnv
 ) -> None:
     actor = make_account(staff_world.session, "actor@example.org", admin=True)
     acting = live_session(staff_world.session, actor.id)
     mod = moderator(staff_world)
+    seen = revision_of(staff_world.session, mod.id)  # both administrators looked at this
 
     with staff_lock_held(db_engine):
         calls = [
             Call(
                 db_engine,
-                lambda s: s.replace_scopes(actor.id, mod.id, [DIRECTORY], session_id=acting),
+                lambda s: s.replace_scopes(
+                    actor.id, mod.id, [DIRECTORY], revision=seen, session_id=acting
+                ),
             ),
             Call(
                 db_engine,
-                lambda s: s.replace_scopes(actor.id, mod.id, [EDUCATION], session_id=acting),
+                lambda s: s.replace_scopes(
+                    actor.id, mod.id, [EDUCATION], revision=seen, session_id=acting
+                ),
             ),
         ]
         queued_behind_the_lock(db_engine, calls)
     for call in calls:
         call.wait()
 
-    assert not any(call.error for call in calls), [call.error for call in calls]
+    assert not any(call.crashed for call in calls), [call.error for call in calls]
+    assert sorted(str(call.refused) for call in calls) == ["None", "staff_changed"]
+    (loser,) = [call for call in calls if call.refused is not None]
+    assert isinstance(loser.error, StaffAuthorityError)
+    assert loser.error.current_revision == seen + 1
     final = scalar(
         db_engine,
         "SELECT string_agg(scope, ',' ORDER BY scope) FROM staff_scope_assignments WHERE user_id = :u",
         u=mod.id,
     )
     assert final in ("directory", "education")  # exactly one winner's set, never a union
-    with db_engine.connect() as connection:
-        chain = {
-            (tuple(row[0]), tuple(row[1]))
-            for row in connection.execute(
-                text(
-                    "SELECT before->'scopes', after->'scopes' FROM staff_audit_events "
-                    "WHERE action = 'scope_granted'"
-                )
-            )
-        }
-    first, second = sorted(chain, key=lambda pair: pair[0] != ("food",))
-    assert first[0] == ("food",)  # the first replacement started from the original set...
-    assert second[0] == first[1]  # ...and the second from the FIRST's result (not the original)
+    assert scalar(db_engine, "SELECT staff_revision FROM users WHERE id = :u", u=mod.id) == seen + 1
+    assert (
+        scalar(
+            db_engine,
+            "SELECT count(*) FROM staff_audit_events WHERE action = 'scope_granted' "
+            "AND target_user_id = :u",
+            u=mod.id,
+        )
+        == 1
+    )
 
 
 @pytest.mark.parametrize("racer", ["pause", "remove"])
-def test_a_scope_replacement_racing_a_pause_or_removal_ends_in_the_stronger_state(
+def test_a_scope_replacement_racing_a_pause_or_removal_applies_exactly_one(
     db_engine: Engine, staff_world: AuthEnv, racer: str
 ) -> None:
     actor = make_account(staff_world.session, "actor2@example.org", admin=True)
     acting = live_session(staff_world.session, actor.id)
     mod = moderator(staff_world, "m2@example.org", (FOOD, DIRECTORY))
+    seen = revision_of(staff_world.session, mod.id)
     operation: Callable[[StaffAuthorityService], Any] = (
-        (lambda s: s.pause_moderator(actor.id, mod.id, session_id=acting))
+        (lambda s: s.pause_moderator(actor.id, mod.id, revision=seen, session_id=acting))
         if racer == "pause"
-        else (lambda s: s.remove_moderator(actor.id, mod.id, session_id=acting))
+        else (lambda s: s.remove_moderator(actor.id, mod.id, revision=seen, session_id=acting))
     )
 
     with staff_lock_held(db_engine):
         calls = [
             Call(
                 db_engine,
-                lambda s: s.replace_scopes(actor.id, mod.id, [EDUCATION], session_id=acting),
+                lambda s: s.replace_scopes(
+                    actor.id, mod.id, [EDUCATION], revision=seen, session_id=acting
+                ),
             ),
             Call(db_engine, operation),
         ]
@@ -386,12 +396,11 @@ def test_a_scope_replacement_racing_a_pause_or_removal_ends_in_the_stronger_stat
 
     assert not any(call.crashed for call in calls), [call.error for call in calls]
     replace, other = calls
-    assert other.error is None  # the pause / removal always succeeds
-    # the replacement either ran first, or was refused because the target had already moved on
-    assert replace.error is None or replace.refused in (
-        StaffCode.MODERATOR_PAUSED,
-        StaffCode.MODERATOR_NOT_FOUND,
-    )
+    (winner,) = [call for call in calls if call.error is None]
+    # The loser was decided on a state that is gone. After a removal the target is no Moderator
+    # at all, which is answered before the revision is.
+    loser = other if winner is replace else replace
+    assert loser.refused in (StaffCode.STAFF_CHANGED, StaffCode.MODERATOR_NOT_FOUND)
     roles = scalar(
         db_engine,
         "SELECT count(*) FROM user_roles WHERE user_id = :u AND role = 'moderator'",
@@ -400,7 +409,9 @@ def test_a_scope_replacement_racing_a_pause_or_removal_ends_in_the_stronger_stat
     scopes = scalar(
         db_engine, "SELECT count(*) FROM staff_scope_assignments WHERE user_id = :u", u=mod.id
     )
-    assert (roles, scopes) == ((1, 0) if racer == "pause" else (0, 0))
+    expected = (1, 1) if winner is replace else (1, 0) if racer == "pause" else (0, 0)
+    assert (roles, scopes) == expected
+    assert scalar(db_engine, "SELECT staff_revision FROM users WHERE id = :u", u=mod.id) == seen + 1
 
 
 def test_two_appointments_of_one_account_create_one_moderator(
@@ -414,12 +425,14 @@ def test_two_appointments_of_one_account_create_one_moderator(
         calls = [
             Call(
                 db_engine,
-                lambda s: s.appoint_moderator(actor.id, target.email, [FOOD], session_id=acting),
+                lambda s: s.appoint_moderator(
+                    actor.id, target.email, [FOOD], revision=0, session_id=acting
+                ),
             ),
             Call(
                 db_engine,
                 lambda s: s.appoint_moderator(
-                    actor.id, target.email, [DIRECTORY], session_id=acting
+                    actor.id, target.email, [DIRECTORY], revision=0, session_id=acting
                 ),
             ),
         ]
@@ -429,8 +442,9 @@ def test_two_appointments_of_one_account_create_one_moderator(
 
     assert not any(call.crashed for call in calls)
     assert sorted(call.refused is None for call in calls) == [False, True]
-    assert [call.refused for call in calls if call.refused] == [StaffCode.ALREADY_MODERATOR]
+    assert [call.refused for call in calls if call.refused] == [StaffCode.STAFF_CHANGED]
     assert scalar(db_engine, "SELECT count(*) FROM user_roles WHERE user_id = :u", u=target.id) == 1
+    assert scalar(db_engine, "SELECT staff_revision FROM users WHERE id = :u", u=target.id) == 1
 
 
 def test_a_promotion_racing_an_appointment_never_leaves_two_staff_roles(
@@ -444,7 +458,9 @@ def test_a_promotion_racing_an_appointment_never_leaves_two_staff_roles(
         calls = [
             Call(
                 db_engine,
-                lambda s: s.appoint_moderator(actor.id, target.email, [FOOD], session_id=acting),
+                lambda s: s.appoint_moderator(
+                    actor.id, target.email, [FOOD], revision=0, session_id=acting
+                ),
             ),
             Call(db_engine, lambda s: s.promote_super_admin(target.email, REASON)),
         ]
@@ -508,7 +524,11 @@ def test_removing_a_moderator_waits_for_a_decision_that_holds_its_authority_and_
 
     decision = Decision(api, listing_id)
     gate.wait_arrived()
-    removal = Call(db_engine, lambda s: s.remove_moderator(actor.id, mod_id, session_id=acting))
+    at = revision_of(staff_world.session, mod_id)
+    removal = Call(
+        db_engine,
+        lambda s: s.remove_moderator(actor.id, mod_id, revision=at, session_id=acting),
+    )
 
     wait_until(lambda: waiters(db_engine, "%FROM users%FOR UPDATE%") == 1, "the removal to wait")
     assert not removal.finished.is_set() and decision.running
@@ -545,7 +565,11 @@ def test_a_decision_arriving_while_a_removal_holds_the_user_lock_waits_then_is_r
     mod_id = scalar(db_engine, "SELECT id FROM users WHERE email = :e", e=ACTORS[0].email)
     gate = gate_on(monkeypatch, StaffManagementRepository, "staff_roles_of", after=True)
 
-    removal = Call(db_engine, lambda s: s.remove_moderator(actor.id, mod_id, session_id=acting))
+    at = revision_of(staff_world.session, mod_id)
+    removal = Call(
+        db_engine,
+        lambda s: s.remove_moderator(actor.id, mod_id, revision=at, session_id=acting),
+    )
     gate.wait_arrived()  # the removal now holds the advisory lock AND users FOR UPDATE
     decision = Decision(api, listing_id)
 
@@ -574,7 +598,9 @@ def test_a_moderation_decision_never_waits_on_the_staff_authority_lock(
     with staff_lock_held(db_engine):
         blocked = Call(
             db_engine,
-            lambda s: s.appoint_moderator(actor.id, other.email, [FOOD], session_id=acting),
+            lambda s: s.appoint_moderator(
+                actor.id, other.email, [FOOD], revision=0, session_id=acting
+            ),
         )
         queued_behind_the_lock(db_engine, [blocked])
         decision = Decision(api, listing_id).finish()  # completes while the lock is held
@@ -617,8 +643,9 @@ def test_a_staff_mutation_takes_the_advisory_lock_first_then_users_and_never_a_l
     acting = live_session(staff_world.session, actor.id)
     mod = moderator(staff_world, "lock-mod@example.org")
     plain = make_account(staff_world.session, "lock-plain@example.org")
+    at = revision_of(staff_world.session, mod.id)
     calls: dict[str, Callable[[StaffAuthorityService], Any]] = {
-        "remove": lambda s: s.remove_moderator(actor.id, mod.id, session_id=acting),
+        "remove": lambda s: s.remove_moderator(actor.id, mod.id, revision=at, session_id=acting),
         "promote": lambda s: s.promote_super_admin(plain.email, REASON),
         "demote": lambda s: s.demote_super_admin(actor.email, REASON),
     }

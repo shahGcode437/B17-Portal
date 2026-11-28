@@ -491,7 +491,8 @@ class OAuthService:
         raw, auth_session = self._sessions.create(user.id, user_agent)
         if event is not None:
             self._audit.record(event, user_id=user.id, details={"provider": identity.provider})
-        max_age = max(1, int((auth_session.expires_at - now).total_seconds()))
+        # The cookie lasts the session's whole lifetime and is never re-sent (AUTH_RBAC.md §38.5).
+        max_age = max(1, int((auth_session.absolute_expires_at - now).total_seconds()))
         signed_in = (  # ``event`` is None when the account is being created, not signed in to
             None
             if event is None

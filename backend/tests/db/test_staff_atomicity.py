@@ -30,6 +30,7 @@ from tests.db.staff_helpers import (
     live_session,
     live_sessions,
     open_sessions,
+    revision_of,
     roles_of,
     scopes_of,
     service,
@@ -68,7 +69,11 @@ def _admin(env: AuthEnv, email: str = "actor@example.org") -> User:
 def _moderator(env: AuthEnv, actor: User, email: str, scopes: Any = (FOOD, DIRECTORY)) -> User:
     user = candidate(env, email)
     service(env.session, env.clock).appoint_moderator(
-        actor.id, user.email, scopes, session_id=acting_as(actor.id)
+        actor.id,
+        user.email,
+        scopes,
+        revision=revision_of(env.session, user.id),
+        session_id=acting_as(actor.id),
     )
     open_sessions(
         env, user.email, 2
@@ -80,7 +85,11 @@ def appoint(env: AuthEnv) -> tuple[User, Callable[[], object]]:
     actor, user = _admin(env), candidate(env, "t-appoint@example.org")
     open_sessions(env, user.email, 2)
     return user, lambda: service(env.session, env.clock).appoint_moderator(
-        actor.id, user.email, [FOOD], session_id=acting_as(actor.id)
+        actor.id,
+        user.email,
+        [FOOD],
+        revision=revision_of(env.session, user.id),
+        session_id=acting_as(actor.id),
     )
 
 
@@ -88,7 +97,11 @@ def replace(env: AuthEnv) -> tuple[User, Callable[[], object]]:
     actor = _admin(env)
     user = _moderator(env, actor, "t-replace@example.org")
     return user, lambda: service(env.session, env.clock).replace_scopes(
-        actor.id, user.id, [EDUCATION, FOOD], session_id=acting_as(actor.id)
+        actor.id,
+        user.id,
+        [EDUCATION, FOOD],
+        revision=revision_of(env.session, user.id),
+        session_id=acting_as(actor.id),
     )
 
 
@@ -96,7 +109,10 @@ def pause(env: AuthEnv) -> tuple[User, Callable[[], object]]:
     actor = _admin(env)
     user = _moderator(env, actor, "t-pause@example.org")
     return user, lambda: service(env.session, env.clock).pause_moderator(
-        actor.id, user.id, session_id=acting_as(actor.id)
+        actor.id,
+        user.id,
+        revision=revision_of(env.session, user.id),
+        session_id=acting_as(actor.id),
     )
 
 
@@ -104,11 +120,18 @@ def resume(env: AuthEnv) -> tuple[User, Callable[[], object]]:
     actor = _admin(env)
     user = _moderator(env, actor, "t-resume@example.org")
     service(env.session, env.clock).pause_moderator(
-        actor.id, user.id, session_id=acting_as(actor.id)
+        actor.id,
+        user.id,
+        revision=revision_of(env.session, user.id),
+        session_id=acting_as(actor.id),
     )
     open_sessions(env, user.email, 2)
     return user, lambda: service(env.session, env.clock).resume_moderator(
-        actor.id, user.id, [FOOD], session_id=acting_as(actor.id)
+        actor.id,
+        user.id,
+        [FOOD],
+        revision=revision_of(env.session, user.id),
+        session_id=acting_as(actor.id),
     )
 
 
@@ -116,7 +139,10 @@ def remove(env: AuthEnv) -> tuple[User, Callable[[], object]]:
     actor = _admin(env)
     user = _moderator(env, actor, "t-remove@example.org")
     return user, lambda: service(env.session, env.clock).remove_moderator(
-        actor.id, user.id, session_id=acting_as(actor.id)
+        actor.id,
+        user.id,
+        revision=revision_of(env.session, user.id),
+        session_id=acting_as(actor.id),
     )
 
 
@@ -222,7 +248,7 @@ def test_a_refused_operation_leaves_no_trace_either(auth_env: AuthEnv) -> None:
 
     with pytest.raises(Exception, match="cannot be given a staff role"):
         service(auth_env.session, auth_env.clock).appoint_moderator(
-            actor.id, target.email, [FOOD], session_id=acting_as(actor.id)
+            actor.id, target.email, [FOOD], revision=0, session_id=acting_as(actor.id)
         )
 
     assert snapshot(auth_env.session, target.id) == before

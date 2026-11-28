@@ -196,7 +196,7 @@ def staff_removal(env: AuthEnv, engine: Engine) -> Case:
     return Case(
         target,
         leaving,
-        lambda: boss.request("DELETE", f"/admin/staff/moderators/{target}"),
+        lambda: boss.request("DELETE", f"/admin/staff/moderators/{target}?revision=0"),
         204,
         (StaffManagementRepository, "lock_user"),
         "role_change",

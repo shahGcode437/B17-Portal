@@ -9,7 +9,6 @@ import {
   renderStaffApp,
   returnToTab,
 } from "@/test/groceryStaffHarness"
-import { RELOAD_AFTER_MS } from "@/hooks/useVerifiedReload"
 
 const member = { userId: SANA.id, displayName: SANA.name }
 
@@ -196,31 +195,34 @@ describe("the grocery queue", () => {
     await waitFor(() => expect(rows()).toHaveLength(1))
   })
 
-  it("refreshes on request and on returning to the tab (not more often than the interval), never by itself", async () => {
+  it("loads staff data only on request: returning or reconnecting just checks who is signed in", async () => {
     const { server } = seeded()
     const { user } = renderStaffApp("/admin/grocery")
     await waitFor(() => expect(rows()).toHaveLength(1))
-    const lists = () => listQueries(server).length
-    expect(lists()).toBe(1)
-
-    // Straight back: the identity is checked, the data is recent enough.
     const checks = () => server.calls.filter((call) => call.path === "/auth/me").length
-    const checkedBefore = checks()
-    act(returnToTab)
-    await waitFor(() => expect(checks()).toBe(checkedBefore + 1))
-    expect(lists()).toBe(1)
+    const reads = server.staffCalls().length
 
-    const later = vi.spyOn(Date, "now").mockReturnValue(Date.now() + RELOAD_AFTER_MS + 1_000)
+    // However old the list on screen is (up to hours), nothing is loaded by itself.
     server.store.seed("late@example.org")
-    act(returnToTab)
-    await waitFor(() => expect(rows()).toHaveLength(2))
-    expect(lists()).toBe(2)
+    const later = vi.spyOn(Date, "now")
+    for (const [minutes, happens] of [
+      [1, returnToTab],
+      [30, () => document.dispatchEvent(new Event("visibilitychange"))],
+      [119, () => window.dispatchEvent(new Event("online"))],
+    ] as const) {
+      later.mockReturnValue(1_800_000_000_000 + minutes * 60_000)
+      const before = checks()
+      act(() => void happens())
+      await waitFor(() => expect(checks()).toBe(before + 1))
+      await act(() => new Promise((done) => setTimeout(done, 60)))
+    }
+    expect(server.staffCalls()).toHaveLength(reads)
+    expect(rows()).toHaveLength(1)
     later.mockRestore()
 
-    server.store.seed("later@example.org")
     await user.click(screen.getByRole("button", { name: "Refresh" }))
-    await waitFor(() => expect(rows()).toHaveLength(3))
-    expect(lists()).toBe(3)
+    await waitFor(() => expect(rows()).toHaveLength(2))
+    expect(server.staffCalls().length).toBeGreaterThan(reads)
   })
 
   it("keeps the last list, and says so, when a refresh fails", async () => {

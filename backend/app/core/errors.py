@@ -9,7 +9,7 @@ reach a client; unexpected failures are logged server-side with the request ID i
 from enum import StrEnum
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
 from starlette.responses import JSONResponse
 
@@ -26,6 +26,8 @@ class ErrorCode(StrEnum):
     EMAIL_NOT_VERIFIED = "email_not_verified"
     ACCOUNT_DISABLED = "account_disabled"
     CSRF_FAILED = "csrf_failed"
+    # A private read named a session the cookie is not (GROCERY-4A; AUTH_RBAC.md §38)
+    SESSION_MISMATCH = "session_mismatch"
     EMAIL_ALREADY_REGISTERED = "email_already_registered"
     TOKEN_INVALID = "token_invalid"
     TOKEN_EXPIRED = "token_expired"
@@ -63,6 +65,7 @@ DEFAULT_MESSAGES: dict[ErrorCode, str] = {
     ErrorCode.EMAIL_NOT_VERIFIED: "Verify your email address to do this.",
     ErrorCode.ACCOUNT_DISABLED: "This account is not available.",
     ErrorCode.CSRF_FAILED: "The request could not be verified.",
+    ErrorCode.SESSION_MISMATCH: "Who is signed in has changed. Check and try again.",
     ErrorCode.EMAIL_ALREADY_REGISTERED: "An account with this email already exists.",
     ErrorCode.TOKEN_INVALID: "This link is invalid or has already been used.",
     ErrorCode.TOKEN_EXPIRED: "This link has expired. Request a new one.",
@@ -119,6 +122,9 @@ class ErrorDetail(BaseModel):
     field: str
     code: str
     message: str
+    #: Only on a ``staff_changed`` refusal: the revision the account is at now (AUTH_RBAC.md
+    #: §39), so an administrator can look again and repeat the change deliberately.
+    current_revision: int | None = Field(default=None, serialization_alias="currentRevision")
 
 
 class ErrorBody(BaseModel):

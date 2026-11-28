@@ -441,7 +441,7 @@ Recorded 2026-11-27 by the owner's decision. **Deferred: none of these is implem
 
 **Before real customers, in addition to every blocker in §15 and §16:**
 
-- the customer and staff order screens (**built**, GROCERY-3A / 3B) **verified against the real backend** (not yet done), together with the **Grocery settings and staff-management** screens (built, GROCERY-3C; not yet run against a real backend) and an operating procedure for releasing the orders of a paused or removed grocery Moderator;
+- the customer and staff order screens (**built**, GROCERY-3A / 3B) **verified against the real backend** (**partly done**: one customer-to-cash journey, own-order privacy and removal of a Moderator's access, `e2e-real/18-grocery.spec.ts`, GROCERY-4A; failed delivery, cancellation, issues, release and reduced amounts are **not** done), together with the **Grocery settings and staff-management** screens (built, GROCERY-3C; not yet run against a real backend) and an operating procedure for releasing the orders of a paused or removed grocery Moderator;
 - the **PKR 20,000** pilot cap including fees is approved (owner, 2026-11-27) and configurable; confirm the stored setting before enabling;
 - the owner-verified serviceable block list;
 - **pilot launch requirements, still unresolved:** written **refund / dispute**, **privacy / retention**, **excluded-goods** and **cash-handling** (custody, daily reconciliation, who may collect) policies;
@@ -460,3 +460,49 @@ Recorded 2026-11-27 by the owner's decision. **Deferred: none of these is implem
 **Hosting:** whether the production host sends `Vary: Origin` is not known (no host is chosen); the fix does not depend on it. If a host varies built assets on a header that changes their **content** (not expected for hashed files), this assumption must be revisited.
 
 **Still not available offline after a first visit, by design:** screens not yet opened (their code is not precached), images, and font subsets the page had not yet loaded (it falls back to system fonts). Real-device behaviour has not been tested.
+
+## 19. Sessions, tabs and staff changes, migration `0013` (GROCERY-4A)
+
+**`0013` has been run only on isolated test databases.** It has not been applied to a local or hosted application database. No configuration or environment variable changes.
+
+**Deploy in this order:**
+
+1. `alembic upgrade head` (§14.3 for a local database: check the target by name, back up outside any synced folder, verify). Additive: one column, `users.staff_revision` with default 0 and a non-negative check; no data statement. Adding it takes a brief exclusive lock on `users`. `alembic current` must then print `0013 (head)`.
+2. The **backend**. It **requires** `0013`: without the column every request that loads a user fails. **The same holds for a local development database:** running this code against one behind `0013` breaks sign-in and every signed-in request until it is migrated (§14.3). From here, private-read binding, the two staff clocks and the cookie rule are in force.
+3. The **frontend**, promptly. Between 2 and 3 the older frontend keeps working **except staff management**: every appointment and change it sends is refused (`422`) and changes nothing.
+
+**Frontend first is safe but limited:** against the older backend the new frontend still confirms every private answer and keeps staff tabs quiet (no `readBinding`), and sends no staff change to an existing member.
+
+**Old clients.** A browser or installed PWA still running a cached older build sends no session name on reads, so it is **not** protected by the binding (its staff writes are refused). It updates when the new service worker takes over. Making the header mandatory is a later decision.
+
+**Rolling back**
+
+- The **application** can be rolled back with the database left at `0013`; older code ignores the column. The older backend also brings back the corrected defects (cookie re-issue, `/auth/me` keeping staff fresh, unversioned staff changes).
+- The older code does **not advance** the revision. A staff page left open across a roll-back and roll-forward may hold a revision that no longer reflects what happened between: **reload staff pages** after any roll-back.
+- **Downgrading `0013`** drops the counts (no other data). Only with the older backend, and never as routine: after upgrading again every account starts at 0, so staff pages opened before must be reloaded.
+
+**Cookies.** Sessions that exist at deployment keep their cookie's earlier, shorter `Max-Age` (up to 14 days from when it was last set), and it is no longer renewed: such a browser is signed out when that runs out even if it was in use, and signs in again once. New sign-ins get the absolute lifetime.
+
+**Operational:**
+
+- **More `/auth/me` traffic:** every successful private read is followed by an `/auth/me` that confirms whose answer it was (reads finishing together share one). Account for it in capacity and in any rate limit placed in front of the API: a limit on `/auth/me` would make private screens fail.
+- Tabs of one origin use `BroadcastChannel`; nothing is added to web storage, and the service worker still handles no `/api/` request.
+- **Still open** (`AUTH_RBAC.md` §38.2, §38.5): clients that send no session name are unprotected; a late `401` or sign-out can clear a newer session cookie (a sign-out, never access). These join the blockers of §15–§17, which this phase does not close. **The portal is not production-ready.**
+
+## 20. Mandatory pre-pilot security review (recorded by the owner, 2026-11-28)
+
+GROCERY-4A was accepted as a **development checkpoint only**. **Every item below must be reviewed, with a recorded decision (fix, or accept with a reason), before any pilot, and so before any public launch.** None is cleared. This adds to, and replaces nothing in, §15, §16 and §17 (**staff MFA** among them).
+
+| # | Item | What is known | Detail |
+|---|---|---|---|
+| 1 | **A late `401` or logout clears a newer session cookie** | Signs the newer sign-in out; grants nothing. Closing it needs a different session architecture: only outlined, not designed or approved | `AUTH_RBAC.md` §38.5 |
+| 2 | **Competing sign-ins: the last answer wins** | Includes a delayed password-change answer restoring the account that changed its password (the app has no screen for that today) | §38.5 |
+| 3 | **Session binding is optional** | A client that sends no session name, an installed PWA on a cached older build included, is not protected by the server rule. Decide when to make the header mandatory | §38.2 |
+| 4 | **A staff request refused after the role and age guard still extends the idle deadline** | Scope inside the service, the 15-minute window, a stale revision, invalid input, a rate limit. From the order of the code; no test of its own. Bounded by the 12-hour age limit | §38.4 |
+| 5 | **An expired staff screen stays visible until the next staff request** | Private data already loaded stays on an unattended or returned-to screen; the server serves and changes nothing more | §38.4 |
+| 6 | **Automated requests count as staff work** | A script, a future polling screen, or a browser reloading a discarded staff tab. Bounded by the 12-hour age limit | §38.4 |
+| 7 | **A stale tab shows its old screen until it hears of an account change** | What it shows was fetched for its own account | §23.2 |
+| 8 | **A change already sent may complete** as the person who sent it, after another account signed in | No automatic resend exists | §23.1, §23.2 |
+| 9 | **A new flow that waits before sending must check the identity stamp** | A convention: nothing fails automatically if one doesn't | §23.1 |
+| 10 | **The database does not force `staff_revision` to advance** | A hand-written change to roles or scopes bypasses it; least-privilege credentials (§16 item 4) apply | `DATA_MODEL.md` §23 |
+| 11 | **Verification gaps** | Deferred real-backend specs; only part of the Grocery staff journey on a real backend; no late-response reordering in a real browser; no Safari, Firefox, real device or screen reader | `TESTING.md` |

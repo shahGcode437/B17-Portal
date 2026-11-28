@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest"
 import { apiRequest } from "@/lib/api/client"
 import { ApiError, fieldErrors, isApiError } from "@/lib/api/errors"
-import { clearCsrfToken, setCsrfToken, setSessionHandlers } from "@/lib/api/session"
+import { clearCsrfToken, getCsrfToken, setCsrfToken, setSessionHandlers } from "@/lib/api/session"
 import { fail, installFetchMock, noContent, ok } from "@/test/apiMock"
 
 describe("apiRequest", () => {
@@ -35,7 +35,7 @@ describe("apiRequest", () => {
     expect(calls[0].headers.has("Authorization")).toBe(false)
   })
 
-  it("adds X-CSRF-Token to authenticated unsafe requests only", async () => {
+  it("adds X-CSRF-Token to authenticated requests only: reads name the session, changes prove it", async () => {
     setCsrfToken("csrf-abc")
     const { calls } = installFetchMock(() => ok({}))
 
@@ -44,7 +44,7 @@ describe("apiRequest", () => {
     await apiRequest("GET", "/c", { session: true })
     await apiRequest("POST", "/login", { body: {} }) // pre-session: no CSRF header
 
-    expect(calls.map((c) => c.headers.get("X-CSRF-Token"))).toEqual(["csrf-abc", "csrf-abc", null, null])
+    expect(calls.map((c) => c.headers.get("X-CSRF-Token"))).toEqual(["csrf-abc", "csrf-abc", "csrf-abc", null])
   })
 
   it("turns the error envelope into a typed ApiError with the request id", async () => {
@@ -87,7 +87,7 @@ describe("apiRequest", () => {
 describe("csrf_failed recovery (authenticated unsafe requests)", () => {
   function wire(refresh: () => Promise<boolean>) {
     const onSessionLost = vi.fn()
-    setSessionHandlers({ refreshSession: refresh, onSessionLost })
+    setSessionHandlers({ refreshSession: refresh, observeSession: async () => ({ kind: "session", token: getCsrfToken() ?? "" }), onSessionLost, onSessionMismatch: async () => {} })
     return { onSessionLost }
   }
 
@@ -186,6 +186,54 @@ describe("csrf_failed recovery (authenticated unsafe requests)", () => {
   })
 })
 
+describe("a read refused because the sign-in changed (§38)", () => {
+  function wire() {
+    const onSessionMismatch = vi.fn(async () => {})
+    const onSessionLost = vi.fn()
+    setSessionHandlers({
+      refreshSession: async () => true,
+      observeSession: async () => ({ kind: "session", token: getCsrfToken() ?? "" }),
+      onSessionLost,
+      onSessionMismatch,
+    })
+    return { onSessionMismatch, onSessionLost }
+  }
+
+  it("asks who is signed in, once, hands over nothing and does not ask again", async () => {
+    setCsrfToken("mine")
+    const { onSessionMismatch, onSessionLost } = wire()
+    const { calls } = installFetchMock(() => fail(403, "session_mismatch"))
+
+    await expect(apiRequest("GET", "/saved", { session: true })).rejects.toMatchObject({ code: "session_changed" })
+
+    expect(calls.map((c) => [c.path, c.headers.get("X-CSRF-Token")])).toEqual([["/saved", "mine"]])
+    expect(onSessionMismatch).toHaveBeenCalledTimes(1)
+    expect(onSessionLost).not.toHaveBeenCalled() // the other session is not this tab's to end
+  })
+
+  it("an answer about a sign-in this tab has already left starts nothing", async () => {
+    setCsrfToken("mine")
+    const { onSessionMismatch } = wire()
+    installFetchMock(() => {
+      clearCsrfToken()
+      return fail(403, "session_mismatch")
+    })
+
+    await expect(apiRequest("GET", "/saved", { session: true })).rejects.toBeInstanceOf(ApiError)
+
+    expect(onSessionMismatch).not.toHaveBeenCalled()
+  })
+
+  it("a public read names nobody, signed in or not", async () => {
+    setCsrfToken("mine")
+    const { calls } = installFetchMock(() => ok({}))
+
+    await apiRequest("GET", "/categories")
+
+    expect(calls[0].headers.get("X-CSRF-Token")).toBeNull()
+  })
+})
+
 describe("session loss", () => {
   it.each([
     ["unauthenticated", 401],
@@ -193,7 +241,7 @@ describe("session loss", () => {
     ["account_disabled", 403],
   ])("an authenticated request answered %s ends the local session", async (code, status) => {
     const onSessionLost = vi.fn()
-    setSessionHandlers({ refreshSession: async () => true, onSessionLost })
+    setSessionHandlers({ refreshSession: async () => true, observeSession: async () => ({ kind: "session", token: getCsrfToken() ?? "" }), onSessionLost, onSessionMismatch: async () => {} })
     installFetchMock(() => fail(status, code))
 
     await expect(apiRequest("POST", "/x", { session: true })).rejects.toMatchObject({ code })
@@ -204,7 +252,7 @@ describe("session loss", () => {
 
   it("does not end the session for a pre-session 401 (e.g. wrong password)", async () => {
     const onSessionLost = vi.fn()
-    setSessionHandlers({ refreshSession: async () => true, onSessionLost })
+    setSessionHandlers({ refreshSession: async () => true, observeSession: async () => ({ kind: "session", token: getCsrfToken() ?? "" }), onSessionLost, onSessionMismatch: async () => {} })
     installFetchMock(() => fail(401, "invalid_credentials"))
 
     await expect(apiRequest("POST", "/auth/login", { body: {} })).rejects.toMatchObject({ code: "invalid_credentials" })
@@ -214,7 +262,7 @@ describe("session loss", () => {
 
   it("does not treat an unrelated 401 code on an authenticated request as session loss", async () => {
     const onSessionLost = vi.fn()
-    setSessionHandlers({ refreshSession: async () => true, onSessionLost })
+    setSessionHandlers({ refreshSession: async () => true, observeSession: async () => ({ kind: "session", token: getCsrfToken() ?? "" }), onSessionLost, onSessionMismatch: async () => {} })
     installFetchMock(() => fail(401, "invalid_credentials"))
 
     await expect(apiRequest("POST", "/auth/change-password", { session: true, body: {} })).rejects.toBeInstanceOf(ApiError)

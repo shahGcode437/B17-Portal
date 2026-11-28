@@ -25,7 +25,9 @@ function ToastProvider({ children }: { children: React.ReactNode }) {
     }, AUTO_DISMISS_MS)
   }, [])
 
-  const value = React.useMemo(() => ({ show }), [show])
+  const clear = React.useCallback(() => setToasts([]), [])
+
+  const value = React.useMemo(() => ({ show, clear }), [show, clear])
 
   return (
     <ToastContext.Provider value={value}>
