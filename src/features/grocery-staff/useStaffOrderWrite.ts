@@ -3,9 +3,10 @@ import { useAuth } from "@/hooks/useAuth"
 import { useRequireOnline } from "@/hooks/useRequireOnline"
 import { useToast } from "@/hooks/useToast"
 import { ApiError, NETWORK_ERROR_CODE, isApiError } from "@/lib/api/errors"
+import { getIdentityStamp } from "@/lib/api/session"
 import { ACTION_DONE, ACTION_NOUN } from "@/features/grocery-staff/staffLabels"
 import { isLostAccess, isOwnOrder, isStaleOrder, isUnknownOutcome, needsSuperAdmin, staffRefusalCopy } from "@/features/grocery-staff/staffErrors"
-import { acquireWrite, releaseWrite, useWriteInFlight } from "@/features/grocery-staff/writeLock"
+import { acquireWrite, releaseWrite, useWriteInFlight } from "@/hooks/useWriteLock"
 import type { GroceryStaffActionDto, GroceryStaffOrderDetailDto } from "@/lib/api/dto/groceryStaff"
 
 export const STAFF_WRITE_TIMEOUT_MS = 30_000
@@ -36,7 +37,8 @@ interface Options {
  *  - nothing on screen changes until the server has answered with the order as it now is;
  *  - after a success or a conflict the order is loaded again from the server;
  *  - when the outcome is UNKNOWN nothing is retried, and no action is offered until a fresh copy of
- *    the order has arrived.
+ *    the order has arrived;
+ *  - a success that arrives after the signed-in account changed does nothing here.
  */
 export function useStaffOrderWrite({ userId, orderId, order, replace, reload, closeDialog }: Options) {
   const { refreshMe } = useAuth()
@@ -68,8 +70,10 @@ export function useStaffOrderWrite({ userId, orderId, order, replace, reload, cl
       explaining.current = false
       const controller = new AbortController()
       const timer = setTimeout(() => controller.abort(), STAFF_WRITE_TIMEOUT_MS)
+      const askedAs = getIdentityStamp()
       try {
         const updated = await send(controller.signal)
+        if (getIdentityStamp() !== askedAs) return { closed: true }
         if (updated?.id !== orderId || !Array.isArray(updated.availableActions)) {
           throw new ApiError({ status: 200, code: "invalid_response", message: "Unexpected response." })
         }

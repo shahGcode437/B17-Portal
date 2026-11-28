@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef } from "react"
 import { Outlet, useLocation, useNavigationType } from "react-router-dom"
+import { AccountBoundary } from "@/app/AccountBoundary"
 import { scrollIntentFor, type Landing } from "@/app/scrollIntent"
 
 function prefersReducedMotion(): boolean {
@@ -47,12 +48,14 @@ function ScrollManager() {
   return null
 }
 
-/** The router's root element: the scroll rule plus the matched layout. */
+/** The router's root element: the scroll rule, plus the matched layout inside the account boundary. */
 function AppRoot() {
   return (
     <>
       <ScrollManager />
-      <Outlet />
+      <AccountBoundary>
+        <Outlet />
+      </AccountBoundary>
     </>
   )
 }

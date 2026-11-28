@@ -1,6 +1,5 @@
-import type { FormEvent, ReactNode } from "react"
-import { Button } from "@/components/ui/button"
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import type { ReactNode } from "react"
+import { ConfirmDialog } from "@/components/forms/ConfirmDialog"
 import { FormAlert } from "@/components/forms/FormAlert"
 import { AttentionRegion } from "@/features/grocery/AttentionRegion"
 import { staffRefusalCopy } from "@/features/grocery-staff/staffErrors"
@@ -20,44 +19,20 @@ interface StaffActionDialogProps extends Pick<StaffFormProps, "pending" | "onClo
   children?: ReactNode
 }
 
-/** The shell of every staff action: a real form, one send at a time, and nothing claimed early. */
-function StaffActionDialog({
-  title,
-  description,
-  submitLabel,
-  pendingLabel,
-  destructive,
-  refusal,
-  outdated,
-  pending,
-  pageExplains,
-  onClose,
-  onSubmit,
-  children,
-}: StaffActionDialogProps) {
+/** The shell of every grocery staff action: the shared confirmation, with the order's own messages. */
+function StaffActionDialog({ refusal, outdated, pageExplains, ...shell }: StaffActionDialogProps) {
   const copy = refusal ? staffRefusalCopy(refusal.error) : null
-
-  function handle(event: FormEvent) {
-    event.preventDefault()
-    if (!pending && !outdated) onSubmit()
-  }
-
   return (
-    <Dialog open onOpenChange={(open) => !open && !pending && onClose()}>
-      <DialogContent
-        className="sm:max-w-md"
-        onCloseAutoFocus={(event) => {
-          if (pageExplains()) event.preventDefault()
-          else focusActionsIfLost()
-        }}
-      >
-        <DialogHeader>
-          <DialogTitle className="pr-8">{title}</DialogTitle>
-          <DialogDescription>{description}</DialogDescription>
-        </DialogHeader>
-        <form noValidate onSubmit={handle} className="flex flex-col gap-4">
-          {children}
-          {outdated && !pending && (
+    <ConfirmDialog
+      {...shell}
+      blocked={outdated}
+      onCloseAutoFocus={(event) => {
+        if (pageExplains()) event.preventDefault()
+        else focusActionsIfLost()
+      }}
+      alert={
+        <>
+          {outdated && !shell.pending && (
             <FormAlert
               tone="warning"
               title="This order changed while this was open"
@@ -69,17 +44,9 @@ function StaffActionDialog({
               <FormAlert title={copy.title} description={copy.description} />
             </AttentionRegion>
           )}
-          <DialogFooter>
-            <Button type="button" variant="outline" className="h-11" onClick={onClose} disabled={pending}>
-              Back
-            </Button>
-            <Button type="submit" variant={destructive ? "destructive" : "default"} className="h-11" disabled={pending || outdated}>
-              {pending ? pendingLabel : submitLabel}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+        </>
+      }
+    />
   )
 }
 

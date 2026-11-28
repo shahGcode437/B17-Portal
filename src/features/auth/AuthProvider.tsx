@@ -1,8 +1,9 @@
 import * as React from "react"
+import { flushSync } from "react-dom"
 import { AuthContext, type AuthContextValue } from "@/hooks/useAuth"
 import * as authApi from "@/lib/api/auth"
 import { ApiError, isApiError } from "@/lib/api/errors"
-import { clearCsrfToken, setCsrfToken, setSessionHandlers } from "@/lib/api/session"
+import { clearCsrfToken, noteIdentity, setCsrfToken, setSessionHandlers } from "@/lib/api/session"
 import type { AuthNotice, AuthStatus, AuthUser, CurrentUser } from "@/types/auth"
 
 interface AuthState {
@@ -40,6 +41,7 @@ function reducer(state: AuthState, action: AuthAction): AuthState {
 function adopt(payload: AuthUser): CurrentUser {
   const { csrfToken, ...user } = payload
   setCsrfToken(csrfToken)
+  noteIdentity(user.id)
   return user
 }
 
@@ -55,10 +57,12 @@ function adopt(payload: AuthUser): CurrentUser {
  *  - Races: an `epoch` counter is bumped by every auth-changing event (login, register, logout,
  *    session loss); a `/auth/me` answer that was requested in an older epoch is ignored. Concurrent
  *    `refreshMe()` calls share one in-flight request. There is no polling.
+ *  - The cookie is shared by every tab, so any `/auth/me` answer may name another account. The
+ *    screens are then rebuilt (`app/AccountBoundary`), and the API client never re-sends a change.
  *  - Since Phase 12H, there is NO per-user state in client stores — Saved, requests, listings and
  *    the plan all live on the backend and are refetched on sign-in. `useSavedSet` clears its
- *    in-memory id set on a confirmed anonymous transition, so a shared browser cannot leak the
- *    previous user's set to the next one.
+ *    in-memory id set whenever the account changes, so a shared browser cannot leak the previous
+ *    user's set to the next one.
  */
 function AuthProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = React.useReducer(reducer, initialState)
@@ -69,6 +73,7 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
   const endSession = React.useCallback((notice: AuthNotice | null) => {
     epoch.current += 1
     clearCsrfToken()
+    noteIdentity(null)
     dispatch({ type: "anonymous", notice })
   }, [])
 
@@ -90,7 +95,10 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         const payload = await authApi.fetchMe()
         if (superseded()) return false // overtaken by login / logout / a newer read
-        dispatch({ type: "authenticated", user: adopt(payload) })
+        // The token in memory and the screen it belongs to change together. If this answer is for
+        // another account, that account's token must never be reachable from the previous one's
+        // screen, not even for the moment before React would redraw it on its own.
+        flushSync(() => dispatch({ type: "authenticated", user: adopt(payload) }))
         return true
       } catch (cause) {
         if (superseded()) return false

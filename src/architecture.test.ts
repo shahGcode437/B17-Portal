@@ -83,10 +83,50 @@ describe("architecture guards", () => {
     expect(offenders((path, s) => path.startsWith("/src/features/grocery-staff/") && staffApi.test(s)).length).toBeGreaterThan(3)
   })
 
-  it("every grocery staff change is sent without the client's CSRF replay", () => {
-    const writes = production.find(([path]) => path === "/src/lib/api/writes/groceryStaff.ts")?.[1] ?? ""
-    expect(writes.match(/apiRequest\w*(<[^>]*>)?\(/g)).toHaveLength(1)
-    expect(writes).toMatch(/replayAfterCsrfRefresh:\s*false/)
+  it("the API client never sends a request twice", () => {
+    // SECURITY: re-sending after a CSRF refresh would carry a change out as whoever signed in meanwhile.
+    const client = production.find(([path]) => path === "/src/lib/api/client.ts")?.[1] ?? ""
+    expect(client.match(/\bfetch\(/g)).toHaveLength(1)
+    // `execute` is the one sender: declared once, called only by the two public functions.
+    expect(client.match(/\bexecute</g)).toHaveLength(3)
+    const body = client.slice(client.indexOf("async function execute<"), client.indexOf("export async function apiRequest<"))
+    expect(body.match(/\bexecute\b/g)).toHaveLength(1)
+    expect(body).not.toMatch(/\b(for|while)\s*\(|retr(y|ied)\w*\s*[(=:]/)
+    expect(offenders((_path, s) => /replayAfterCsrfRefresh/.test(s))).toEqual([])
+  })
+
+  it("authenticated changes live where the account-switch test lists them", () => {
+    // `lib/api/writeReplay.test.tsx` covers every export of `writes/`, plus the two in `auth.ts`.
+    const changes = (s: string) => s.match(/"(POST|PUT|PATCH|DELETE)"[^)]*?session:\s*true/gs)?.length ?? 0
+    expect(
+      offenders((path, s) => !path.startsWith("/src/lib/api/writes/") && path !== "/src/lib/api/auth.ts" && changes(s) > 0)
+    ).toEqual([])
+    expect(changes(production.find(([path]) => path === "/src/lib/api/auth.ts")?.[1] ?? "")).toBe(2)
+    expect(offenders((path, s) => path.startsWith("/src/lib/api/writes/") && /session:\s*true/.test(s)).length).toBeGreaterThan(6)
+  })
+
+  it("only the screens that need them import the Super Admin settings and staff-management API modules", () => {
+    // GROCERY-3C: settings records, staff e-mail addresses, the audit and the changes to both.
+    const cases: [RegExp, string][] = [
+      [/@\/lib\/api\/(dto|reads|writes)\/grocerySettings/, "/src/features/grocery-staff/settings/"],
+      [/@\/lib\/api\/(dto|reads|writes)\/staffAdmin/, "/src/features/staff-management/"],
+    ]
+    for (const [modules_, folder] of cases) {
+      expect(
+        offenders((path, s) => !path.startsWith(folder) && !path.startsWith("/src/lib/api/") && modules_.test(s)),
+        folder
+      ).toEqual([])
+      expect(offenders((path, s) => path.startsWith(folder) && modules_.test(s)).length, folder).toBeGreaterThan(1)
+    }
+    // Only the router reaches into staff management from outside.
+    expect(
+      offenders(
+        (path, s) =>
+          !path.startsWith("/src/features/staff-management/") &&
+          path !== "/src/app/router.tsx" &&
+          /@\/features\/staff-management\//.test(s)
+      )
+    ).toEqual([])
   })
 
   it("the public DTO module has no private-location field names", () => {

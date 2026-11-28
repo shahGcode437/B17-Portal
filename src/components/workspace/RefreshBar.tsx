@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils"
 
 const CHECKED = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Karachi", hour: "numeric", minute: "2-digit", hour12: true })
 
-interface StaffRefreshBarProps {
+interface RefreshBarProps {
   receivedAt: number | undefined
   refreshing: boolean
   /** The last reload failed and an older answer is on screen. */
@@ -16,7 +16,7 @@ interface StaffRefreshBarProps {
 }
 
 /** Manual refresh, when the data arrived, and honest offline / failed-refresh states. Nothing polls. */
-function StaffRefreshBar({ receivedAt, refreshing, failed, onRefresh }: StaffRefreshBarProps) {
+function RefreshBar({ receivedAt, refreshing, failed, onRefresh }: RefreshBarProps) {
   const online = useOnline()
   return (
     <div className="flex flex-col gap-3">
@@ -44,4 +44,4 @@ function StaffRefreshBar({ receivedAt, refreshing, failed, onRefresh }: StaffRef
   )
 }
 
-export { StaffRefreshBar }
+export { RefreshBar }

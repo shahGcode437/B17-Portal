@@ -64,6 +64,10 @@ describe("service worker and the API", () => {
     // GROCERY-3B: the staff API carries customer contact details and internal notes
     ["the staff grocery queue", "https://app.example.org/api/v1/admin/grocery/orders?status=submitted&limit=12", "cors"],
     ["one order on the staff side", "https://app.example.org/api/v1/admin/grocery/orders/22222222-2222-4222-8222-000000000001", "cors"],
+    // GROCERY-3C: settings, the staff roster (e-mail addresses) and the staff audit
+    ["the grocery settings", "https://app.example.org/api/v1/admin/grocery/settings", "cors"],
+    ["the staff roster", "https://app.example.org/api/v1/admin/staff?limit=20&offset=0", "cors"],
+    ["the staff audit", "https://app.example.org/api/v1/admin/audit?limit=20", "cors"],
     ["the bare /api path", "https://app.example.org/api", "navigate"],
   ])("never touches %s (no cache, no offline shell substitution)", (_label, url, mode) => {
     caches.open.mockClear()

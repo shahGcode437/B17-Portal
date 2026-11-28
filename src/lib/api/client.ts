@@ -7,27 +7,26 @@ import { getCsrfToken, getSessionHandlers } from "@/lib/api/session"
  *
  *  - Cookie auth: every call uses `credentials: "include"`; the HttpOnly session cookie is attached
  *    by the browser and is never readable here. There is no bearer-token code anywhere.
- *  - `session: true` marks an AUTHENTICATED call: unsafe ones carry `X-CSRF-Token`, a
- *    `403 csrf_failed` triggers ONE `/auth/me` refresh and ONE retry (never a loop, none at all
- *    with `replayAfterCsrfRefresh: false`, never for other 403s, 409s, 422s, 401s or network failures), and a `401 unauthenticated|session_expired`
- *    (or `account_disabled`) ends the local session. Pre-session calls (login, register,
- *    forgot/reset password, verify-email, `/auth/me` itself) leave `session` off.
+ *  - `session: true` marks an AUTHENTICATED call: unsafe ones carry `X-CSRF-Token`, and a
+ *    `401 unauthenticated|session_expired` (or `account_disabled`) ends the local session.
+ *    Pre-session calls (login, register, forgot/reset password, verify-email, `/auth/me` itself)
+ *    leave `session` off.
+ *  - NO REQUEST IS EVER SENT TWICE. The session cookie belongs to the browser, not to this tab:
+ *    another tab may have signed in as somebody else, and re-sending with the new CSRF token would
+ *    carry this person's change out as them. A `403 csrf_failed` re-reads `/auth/me` once (so the
+ *    tab learns who it is now) and then reaches the caller; only the person can send it again. A
+ *    check of "is it still the same account?" before re-sending would not be enough: the cookie can
+ *    change hands between that check and the request.
  *  - Failures become typed `ApiError`s from the backend's error envelope.
  */
 
 export interface RequestOptions {
   body?: unknown
   signal?: AbortSignal
-  /** An authenticated call: CSRF header, one csrf_failed retry, session-loss handling. */
+  /** An authenticated call: CSRF header, session re-read on `csrf_failed`, session-loss handling. */
   session?: boolean
-  /** Extra request headers an endpoint requires (e.g. `Idempotency-Key`). Re-sent unchanged by the CSRF retry. */
+  /** Extra request headers an endpoint requires (e.g. `Idempotency-Key`). */
   headers?: Record<string, string>
-  /**
-   * `false`: after a `403 csrf_failed` the session is still re-read, but the request is NOT sent again
-   * and the refusal reaches the caller. For writes that must never be repeated on the person's behalf
-   * (the account in this browser may have changed since they pressed the button).
-   */
-  replayAfterCsrfRefresh?: boolean
 }
 
 const UNSAFE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"])
@@ -59,7 +58,7 @@ interface Envelope<T> {
   meta: unknown
 }
 
-async function execute<T>(method: string, path: string, options: RequestOptions, retried: boolean): Promise<Envelope<T>> {
+async function execute<T>(method: string, path: string, options: RequestOptions): Promise<Envelope<T>> {
   const unsafe = UNSAFE_METHODS.has(method)
   const headers = new Headers({ ...options.headers, Accept: "application/json" })
   if (options.body !== undefined) headers.set("Content-Type", "application/json")
@@ -97,12 +96,10 @@ async function execute<T>(method: string, path: string, options: RequestOptions,
 
   const error = errorFromBody(response.status, parsed, response.headers.get("X-Request-ID"))
   if (options.session) {
-    if (unsafe && error.status === 403 && error.code === "csrf_failed" && !retried) {
-      // The token we held went stale (e.g. the session was rotated elsewhere): re-read it ONCE.
-      const handlers = getSessionHandlers()
-      if (handlers && (await handlers.refreshSession()) && options.replayAfterCsrfRefresh !== false) {
-        return execute<T>(method, path, options, true)
-      }
+    if (unsafe && error.status === 403 && error.code === "csrf_failed") {
+      // The token we held is not this browser's session any more. Re-read who is signed in (and the
+      // current token) BEFORE the caller hears of the refusal, then let the refusal through.
+      await getSessionHandlers()?.refreshSession()
     }
     if (endsTheSession(error)) getSessionHandlers()?.onSessionLost(error.code)
   }
@@ -110,7 +107,7 @@ async function execute<T>(method: string, path: string, options: RequestOptions,
 }
 
 export async function apiRequest<T>(method: string, path: string, options: RequestOptions = {}): Promise<T> {
-  return (await execute<T>(method.toUpperCase(), path, options, false)).data
+  return (await execute<T>(method.toUpperCase(), path, options)).data
 }
 
 /** Pagination metadata of a list endpoint (`API_CONTRACT.md` §4): the TRUE total, never the page length. */
@@ -136,7 +133,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  * `meta` is treated as a protocol failure rather than guessed at (no faked totals).
  */
 export async function apiRequestPage<T>(method: string, path: string, options: RequestOptions = {}): Promise<Page<T>> {
-  const { data, meta } = await execute<T[]>(method.toUpperCase(), path, options, false)
+  const { data, meta } = await execute<T[]>(method.toUpperCase(), path, options)
   if (
     !Array.isArray(data) ||
     !isRecord(meta) ||

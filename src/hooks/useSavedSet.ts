@@ -44,6 +44,8 @@ let lastHydrationError: ApiError | null = null
 let lastKnownUserId: string | null = null
 /** Bumped every time the saved set changes; `useSaved` includes this in its read key so the list refreshes. */
 let version = 0
+/** Bumped when the set is emptied for another account: an answer asked for before that is dropped. */
+let generation = 0
 
 export function savedSetVersion(): number {
   return version
@@ -55,6 +57,7 @@ function emit(): void {
 }
 
 function clearSet(): void {
+  generation += 1
   ids.clear()
   hydrated = false
   hydrating = null
@@ -64,6 +67,7 @@ function clearSet(): void {
 
 async function hydrateOnce(): Promise<void> {
   if (hydrated || hydrating) return hydrating ?? Promise.resolve()
+  const asked = generation
   hydrating = (async () => {
     try {
       let offset = 0
@@ -72,6 +76,7 @@ async function hydrateOnce(): Promise<void> {
       // eslint-disable-next-line no-constant-condition
       while (true) {
         const page = await fetchSaved({ limit: PAGE, offset })
+        if (asked !== generation) return // the previous account's list
         for (const row of page.items) ids.add(row.item.id)
         if (page.items.length < PAGE || offset + page.items.length >= page.meta.total) break
         offset += page.items.length
@@ -79,11 +84,15 @@ async function hydrateOnce(): Promise<void> {
       hydrated = true
       lastHydrationError = null
     } catch (cause) {
+      if (asked !== generation) return
       lastHydrationError = isApiError(cause) ? cause : new ApiError({ status: 0, code: "network_error", message: "x" })
       hydrated = false
     } finally {
-      hydrating = null
-      emit()
+      // An abandoned sweep must not touch the one that replaced it.
+      if (asked === generation) {
+        hydrating = null
+        emit()
+      }
     }
   })()
   return hydrating
@@ -116,13 +125,17 @@ export function useSavedSet(): SavedSet {
   }, [status, userId])
 
   const save = useCallback(async (id: string) => {
+    const asked = generation
     await saveListing(id)
+    if (asked !== generation) return
     ids.add(id)
     emit()
   }, [])
 
   const unsave = useCallback(async (id: string) => {
+    const asked = generation
     await unsaveListing(id)
+    if (asked !== generation) return
     ids.delete(id)
     emit()
   }, [])
@@ -135,11 +148,14 @@ export function useSavedSet(): SavedSet {
         ? { status: "failed", error: lastHydrationError }
         : { status: "idle" }
 
+  // The set is emptied by an effect; until then it may still hold the previous account's ids.
+  const someoneElses = status === "anonymous" || (userId !== null && userId !== lastKnownUserId)
+
   return {
-    isSaved: (id) => ids.has(id),
+    isSaved: (id) => !someoneElses && ids.has(id),
     save,
     unsave,
-    ready: status === "authenticated" && hydrated,
+    ready: status === "authenticated" && !someoneElses && hydrated,
     hydration,
   }
 }

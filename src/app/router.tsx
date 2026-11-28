@@ -65,6 +65,9 @@ const ContentListPage = lazyPage(() => import("@/features/admin/ContentListPage"
 const ContentFormPage = lazyPage(() => import("@/features/admin/ContentFormPage"), "ContentFormPage")
 const StaffGroceryQueuePage = lazyPage(() => import("@/features/grocery-staff/StaffGroceryQueuePage"), "StaffGroceryQueuePage")
 const StaffGroceryOrderPage = lazyPage(() => import("@/features/grocery-staff/StaffGroceryOrderPage"), "StaffGroceryOrderPage")
+const GrocerySettingsPage = lazyPage(() => import("@/features/grocery-staff/settings/GrocerySettingsPage"), "GrocerySettingsPage")
+const StaffManagementPage = lazyPage(() => import("@/features/staff-management/StaffManagementPage"), "StaffManagementPage")
+const StaffHistoryPage = lazyPage(() => import("@/features/staff-management/StaffHistoryPage"), "StaffHistoryPage")
 
 /**
  * Centralized route tree (Master Spec §15). Phase 1 wires navigation and the
@@ -148,6 +151,10 @@ const appRoutes: RouteObject[] = [
           { path: "content", element: <ContentListPage /> },
           { path: "content/new", element: <ContentFormPage /> },
           { path: "content/:id/edit", element: <ContentFormPage /> },
+          // GROCERY-3C. A static path outranks `grocery/:orderId` below, so this is never read as an order.
+          { path: "grocery/settings", element: <GrocerySettingsPage /> },
+          { path: "staff", element: <StaffManagementPage /> },
+          { path: "staff/history", element: <StaffHistoryPage /> },
         ],
       },
       {

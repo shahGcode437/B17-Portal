@@ -91,54 +91,51 @@ describe("csrf_failed recovery (authenticated unsafe requests)", () => {
     return { onSessionLost }
   }
 
-  it("refreshes the session once, then retries ONCE with the new token", async () => {
+  it.each(["POST", "PUT", "PATCH", "DELETE"])(
+    "%s: re-reads the session once and NEVER sends the request again, even with a new token",
+    async (method) => {
+      setCsrfToken("old")
+      const refresh = vi.fn(async () => {
+        setCsrfToken("possibly-someone-elses")
+        return true
+      })
+      const { onSessionLost } = wire(refresh)
+      // A second attempt would succeed: that is exactly what must not be tried.
+      let attempts = 0
+      const { calls } = installFetchMock(() => (++attempts === 1 ? fail(403, "csrf_failed") : noContent()))
+
+      await expect(
+        apiRequest(method, "/x", { session: true, headers: { "Idempotency-Key": "key-0001" } })
+      ).rejects.toMatchObject({ status: 403, code: "csrf_failed" })
+
+      expect(refresh).toHaveBeenCalledTimes(1)
+      expect(calls.map((c) => [c.headers.get("X-CSRF-Token"), c.headers.get("Idempotency-Key")])).toEqual([
+        ["old", "key-0001"],
+      ])
+      expect(onSessionLost).not.toHaveBeenCalled()
+    }
+  )
+
+  it("finishes re-reading the session before the caller hears of the refusal", async () => {
     setCsrfToken("old")
-    const refresh = vi.fn(async () => {
+    const order: string[] = []
+    wire(async () => {
+      await Promise.resolve()
       setCsrfToken("new")
+      order.push("session re-read")
       return true
     })
-    wire(refresh)
     let attempts = 0
     const { calls } = installFetchMock(() => (++attempts === 1 ? fail(403, "csrf_failed") : noContent()))
 
-    await apiRequest("POST", "/auth/resend-verification", { session: true })
+    await apiRequest("POST", "/x", { session: true }).catch(() => order.push("caller told"))
+    await apiRequest("POST", "/x", { session: true }) // the person's own second try
 
-    expect(refresh).toHaveBeenCalledTimes(1)
+    expect(order).toEqual(["session re-read", "caller told"])
     expect(calls.map((c) => c.headers.get("X-CSRF-Token"))).toEqual(["old", "new"])
   })
 
-  it("surfaces the second csrf_failed instead of looping", async () => {
-    setCsrfToken("t")
-    const refresh = vi.fn(async () => true)
-    wire(refresh)
-    const { calls } = installFetchMock(() => fail(403, "csrf_failed"))
-
-    const error = (await apiRequest("POST", "/x", { session: true }).catch((e: unknown) => e)) as ApiError
-
-    expect(error.code).toBe("csrf_failed")
-    expect(calls).toHaveLength(2) // the original + exactly one retry
-    expect(refresh).toHaveBeenCalledTimes(1)
-  })
-
-  it("with replayAfterCsrfRefresh: false, re-reads the session but never sends the request again", async () => {
-    setCsrfToken("old")
-    const refresh = vi.fn(async () => {
-      setCsrfToken("someone-elses")
-      return true
-    })
-    const { onSessionLost } = wire(refresh)
-    const { calls } = installFetchMock(() => fail(403, "csrf_failed"))
-
-    await expect(apiRequest("POST", "/x", { session: true, replayAfterCsrfRefresh: false })).rejects.toMatchObject({
-      code: "csrf_failed",
-    })
-
-    expect(refresh).toHaveBeenCalledTimes(1)
-    expect(calls.map((c) => c.headers.get("X-CSRF-Token"))).toEqual(["old"])
-    expect(onSessionLost).not.toHaveBeenCalled()
-  })
-
-  it("does not retry when the refresh says the session is gone", async () => {
+  it("is refused the same way when the re-read says the session is gone", async () => {
     setCsrfToken("t")
     wire(async () => false)
     const { calls } = installFetchMock(() => fail(403, "csrf_failed"))

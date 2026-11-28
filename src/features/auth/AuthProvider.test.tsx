@@ -256,7 +256,7 @@ describe("AuthProvider — sessions, CSRF and races", () => {
     expect(state()).toBe("anonymous|-|disabled")
   })
 
-  it("csrf_failed → /auth/me → retry once with the REPLACED token", async () => {
+  it("csrf_failed → /auth/me once; nothing is re-sent, and the next try carries the new token", async () => {
     let meCalls = 0
     let resend = 0
     const { calls } = installFetchMock((call) => {
@@ -265,27 +265,20 @@ describe("AuthProvider — sessions, CSRF and races", () => {
     })
     const { state } = setup()
     await waitFor(() => expect(state()).toContain("authenticated"))
-
-    await act(async () => {
-      await resendVerification()
-    })
-
-    const attempts = calls.filter((c) => c.path === "/auth/resend-verification")
-    expect(attempts.map((c) => c.headers.get("X-CSRF-Token"))).toEqual(["csrf-old", "csrf-new"])
-    expect(getCsrfToken()).toBe("csrf-new")
-    expect(calls.filter((c) => c.path === "/auth/me")).toHaveLength(2)
-  })
-
-  it("a second csrf_failed is surfaced (no endless retry) and the user stays signed in", async () => {
-    const { calls } = installFetchMock((call) => (call.path === "/auth/resend-verification" ? fail(403, "csrf_failed") : ok(meBody())))
-    const { state } = setup()
-    await waitFor(() => expect(state()).toContain("authenticated"))
+    const attempts = () => calls.filter((c) => c.path === "/auth/resend-verification")
 
     const failure = await act(async () => resendVerification().catch((e: unknown) => e))
 
     expect((failure as ApiError).code).toBe("csrf_failed")
-    expect(calls.filter((c) => c.path === "/auth/resend-verification")).toHaveLength(2)
+    expect(attempts().map((c) => c.headers.get("X-CSRF-Token"))).toEqual(["csrf-old"])
+    expect(getCsrfToken()).toBe("csrf-new")
+    expect(calls.filter((c) => c.path === "/auth/me")).toHaveLength(2)
     expect(state()).toContain("authenticated")
+
+    await act(async () => {
+      await resendVerification() // asked for again
+    })
+    expect(attempts().map((c) => c.headers.get("X-CSRF-Token"))).toEqual(["csrf-old", "csrf-new"])
   })
 
   it("concurrent refreshMe() calls share one /auth/me request", async () => {

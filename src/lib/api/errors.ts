@@ -71,6 +71,14 @@ export function isResourceNotFound(error: ApiError): boolean {
   return error.status === 404 && error.code === "not_found"
 }
 
+/**
+ * After one of these, a private record that was already read must leave the screen: the session
+ * ended, the access was refused, or the record is gone.
+ */
+export function mustForgetRead(error: ApiError): boolean {
+  return error.status === 401 || error.status === 403 || error.status === 404
+}
+
 /** First message per field, for mapping a 422 onto form fields. */
 export function fieldErrors(error: ApiError): Record<string, string> {
   const result: Record<string, string> = {}

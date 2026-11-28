@@ -3,6 +3,7 @@ import { routeRead } from '../../src/test/fixtures/readRouter'
 import { publicApprovedListings, resetWriteState, routeWrite, savedRows, writeState } from '../../src/test/fixtures/writeRouter'
 import { GroceryBackend } from '../../src/test/fixtures/groceryBackend'
 import { GroceryStaffBackend } from '../../src/test/fixtures/groceryStaffBackend'
+import { AdminBackend, type DirectoryAccount } from '../../src/test/fixtures/adminBackend'
 import { isMocked } from './mockedEndpoints'
 
 /**
@@ -29,6 +30,8 @@ export interface MockAccount {
   roles: string[]
   /** A Moderator's effective scopes (empty for everyone else, and for a paused Moderator). */
   staffScopes?: string[]
+  /** Defaults to active. */
+  status?: 'active' | 'suspended' | 'deleted'
   professional?: { planCode: 'free' | 'premium' }
   providers: string[]
 }
@@ -49,6 +52,8 @@ const BLANK_TILE = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
   'base64'
 )
+
+const PRE_SESSION = /^\/auth\/(register|login|forgot-password|reset-password|verify-email|oauth\/google\/start)$/
 
 export class AuthMock {
   readonly accounts = new Map<string, MockAccount>()
@@ -73,6 +78,25 @@ export class AuthMock {
   groceryStaffSessionStale = false
   /** While set, a staff change waits for it (see `holdGroceryStaffWrite`). */
   private staffGate: Promise<void> | null = null
+  /**
+   * Super Admin grocery settings and staff management (GROCERY-3C), over this object's accounts. Its settings
+   * start as a fresh database's: OFF with no block. A saved version is then what the customer and staff fakes follow.
+   */
+  readonly admin = new AdminBackend({
+    all: () => [...this.accounts.values()].map((account) => this.asDirectoryAccount(account)),
+    setStaff: (id, role, scopes) => {
+      const account = [...this.accounts.values()].find((a) => this.idOf(a.email) === id)!
+      account.roles = role ? [role] : []
+      account.staffScopes = role ? [...scopes] : []
+      // Every real change ends the person's sessions.
+      if (this.session?.email === account.email) this.session = null
+      return 1
+    },
+  })
+  /** What happens to the next settings or staff changes, one entry each (see `grocerySubmitFaults`). */
+  readonly adminFaults: ('lost-before' | 'lost-after' | 'error-after')[] = []
+  /** The admin routes answer `401 session_expired`. */
+  adminSessionStale = false
   /** While set, a grocery submission waits for it (see `holdGrocerySubmit`). */
   private submitGate: Promise<void> | null = null
   /**
@@ -149,6 +173,18 @@ export class AuthMock {
     }
   }
 
+  private asDirectoryAccount(account: MockAccount): DirectoryAccount {
+    return {
+      id: this.idOf(account.email),
+      email: account.email,
+      displayName: account.displayName,
+      emailVerified: account.emailVerified,
+      status: account.status ?? 'active',
+      roles: account.roles,
+      scopes: (account.staffScopes ?? []) as DirectoryAccount['scopes'],
+    }
+  }
+
   /** The id `/auth/me` reports for an account: distinct per account. */
   idOf(email: string): string {
     return `00000000-0000-4000-8000-${String([...this.accounts.keys()].indexOf(email.toLowerCase()) + 1).padStart(12, '0')}`
@@ -170,6 +206,13 @@ export class AuthMock {
   /** The routes the frontend uses, answered from this object's state. */
   async install(page: Page): Promise<void> {
     resetWriteState()
+    this.admin.onSettings = (settings) => {
+      this.grocery.enabled = settings.enabled
+      this.grocery.blocks = [...settings.serviceableBlocks]
+      this.grocery.maxItems = settings.maxItemsPerOrder
+      this.grocery.maxActive = settings.maxActiveOrdersPerCustomer
+      this.groceryStaff.maxOrderValuePaisa = settings.maxOrderValuePaisa
+    }
     await page.route('**/api/v1/**', (route) => this.handle(route))
     await page.route('https://tile.openstreetmap.org/**', (route) => {
       this.tileRequests.push(route.request().url())
@@ -196,6 +239,7 @@ export class AuthMock {
   }
 
   private startSession(account: MockAccount) {
+    this.admin.recentSignIn = true // a new session is a recent sign-in
     this.session = { email: account.email, csrf: `csrf-${++this.csrfCounter}` }
     return this.me(account, this.session.csrf)
   }
@@ -230,6 +274,40 @@ export class AuthMock {
       return error(501, 'e2e_unmocked_request')
     }
     if (!isMocked(method, path)) return refuseUnmocked()
+
+    // The backend middleware's rule, for EVERY route: a change that carries a session must carry that
+    // session's own CSRF token. (The calls that start a session have none to give.)
+    if (method !== 'GET' && this.session && !PRE_SESSION.test(path) && csrf !== this.session.csrf) {
+      return error(403, 'csrf_failed')
+    }
+
+    if (/^\/admin\/(grocery\/settings|staff(\/.*)?|audit)$/.test(path)) {
+      const account = this.current()
+      if (method !== 'GET') {
+        if (!account) return error(401, 'unauthenticated')
+        if (csrf !== this.session!.csrf) return error(403, 'csrf_failed')
+      }
+      if (account && this.adminSessionStale) return error(401, 'session_expired')
+      const fault = method !== 'GET' ? this.adminFaults.shift() : undefined
+      if (fault === 'lost-before') return route.abort('connectionreset')
+      const answer = this.admin.route(
+        method,
+        path,
+        new URL(request.url()).searchParams,
+        body,
+        account
+          ? {
+              id: this.idOf(account.email),
+              displayName: account.displayName,
+              superAdmin: account.roles.includes('admin'),
+              emailVerified: account.emailVerified,
+            }
+          : null
+      )
+      if (fault === 'lost-after') return route.abort('connectionreset')
+      if (fault === 'error-after') return error(500, 'internal_error')
+      return answer ? reply(answer.status, answer.body) : refuseUnmocked()
+    }
 
     if (path.startsWith('/admin/grocery/orders')) {
       const account = this.current()

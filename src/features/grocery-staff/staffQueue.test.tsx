@@ -9,7 +9,7 @@ import {
   renderStaffApp,
   returnToTab,
 } from "@/test/groceryStaffHarness"
-import { RELOAD_AFTER_MS } from "@/features/grocery-staff/useStaffSession"
+import { RELOAD_AFTER_MS } from "@/hooks/useVerifiedReload"
 
 const member = { userId: SANA.id, displayName: SANA.name }
 

@@ -1,6 +1,6 @@
 import { expect, test } from '../helpers/test'
 import type { Page } from '@playwright/test'
-import { expectPage, navigateInApp, openApp } from '../helpers/app'
+import { expectPage, navigateInApp, openApp, pushInApp } from '../helpers/app'
 import { IDS } from '../../src/test/fixtures/apiFixtures'
 
 /**
@@ -96,7 +96,10 @@ test('offline: data reads fail visibly (no cached API data) while the shell stil
   await expect(page.getByText('Search unavailable')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Preview B-17 Family Pharmacy' })).toHaveCount(0)
 
-  await page.goto(`/businesses/${IDS.generalAreaOnly}`)
+  // Move inside the app, not with a second page load: an offline page being left can send its session re-check
+  // while it is torn down, where no mock can intercept it (it reached the API tripwire about 1 run in 6).
+  await pushInApp(page, `/businesses/${IDS.generalAreaOnly}`)
+  await expect(page.getByText('Search unavailable')).toHaveCount(0) // the search page has gone
   await expect(page.getByRole('alert')).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Business not found' })).toHaveCount(0) // a failure is not "not found"
   authMock.offline = false // BEFORE reconnecting: the app re-checks the session the moment it is online again
@@ -235,4 +238,52 @@ test('private staff grocery data is never cached or stored: offline nothing old 
   // Wait for the app's own re-check on reconnect, so nothing is still on its way when the page closes.
   await expectPage(page, `Order ${order.reference}`)
   await expect(page.getByRole('region', { name: 'Customer and delivery' })).toContainText('House 17, Street 4')
+})
+
+test('Super Admin settings and staff records are never cached or stored, and offline a reload shows none', async ({ page, context, authMock }) => {
+  authMock.addAccount({ email: 'omar@example.org', displayName: 'Omar Admin', roles: ['admin'] })
+  authMock.addAccount({ email: 'sana.grocer@example.org', displayName: 'Sana Grocer', roles: ['moderator'], staffScopes: ['grocery'] })
+  authMock.admin.saveElsewhere({ serviceableBlocks: ['Private Test Block'] })
+  authMock.session = { email: 'omar@example.org', csrf: 'csrf-pwa-admin' }
+  await openApp(page, '/')
+  await waitForControl(page)
+  await page.reload()
+  await expectPage(page, 'B-17 Portal')
+  await navigateInApp(page, '/admin/grocery/settings', 'Grocery settings')
+  await expect(page.getByRole('list', { name: 'Listed delivery blocks' })).toContainText('Private Test Block')
+  await navigateInApp(page, '/admin/staff', 'Staff')
+  await expect(page.getByRole('list', { name: 'Staff' })).toContainText('sana.grocer@example.org')
+
+  const kept = await page.evaluate(async () => {
+    const found: string[] = []
+    for (const name of await caches.keys()) {
+      const cache = await caches.open(name)
+      for (const request of await cache.keys()) {
+        const body = await (await cache.match(request))!.clone().text()
+        if (request.url.includes('/api/') || body.includes('sana.grocer@example.org') || body.includes('Private Test Block')) {
+          found.push(request.url)
+        }
+      }
+    }
+    return {
+      cached: found,
+      storage: JSON.stringify([{ ...localStorage }, { ...sessionStorage }]),
+      databases: (await indexedDB.databases()).length,
+    }
+  })
+  expect(kept.cached).toEqual([])
+  expect(kept.databases).toBe(0)
+  for (const value of ['sana.grocer', 'Private Test Block', 'Sana Grocer']) expect(kept.storage).not.toContain(value)
+
+  authMock.offline = true
+  await context.setOffline(true)
+  await expect(page.getByText(/What's shown may be out of date/)).toBeVisible()
+  await page.reload()
+  await expectPage(page, "We can't reach the server")
+  await expect(page.getByText('sana.grocer@example.org')).toHaveCount(0)
+  authMock.offline = false
+  await context.setOffline(false)
+  // Wait for the app's own re-check on reconnect, so nothing is still on its way when the page closes.
+  await expectPage(page, 'Staff')
+  await expect(page.getByRole('list', { name: 'Staff' })).toContainText('sana.grocer@example.org')
 })

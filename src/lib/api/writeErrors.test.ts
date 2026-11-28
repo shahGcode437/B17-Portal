@@ -165,8 +165,10 @@ describe("the other write failures, one clear sentence each (S4)", () => {
   it("csrf_failed no longer promises that refreshing fixes it", () => {
     const c = copy(403, "csrf_failed")
     expect(c.title).toBe("Your secure session could not be verified")
-    expect(c.description).toMatch(/reload the page and try again/i)
-    expect(c.description).toMatch(/log out and log in again/i)
+    // Nothing is re-sent for the person: they are told so, and to check who they are before they try again.
+    expect(c.description).toMatch(/was not sent again/i)
+    expect(c.description).toMatch(/check which account you're signed in to, then try again/i)
+    expect(c.description).toMatch(/if it keeps happening, reload the page, or log out and log in again/i)
     expect(JSON.stringify(c)).not.toMatch(/refresh the page|Secure session issue/)
   })
 

@@ -71,12 +71,14 @@ const SESSION_EXPIRED: Copy = {
 }
 /**
  * `403 csrf_failed`: the session's CSRF token did not match. Since the app talks to its own origin (Phase 12S S1) the
- * usual cause is a stale tab (the session was rotated elsewhere), which a reload fixes - but it is not guaranteed to
- * (a blocked cookie or a proxy in the way would not be), so the copy never promises it.
+ * usual cause is a stale tab (somebody signed in again elsewhere in this browser). The client has already re-read the
+ * session and never re-sends by itself, so trying again is the person's own step. It is not guaranteed to work (a
+ * blocked cookie or a proxy in the way would not be fixed), so the copy never promises it.
  */
 const CSRF_FAILED: Copy = {
   title: "Your secure session could not be verified",
-  description: "Please reload the page and try again. If it keeps happening, log out and log in again.",
+  description:
+    "This request was refused and was not sent again. Check which account you're signed in to, then try again. If it keeps happening, reload the page, or log out and log in again.",
 }
 const NETWORK: Copy = {
   title: "The server could not be reached",
@@ -390,6 +392,16 @@ export function userMessageFor(error: unknown, op: WriteOperation): Copy {
       // A server-side failure (5xx / service_unavailable) is not "something went wrong with your input".
       return error.status >= 500 ? SERVER_ERROR : { title: "Something went wrong", description: "Please try again." }
   }
+}
+
+/**
+ * We cannot know whether a change was saved: no answer, a timeout, an unreadable answer or a server
+ * failure. `503 grocery_unavailable` is a definite refusal.
+ */
+export function isUnknownOutcome(error: unknown): boolean {
+  if (!isApiError(error)) return true
+  if (error.status === 0 || error.code === "invalid_response") return true
+  return error.status >= 500 && error.code !== "grocery_unavailable"
 }
 
 export function isConflict(error: unknown): error is ApiError {

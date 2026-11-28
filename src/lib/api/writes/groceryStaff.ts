@@ -15,14 +15,12 @@ import type {
 
 /**
  * The eleven staff changes (`docs/backend/API_CONTRACT.md` §19). Each is sent ONCE: nothing here, and
- * nothing in the client, sends it again. Even the client's one replay after a stale CSRF token is
- * switched off — by then another account may be signed in to this browser, and a replay would act as
- * that person. Every one answers with the order as it now is.
+ * nothing in the client (which never sends any request twice), sends it again. Every one answers
+ * with the order as it now is.
  */
 function change(id: string, operation: string, signal: AbortSignal | undefined, body?: object): Promise<GroceryStaffOrderDetailDto> {
   return apiRequest<GroceryStaffOrderDetailDto>("POST", `/admin/grocery/orders/${segment(id)}/${operation}`, {
     session: true,
-    replayAfterCsrfRefresh: false,
     ...(body ? { body } : {}),
     signal,
   })

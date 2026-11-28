@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate, useParams } from "react-router-dom"
 import { ArrowLeft, UserRoundX } from "lucide-react"
 import { Container } from "@/components/foundation/Container"
 import { Typography } from "@/components/foundation/Typography"
+import { RefreshBar } from "@/components/workspace/RefreshBar"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/feedback/EmptyState"
@@ -23,7 +24,6 @@ import {
   RequestPanel,
   StaffLogPanel,
 } from "@/features/grocery-staff/StaffOrderRecords"
-import { StaffRefreshBar } from "@/features/grocery-staff/StaffRefreshBar"
 import { assignmentLabel } from "@/features/grocery-staff/staffLabels"
 import { focusActionsIfLost } from "@/features/grocery-staff/fieldFocus"
 import { isOwnOrder, mustForget, staffRefusalCopy } from "@/features/grocery-staff/staffErrors"
@@ -125,7 +125,7 @@ function OrderWorkspace({ user, orderId }: { user: CurrentUser; orderId: string 
         <Typography variant="body-sm" className="text-muted-foreground">
           Sent {formatStamp(order.submittedAt)} · {order.block} · {assignmentLabel(order.assignee, user.id)}
         </Typography>
-        <StaffRefreshBar
+        <RefreshBar
           receivedAt={read.receivedAt}
           refreshing={read.refreshing}
           failed={Boolean(read.error)}

@@ -1,7 +1,6 @@
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { FieldError } from "@/components/forms/FieldError"
-import { Typography } from "@/components/foundation/Typography"
 import { GroceryField } from "@/features/grocery/GroceryField"
 import { describedBy, groceryInputClass } from "@/features/grocery/fieldStyles"
 import { formatPaisa } from "@/features/grocery/format"
@@ -104,42 +103,4 @@ function ChoiceField<T extends string>({ id, legend, options, value, onChange, e
   )
 }
 
-interface CheckFieldProps {
-  id: string
-  label: string
-  hint?: string
-  checked: boolean
-  onChange: (checked: boolean) => void
-  error?: string
-}
-
-/** A statement the person makes themselves: never ticked in advance. */
-function CheckField({ id, label, hint, checked, onChange, error }: CheckFieldProps) {
-  return (
-    <div className="flex flex-col gap-1.5">
-      <label
-        htmlFor={id}
-        className="flex min-h-11 cursor-pointer items-start gap-3 rounded-lg border border-input bg-card/60 px-3 py-2.5 text-base has-checked:border-primary has-checked:bg-accent"
-      >
-        <input
-          id={id}
-          type="checkbox"
-          checked={checked}
-          onChange={(event) => onChange(event.target.checked)}
-          className="mt-1 size-4 shrink-0 accent-primary"
-          aria-invalid={error ? true : undefined}
-          aria-describedby={describedBy(id, error, Boolean(hint))}
-        />
-        <span className="min-w-0">{label}</span>
-      </label>
-      {hint && (
-        <Typography as="p" id={`${id}-hint`} variant="caption" className="text-muted-foreground">
-          {hint}
-        </Typography>
-      )}
-      <FieldError id={`${id}-error`} message={error} />
-    </div>
-  )
-}
-
-export { AmountField, CheckField, ChoiceField, NoteField }
+export { AmountField, ChoiceField, NoteField }

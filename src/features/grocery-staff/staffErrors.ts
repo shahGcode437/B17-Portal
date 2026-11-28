@@ -1,5 +1,7 @@
-import { ApiError, isApiError, type ApiErrorDetail } from "@/lib/api/errors"
+import type { ApiError, ApiErrorDetail } from "@/lib/api/errors"
 import { describeDetail } from "@/lib/api/writeErrors"
+
+export { isUnknownOutcome } from "@/lib/api/writeErrors"
 
 /**
  * What a failed staff request means, judged on the HTTP status and the stable `code` /
@@ -16,16 +18,6 @@ const STALE = new Set(["order_conflict", "invalid_state_transition", "order_alre
 
 function hasDetail(error: ApiError, code: string): boolean {
   return error.details.some((detail) => detail.code === code)
-}
-
-/**
- * We cannot know whether the change was saved: no answer, a timeout, an unreadable answer or a
- * server failure. `503 grocery_unavailable` is a definite refusal.
- */
-export function isUnknownOutcome(error: unknown): boolean {
-  if (!isApiError(error)) return true
-  if (error.status === 0 || error.code === "invalid_response") return true
-  return error.status >= 500 && error.code !== "grocery_unavailable"
 }
 
 export function isStaleOrder(error: ApiError): boolean {
@@ -47,10 +39,7 @@ export function isLostAccess(error: ApiError): boolean {
   return error.code === "email_not_verified" || (error.code === "forbidden" && !isOwnOrder(error) && !needsSuperAdmin(error))
 }
 
-/** After these, anything previously read must leave the screen. */
-export function mustForget(error: ApiError): boolean {
-  return error.status === 401 || error.status === 403 || error.status === 404
-}
+export { mustForgetRead as mustForget } from "@/lib/api/errors"
 
 const AMOUNT_FIELD: Record<string, string> = {
   itemsSubtotalPaisa: "The items amount",

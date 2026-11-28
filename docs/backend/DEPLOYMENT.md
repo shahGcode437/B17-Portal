@@ -389,7 +389,7 @@ Windows PowerShell, from `backend/`, with the API stopped. **Rehearsed on 2026-1
 
 ## 15. Grocery order intake, migration `0011` (GROCERY-1b)
 
-> **GROCERY-2 (2026-11-27):** a staff queue and order handling now exist in the **backend** (§17). **Update (GROCERY-3A / 3B):** customer and staff order screens have since been built (`docs/product/GROCERY.md`), tested against fakes only; there is still no screen for Grocery settings or staff appointment. Where this section says there is no staff queue, read it with this note. The `TRUNCATE` limitation below **also applies** to `grocery_order_confirmations`, `grocery_payments` and `grocery_order_events`. Grocery stays disabled for real customers.
+> **GROCERY-2 (2026-11-27):** a staff queue and order handling now exist in the **backend** (§17). **Update (GROCERY-3A / 3B):** customer and staff order screens have since been built (`docs/product/GROCERY.md`), tested against fakes only. **GROCERY-3C** added screens for Grocery settings and staff management, also tested against fakes only. Nothing about a deployment changes with them, and **staff MFA still does not exist**. Where this section says there is no staff queue, read it with this note. The `TRUNCATE` limitation below **also applies** to `grocery_order_confirmations`, `grocery_payments` and `grocery_order_events`. Grocery stays disabled for real customers.
 
 **Upgrade:** `alembic upgrade head` before or with the application. It only creates five tables and inserts the default settings row. The new application **requires** `0011` for every `/grocery` route; the rest of the portal does not read those tables.
 
@@ -441,7 +441,7 @@ Recorded 2026-11-27 by the owner's decision. **Deferred: none of these is implem
 
 **Before real customers, in addition to every blocker in §15 and §16:**
 
-- the customer and staff order screens (**built**, GROCERY-3A / 3B) **verified against the real backend** (not yet done), and screens or an operating procedure for **Grocery settings and staff appointment** (not built);
+- the customer and staff order screens (**built**, GROCERY-3A / 3B) **verified against the real backend** (not yet done), together with the **Grocery settings and staff-management** screens (built, GROCERY-3C; not yet run against a real backend) and an operating procedure for releasing the orders of a paused or removed grocery Moderator;
 - the **PKR 20,000** pilot cap including fees is approved (owner, 2026-11-27) and configurable; confirm the stored setting before enabling;
 - the owner-verified serviceable block list;
 - **pilot launch requirements, still unresolved:** written **refund / dispute**, **privacy / retention**, **excluded-goods** and **cash-handling** (custody, daily reconciliation, who may collect) policies;

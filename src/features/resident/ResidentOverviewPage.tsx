@@ -21,6 +21,7 @@ import { useAuth } from "@/hooks/useAuth"
 import { useIsAdmin } from "@/hooks/useIsAdmin"
 import { useToast } from "@/hooks/useToast"
 import { VerificationNotice } from "@/features/auth/VerificationNotice"
+import { logoutErrorMessage } from "@/features/auth/authMessages"
 import { useRequireAuth } from "@/hooks/useRequireAuth"
 import { routes } from "@/config/routes"
 import { canWorkGroceryOrders } from "@/lib/staffAccess"
@@ -53,8 +54,8 @@ function ResidentOverviewPage() {
     try {
       await logout()
       navigate(routes.home)
-    } catch {
-      show("Couldn't log out — check your connection and try again.", { tone: "error" })
+    } catch (cause) {
+      show(logoutErrorMessage(cause), { tone: "error" })
     }
   }
 

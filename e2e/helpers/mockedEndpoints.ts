@@ -30,6 +30,9 @@ const MOCKED: Record<'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE', string[]> = {
     `/grocery/orders/${ID}`,
     '/admin/grocery/orders',
     `/admin/grocery/orders/${ID}`,
+    '/admin/grocery/settings',
+    '/admin/staff',
+    '/admin/audit',
   ],
   POST: [
     '/auth/(login|register|logout|logout-all|resend-verification|verify-email|forgot-password|reset-password)',
@@ -44,10 +47,12 @@ const MOCKED: Record<'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE', string[]> = {
     '/grocery/orders',
     `/grocery/orders/${ID}/cancel`,
     `/admin/grocery/orders/${ID}/(claim|release|confirm|reconfirm|reduce-amount|start-preparing|dispatch|delivery-failed|complete|cancel|issues)`,
+    '/admin/staff/moderators',
+    `/admin/staff/moderators/${ID}/(pause|resume)`,
   ],
-  PUT: ['/users/me/professional-profile', `/saved/${ID}`],
-  PATCH: [`/listings/${ID}`, `/admin/categories/${ID}`],
-  DELETE: [`/saved/${ID}`],
+  PUT: ['/users/me/professional-profile', `/saved/${ID}`, `/admin/staff/moderators/${ID}/scopes`],
+  PATCH: [`/listings/${ID}`, `/admin/categories/${ID}`, '/admin/grocery/settings'],
+  DELETE: [`/saved/${ID}`, `/admin/staff/moderators/${ID}`],
 }
 
 const PATTERNS = new Map(

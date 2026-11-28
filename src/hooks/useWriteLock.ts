@@ -1,9 +1,10 @@
 import { useCallback, useSyncExternalStore } from "react"
 
 /**
- * One staff change per order at a time, for the whole tab. A screen that is left and reopened while
- * its request is still on the way must not offer to send another (an issue has no revision, so the
- * server alone would accept it twice). Memory only: ids, never order data.
+ * One staff or administrative change per key at a time, for the whole tab. A screen that is left and
+ * reopened while its request is still on the way must not offer to send another (some changes carry
+ * no version, so the server alone would accept them twice). Memory only: ids and fixed names, never
+ * record data.
  */
 const busy = new Set<string>()
 const listeners = new Set<() => void>()

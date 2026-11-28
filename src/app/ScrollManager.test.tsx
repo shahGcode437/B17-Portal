@@ -1,9 +1,11 @@
 import { act, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
+import type { ReactNode } from "react"
 import { Link, RouterProvider, createMemoryRouter } from "react-router-dom"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { AppRoot } from "@/app/ScrollManager"
 import { scrollIntentFor } from "@/app/scrollIntent"
+import { ToastProvider } from "@/components/feedback/ToastProvider"
 import { Footer } from "@/components/navigation/Footer"
 import { Header } from "@/components/navigation/Header"
 import { AuthContext } from "@/hooks/useAuth"
@@ -69,8 +71,17 @@ function renderRouter(initial = "/") {
     ],
     { initialEntries: [initial] }
   )
-  render(<RouterProvider router={router} />)
+  renderUnderProviders(<RouterProvider router={router} />)
   return router
+}
+
+/** What `App` puts around the router: `AppRoot` reads who is signed in and can say so. */
+function renderUnderProviders(ui: ReactNode) {
+  render(
+    <ToastProvider>
+      <AuthContext.Provider value={authContextValue({ user: null })}>{ui}</AuthContext.Provider>
+    </ToastProvider>
+  )
 }
 
 describe("ScrollManager in a router", () => {
@@ -156,7 +167,7 @@ describe("Bug A: the pin logo in the header and the footer", () => {
       ],
       { initialEntries: [initial] }
     )
-    render(<RouterProvider router={router} />)
+    renderUnderProviders(<RouterProvider router={router} />)
     return router
   }
 

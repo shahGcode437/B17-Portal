@@ -35,3 +35,34 @@ describe("the removed /provider/listings/pending", () => {
     expect(resolveRouteSeo("/provider/listings/pending")).toMatchObject({ title: "Page Not Found | B-17 Portal", indexing: "noindex,nofollow" })
   })
 })
+
+describe("which gate guards each staff and admin page (the real router)", () => {
+  /** The nearest access gate above the page a URL matches. */
+  const gateOf = (pathname: string) =>
+    matchRoutes(router.routes, pathname)
+      ?.map((match) => (match.route.element as { props?: { requires?: string } } | undefined)?.props?.requires)
+      .filter(Boolean)
+      .at(-1)
+
+  it.each([
+    routes.adminDashboard,
+    routes.adminModeration,
+    routes.adminCategories,
+    routes.adminContent,
+    routes.adminGrocerySettings,
+    routes.adminStaff,
+    routes.adminStaffHistory,
+  ])("%s is Super Admin only", (path) => {
+    expect(gateOf(path)).toBe("admin")
+  })
+
+  it.each([routes.adminGrocery, concrete(routes.adminGroceryOrder)])("%s is for grocery staff", (path) => {
+    expect(gateOf(path)).toBe("grocery-staff")
+  })
+
+  it("the settings address is its own page, never read as an order id", () => {
+    expect(lastRoute(routes.adminGrocerySettings)?.path).toBe("grocery/settings")
+    expect(lastRoute(concrete(routes.adminGroceryOrder))?.path).toBe("grocery/:orderId")
+    expect(resolveRouteSeo(routes.adminGrocerySettings).title).toMatch(/Grocery settings/)
+  })
+})

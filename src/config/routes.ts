@@ -56,6 +56,10 @@ export const routes = {
   /** Grocery staff workspace: the Super Admin, or a Moderator with the grocery scope. */
   adminGrocery: "/admin/grocery",
   adminGroceryOrder: "/admin/grocery/:orderId",
+  /** Super Admin only (the admin gate), although it sits under the grocery area. */
+  adminGrocerySettings: "/admin/grocery/settings",
+  adminStaff: "/admin/staff",
+  adminStaffHistory: "/admin/staff/history",
 
   comingSoon: "/coming-soon",
 } as const
@@ -75,6 +79,11 @@ export function groceryOrderPath(id: string): string {
 /** The confirmation shown right after an order was sent. */
 export function grocerySubmittedPath(id: string): string {
   return `${groceryOrderPath(id)}/submitted`
+}
+
+/** The grocery staff queue showing every order one staff member holds. */
+export function adminGroceryQueueHeldByPath(userId: string): string {
+  return `${routes.adminGrocery}?status=all&by=${encodeURIComponent(userId)}`
 }
 
 /** One grocery order on the staff side. */

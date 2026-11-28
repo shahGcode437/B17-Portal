@@ -397,7 +397,7 @@ Affected runs, one after another:
 | `features/grocery-staff/staffAccess.test.tsx` | every account type; sign-in routing; own order; session expiry and scope removal during reads, writes and on return; account switch, including **no replay as the new account**; no browser storage |
 | `features/grocery-staff/staffQueue.test.tsx` | parameters and counts, no customer detail, filters, search, paging, empty and error states, refresh rules |
 | `features/grocery-staff/staffOperations.test.tsx` | each of the 11 changes with its exact body; nothing preselected; duplicate prevention; nothing shown before the server answers; conflicts and outdated forms; cancellation rules; unknown outcomes and the time limit; `429`, offline |
-| `lib/api/client.test.ts`, `architecture.test.ts`, `pwa/serviceWorkerApi.test.ts` | the no-replay option; staff modules imported only by the staff workspace; the staff API never handled by the worker |
+| `lib/api/client.test.ts`, `architecture.test.ts`, `pwa/serviceWorkerApi.test.ts` | the no-replay option (since replaced: the client never replays); staff modules imported only by the staff workspace; the staff API never handled by the worker |
 | `e2e/grocery-staff.spec.ts` | the whole journey and what the customer then sees (no internal note); nothing private in storage, console or addresses; deep link; access; own order; unknown outcome; double click; cross-account press; expiry and revocation |
 | `e2e/mobile/grocery-staff.spec.ts` | 375 and 320 px: no sideways scroll, 44 px targets, dialogs that fit, problems in view; six staff navigation controls at 320 px; an order worked by keyboard, with focus kept and returned |
 | `e2e/pwa/pwa.spec.ts` | after staff screens no cache or storage holds an API answer or delivery detail; offline, a reload shows no stored order |
@@ -416,6 +416,77 @@ Affected runs, one after another:
 **Mutation check:** eleven protections removed one at a time (no replay after a CSRF refresh; dropping data on a refused read; the identity check on return; the lock after an unknown outcome; one change per order; blocking an outdated form; no default substitution answer; the account keys; the gate's scope rule; the exact-cash rule; re-reading the account after lost access). **All eleven made at least one test fail.** The four touching files changed afterwards were run again: all four still caught. Files were restored byte for byte.
 
 **Not run:** the real-stack lane (`e2e-real/`, which has no Grocery spec); backend tests (no backend file changed); any real device or screen reader; the screens against a running backend.
+
+## GROCERY-3C (Grocery settings and staff management)
+
+**CI before it.** Frontend CI #47 passed on `0e8c5ae` (run 46041698802); #46 passed on `d2db92b`; latest applicable Backend CI passed on `e70c651` (run 46003605086).
+
+**The fake backend.** `src/test/fixtures/adminBackend.ts` follows the settings and staff-authority services (order of refusal, recent sign-in, replace-set scopes, an identical set changing nothing, pause / resume rules, sessions ended, Super Admin targets refused, one answer for ineligible addresses, the settings version check, audit rows). Its settings start as a fresh database's (off, no block). In the browser lane it is `authMock.admin` over the mock's accounts, with `adminFaults` and `adminSessionStale`; a saved settings version drives the customer and staff fakes. The nine settings and staff endpoints are listed in `mockedEndpoints.ts`. API isolation is unchanged; no test reaches Google, Resend or any real service.
+
+| File | What |
+|---|---|
+| `features/grocery-staff/settings/settingsForm.test.ts` | block rules; every field's bounds; paisa from digits; only changed fields sent; consequences; rebasing onto a newer version; refusal copy |
+| `features/grocery-staff/settings/settingsPage.test.tsx` | safe defaults; access with no request; saved vs unsaved; review and the on / off tick; conflicts; unknown outcomes; unsaved-change warnings; expiry, logout, account switch without replay; nothing stored |
+| `features/staff-management/staffRules.test.ts` | scopes; effective access; refusal kinds; audit wording without inferred actors |
+| `features/staff-management/staffManagement.test.tsx` | access; list and paging; Super Admin protection; appointment and eligibility; every change; the re-check before sending; stale sign-in with no replay after signing in; account switches; unknown outcomes; focus; history |
+| `app/routeIntegrity.test.tsx` | the gate of every staff and admin page **on the real router**; settings never read as an order id |
+| `architecture.test.ts`, `pwa/serviceWorkerApi.test.ts` | admin API modules imported only by their screens; no replay on any admin change (since replaced by one guard on the client); the worker never handles these paths |
+| `e2e/grocery-admin.spec.ts`, `e2e/mobile/grocery-admin.spec.ts`, `e2e/pwa/pwa.spec.ts` | the journeys end to end (an appointed Moderator works orders, a paused one cannot); real `beforeunload`; sign in again; account switch; 375 / 320 px, 44 px targets, titles that keep their width, keyboard only; nothing cached or stored |
+
+**Results (local, mocked; no backend, database or real API was used).**
+
+| Check | Result |
+|---|---|
+| `npx tsc -b --force`; `npm run build` | passed |
+| `npm run lint` (oxlint) | passed, with the 7 warnings that existed before; none in a new or changed file |
+| `npx vitest run --maxWorkers=2`, caches cleared | **1,728 passed** (89 files); before this phase 1,549 in 85 |
+| `PW_SKIP_BUILD=1 npx playwright test` (desktop, mobile, PWA), after the build | **227 passed**, first full run of the final code; before this phase 216. The count includes the two isolation checks that are meant to fail. No request escaped the mock |
+
+**Earlier focused runs, recorded as they happened.** The settings tests (80) and staff tests (72) passed on their first runs. (1) One existing 3B test expected the old staff navigation; updated for the new "Staff" entry. (2) Reading the code found that **keyboard focus was lost** when moving between the staff list and a person; two tests were written, failed, and the fix made them pass. (3) First browser run of the new phone specs: 2 failed on a **real layout bug**: two header buttons squeezed the "Staff" title to zero width at 375 px. The buttons now sit under the text (also the grocery queue's new settings button), and the specs check that titles keep their width.
+
+**Mutation check (3C):** sixteen protections removed one at a time (no replay of settings and of staff changes; the re-check before a staff change; rebasing only edited fields; conflict detection; the unknown-outcome lock; the on / off tick; the two account keys; stale sign-in treated apart from lost access; the unsaved-changes hold; one change per key; the blocked outdated staff dialog; dropping data on a refused read; the identity check; the address tick). **Fourteen were caught at once. Two survived**: the outdated staff dialog (the later re-check hid it) and the drop on a refused read (the access gate hid it). Tests were added for both, and **all sixteen are now caught**. Because the one-change lock, identity check and refused-read rule moved to shared files, those three were also run against **only the 3B staff tests**: all caught. Files were restored byte for byte.
+
+**An escaping request in an older offline test: cause found and fixed.** During this phase the offline project failed with `GET /api/v1/auth/me` reaching the tripwire. The test was `offline: data reads fail visibly …` (unchanged since Phase 12), **not** new code.
+- A first explanation (a slow check at the end of the preceding test) was **disproved** by forcing it. A first fix (wait for the session check after reconnecting) was **wrong**: 1 of 24 repeats still leaked. It was removed.
+- Tracing every request: that test alone leaked **5 times in 30 repeats**, **always while it loaded a second page while offline**. All 150 requests the pages reported were seen by the mock; the stray one is sent by the **page being left**, which neither the page mock nor the context guard sees.
+- Fix (test only): the second page is now reached inside the app. **60 repeats, no escape**, and none in the full run. The tripwire did its job: nothing reached a real API.
+- GROCERY-3A recorded one similar escape with an unproven explanation. This cause fits it, but that run cannot be rechecked.
+
+**Not run:** the real-stack lane (`e2e-real/`, no Grocery or staff-management spec); backend tests (no backend file changed); any real device or screen reader.
+
+## Security: no re-sent changes (account switching)
+
+What it protects: `AUTH_RBAC.md` §23.1.
+
+**The fake.** `src/test/sharedCookieServer.ts` is one browser with one session cookie and several accounts, as the backend's middleware treats it: each session has its own CSRF token, a change with any other token is `403 csrf_failed`, and whatever passes is carried out as whoever holds the cookie **now**. Order is made explicit (a held answer, a called function); no test depends on timing.
+
+**The browser mock was too forgiving.** `e2e/helpers/authMock.ts` checked the CSRF token only on some routes. It now checks it on **every** change that carries a session. Two older tests that sent a change by hand without a token then failed (`csrf_failed` instead of the permission refusal they test); they now send it.
+
+| File | What |
+|---|---|
+| `lib/api/writeReplay.test.tsx` | **all 34 authenticated writes**: another account signs in first (sent once, never carried out; the tab re-reads who it is); the same account's token goes stale (refused once, works when sent again); logout both ways. It fails when a write is added without being listed |
+| `app/accountSwitch.test.tsx` | real app root, auth provider and screens: grocery order (switch before send; same-account recovery; unknown outcome keeps its key; switch and logout while in flight), listing approval, category form, typed input across switch / ended session / same account / visitor sign-in / unavailable, the instant the new token arrives, late successes, saved items, expired session |
+| `features/staff-management/staffManagement.test.tsx` | a Moderator change is not sent if the account changes while its re-read is waiting |
+| `lib/api/client.test.ts`, `features/auth/AuthProvider.test.tsx` | the tests that required one retry now require none |
+| `architecture.test.ts` | the client has one sender and never calls itself; no replay option exists; authenticated changes live only where the 34-write test looks |
+| `e2e/grocery.spec.ts`, `e2e/write-journeys.spec.ts` (+3), `e2e/grocery-staff.spec.ts`, `e2e/grocery-admin.spec.ts` | in the production build: another tab switches before “Send my order” and before “Approve”; same-account recovery; the existing staff cross-account tests |
+
+**Before the correction** (new tests, unchanged application code): `writeReplay` **35 failed, 35 passed** (in the other-account group exactly the 17 writes older than 3B failed, each carried out as the other account; all 17 staff and admin writes passed); `accountSwitch` **11 failed, 3 passed** (of the 14 tests then written); the new staff test **failed** (the change went out as the other Super Admin). Tests added while fixing (late successes, the logout and in-flight cases) were checked by the mutation run below, not by a pre-fix run.
+
+**Results on the final code (local, mocked; no backend, database or real API was used).**
+
+| Check | Result |
+|---|---|
+| `npx tsc -b --force`; `npx tsc -p tsconfig.e2e.json --noEmit`; `npm run build` | passed |
+| `npm run lint` (oxlint) | passed, with the 7 warnings that existed before |
+| `npx vitest run --maxWorkers=2`, caches cleared | **1,823 passed** (91 files); before this correction 1,728 in 89 |
+| `PW_SKIP_BUILD=1 npx playwright test` (desktop, mobile, PWA), after the build | **230 passed**; before 227. Includes the two isolation checks that are meant to fail. No request escaped the mock |
+
+**Earlier runs, recorded as they happened.** The first full unit run was 1,818 passed, 1 failed: an older copy test required the previous secure-session wording; updated. The first focused browser run was 94 passed, 2 failed: the two hand-written requests described above.
+
+**Mutation check:** eleven protections removed one at a time (the resend put back; no session re-read; no account boundary; no `flushSync`; no switch message; a late saved list; a late save; no identity check on the staff re-read; late successes in each of the three write hooks). **Ten were caught at once. One survived**: the late saved list leaked without redrawing the heart, so the test could not see it; the test now redraws it, and **all eleven are caught**. With the resend put back in a real build, **all 3 new browser tests failed** (each saw a second send, or no refusal). Files were restored byte for byte and the build redone before the final run.
+
+**Not run:** the real-stack lane (`e2e-real/`); backend tests (no backend file changed); two real browser tabs against a running backend; any real device.
 
 ## Known intermittent failure in the mocked browser lane
 

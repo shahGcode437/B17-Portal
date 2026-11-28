@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { Navigate, useLocation } from "react-router-dom"
+import { Link, Navigate, useLocation } from "react-router-dom"
 import { ShieldCheck } from "lucide-react"
 import { Stack } from "@/components/foundation/Stack"
 import { Typography } from "@/components/foundation/Typography"
@@ -75,6 +75,21 @@ function AdminLoginPage() {
             </Typography>
             <Button type="button" variant="link" size="sm" onClick={retryBootstrap} className="-ml-2.5 h-auto">
               Check again
+            </Button>
+          </AuthNotice>
+        )}
+
+        {status === "anonymous" && from === routes.adminStaff && (
+          // Where "Sign in again" on the Staff page lands. Nothing about an intended change is kept.
+          <AuthNotice role="status">
+            <Typography variant="body-sm">
+              You'll come back to Staff after signing in. No change is sent by itself: check the person's access and confirm
+              again.
+            </Typography>
+            <Button asChild variant="link" size="sm" className="-ml-2.5 h-auto">
+              <Link to={routes.login} state={{ from }}>
+                Sign in with Google instead
+              </Link>
             </Button>
           </AuthNotice>
         )}

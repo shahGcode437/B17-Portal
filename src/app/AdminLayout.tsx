@@ -1,4 +1,4 @@
-import { MapPin, LayoutDashboard, ClipboardList, Newspaper, LogOut, ShoppingBasket, Tags } from "lucide-react"
+import { MapPin, LayoutDashboard, ClipboardList, Newspaper, LogOut, ShoppingBasket, Tags, Users } from "lucide-react"
 import { Link, NavLink } from "react-router-dom"
 import { RouteOutlet } from "@/app/RouteOutlet"
 import { Container } from "@/components/foundation/Container"
@@ -8,6 +8,7 @@ import { SkipLink } from "@/components/navigation/SkipLink"
 import { cn } from "@/lib/utils"
 import { routes } from "@/config/routes"
 import { headerFocusClass } from "@/features/admin/adminStyles"
+import { logoutErrorMessage } from "@/features/auth/authMessages"
 import { useAuth } from "@/hooks/useAuth"
 import { useToast } from "@/hooks/useToast"
 import { canWorkGroceryOrders } from "@/lib/staffAccess"
@@ -17,6 +18,7 @@ const adminNav = [
   { label: "Listings", path: routes.adminModeration, icon: ClipboardList, end: false },
   { label: "Categories", path: routes.adminCategories, icon: Tags, end: false },
   { label: "News & Updates", path: routes.adminContent, icon: Newspaper, end: false },
+  { label: "Staff", path: routes.adminStaff, icon: Users, end: false },
 ]
 
 const groceryNav = { label: "Grocery", path: routes.adminGrocery, icon: ShoppingBasket, end: false }
@@ -70,7 +72,7 @@ function AdminLayout() {
                   }
                 >
                   <item.icon className="size-4" aria-hidden="true" />
-                  <span className="sr-only sm:not-sr-only">{item.label}</span>
+                  <span className="sr-only lg:not-sr-only">{item.label}</span>
                 </NavLink>
               ))}
               {(admin || grocery) && (
@@ -79,7 +81,7 @@ function AdminLayout() {
                 <button
                   type="button"
                   onClick={() => {
-                    logout().catch(() => show("Couldn't log out — check your connection and try again.", { tone: "error" }))
+                    logout().catch((cause: unknown) => show(logoutErrorMessage(cause), { tone: "error" }))
                   }}
                   className={cn(
                     "ml-1 flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-md border-l border-background/20 px-2.5 text-sm font-medium text-background/70 transition-colors hover:bg-background/10 hover:text-background",
@@ -87,7 +89,7 @@ function AdminLayout() {
                   )}
                 >
                   <LogOut className="size-4" aria-hidden="true" />
-                  <span className="sr-only sm:not-sr-only">Log out</span>
+                  <span className="sr-only lg:not-sr-only">Log out</span>
                 </button>
               )}
             </nav>

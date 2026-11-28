@@ -96,7 +96,7 @@ describe("who gets into the grocery workspace", () => {
     fakeStaffServer(OWNER)
     renderStaffApp("/admin/grocery")
     await heading("Grocery orders")
-    expect(navLinks()).toEqual(["Dashboard", "Listings", "Categories", "News & Updates", "Grocery"])
+    expect(navLinks()).toEqual(["Dashboard", "Listings", "Categories", "News & Updates", "Staff", "Grocery"])
   })
 })
 

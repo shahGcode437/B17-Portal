@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { ApiError, NETWORK_ERROR_CODE, isApiError } from "@/lib/api/errors"
+import { getIdentityStamp } from "@/lib/api/session"
 
 /**
  * `useMutation` — a tiny counterpart to `useRead` for WRITES (Phase 12H).
@@ -9,6 +10,9 @@ import { ApiError, NETWORK_ERROR_CODE, isApiError } from "@/lib/api/errors"
  *    first in-flight promise (same resolution, same thrown error) and no second request is sent.
  *    Pages should still disable the submit button on `pending`; this is defence.
  *  - A late answer from an unmounted hook is dropped.
+ *  - A SUCCESS that arrives after the signed-in account changed is never handed to the caller: what
+ *    would follow it (a message, a move to another page) belongs to the previous account, whose
+ *    screen is already gone. A failure still comes through.
  *  - A thrown non-`ApiError` becomes a network error, so pages never see a raw `TypeError`.
  *  - `mutate` returns the result on success and rethrows the typed error on failure.
  *  - `reset()` clears the state so the control is usable again after a dialog is dismissed.
@@ -53,9 +57,11 @@ export function useMutation<Args, T>(run: (args: Args) => Promise<T>): MutationH
   const mutate = useCallback((args: Args): Promise<T> => {
     if (inFlightRef.current) return inFlightRef.current
     setState({ status: "submitting" })
+    const askedAs = getIdentityStamp()
     const promise = (async () => {
       try {
         const data = await runRef.current(args)
+        if (getIdentityStamp() !== askedAs) return await new Promise<never>(() => {})
         if (mountedRef.current) setState({ status: "success", data })
         return data
       } catch (cause) {

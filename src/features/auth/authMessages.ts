@@ -19,7 +19,7 @@ const BY_CODE: Record<string, string> = {
   email_not_verified: "Please verify your email address first.",
   token_invalid: "This link is invalid or has already been used.",
   token_expired: "This link has expired. Please request a new one.",
-  csrf_failed: "We couldn't verify that request. Please refresh the page and try again.",
+  csrf_failed: "We couldn't verify that request, so nothing was done. Please try again. If it keeps happening, refresh the page.",
   service_unavailable: "This is temporarily unavailable. Please try again soon.",
   validation_error: "Please check the highlighted fields and try again.",
 }
@@ -27,6 +27,16 @@ const BY_CODE: Record<string, string> = {
 export function authErrorMessage(error: unknown): string {
   if (!isApiError(error)) return GENERIC
   return BY_CODE[error.code] ?? GENERIC
+}
+
+/**
+ * Why logging out did not happen (the person is still signed in either way). A refused secure
+ * session has already been re-read, and the request is never re-sent: pressing again is enough.
+ */
+export function logoutErrorMessage(error: unknown, unreachable = "Couldn't log out — check your connection and try again."): string {
+  return isApiError(error) && error.code === "csrf_failed"
+    ? "You're still signed in: we couldn't verify that request. Please try logging out again."
+    : unreachable
 }
 
 /** Google sign-in outcomes the backend can put in `/login?error=` (docs/backend/AUTH_RBAC.md §10.2). */

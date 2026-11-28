@@ -68,6 +68,28 @@ test.describe("Admin: approve a pending listing", () => {
   })
 })
 
+test.describe("Admin: another tab switches accounts under an open review (SECURITY)", () => {
+  test("pressing Approve does not approve it as the other administrator", async ({ page, authMock }) => {
+    await openApp(page, "/")
+    await enterAdmin(page)
+    await navigateInApp(page, "/admin/moderation", "Listing Review")
+    await page.getByRole("button", { name: "Review Pending Stationers" }).click()
+    const dialog = page.getByRole("dialog", { name: "Review Listing" })
+    await expect(dialog.getByRole("button", { name: /^Approve$/ })).toBeEnabled()
+
+    const other = authMock.addAccount({ email: "second.admin@example.org", displayName: "Second Admin", roles: ["admin"] })
+    authMock.session = { email: other.email, csrf: "csrf-of-the-other-tab" }
+    page.on("dialog", (d) => void d.accept())
+    await dialog.getByRole("button", { name: /^Approve$/ }).click()
+
+    // The page is rebuilt for the account now signed in: no dialog is left holding the old decision.
+    await expect(dialog).toBeHidden()
+    await expect(page.getByRole("button", { name: "Review Pending Stationers" })).toBeVisible()
+    const approvals = authMock.calls.filter((call) => call.method === "POST" && /\/approve$/.test(call.path))
+    expect(approvals).toHaveLength(1) // refused, and not sent again
+  })
+})
+
 test.describe("Admin: the queue row says Taken down for a takedown and Rejected for a rejection (S5A)", () => {
   const queueRow = (page: import("@playwright/test").Page, title: string) =>
     page.getByRole("button", { name: `Review ${title}` }).locator('xpath=ancestor::*[@data-slot="card"][1]')
@@ -158,10 +180,12 @@ test.describe("Listing create: the four owned variants hit the API with the righ
     for (const name of ["Business / Shop", "Tutor", "Property"]) await expect(page.getByRole("button", { name: new RegExp(`^${name}`) })).toBeVisible()
 
     const attempt = await page.evaluate(async () => {
+      const me = (await (await fetch("/api/v1/auth/me", { credentials: "include" })).json()) as { data: { csrfToken: string } }
       const response = await fetch("/api/v1/listings", {
         method: "POST",
         credentials: "include",
-        headers: { "Content-Type": "application/json" },
+        // With a valid token: the refusal being tested is the permission one, not the CSRF one.
+        headers: { "Content-Type": "application/json", "X-CSRF-Token": me.data.csrfToken },
         body: JSON.stringify({ kind: "provider", name: "Portal Service", category: "electrical", description: "Wiring, repairs and fittings across B-17.", area: "B-17", tags: ["wiring"], location: { visibility: "area_only" } }),
       })
       return { status: response.status, body: (await response.json()) as { error?: { code: string; details?: { code: string }[] } } }
@@ -527,10 +551,12 @@ test.describe("Professional capability: the server decides", () => {
     await expectPage(page, "Professional profile needed")
     // ...and the API itself refuses the write with the real error code, writing nothing.
     const attempt = await page.evaluate(async () => {
+      const me = (await (await fetch("/api/v1/auth/me", { credentials: "include" })).json()) as { data: { csrfToken: string } }
       const response = await fetch("/api/v1/listings", {
         method: "POST",
         credentials: "include",
-        headers: { "Content-Type": "application/json" },
+        // With a valid token: the refusal being tested is the permission one, not the CSRF one.
+        headers: { "Content-Type": "application/json", "X-CSRF-Token": me.data.csrfToken },
         body: JSON.stringify({ kind: "tutor", name: "Sneaky Listing", category: "physics", grade: "Grade 9", description: "A listing created without a professional profile.", area: "B-17", tags: ["x"], location: { visibility: "area_only" } }),
       })
       return { status: response.status, body: (await response.json()) as { error?: { code: string } } }

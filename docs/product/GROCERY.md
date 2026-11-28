@@ -1,6 +1,6 @@
-# Grocery by request — the frontend (customer: GROCERY-3A; staff: GROCERY-3B)
+# Grocery by request — the frontend (customer: GROCERY-3A; staff: GROCERY-3B; administration: GROCERY-3C)
 
-**Built:** the customer's side (GROCERY-3A) and the staff order workspace (GROCERY-3B, below). **Not built:** the Super Admin's Grocery settings screens and Grocery staff appointment (their backend APIs exist, `docs/backend/API_CONTRACT.md` §18.6 and `AUTH_RBAC.md`; nothing in the frontend calls them for Grocery). **Both sides have been tested only against fakes, never a running backend. Grocery is disabled by default with no serviceable block, and is not production-ready** (`docs/backend/DEPLOYMENT.md` §15–§17).
+**Built:** the customer's side (GROCERY-3A), the staff order workspace (GROCERY-3B, below) and the Super Admin's Grocery settings and portal staff management (GROCERY-3C, at the end). **All of it has been tested only against fakes, never a running backend. Grocery is disabled by default with no serviceable block, and is not production-ready** (`docs/backend/DEPLOYMENT.md` §15–§17).
 
 ## The service, as the app describes it
 
@@ -143,7 +143,7 @@ Rupees are turned into whole paisa **from the digits** (never `rupees × 100` in
 ## How every change is made
 
 - One at a time per order **for the whole tab** (leaving and reopening an order cannot start a second), sent once, with a 30 s limit. Nothing changes on screen until the server answers with the order; it is then loaded again.
-- **No automatic retry of any kind**, including the API client's usual replay after a stale CSRF token (`replayAfterCsrfRefresh: false`): by then another account may be signed in to the browser.
+- **No automatic retry of any kind.** The API client never re-sends a request, after a stale CSRF token or otherwise (`AUTH_RBAC.md` §23.1): by then another account may be signed in to the browser.
 - **Conflict** (`409`, own order, "Super Admin only", lost access, `404`): the form closes, the page explains, the order is loaded again.
 - A form **cannot send** if the order's revision, or the action's availability, changed while it was open.
 - **Unknown outcome** (no answer, time limit, `5xx` other than `grocery_unavailable`, unreadable answer): nothing is resent; **every action is disabled until a newer copy of the order has loaded**, and the page then asks the person to check before repeating it.
@@ -170,7 +170,7 @@ src/features/grocery-staff/                      queue and order screens, forms,
 src/test/fixtures/groceryStaffBackend.ts         the staff contract in memory (tests only)
 ```
 
-Reused from GROCERY-3A: status badge and wording, money and time formats, quantities, `useRefreshableRead` (which gained `forgetOn`), `AttentionRegion`, form fields. The one change to shared infrastructure is the API client's `replayAfterCsrfRefresh` option.
+Reused from GROCERY-3A: status badge and wording, money and time formats, quantities, `useRefreshableRead` (which gained `forgetOn`), `AttentionRegion`, form fields. The one change to shared infrastructure was a no-replay option on the API client (since 2026-11-28 the client never replays, and the option is gone).
 
 ## Known limitations
 
@@ -190,4 +190,128 @@ No real-stack (React → FastAPI → PostgreSQL) Grocery test exists for the cus
 
 ## Before a pilot
 
-Everything in `DEPLOYMENT.md` §15–§17 that these screens do not close, including: **no screen to configure or enable Grocery or to appoint grocery staff** (proposed GROCERY-3C); a real-backend run of both sides; the owner-verified block list; refund, privacy / retention, excluded-goods and cash-handling policies; written rules for failed deliveries and goods already bought; a routine for telling customers about cancellations, substitutions and failed deliveries, and for **noticing new orders**; staff MFA; per-IP rate limiting at the proxy; backups with a tested restore; monitoring.
+Everything in `DEPLOYMENT.md` §15–§17 that these screens do not close, including: the settings and staff screens (built in GROCERY-3C, below) not yet run against a real backend; a real-backend run of both sides; the owner-verified block list; refund, privacy / retention, excluded-goods and cash-handling policies; written rules for failed deliveries and goods already bought; a routine for telling customers about cancellations, substitutions and failed deliveries, and for **noticing new orders**; staff MFA; per-IP rate limiting at the proxy; backups with a tested restore; monitoring.
+
+---
+
+# Administration: Grocery settings and staff management (GROCERY-3C)
+
+Frontend only, on the settings API (`API_CONTRACT.md` §18.6, §19) and the staff-management API (`AUTH_RBAC.md` §30) **as built**; the backend code is the contract. No backend, migration or dependency change.
+
+## Routes and who may use them
+
+| Route | Screen |
+|---|---|
+| `/admin/grocery/settings` | Grocery operating settings (reached by "Grocery settings" on the grocery queue) |
+| `/admin/staff` | portal staff: list, one person, appoint, change, pause, resume, remove (staff navigation: "Staff") |
+| `/admin/staff/history` | the durable staff audit, read-only |
+
+All three sit behind the **existing `admin` gate** (Super Admin only). `/admin/grocery/settings` outranks `/admin/grocery/:orderId`; `routeIntegrity.test.tsx` checks the gate of every staff and admin page on the real router.
+
+| Account | Settings, staff, history | Grocery workspace | Other admin pages |
+|---|---|---|---|
+| Super Admin | yes | yes | yes |
+| Moderator with `grocery` | "Admin access only", **no admin request** | yes | no |
+| Moderator with other scopes, or paused | the same | no | no |
+| Resident, professional | the same | no | no |
+| Signed out | staff sign-in, then back | the same | the same |
+
+## Sign-in freshness (read from the backend, not assumed)
+
+| Operation | What the server requires |
+|---|---|
+| Grocery settings read and change | Super Admin, staff session used within 2 h and created within 12 h. **No** 15-minute window |
+| Staff list and audit (reads) | the same |
+| Staff changes (all five) | the same **and** a session **created** within `STAFF_SENSITIVE_WINDOW_MINUTES` (default 15; hosted environments cannot raise it) |
+| Grocery order handling | grocery authority, 2 h / 12 h |
+
+- An idle or over-age session is `401 session_expired`: the app signs out locally and returns to the staff sign-in (unchanged client rule).
+- A too-old sign-in on a staff change is `403 forbidden` with `sensitive_reauth_required`. It is **not** a lost session or lost access. The dialog stays, nothing more can be sent from it, and it offers **"Sign out and sign in again"**.
+- **There is no re-authentication request in the backend.** Signing out and in is the supported way. The app signs out, the gate sends the person to `/admin/login`, which returns them to `/admin/staff`. A link there leads to the main Log In for **Google** sign-in (the staff sign-in form is e-mail and password only).
+- **Nothing is carried over or sent afterwards.** The screen is rebuilt, the records are read again, and the change must be chosen and confirmed again. The app cannot know in advance how old a session is (`/auth/me` does not say), so the page states the rule and offers "Sign in again" before starting.
+- This is the backend's **interim** approximation of recent authentication (`AUTH_RBAC.md` §27.7). **MFA does not exist and remains a launch blocker.**
+
+## Grocery settings
+
+| Call | Used for | Body |
+|---|---|---|
+| `GET /admin/grocery/settings` | the page | — |
+| `PATCH /admin/grocery/settings` | "Save settings" | `revision` and **only the changed** fields |
+
+Editable (every field the API takes with more than one allowed value): ordering on / off, delivery blocks, operating days, opening and closing time, orders per day, open orders per customer, items per order, largest order total. **The time zone is shown, not editable** (the API allows only `Asia/Karachi`). Field bounds are the API's (blocks: up to 100 of up to 40 characters; capacity 1–200; items 1–100; open orders 1–10; total Rs 1 to Rs 1,000,000; closing after opening, no overnight hours). No block name is suggested.
+
+- Saved and unsaved are shown apart: each changed field names the saved value; a bar counts the changes.
+- Every save goes through a review listing old → new and what it means. **Switching ordering on or off also needs its own tick.** One send; nothing shown as saved before the server answers.
+- **Concurrency** is the server's `revision` (`409 stale_revision`). If a newer version arrives while edits are open, the page shows what changed there and what was edited here (flagging fields both changed) and offers **keep my edits on the new version** (only the edited fields; sends nothing) or **discard**. A review left open cannot save an old version.
+- Leaving the page with unsaved edits asks first; so does reloading or closing the tab. **Signing out does not ask:** the edits are discarded with the screen.
+- **What changes affect** (backend rules): availability, blocks, hours, capacity and item / order limits apply to orders sent afterwards. Existing orders stay and staff can still handle them while ordering is off. **The largest total is also checked at every later agreement on existing orders.**
+- **No history:** the server keeps every version with its actor, but the API reads only the current one, and the staff audit has no settings entries. The page shows only the current version, when it was saved and the recorded person ("No person is recorded" when none is).
+
+## Staff management
+
+Portal-level, not Grocery-only. It uses the backend's own terms and operations.
+
+| Call | Used for | Body |
+|---|---|---|
+| `GET /admin/staff` `?limit&offset` | the list; **also** to look one person up (there is no one-person read) | — |
+| `GET /admin/audit` `?action&target&limit&offset` | staff history; one person's recorded changes | — |
+| `POST /admin/staff/moderators` | appoint | `email, scopes` |
+| `PUT /admin/staff/moderators/{id}/scopes` | change scopes (**replaces the whole set**) | `scopes` |
+| `POST /admin/staff/moderators/{id}/pause` | pause | none |
+| `POST /admin/staff/moderators/{id}/resume` | resume | `scopes` |
+| `DELETE /admin/staff/moderators/{id}` | remove the moderator role | none |
+
+- **Roles:** Super Admin (shown, **never changeable here**; promotion and demotion remain command-line only) and scoped Moderator. A professional profile is a separate thing.
+- **Scopes:** the six assignable ones are offered, none preselected (resume included); `news` is reserved and never offered. **Grocery is separate**: no listing scope adds it. Only Grocery has a Moderator screen in this app; the others are enforced by the API and say so.
+- **Appointment** is by the exact e-mail of an existing account, in two steps (details, then review with an "I've checked the address" tick). **There is no account search, and the app cannot check eligibility in advance.** Unknown, unverified and suspended accounts get one deliberately identical answer.
+- **No reason field:** the web changes take none (only command-line changes record a reason).
+- Every real change ends all of the person's sessions (an identical scope set changes nothing). Pausing, removing or taking Grocery away **does not reassign orders**: they stay assigned, **nobody else can claim them**, and a Super Admin must release them from the grocery queue. Each person's page links to their orders and the dialogs say this.
+- **Professional accounts:** the backend neither requires nor forbids a professional profile for appointment, and the app adds no rule of its own.
+
+### Concurrent staff changes
+
+The API takes **no version** for staff changes. The server serialises them and refuses impossible ones (already paused, not paused, no longer a moderator, already appointed), but **a scope change replaces the whole set**. Just before sending, the app reads the person again and **sends nothing** if their role, scopes, pause or account state differ from what the dialog showed; a dialog whose person changes while open is blocked. **This narrows the chance of silently overwriting another Super Admin's change; it cannot close it.** Closing it needs a backend precondition (not approved).
+
+## Safety, security and privacy
+
+The rules of the staff workspace apply (no administrative change is ever re-sent; one change at a time per tab; 30 s limit; an **unknown outcome** is never resent and disables changes until newer records have loaded; identity checked before reloading; a refused read drops what was shown; screens rebuilt when the account changes). Staff e-mail addresses are on screen only: none is put in an address, browser storage, the console or a cache (the person being viewed is not in the URL). The service worker handles no `/api/` request.
+
+## Where the code is
+
+```
+src/lib/api/{dto,reads,writes}/grocerySettings.ts, staffAdmin.ts
+src/features/grocery-staff/settings/     settings page and its rules
+src/features/staff-management/           staff list, person, dialogs, history and their rules
+src/hooks/useGuardedWrite.ts             how every administrative change is made
+src/hooks/useVerifiedReload.ts, useWriteLock.ts, useUnsavedChangesWarning.ts
+src/components/forms/ConfirmDialog.tsx, CheckField.tsx; src/components/workspace/RefreshBar.tsx
+src/test/fixtures/adminBackend.ts        the contract in memory (tests only)
+```
+
+The identity check, one-change lock, refresh bar, dialog frame and checkbox moved out of the grocery staff folder to be shared. `staff-management` still imports a few general helpers from `features/grocery` (labelled field, attention region, refreshable read, Pakistan-time formatting).
+
+**Changed for existing users:** the staff navigation gains "Staff" and shows its **text labels only from 1024 px** (below that, named icons); the grocery queue has a "Grocery settings" button for a Super Admin; the staff sign-in shows a return note and a Google link when arriving from Staff.
+
+## Not supported by the backend (and so not in the app)
+
+Settings history; settings or order actions in the audit; a one-person staff read; account search or an eligibility check; a reason on web staff changes; a version precondition on staff changes; re-authentication without signing out; MFA; Super Admin promotion or demotion on the web; releasing or reassigning a removed person's orders automatically.
+
+## Known limitations
+
+- **Never run against a real backend.** The fakes are written from the service code and do not model locking or the session ages (a test switches the "recent sign-in" answer).
+- The older replay risk flagged during this phase (other writes could run as another account signed in from a second tab) is **fixed by a separate security correction** (`AUTH_RBAC.md` §23.1). The customer's grocery submit and cancel are among the writes it covers; an unconfirmed order keeps its idempotency key. The correction also stops the re-read before a Moderator change from sending if the signed-in account changed while it waited.
+- Looking one person up reads the roster in pages of 100 until they are found.
+- Block-name comparison in the browser is close to, not identical with, the server's.
+- No real-device or screen-reader testing; English only.
+
+## GROCERY-4: integration plan (proposed; not approved, not started)
+
+`ROADMAP.md` still describes GROCERY-4 as pilot corrections; the owner must confirm which GROCERY-4 is. The integration work that should come before any pilot:
+
+1. A **throwaway** database migrated to head by the owner's process (`b17_dev` only if the owner decides to).
+2. Real-stack browser specs (`e2e-real/`, which has none for Grocery): enable with **test** blocks → customer sends → Super Admin appoints a grocery Moderator (15-minute rule) → the Moderator claims, agrees, prepares, dispatches, fails once, collects cash → customer sees it; pause the Moderator and release their orders.
+3. Compare every fake with the real answers: shapes (absent fields), error codes and `details`, order of refusal, `401` / `403` kinds, rate limits, session ages.
+4. Decide on: a scope-change precondition; a settings-history read (both need backend approval).
+5. A real-device pass of the customer, staff and admin screens.
+
+**Launch blockers (all still open):** everything in `DEPLOYMENT.md` §15–§17, including verified serviceable blocks; refund, privacy / retention, excluded-goods and cash-handling policies; rules for failed deliveries and bought goods; routines for telling customers about changes and for **noticing new orders** (no notifications); several accounts filling a day's capacity; the 05:00 PKT limit reset; **staff MFA**; per-IP rate limiting at the proxy; tested backups; monitoring; least-privilege database credentials; production Google OAuth.

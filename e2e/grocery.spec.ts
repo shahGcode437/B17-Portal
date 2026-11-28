@@ -113,6 +113,39 @@ test('a visitor writes a list, signs in without losing it, sends it and follows 
   for (const secret of ['Basmati', 'House 17', '923001234567', '0300', order.detail.reference]) expect(stored).not.toContain(secret)
 })
 
+test('after another tab switches accounts, “Send my order” creates nothing and shows them nothing of it', async ({ page, authMock }) => {
+  await reviewReady(page)
+  const other = authMock.addAccount({ email: emailFor('Bilal Ahmed'), displayName: 'Bilal Ahmed' })
+  authMock.session = { email: other.email, csrf: 'csrf-of-the-other-tab' }
+
+  await page.getByRole('button', { name: 'Send my order' }).click()
+
+  await expect(page.getByText("You're now signed in as a different account")).toBeVisible()
+  await expectPage(page, 'Your grocery list') // theirs, and empty
+  for (const secret of ['House 17, Street 4', 'Basmati rice', '0300 1234567', 'Ayesha Khan']) {
+    await expect(page.locator('body')).not.toContainText(secret)
+  }
+  expect(submissions(page)).toHaveLength(1) // refused, and not sent again
+  expect(authMock.grocery.orders).toHaveLength(0)
+})
+
+test('an out-of-date secure session: the order is refused, kept, and sent only when pressed again', async ({ page, authMock }) => {
+  await reviewReady(page)
+  authMock.session = { email: emailFor('Ayesha Khan'), csrf: 'csrf-signed-in-again-elsewhere' }
+
+  await page.getByRole('button', { name: 'Send my order' }).click()
+  await expect(page.getByRole('main').getByRole('alert')).toContainText('secure session could not be verified')
+  await expect(page.getByRole('main')).toContainText('House 17, Street 4')
+  expect(submissions(page)).toHaveLength(1)
+  expect(authMock.grocery.orders).toHaveLength(0)
+
+  await page.getByRole('button', { name: 'Send my order' }).click()
+  await expectPage(page, 'Order sent')
+  expect(submissions(page)).toHaveLength(2)
+  expect(submissions(page)[1].csrf).toBe('csrf-signed-in-again-elsewhere')
+  expect(authMock.grocery.orders).toHaveLength(1)
+})
+
 test('clicking send twice sends one request', async ({ page, authMock }) => {
   await reviewReady(page)
   const release = authMock.holdGrocerySubmit()

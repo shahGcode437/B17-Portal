@@ -1,8 +1,9 @@
 import { useCallback } from "react"
 import { Link, useSearchParams } from "react-router-dom"
-import { ClipboardCheck, ShoppingBasket } from "lucide-react"
+import { ClipboardCheck, Settings2, ShoppingBasket } from "lucide-react"
 import { Container } from "@/components/foundation/Container"
 import { Typography } from "@/components/foundation/Typography"
+import { RefreshBar } from "@/components/workspace/RefreshBar"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ReadError } from "@/components/feedback/ReadError"
@@ -12,7 +13,6 @@ import { STATUS_META } from "@/features/grocery/orderStatus"
 import { useRefreshableRead } from "@/features/grocery/useRefreshableRead"
 import { StaffQueueFilters } from "@/features/grocery-staff/StaffQueueFilters"
 import { StaffQueueRow } from "@/features/grocery-staff/StaffQueueRow"
-import { StaffRefreshBar } from "@/features/grocery-staff/StaffRefreshBar"
 import {
   DEFAULT_FILTERS,
   PAGE_SIZE,
@@ -26,6 +26,7 @@ import { useReportLostAccess, useStaffReload } from "@/features/grocery-staff/us
 import { useRequireAuth } from "@/hooks/useRequireAuth"
 import { fetchGroceryQueue, type GroceryQueuePage } from "@/lib/api/reads/groceryStaff"
 import { routes } from "@/config/routes"
+import { isSuperAdmin } from "@/lib/staffAccess"
 import type { GroceryStatusDto } from "@/lib/api/dto/grocery"
 import type { CurrentUser } from "@/types/auth"
 
@@ -128,12 +129,22 @@ function Queue({ user }: { user: CurrentUser }) {
         title="Grocery orders"
         description="Claim an order, call the customer, record what they agree to, then buy, deliver and collect the cash. Your own orders are never listed here."
         meta={
-          <StaffRefreshBar
-            receivedAt={queue.receivedAt}
-            refreshing={queue.refreshing}
-            failed={Boolean(queue.error && data)}
-            onRefresh={() => void reload()}
-          />
+          <div className="flex flex-col gap-3">
+            {isSuperAdmin(user) && (
+              <Button asChild variant="outline" className="h-11 self-start">
+                <Link to={routes.adminGrocerySettings}>
+                  <Settings2 aria-hidden="true" />
+                  Grocery settings
+                </Link>
+              </Button>
+            )}
+            <RefreshBar
+              receivedAt={queue.receivedAt}
+              refreshing={queue.refreshing}
+              failed={Boolean(queue.error && data)}
+              onRefresh={() => void reload()}
+            />
+          </div>
         }
       />
 
